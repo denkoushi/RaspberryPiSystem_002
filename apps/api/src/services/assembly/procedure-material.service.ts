@@ -142,7 +142,8 @@ export class ProcedureMaterialService {
     });
     const limited = materials.slice(0, limit);
     const last = limited.at(-1);
-    if (last?.kind === 'TEXT' && last.gmailMessageId !== null && unplacedPhotoMessages.has(last.gmailMessageId)) limited.pop();
+    // A memo cut off from its photos gives its slot back to the photo that the memo pushed out.
+    if (last?.kind === 'TEXT' && last.gmailMessageId !== null && unplacedPhotoMessages.has(last.gmailMessageId)) limited[limited.length - 1] = materials[limited.length]!;
     return { employee: { employeeCode: employee.employeeCode, displayName: employee.displayName }, materials: await this.describeMaterials(limited) };
   }
 

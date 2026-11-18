@@ -93,8 +93,8 @@ describe('employee material list', () => {
     mocks.tx.procedureMaterial.findMany.mockResolvedValue(rows);
     expect((await shelf().listByEmployeeTag('mine')).materials.map(row => row.id))
       .toEqual(['note-a', 'photo-a1', 'note-b', 'photo-b', 'photo-a2']);
-    expect((await shelf().listByEmployeeTag('mine', 1)).materials).toEqual([]);
-    expect((await shelf().listByEmployeeTag('mine', 3)).materials.map(row => row.id)).toEqual(['note-a', 'photo-a1']);
+    expect((await shelf().listByEmployeeTag('mine', 1)).materials.map(row => row.id)).toEqual(['photo-a1']);
+    expect((await shelf().listByEmployeeTag('mine', 3)).materials.map(row => row.id)).toEqual(['note-a', 'photo-a1', 'photo-b']);
   });
 
   it('does not create a memo even when the tag and the photo have the same nonnumeric employee number', async () => {
