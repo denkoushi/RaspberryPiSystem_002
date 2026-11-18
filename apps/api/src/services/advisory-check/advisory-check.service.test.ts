@@ -10,7 +10,7 @@ import { logger } from '../../lib/logger.js';
 import { advisoryCheckEnvShape } from '../../config/env/advisory-check.js';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { deliverSystemNotice } from '../kiosk-inquiry/system-notice.service.js';
-import { AdvisoryCheckService, advisoryJobSchema, advisoryMessages, advisoryNotice, triageAdvisory } from './advisory-check.service.js';
+import { AdvisoryCheckService, adoptFixedVersions, advisoryJobSchema, advisoryMessages, advisoryNotice, triageAdvisory } from './advisory-check.service.js';
 
 let root: string;
 const now = new Date('2026-10-31T00:00:00Z');
@@ -52,6 +52,105 @@ beforeEach(async () => {
   vi.mocked(logger.warn).mockClear();
 });
 afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
+
+describe('fixed versions', () => {
+  const fixedAnswer = { ...notAffected, fixed_versions: { Chromium: ['131.0.6778.85'] } };
+  const fixedEvidence = { ...installed, versions: ['chromium=131.0.6778.85-1~deb12u1'] };
+  const remedy = { kind: 'os-security-update', packages: ['chromium'], upstream_version_comparable: true };
+  const versionJob = () => ({
+    ...fixture(), page_text: 'Chromium の修正版は 131.0.6778.85 です。',
+    evidence: { Chromium: fixedEvidence }, remedies: { Chromium: remedy },
+  });
+
+  it('adopts only complete version tokens for products in the job', () => {
+    const job = advisoryJobSchema.parse({ ...versionJob(),
+      page_text: '11.2.3 1.2.30 1.2-1 2:1.2 Chromium (131.0.6778.85)',
+      description: 'Chromium の修正版は 131.0.6778.90 です。',
+    });
+    const adopted = adoptFixedVersions(job, {
+      Chromium: ['1.2', '131.0.6778.85', '131.0.6778.90', '999.0'],
+      PostgreSQL: ['131.0.6778.85'],
+    });
+    expect([...adopted]).toEqual([['Chromium', ['131.0.6778.85', '131.0.6778.90']]]);
+  });
+
+  it.each([
+    { name: 'equal upstream version with a Debian revision', versions: fixedEvidence.versions, expected: 'none' },
+    { name: 'older upstream version', versions: ['chromium=131.0.6778.9'], expected: 'manual' },
+    { name: 'numeric epoch and upstream suffix', versions: ['chromium=1:131.0.6778.85+dfsg-2'], expected: 'none' },
+    { name: 'upstream tilde suffix', versions: ['chromium=131.0.6778.85~deb12u1'], expected: 'none' },
+    { name: 'nonnumeric installed upstream version', versions: ['chromium=131.0a.6778.85-1'], expected: 'manual' },
+    { name: 'missing package assignment', versions: ['131.0.6778.85'], expected: 'manual' },
+    { name: 'one older installed version', versions: [...fixedEvidence.versions, 'chromium-browser=131.0.6778.84'], expected: 'manual' },
+    { name: 'no installed versions', versions: [], expected: 'manual' },
+  ])('triages $name as $expected', ({ versions, expected }) => {
+    const job = advisoryJobSchema.parse({ ...versionJob(), evidence: { Chromium: { ...fixedEvidence, versions } } });
+    expect(triageAdvisory(job, advisoryJobSchema.shape.result.unwrap().parse(fixedAnswer))).toBe(expected);
+  });
+
+  it.each([
+    { name: 'at the largest fix', fixed: ['131.0.6778.85', '131.0.6778.9'], expected: 'none' },
+    { name: 'below the largest fix', fixed: ['131.0.6778.90', '131.0.6778.85'], expected: 'manual' },
+    { name: 'with a nonnumeric fix', fixed: ['131.0.6778.85', '131.0.6778.85+dfsg'], expected: 'manual' },
+    { name: 'with no fix in the advisory', fixed: ['131.0.6778.8'], expected: 'manual' },
+  ])('triages installed versions $name as $expected', ({ fixed, expected }) => {
+    const job = advisoryJobSchema.parse({ ...versionJob(), page_text: '131.0.6778.85 131.0.6778.9 131.0.6778.90 131.0.6778.85+dfsg' });
+    const result = { ...fixedAnswer, fixed_versions: { Chromium: fixed } };
+    expect(triageAdvisory(job, advisoryJobSchema.shape.result.unwrap().parse(result))).toBe(expected);
+  });
+
+  it.each([
+    { name: 'fleet evidence', overrides: { evidence: { Chromium: { ...fixedEvidence, scope: 'fleet' } } }, result: fixedAnswer },
+    { name: 'an affected verdict', overrides: {}, result: { ...fixedAnswer, verdict: 'affected' } },
+    { name: 'a noncomparable remedy', overrides: { remedies: { Chromium: { ...remedy, upstream_version_comparable: false } } }, result: fixedAnswer },
+    { name: 'a manual remedy', overrides: { remedies: { Chromium: { kind: 'manual' } } }, result: fixedAnswer },
+    { name: 'no fixed_versions', overrides: {}, result: notAffected },
+  ])('keeps manual with $name', ({ overrides, result }) => {
+    const job = advisoryJobSchema.parse({ ...versionJob(), ...overrides });
+    expect(triageAdvisory(job, advisoryJobSchema.shape.result.unwrap().parse(result))).toBe('manual');
+  });
+
+  it('records none for a mix of absent and fixed Pi5 products', async () => {
+    const job = versionJob();
+    await enqueue({ ...job, products: ['Chromium', 'PostgreSQL'], evidence: { ...job.evidence, PostgreSQL: absent } });
+    complete.mockResolvedValueOnce({ rawText: JSON.stringify(fixedAnswer), model: 'test' });
+    await service().tick(signal());
+    expect(await load('done')).toMatchObject({ result: fixedAnswer, triage: 'none' });
+    expect(deliverSystemNotice).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['too many keys', Object.fromEntries(Array.from({ length: 31 }, (_, i) => [`product${i}`, ['1.2']])), 30],
+    ['too many versions', { Chromium: Array(6).fill('1.2') }, 1],
+  ])('trims fixed_versions with %s', (_name, fixed_versions, keys) => {
+    const parsed = advisoryJobSchema.parse({ ...versionJob(), result: { ...fixedAnswer, fixed_versions } }).result;
+    const kept = parsed && 'fixed_versions' in parsed ? parsed.fixed_versions ?? {} : {};
+    expect(Object.keys(kept)).toHaveLength(keys);
+    expect(Object.values(kept).every(versions => versions.length <= 5)).toBe(true);
+  });
+
+  it.each([
+    ['an oversized version', { Chromium: ['1'.repeat(65)] }],
+    ['an invalid character', { Chromium: ['131.0.6778.85以降'] }],
+    ['a string instead of a list', { Chromium: '1.2' }],
+    ['a list instead of a map', ['1.2']],
+  ])('drops fixed_versions with %s', (_name, fixed_versions) => {
+    const parsed = advisoryJobSchema.parse({ ...versionJob(), result: { ...fixedAnswer, fixed_versions } }).result;
+    expect(parsed).toEqual(notAffected);
+  });
+
+  it('keeps the verdict and notifies when fixed_versions is malformed', async () => {
+    await enqueue(versionJob());
+    complete.mockResolvedValueOnce({ rawText: JSON.stringify({ ...fixedAnswer, fixed_versions: { Chromium: '1.2' } }), model: 'test' });
+    await service().tick(signal());
+    expect(await load('done')).toMatchObject({ result: notAffected, triage: 'manual' });
+    expect(deliverSystemNotice).toHaveBeenCalledOnce();
+  });
+
+  it('parses a saved result without fixed_versions', () => {
+    expect(advisoryJobSchema.parse({ ...versionJob(), result: notAffected }).result).toEqual(notAffected);
+  });
+});
 
 describe('advisory jobs', () => {
   it.each([
