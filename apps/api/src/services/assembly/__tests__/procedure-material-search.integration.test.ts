@@ -29,6 +29,7 @@ function fullWidth(text: string) {
 
 async function cleanupFixtures() {
   await prisma.procedureMaterial.deleteMany({ where: { gmailDedupeKey: { startsWith: prefix } } });
+  await prisma.employee.deleteMany({ where: { nfcTagUid: `${prefix}-tag` } });
   await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, dataHash: { startsWith: prefix } } });
   await rebuildProductionSchedulePartNameLookup();
   const rowWhere = { sourceSystem: prefix };
@@ -164,6 +165,72 @@ describe('procedure material search (real PostgreSQL)', () => {
     expect(record).toMatchObject({ kind: 'procedure_material' });
     expect(record?.bodyText.startsWith('組立の件\n本文あ')).toBe(true);
     expect(record?.bodyText).toHaveLength(4000);
+  });
+
+  it('omits app notes from shelf lists and counts for each state, including the APP filter', async () => {
+    const photo = await material('shelf-photo', { origin: 'APP' });
+    const scopes = (['unplaced', 'placed', 'discarded', 'all'] as const).flatMap(state =>
+      [{ state }, { state, origin: 'APP' as const }]);
+    const counts = await Promise.all(scopes.map(scope => shelf.count(scope)));
+    await material('shelf-note', { origin: 'APP', kind: 'TEXT' });
+    await material('shelf-placed-note', { origin: 'APP', kind: 'TEXT', placedAt: modified });
+    await material('shelf-discarded-note', { origin: 'APP', kind: 'TEXT', discardedAt: modified });
+
+    expect(await Promise.all(scopes.map(scope => shelf.count(scope)))).toEqual(counts);
+    for (const scope of scopes) {
+      const expected = scope.state === 'all' || (scope.state === 'unplaced' && 'origin' in scope) ? [photo.id] : [];
+      const items = await shelf.list({ ...scope, limit: 500 });
+      expect(items.filter(item => item.gmailDedupeKey.startsWith(prefix)).map(item => item.id)).toEqual(expected);
+    }
+  });
+
+  it('creates one memo for existing app photos when the employee opens the list concurrently and again', async () => {
+    const nfcTagUid = `${prefix}-tag`;
+    const employeeCode = `${Date.now()}${process.pid}`;
+    await prisma.employee.create({ data: { employeeCode, displayName: '素材テスト', nfcTagUid } });
+    const gmailMessageId = `${prefix}-legacy-app`;
+    const appRef = { nameId: `00${employeeCode}`, note: '　 取付位置を確認 \n ', photoIndex: 1 };
+    const submission = { origin: 'APP' as const, appRef, gmailMessageId, subjectHint: '保守・取付位置', fromEmail: 'sender@example.test' };
+    const photo = await material('legacy-photo-1', submission);
+    const second = await material('legacy-photo-2', {
+      ...submission, appRef: { ...appRef, photoIndex: 2 }, receivedAt: new Date(modified.getTime() - 1000),
+    });
+    const where = { gmailMessageId, kind: 'TEXT' as const };
+    expect(await prisma.procedureMaterial.count({ where })).toBe(0);
+
+    const lists = await Promise.all([shelf.listByEmployeeTag(nfcTagUid), shelf.listByEmployeeTag(nfcTagUid)]);
+    const notes = await prisma.procedureMaterial.findMany({ where });
+    expect(notes).toEqual([expect.objectContaining({
+      origin: 'APP', kind: 'TEXT', text: '取付位置を確認', appRef: { ...appRef, photoIndex: 0 },
+      gmailMessageId, gmailDedupeKey: `${gmailMessageId}:app-note`, subjectHint: photo.subjectHint,
+      fromEmail: photo.fromEmail, receivedAt: photo.receivedAt,
+    })]);
+    const expectedIds = [notes[0]!.id, photo.id, second.id];
+    for (const list of [...lists, await shelf.listByEmployeeTag(nfcTagUid)]) {
+      expect(list.materials.map(row => row.id)).toEqual(expectedIds);
+    }
+    expect(await prisma.procedureMaterial.count({ where })).toBe(1);
+  });
+
+  it('omits app notes from text search, ranking and the semantic corpus', async () => {
+    const gmailMessageId = `${prefix}-app-mail`;
+    const photo = await material('rank-photo', { origin: 'APP', gmailMessageId, originalFileName: 'photo.jpg' });
+    const note = await material('rank-note', { origin: 'APP', kind: 'TEXT', gmailMessageId, text: `${prefix} メモ` });
+    expect(await shelf.list({ state: 'unplaced', origin: 'APP', q: note.text!, limit: 500 })).toEqual([]);
+
+    const photoRecord = `material:${photo.id}`;
+    const noteRecord = `material:${note.id}`;
+    const mailRecord = `mail:${gmailMessageId}`;
+    for (const state of ['unplaced', 'placed'] as const) {
+      if (state === 'placed') await prisma.procedureMaterial.updateMany({ where: { gmailMessageId }, data: { placedAt: modified } });
+      const recordIds = await shelf.listRankRecordIds(state);
+      expect(recordIds).toEqual(expect.arrayContaining([photoRecord, mailRecord]));
+      expect(recordIds).not.toContain(noteRecord);
+      expect((await shelf.listRanked([noteRecord, mailRecord], { state, limit: 500 })).map(item => item.id)).toEqual([photo.id]);
+    }
+    const records = (await loadProcedureMaterialRecords()).map(item => item.id);
+    expect(records).toContain(photoRecord);
+    expect(records).not.toContain(noteRecord);
   });
 
   it('does not reverse lookup one character after NFKC and trim', async () => {
