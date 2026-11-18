@@ -7,7 +7,6 @@ import { Input } from '../../../components/ui/Input';
 import {
   convertOverlayShapeKind,
   lineEndpointsForDirection,
-  normalizeOverlayBBox,
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
 import { ProcedureVoiceInput } from './ProcedureVoiceInput';
@@ -313,7 +312,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
                 step={0.5}
                 value={ratioToPercent(bbox[key])}
                 className="min-h-11 min-w-0 !px-2 text-lg"
-                onChange={(event) => onUpdate(updateOverlayBBox(element, normalizeOverlayBBox({ ...bbox, [key]: percentToRatio(numberValue(event.target.value, bbox[key] * 100)) })))}
+                onChange={(event) => onUpdate(updateOverlayBBox(element, { ...bbox, [key]: percentToRatio(numberValue(event.target.value, bbox[key] * 100)) }))}
               />
             </label>
           ))}

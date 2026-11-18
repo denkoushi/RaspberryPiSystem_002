@@ -131,8 +131,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
       controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id))),
   [controller.layoutSuggestions.previewElements, controller.layoutSuggestions.locked, controller.selectedPageElements, hiddenOverlayIds]);
   const placeMaterial = useCallback(async (...args: Parameters<typeof placeControllerMaterial>) => {
-    if (args[1]) await placeControllerMaterial(args[0], args[1]);
-    else await placeControllerMaterial(args[0]);
+    await placeControllerMaterial(...args);
     refreshMaterials();
   }, [placeControllerMaterial, refreshMaterials]);
   const replaceImageMaterial = useCallback(async (material: Parameters<typeof replaceControllerImageMaterial>[0]) => {

@@ -30,7 +30,6 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
     'selectionMode' | 'navigateBack' | 'save' | 'addOverlay' | 'setSelectionMode' | 'undo' | 'redo'> & {
       isDirty?: boolean;
       saving?: boolean;
-      saveUnsettled?: boolean;
       selectedKind?: NonNullable<AssemblyProcedureDocumentEditorController['selectedElement']>['kind'];
       layoutLocked: boolean;
       canSuggest: boolean;
