@@ -189,14 +189,26 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
         try {
           await gate.waitForIdle(abort.signal);
           staged.current.clear();
-          // The board is staged first so dependent process chips use the replacement's parts.
           const entries = [...reads.current].sort(([a], [b]) => Number(b === 'board') - Number(a === 'board'));
-          for (const [key, participant] of entries) {
+          const [board, ...others] = entries;
+          if (board?.[0] !== 'board') throw new Error('Missing board');
+          const assertCurrent = () => {
+            if (abort.signal.aborted || controller.getSnapshot().generation !== snapshot.generation || identity.current !== getResolvedClientKey()) {
+              throw new Error('Stale full refresh');
+            }
+          };
+          const read = async ([key, participant]: (typeof entries)[number]) => {
+            assertCurrent();
             const result = await participant.read(abort.signal);
-            if (abort.signal.aborted || controller.getSnapshot().generation !== snapshot.generation || identity.current !== getResolvedClientKey()) return;
+            assertCurrent();
             staged.current.set(key, result);
-          }
-          if (!entries.some(([key]) => key === 'board')) throw new Error('Missing board');
+          };
+          const boardRead = read(board);
+          // Process chips use the replacement board's staged parts.
+          await Promise.all([boardRead, ...others.map((entry) =>
+            entry[0] === 'chips' ? boardRead.then(() => read(entry)) : read(entry)
+          )]);
+          assertCurrent();
           complete = true;
           flushSync(() => {
             for (const [key, participant] of entries) participant.commit(staged.current.get(key));
@@ -204,7 +216,7 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
             frozenNow.current = null;
             report(true);
           });
-        } catch { report(false); }
+        } catch { abort.abort(); report(false); }
         finally { clearTimeout(timeout); active = undefined; if (!reported) report(false); }
       })();
     };
