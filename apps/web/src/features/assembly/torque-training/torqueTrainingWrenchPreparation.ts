@@ -35,14 +35,3 @@ export function formatTorqueTrainingBoltLength(value: string | number | null | u
   if (value === null || value === undefined || value === '') return '-';
   return `${value} mm`;
 }
-
-export function preparationTargetRows(target: TorqueTrainingWrenchPreparationTarget) {
-  return [
-    { key: 'nominalDiameter', label: '呼び径', value: target.nominalDiameter },
-    { key: 'material', label: '材質', value: target.material },
-    { key: 'boltLengthMm', label: '首下長さ', value: formatTorqueTrainingBoltLength(target.boltLengthMm) },
-    { key: 'lowerLimit', label: '下限', value: formatTorqueTrainingValue(target.lowerLimit, target.unit) },
-    { key: 'nominalTorque', label: '目標', value: formatTorqueTrainingValue(target.nominalTorque, target.unit) },
-    { key: 'upperLimit', label: '上限', value: formatTorqueTrainingValue(target.upperLimit, target.unit) }
-  ] as const;
-}
