@@ -16,7 +16,7 @@ import { ProcedureVideoThumbnail } from './ProcedureVideoThumbnail';
 
 import type { ProcedureVideoDto, ProcedureVideoState, ProcedureVideoSummaryDto, ProcedureVideoSceneDto, ProcedureVideoLinkItem } from './procedure-video-types';
 
-export function procedureVideoLength(duration: number | null) { return duration == null ? '長さ未確認' : `${duration.toFixed(1)}秒`; }
+function procedureVideoLength(duration: number | null) { return duration == null ? '長さ未確認' : `${duration.toFixed(1)}秒`; }
 export function ProcedureVideoShelfDialog({ onClose, link, onError }: { onError?: (error: unknown) => boolean; onClose: () => void; link?: { documentId: string; pageIndex: number; accessPassword: string; holderToken?: string | null } }) {
   const selectionMode = Boolean(link);
   const [deskVideoId, setDeskVideoId] = useState<string | null>(null);
