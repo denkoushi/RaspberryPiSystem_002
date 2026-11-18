@@ -286,7 +286,17 @@ export function ProcedureManualWorkshop() {
     if (!busy && item.draftRevision && !item.draftRevision.editLease && checkAccess()) setDiscarding(item);
   };
   // Columns nobody in the list fills are collapsed so the name gets their width.
-  const actionColumn = filteredItems.some(item => item.draftRevision) ? '236px' : '188px';
+  // Each action button is 44px wide with a 4px gap; size the column to the row that shows the most buttons.
+  const actionButtons = (item: ProcedureManualAssignmentOverviewItemDto) => [
+    item.status !== 'unavailable',
+    item.kind === 'assembly_procedure_document' && item.status !== 'unavailable',
+    processes.find(row => row.id === item.processId)?.subjectKind === 'PART' && item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision,
+    item.kind === 'assembly_procedure_document' && item.status === 'published',
+    Boolean(item.draftRevision),
+    true
+  ].filter(Boolean).length;
+  const maxActionButtons = Math.max(1, ...filteredItems.map(actionButtons));
+  const actionColumn = `${maxActionButtons * 44 + (maxActionButtons - 1) * 4}px`;
   const usageColumn = filteredItems.some(item => item.otherAssignments.length > 0) ? '180px' : '0px';
   const approvalColumn = filteredItems.some(item => item.draftRevision || item.approval) ? '150px' : '0px';
   return <div className="grid min-h-0 flex-1 grid-rows-[64px_minmax(0,1fr)] bg-[#0f1317] text-[#eef3f6]" data-testid="procedure-manuals-workshop">
@@ -337,7 +347,7 @@ export function ProcedureManualWorkshop() {
               partName: fullName, subjectKey: item.modelCode,
               process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
             };
-            return <div role="row" key={item.assignmentId} aria-label={item.label || item.title} title={fullName} style={{ gridTemplateColumns: `minmax(0,1.5fr) minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) 150px ${usageColumn} ${approvalColumn} 50px ${actionColumn}` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
+            return <div role="row" key={item.assignmentId} aria-label={item.label || item.title} title={fullName} style={{ gridTemplateColumns: `minmax(0,1.5fr) minmax(0,1.5fr) 96px 128px minmax(0,0.6fr) 120px ${usageColumn} ${approvalColumn} 40px ${actionColumn}` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
             <div role="cell" className="min-w-0 truncate text-xl font-bold" title={fullName}>{name.partName}</div>
             <div role="cell" className="min-w-0 truncate font-mono text-[17px] font-bold">{name.subjectKey}</div>
             <div role="cell" className="min-w-0 truncate text-[17px]">{name.process}</div>
