@@ -9,7 +9,14 @@ const SILENCE_PHRASES = new Set([
   '最後までご視聴いただきありがとうございます', 'ご清聴ありがとうございました', 'チャンネル登録お願いします',
   'チャンネル登録よろしくお願いします', '字幕視聴ありがとうございました'
 ]);
-const isSilencePhrase = (text: string) => SILENCE_PHRASES.has(text.replace(/[\s、。．.!！?？「」]/g, ''));
+// Whisper also labels noise as music or sounds: "♪", "(音楽)", "[拍手]", or the bare word.
+const NOISE_LABELS = new Set(['音楽', 'BGM', '拍手', '笑', '笑い', '雑音', '無音', '音声なし']);
+export const isSilencePhrase = (text: string) => {
+  const plain = text.replace(/[\s、。．.!！?？「」～〜]/g, '');
+  if (SILENCE_PHRASES.has(plain)) return true;
+  const rest = plain.replace(/[♪♫♬🎵🎶]/gu, '').replace(/[（(［[【〔]([^）)］\]】〕]*)[）)］\]】〕]/g, '');
+  return NOISE_LABELS.has(rest) || (rest === '' && plain !== '');
+};
 export type VoiceSession = { abort: AbortController; stream?: MediaStream; recorder?: MediaRecorder; timer?: ReturnType<typeof setTimeout>; stopMonitoring?: () => void };
 
 export function disposeVoiceSession(session: VoiceSession) {

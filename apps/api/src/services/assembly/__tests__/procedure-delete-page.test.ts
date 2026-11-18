@@ -21,7 +21,7 @@ function fixture() {
   const feedback = [0, 1, 2].map(pageIndex => feedbackRow('doc', pageIndex));
   feedback.push(feedbackRow('other', 1));
   const textFeedback = feedback.map(row => ({ ...row }));
-  const revision = { editVersion: 4 };
+  const revision = { editVersion: 4, isRevisionHead: true };
   const document = { imageRelativePath: '/0.png' };
   const remove = <T extends object>(rows: T[], where: Partial<T>) => {
     for (let i = rows.length - 1; i >= 0; i--) if (Object.entries(where).every(([key, value]) => rows[i][key as keyof T] === value)) rows.splice(i, 1);
@@ -65,7 +65,7 @@ function fixture() {
     assemblyTemplateProcedureStep: { count: vi.fn(async () => 0) },
     assemblyTemplateBolt: { count: vi.fn(async () => 0) },
     assemblyTemplateCheckItem: { count: vi.fn(async () => 0) },
-    assemblyProcedureDocumentRevision: { update: vi.fn(async () => { revision.editVersion++; }) },
+    assemblyProcedureDocumentRevision: { findUnique: vi.fn(async (): Promise<typeof revision | null> => revision), update: vi.fn(async () => { revision.editVersion++; }) },
     assemblyProcedureDocument: {
       update: vi.fn(async ({ data }) => Object.assign(document, data)),
       findUnique: vi.fn(async () => ({ ...document, pages, revisionMetadata: revision }))
@@ -170,7 +170,9 @@ describe('delete a procedure page', () => {
     expect(data.tx.assemblyProcedureOverlayElement.deleteMany).not.toHaveBeenCalled();
   });
   it.each([{ status: 'PUBLISHED' }, { isRevisionHead: false }, { isActive: false }, { revisionRootId: null }])('refuses a noneditable document %j', async overrides => {
-    data.tx.$queryRaw.mockResolvedValue([{ id: 'doc', status: 'DRAFT', isActive: true, revisionRootId: 'doc', isRevisionHead: true, editVersion: 4, ...overrides }]);
+    data.tx.$queryRaw.mockResolvedValue([{ id: 'doc', status: 'DRAFT', isActive: true, ...overrides }]);
+    if ('revisionRootId' in overrides) data.tx.assemblyProcedureDocumentRevision.findUnique.mockResolvedValue(null);
+    if ('isRevisionHead' in overrides) data.revision.isRevisionHead = false;
     await expect(deletePage()).rejects.toMatchObject({ statusCode: 409 });
     expect(data.tx.assemblyProcedureOverlayElement.deleteMany).not.toHaveBeenCalled();
   });
