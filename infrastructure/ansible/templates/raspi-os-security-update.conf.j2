@@ -1,4 +1,9 @@
-{{ {
+{%- set early = {} -%}
+{%- if os_security_update_early_enabled | bool -%}
+  {%- set weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] -%}
+  {%- set early = {'earlyEnabled': true, 'weeklyWeekday': weekdays.index(os_security_update_oncalendar.split()[0])} -%}
+{%- endif -%}
+{{ dict({
   'mode': os_security_update_mode,
   'blacklist': os_security_update_package_blacklist,
   'allowlist': os_security_update_package_allowlist,
@@ -9,4 +14,4 @@
   'releaseMarker': os_security_update_release_marker,
   'releaseMarkerMaxAgeSeconds': os_security_update_release_marker_max_age_seconds,
   'lockPath': os_security_update_lock_path
-} | to_json }}
+}, **early) | to_json }}

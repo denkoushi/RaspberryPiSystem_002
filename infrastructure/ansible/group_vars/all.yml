@@ -410,6 +410,7 @@ trivy:
 
 # Weekly OS security updates; stage 2 applies fleet-wide (KB-438).
 os_security_update_enabled: true
+os_security_update_early_enabled: false
 os_security_update_mode: apply
 os_security_update_package_blacklist:
   - '^docker-ce$'
@@ -431,6 +432,7 @@ os_security_update_package_allowlist:
   - '^chromium'
   - '^rpi-chromium-mods$'
 os_security_update_oncalendar: "Sun *-*-* 02:00:00"
+os_security_update_early_oncalendar: "*-*-* 02:00:00"
 os_security_update_randomized_delay_sec: '0'
 os_security_update_browser_unit: ''
 os_security_update_state_dir: /var/lib/raspi-os-security-update

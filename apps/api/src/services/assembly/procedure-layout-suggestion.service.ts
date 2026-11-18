@@ -16,7 +16,8 @@ import type { AccessPasswordCaller } from '../production-schedule/production-sch
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 import { buildProcedureCaptionLearningPrompt } from './procedure-caption-learning-prompt.js';
 import { buildProcedureTextLearningPrompt } from './procedure-text-learning-prompt.js';
-import { buildPublishedExamplesPrompt, loadPublishedProcedures, selectPublishedExamples } from './procedure-published-examples.js';
+import { documentSite } from './procedure-document-site.js';
+import { buildPublishedExamplesPrompt, loadPublishedProcedures, selectPublishedExamples, type ProcedureSite } from './procedure-published-examples.js';
 import { buildSiteVocabularyPrompt } from './procedure-site-vocabulary.js';
 import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
 import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts, suggestProcedureLayoutOverflow } from './procedure-layout.js';
@@ -32,7 +33,6 @@ const SITE_TEXT_RULES = {
   assembly: siteRules('「車高マン」→「シャコマン」', ASSEMBLY_SITE_CONTEXT),
   grinding: siteRules('「磁力マックス」→「磁力MAX」', GRINDING_SITE_CONTEXT),
 } as const;
-type ProcedureSite = keyof typeof SITE_TEXT_RULES;
 
 const textInstruction = (siteContext: string) => `あなたは工場の手順書を仕上げる編集者です。入力は手順書1ページ分の文章です。各 text を、作業者がすぐ読める最終形に書き直してください。
 規則:
@@ -99,18 +99,6 @@ export class ProcedureLayoutSuggestionService {
     }
   }
 
-  /** The department (組立 / 研削) any revision of the document is filed under, by process or parent process name. */
-  private async documentSite(revisionRootId: string): Promise<ProcedureSite | null> {
-    const assignments = await prisma.procedureManualAssignment.findMany({
-      where: { assemblyProcedureDocument: { revisionMetadata: { revisionRootId } } },
-      select: { process: { select: { name: true, parent: { select: { name: true } } } } },
-    });
-    const names = assignments.flatMap(({ process }) => [process.name, process.parent?.name ?? '']);
-    if (names.some(name => name.startsWith('組立'))) return 'assembly';
-    if (names.some(name => name.startsWith('研削'))) return 'grinding';
-    return null;
-  }
-
   private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[], textFeedback: Prisma.AssemblyProcedureTextFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
     await this.access.requireAccessPassword(params.accessPassword, params);
     const document = await prisma.assemblyProcedureDocument.findUnique({
@@ -121,7 +109,7 @@ export class ProcedureLayoutSuggestionService {
     if (document.status !== 'DRAFT' || !document.isActive || !document.revisionMetadata?.revisionRootId || !document.revisionMetadata.isRevisionHead) {
       throw new ApiError(409, '最新版の改版下書きだけ編集できます');
     }
-    const site = await this.documentSite(document.revisionMetadata.revisionRootId);
+    const site = await documentSite(document.revisionMetadata.revisionRootId);
     const page = await prisma.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: params.documentId, pageIndex: params.pageIndex } } });
     if (!page) throw new ApiError(400, '指定ページが存在しません');
     let pageSize: { width: number; height: number };
@@ -153,7 +141,7 @@ export class ProcedureLayoutSuggestionService {
     if (site) {
       try {
         const examples = await prisma.assemblyProcedureTextFeedback.findMany({
-          where: { site, outcome: 'EDITED', finalText: { not: null } },
+          where: { site, source: 'LAYOUT', outcome: 'EDITED', finalText: { not: null } },
           orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }], take: 50, select: { aiText: true, finalText: true }
         });
         const terms = await prisma.assemblyProcedureLearnedTerm.findMany({ where: { site }, orderBy: { wrongText: 'asc' } });

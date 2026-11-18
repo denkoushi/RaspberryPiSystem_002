@@ -1,3 +1,4 @@
+import { osSecurityUpdateReportSchema, recordOsSecurityUpdateReport } from '../advisory-check/os-security-early-update.js';
 import { claimStatusClientId } from './status-client-id-claim.js';
 import crypto from 'crypto';
 import type { ClientDevice } from '@prisma/client';
@@ -297,6 +298,7 @@ export async function upsertClientStatus(params: {
     lastBoot?: Date;
     logs?: ClientTelemetryLogEntry[];
   };
+  osSecurityUpdate?: unknown;
   requestId: string;
 }) {
   const { clientKey, metrics, requestId } = params;
@@ -369,7 +371,30 @@ export async function upsertClientStatus(params: {
     });
   }
 
+  let osSecurityUpdateRequests: Awaited<ReturnType<typeof recordOsSecurityUpdateReport>>;
+  try {
+    const report = params.osSecurityUpdate === undefined
+      ? undefined
+      : osSecurityUpdateReportSchema.safeParse(params.osSecurityUpdate);
+    if (report?.success) {
+      osSecurityUpdateRequests = await recordOsSecurityUpdateReport(statusClientId, report.data, now);
+    } else {
+      if (report) {
+        logger.warn({ clientId: statusClientId, paths: report.error.issues.map(issue => issue.path) },
+          '[ClientTelemetry] invalid OS security update report');
+      }
+      // Keep an older status that finishes later from re-enabling the client.
+      await prisma.osSecurityUpdateClientReport.updateMany({
+        where: { clientId: statusClientId, receivedAt: { lte: now } },
+        data: { earlyEnabled: false, receivedAt: now },
+      });
+    }
+  } catch (error) {
+    logger.warn({ clientId: statusClientId, error: error instanceof Error ? error.name : 'unknown' },
+      '[ClientTelemetry] failed to process OS security update report');
+  }
   return {
+    ...(osSecurityUpdateRequests !== undefined ? { osSecurityUpdateRequests } : {}),
     requestId,
     statusId: status.id,
     clientDeviceId: clientDevice.id,

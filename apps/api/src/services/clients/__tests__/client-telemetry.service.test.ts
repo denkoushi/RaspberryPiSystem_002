@@ -35,6 +35,7 @@ vi.mock('../../../lib/prisma.js', () => ({
       findMany: vi.fn(),
     },
     alert: { findFirst: vi.fn() },
+    osSecurityUpdateClientReport: { updateMany: vi.fn(async () => ({ count: 0 })) },
     $executeRaw: vi.fn(),
     $transaction: vi.fn(),
   },
