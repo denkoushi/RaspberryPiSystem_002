@@ -155,7 +155,7 @@ describe('procedure term learning', () => {
     expect(mocks.runtime.release).toHaveBeenCalledExactlyOnceWith('business_hermes');
     expect(mocks.complete).toHaveBeenCalledWith(expect.objectContaining({ useCase: 'business_hermes', jsonOutput: true, temperature: 0, enableThinking: false, background: false }));
     expect(mocks.db.assemblyProcedureTextFeedback.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { site: 'grinding', outcome: 'EDITED', resolvedAt: { gte: new Date('2026-04-23T00:00:00Z'), lte: now } }, take: 300,
+      where: { site: 'grinding', source: 'LAYOUT', outcome: 'EDITED', resolvedAt: { gte: new Date('2026-04-23T00:00:00Z'), lte: now } }, take: 300,
       orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }]
     }));
     expect(mocks.db.$transaction).toHaveBeenCalledOnce();
@@ -204,11 +204,21 @@ describe('procedure term learning', () => {
     mocks.db.assemblyProcedureTextFeedback.findFirst.mockResolvedValue(null);
     expect((await run()).every(result => result.status === 'skipped')).toBe(true);
     expect(mocks.db.assemblyProcedureTextFeedback.findFirst).toHaveBeenCalledWith({
-      where: { site: 'grinding', outcome: 'EDITED', resolvedAt: { gt: now } }, select: { id: true }
+      where: { site: 'grinding', source: 'LAYOUT', outcome: 'EDITED', resolvedAt: { gt: now } }, select: { id: true }
     });
     expect(mocks.complete).not.toHaveBeenCalled();
     expect(mocks.runtime.ensureReady).not.toHaveBeenCalled();
     expect(mocks.db.$transaction).not.toHaveBeenCalled();
+  });
+  it('does not start term learning when only a dictation correction is new', async () => {
+    mocks.db.assemblyProcedureLearnedTerm.findFirst.mockResolvedValue({ updatedAt: new Date(now.getTime() - 1000) });
+    const correction = { id: 'dictation', site: 'grinding', source: 'DICTATION', resolvedAt: now };
+    mocks.db.assemblyProcedureTextFeedback.findFirst.mockImplementation(async ({ where }) =>
+      where.site === correction.site && (!where.source || where.source === correction.source) && correction.resolvedAt > where.resolvedAt.gt
+        ? { id: correction.id } : null);
+    expect((await run()).every(result => result.status === 'skipped')).toBe(true);
+    expect(mocks.db.assemblyProcedureTextFeedback.findMany).not.toHaveBeenCalled();
+    expect(mocks.complete).not.toHaveBeenCalled();
   });
   it('skips an empty site without learned terms', async () => {
     mocks.db.assemblyProcedureTextFeedback.findFirst.mockResolvedValue(null);

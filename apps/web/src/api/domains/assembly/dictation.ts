@@ -1,5 +1,7 @@
 import { api } from '../../http';
 
+import { procedureEditHeaders } from './shared';
+
 export type ProcedureDictationMode = 'new' | 'append' | 'revise';
 
 export async function getAssemblyProcedureSpeechToTextAvailability(signal: AbortSignal) {
@@ -16,9 +18,12 @@ export async function transcribeAssemblyProcedureDictation(audio: Blob, signal: 
   return { text: data.text.trim() };
 }
 
-export async function rewriteAssemblyProcedureDictation(input: { mode: ProcedureDictationMode; spokenText: string; currentText?: string; signal: AbortSignal }) {
-  const { signal, ...body } = input;
-  const { data } = await api.post<{ text: string }>('/assembly/procedure-documents/dictation/rewrite', body, { signal });
+export async function rewriteAssemblyProcedureDictation(input: {
+  mode: ProcedureDictationMode; spokenText: string; currentText?: string; signal: AbortSignal;
+  documentId?: string; pageIndex?: number; elementId?: string; originalText?: string; holderToken?: string;
+}) {
+  const { signal, holderToken, ...body } = input;
+  const { data } = await api.post<{ text: string }>('/assembly/procedure-documents/dictation/rewrite', body, { signal, ...procedureEditHeaders(holderToken) });
   if (typeof data.text !== 'string' || !data.text.trim() || data.text.length > 10000) throw new Error('Invalid dictation response');
   return data;
 }

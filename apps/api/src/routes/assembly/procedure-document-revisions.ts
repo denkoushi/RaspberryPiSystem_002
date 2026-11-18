@@ -11,11 +11,14 @@ import {
   AssemblyProcedureDocumentRevisionService,
   serializeAssemblyProcedureDocumentRevision
 } from '../../services/assembly/index.js';
-import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
+import { canWriteAssemblyProcedureDocument, enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 import { ApiError } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
+import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureDocumentBlankService } from '../../services/assembly/assembly-procedure-document-blank.service.js';
 import { ProcedureMaterialPlacementService } from '../../services/assembly/procedure-material-placement.service.js';
 import { ProcedureDictationRewriteService } from '../../services/assembly/procedure-dictation-rewrite.service.js';
+import { documentSite } from '../../services/assembly/procedure-document-site.js';
 import { ProcedureSpeechToTextService, PROCEDURE_AUDIO_MAX_BYTES, procedureSpeechToTextError } from '../../services/assembly/procedure-speech-to-text.service.js';
 import { ProcedureLayoutSuggestionService } from '../../services/assembly/procedure-layout-suggestion.service.js';
 
@@ -111,7 +114,11 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     const body = z.object({
       mode: z.enum(['new', 'append', 'revise']),
       spokenText: z.string().trim().min(1).max(2000),
-      currentText: z.string().max(10000).optional()
+      currentText: z.string().max(10000).optional(),
+      originalText: z.string().max(10000).optional(),
+      documentId: z.string().uuid().optional(),
+      pageIndex: z.number().int().min(0).optional(),
+      elementId: z.string().min(1).max(200).optional()
     }).refine(body => body.mode !== 'revise' || Boolean(body.currentText?.trim()), {
       path: ['currentText'], message: 'currentText is required for revise'
     }).parse(request.body);
@@ -119,7 +126,42 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     const onClose = () => { if (!reply.raw.writableEnded) abortController.abort(); };
     reply.raw.once('close', onClose);
     try {
-      return await new ProcedureDictationRewriteService().rewrite({ ...body, signal: abortController.signal });
+      const { documentId, pageIndex, elementId, originalText: originalElementText, ...input } = body;
+      const { signal } = abortController;
+      const result = await new ProcedureDictationRewriteService().rewrite({ ...input, signal });
+      if (documentId === undefined || pageIndex === undefined || elementId === undefined || signal.aborted) return result;
+      const originalText = input.mode === 'new' ? originalElementText ?? '' : input.currentText ?? '';
+      const aiText = input.mode === 'append' ? originalText + '\n' + result.text : result.text;
+      // The editor cannot apply an append result that exceeds its text limit.
+      if (aiText.length > 10000) return result;
+      try {
+        const document = await prisma.assemblyProcedureDocument.findUnique({
+          where: { id: documentId },
+          select: { name: true, status: true, isActive: true, revisionMetadata: { select: { revisionRootId: true, isRevisionHead: true } } },
+        });
+        if (document?.status !== 'DRAFT' || !document.isActive || !document.revisionMetadata?.revisionRootId || !document.revisionMetadata.isRevisionHead) {
+          logger.debug({ documentId }, 'assembly_procedure_dictation_feedback_draft_unavailable');
+          return result;
+        }
+        const site = await documentSite(document.revisionMetadata.revisionRootId);
+        if (signal.aborted) return result;
+        if (!await canWriteAssemblyProcedureDocument(request, documentId)) {
+          logger.debug({ documentId }, 'assembly_procedure_dictation_feedback_edit_locked');
+          return result;
+        }
+        if (signal.aborted) return result;
+        await prisma.assemblyProcedureTextFeedback.create({ data: {
+          documentId, pageIndex, elementId, site, documentName: document.name, source: 'DICTATION',
+          mode: input.mode, spokenText: input.spokenText, originalText, aiText,
+        } });
+      } catch (error) {
+        logger.warn({
+          documentId,
+          errorName: error instanceof Error ? error.name : undefined,
+          errorMessage: error instanceof Error ? error.message.slice(0, 200) : undefined,
+        }, 'assembly_procedure_dictation_feedback_proposal_failed');
+      }
+      return result;
     } finally {
       reply.raw.off('close', onClose);
     }
