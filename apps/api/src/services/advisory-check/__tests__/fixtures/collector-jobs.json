@@ -1,0 +1,86 @@
+{
+  "absent": {
+    "version": 1,
+    "id": "d9d91534117bed7fe94f1d2486cfd0896339ee0c21d82a445306d16e11a4c148",
+    "key": "https://www.jpcert.or.jp/wr/2026/wr261028.html#6|2026-10-28T09:07+09:00",
+    "title": "Weekly Report: Google Chromeに複数の脆弱性",
+    "description": "Google Chromeに複数の脆弱性",
+    "date": "2026-10-28T09:07+09:00",
+    "link": "https://www.jpcert.or.jp/wr/2026/wr261028.html#6",
+    "products": [
+      "Chromium"
+    ],
+    "detected_at": "2026-10-31T00:00:00Z",
+    "page_text": "Chromium affected.",
+    "versions": {},
+    "evidence": {
+      "Chromium": {
+        "scope": "pi5",
+        "state": "absent",
+        "versions": []
+      }
+    },
+    "remedies": {
+      "Chromium": {
+        "kind": "os-security-update",
+        "packages": [
+          "chromium",
+          "chromium-browser"
+        ],
+        "upstream_version_comparable": true
+      }
+    }
+  },
+  "installed": {
+    "version": 1,
+    "id": "d9d91534117bed7fe94f1d2486cfd0896339ee0c21d82a445306d16e11a4c148",
+    "key": "https://www.jpcert.or.jp/wr/2026/wr261028.html#6|2026-10-28T09:07+09:00",
+    "title": "Weekly Report: Google Chromeに複数の脆弱性",
+    "description": "Google Chromeに複数の脆弱性",
+    "date": "2026-10-28T09:07+09:00",
+    "link": "https://www.jpcert.or.jp/wr/2026/wr261028.html#6",
+    "products": [
+      "Chromium",
+      "Node.js"
+    ],
+    "detected_at": "2026-10-31T00:00:00Z",
+    "page_text": "Chromium and Node.js affected.",
+    "versions": {
+      "Node.js": [
+        "bluegreen-api-blue-1: fake 1.2.3",
+        "bluegreen-api-green-1: fake 1.2.3"
+      ],
+      "Chromium": [
+        "chromium: 1.2.3",
+        "chromium-browser: not installed/unavailable"
+      ]
+    },
+    "evidence": {
+      "Node.js": {
+        "scope": "pi5",
+        "state": "installed",
+        "versions": []
+      },
+      "Chromium": {
+        "scope": "fleet",
+        "state": "installed",
+        "versions": [
+          "chromium=1.2.3"
+        ]
+      }
+    },
+    "remedies": {
+      "Node.js": {
+        "kind": "manual"
+      },
+      "Chromium": {
+        "kind": "os-security-update",
+        "packages": [
+          "chromium",
+          "chromium-browser"
+        ],
+        "upstream_version_comparable": true
+      }
+    }
+  }
+}

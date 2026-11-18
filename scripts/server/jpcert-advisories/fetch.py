@@ -2,7 +2,8 @@
 """Hourly RSS 1.0 collector. Aliases/excludes are literal, case-insensitive strings.
 
 ASCII letters/digits/underscore bound every alias (Japanese suffixes are allowed).
-Matching uses RSS title/description; matched pages are fetched as untrusted evidence.
+RSS title/description determines which jobs to create. Matched pages are fetched
+as untrusted evidence and can add products to those jobs.
 """
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -120,38 +121,94 @@ def page_text(link, config, opener):
 def run_probe(argv):
     # Spool bounded reads to disk rather than buffering arbitrary command output in RAM.
     try:
-        with tempfile.TemporaryFile() as output:
-            result = subprocess.run(argv, stdout=output, stderr=subprocess.DEVNULL,
+        with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+            env = dict(os.environ, LC_ALL='C.UTF-8') if argv[0] == 'dpkg-query' else None
+            result = subprocess.run(argv, stdout=output, stderr=errors, env=env,
                                     timeout=10, check=False)
-            if result.returncode:
-                return 'not installed/unavailable'
             output.seek(0)
-            return output.read(8000).decode('utf-8', errors='replace').strip()[:2000] or 'unavailable'
+            errors.seek(0)
+            stdout = output.read(8001)
+            stderr = errors.read(8001)
+            if argv[0] == 'dpkg-query' and (len(stdout) > 8000 or len(stderr) > 8000):
+                return None, '', ''
+            return (result.returncode, stdout[:8000].decode('utf-8', errors='replace'),
+                    stderr[:8000].decode('utf-8', errors='replace'))
     except (OSError, subprocess.TimeoutExpired):
+        return None, '', ''
+
+
+def probe_text(returncode, stdout):
+    if returncode != 0:
         return 'not installed/unavailable'
+    return stdout.strip()[:2000] or 'unavailable'
 
 
-def probe_versions(products, rules, config, runner):
+def probe_dpkg(package, runner):
+    code, stdout, stderr = runner(['dpkg-query', '-W', '-f=${db:Status-Abbrev}\t${Version}\n', package])
+    if code != 0:
+        missing = code == 1 and not stdout.strip() and stderr.strip() == (
+            'dpkg-query: no packages found matching ' + package)
+        return ('absent' if missing else 'unmeasured'), '', probe_text(code, stdout)
+
+    states, display_versions = [], []
+    installed = ''
+    for line in stdout.splitlines():
+        row = re.fullmatch(r'([a-zA-Z?]{2})([ A-Z]?)\t([0-9A-Za-z.+:~\-]*)', line)
+        if row is None:
+            states.append('unmeasured')
+            continue
+        status, error, version = row.groups()
+        display_versions.append(version)
+        if status == 'ii' and error in ('', ' ') and re.fullmatch(r'[0-9][0-9A-Za-z.+:~\-]*', version):
+            installed = installed or version
+            continue
+        states.append('absent' if status in ('un', 'rc') and error in ('', ' ') else 'unmeasured')
+    # The old version-only dpkg format concatenated versions without a separator.
+    display = probe_text(code, ''.join(display_versions))
+    if installed:
+        return 'installed', f'{package}={installed}', display
+    if states and all(state == 'absent' for state in states):
+        return 'absent', '', display
+    return 'unmeasured', '', display
+
+
+def probe_products(products, rules, config, runner):
     versions = {}
+    evidence = {}
+    remedies = {}
     for rule in rules:
-        if rule['product'] not in products:
+        product = rule['product']
+        if product not in products:
             continue
         results = []
-        for probe in rule.get('probes', []):
+        dpkg_states, installed_versions = [], []
+        measured = False
+        probes = rule.get('probes', [])
+        for probe in probes:
             kind = probe['kind']
             if kind == 'dpkg':
                 for package in probe['packages']:
-                    results.append(package + ': ' + runner(['dpkg-query', '-W', '-f=${Version}', package]))
-            elif kind == 'command':
-                results.append(' '.join(probe['argv']) + ': ' + runner(probe['argv']))
-            elif kind == 'container':
-                for container in probe['containers']:
-                    results.append(container + ': ' + runner(['docker', 'exec', container, *probe['argv']]))
-            elif kind == 'uname':
-                results.append('kernel: ' + runner(['uname', '-r']))
+                    state, installed_version, display = probe_dpkg(package, runner)
+                    dpkg_states.append(state)
+                    if installed_version and len(installed_version) <= 2000:
+                        installed_versions.append(installed_version)
+                    results.append(package + ': ' + display)
+            elif kind in ('command', 'container', 'uname'):
+                if kind == 'command':
+                    commands = [(' '.join(probe['argv']), probe['argv'])]
+                elif kind == 'container':
+                    commands = [(name, ['docker', 'exec', name, *probe['argv']]) for name in probe['containers']]
+                else:
+                    commands = [('kernel', ['uname', '-r'])]
+                for label, argv in commands:
+                    code, stdout, _ = runner(argv)
+                    measured |= code == 0 and bool(stdout.strip())
+                    results.append(label + ': ' + probe_text(code, stdout))
             elif kind == 'os_release':
                 try:
-                    results.append(Path('/etc/os-release').read_text()[:2000])
+                    release = Path('/etc/os-release').read_text()
+                    measured |= bool(release.strip())
+                    results.append(release[:2000])
                 except OSError:
                     results.append('OS: unavailable')
             elif kind == 'package_json':
@@ -160,14 +217,26 @@ def probe_versions(products, rules, config, runner):
                     raise ValueError('invalid package_json path')
                 try:
                     manifest = json.loads((Path(config['project_dir']) / path).read_text())
-                    value = manifest.get('dependencies', {}).get(probe['name']) or manifest.get('devDependencies', {}).get(probe['name']) or 'not installed'
-                    results.append(probe['name'] + ' (dependency spec): ' + value)
+                    value = manifest.get('dependencies', {}).get(probe['name']) or manifest.get('devDependencies', {}).get(probe['name'])
+                    measured |= bool(value)
+                    results.append(probe['name'] + ' (dependency spec): ' + (value or 'not installed'))
                 except (OSError, ValueError):
                     results.append(probe['name'] + ': unavailable')
             else:
                 raise ValueError('unknown probe kind')
-        versions[rule['product']] = [result[:2000] for result in results] or ['unavailable']
-    return versions
+        state = 'unmeasured'
+        if 'unmeasured' not in dpkg_states:
+            if measured or 'installed' in dpkg_states:
+                state = 'installed'
+            elif (dpkg_states and rule.get('absence_by_dpkg') is True
+                  and all(probe['kind'] == 'dpkg' for probe in probes)):
+                state = 'absent'
+        if state != 'absent':
+            versions[product] = [result[:2000] for result in results[:30]] or ['unavailable']
+        evidence[product] = dict(scope=rule.get('scope', 'fleet'), state=state,
+                                 versions=installed_versions[:30])
+        remedies[product] = rule.get('remedy', {'kind': 'manual'})
+    return dict(versions=versions, evidence=evidence, remedies=remedies)
 
 
 def write_job(config, key, now, item, products, rules, opener, runner):
@@ -176,9 +245,11 @@ def write_job(config, key, now, item, products, rules, opener, runner):
     # A replay after state loss must also respect jobs already claimed or completed.
     if any((root / folder / (identity + '.json')).exists() for folder in ('pending', 'claimed', 'done', 'invalid')):
         return
+    page = page_text(item['link'], config, opener)
+    page_products = matches(item, rules, page['page_text'])
+    products = list(dict.fromkeys(products + page_products))[:30]
     value = dict(version=1, id=identity, key=key, **item, products=products, detected_at=utc(now),
-                 **page_text(item['link'], config, opener),
-                 versions=probe_versions(products, rules, config, runner))
+                 **page, **probe_products(products, rules, config, runner))
     atomic_write(root / 'pending' / (identity + '.json'), encoded(value), exclusive=True)
 
 
@@ -238,8 +309,8 @@ def parse_feed(data):
     return items
 
 
-def matches(item, rules):
-    text = item['title'] + '\n' + item['description']
+def matches(item, rules, page=''):
+    text = '\n'.join((item['title'], item['description'], page))
 
     def contains(alias):
         return re.search(r'(?<![A-Za-z0-9_])' + re.escape(alias) + r'(?![A-Za-z0-9_])', text, re.I)

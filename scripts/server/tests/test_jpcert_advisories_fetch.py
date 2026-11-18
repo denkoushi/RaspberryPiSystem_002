@@ -16,6 +16,17 @@ SPEC.loader.exec_module(f)
 RULES = json.loads((ROOT / 'scripts/server/jpcert-advisories/rules.json').read_text())
 FEED = (Path(__file__).parent / 'fixtures/jpcert-20261031.rdf').read_bytes()
 NOW = datetime(2026, 10, 31, 0, tzinfo=timezone.utc)
+JOB_FIXTURE = ROOT / 'apps/api/src/services/advisory-check/__tests__/fixtures/collector-jobs.json'
+
+
+def unknown_package(package):
+    return 1, '', f'dpkg-query: no packages found matching {package}\n'
+
+
+def measured_probe(argv):
+    if argv[0] == 'dpkg-query':
+        return 0, 'ii \t1.2.3\n', ''
+    return 0, 'fake 1.2.3', ''
 
 
 class Response(BytesIO):
@@ -38,7 +49,7 @@ def config(tmp_path):
 
 
 def run(config, body=FEED, code=200, at=NOW, headers=None):
-    return f.fetch(config, lambda request, **kw: Response(body, code, headers) if request.full_url == config['feed_url'] else Response(b'<h3><a name="3">Chrome</a></h3><p>advisory evidence</p>'), lambda: at, lambda argv: 'fake 1.2.3')
+    return f.fetch(config, lambda request, **kw: Response(body, code, headers) if request.full_url == config['feed_url'] else Response(b'<h3><a name="3">Chrome</a></h3><p>advisory evidence</p>'), lambda: at, measured_probe)
 
 
 def state(config):
@@ -99,7 +110,7 @@ def test_rerun_updated_date_atomic_inbox_and_state(config):
     assert value['version'] == 1 and value['products'] == ['Chromium']
     assert value['detected_at'] == f.utc(NOW)
     assert value['page_text'] == 'Chrome advisory evidence'
-    assert 'fake 1.2.3' in value['versions']['Chromium'][0]
+    assert value['versions']['Chromium'][0] == 'chromium: 1.2.3'
     assert re.fullmatch(r'[A-Za-z0-9_-]+\.json', original.name)
     assert original.stat().st_mode & 0o777 == 0o600
     assert not alerts(config)
@@ -238,7 +249,7 @@ def test_page_failure_tolerated_in_job(config):
         if request.full_url == config['feed_url']:
             return Response()
         raise OSError('page down')
-    assert f.fetch(config, opener, lambda: NOW, lambda argv: 'unavailable') == 0
+    assert f.fetch(config, opener, lambda: NOW, lambda argv: (None, '', '')) == 0
     job = json.loads(jobs(config)[0].read_text())
     assert job['page_text'] == '' and job['page_error'] == 'OSError'
     assert not alerts(config)
@@ -254,31 +265,166 @@ def test_fragment_and_html_cleanup(config):
     assert 'page_error' in f.page_text('https://www.jpcert.or.jp/a', config, lambda *a, **k: Response(b'a'*(2*1024*1024+1)))
 
 
-def test_probe_absence_and_timeout(monkeypatch):
-    def absent(*args, **kwargs):
+@pytest.mark.parametrize('error', [FileNotFoundError(), f.subprocess.TimeoutExpired('dpkg-query', 10)])
+def test_probe_start_failure_is_unmeasured(monkeypatch, error):
+    def fail(*args, **kwargs):
         assert kwargs['timeout'] == 10 and 'shell' not in kwargs
-        raise FileNotFoundError()
-    monkeypatch.setattr(f.subprocess, 'run', absent)
-    assert f.run_probe(['missing', '--version']) == 'not installed/unavailable'
-    def timeout(*args, **kwargs):
-        raise f.subprocess.TimeoutExpired(args[0], 10)
-    monkeypatch.setattr(f.subprocess, 'run', timeout)
-    assert f.run_probe(['missing']) == 'not installed/unavailable'
+        raise error
+    monkeypatch.setattr(f.subprocess, 'run', fail)
+    assert f.probe_dpkg('chromium', f.run_probe) == ('unmeasured', '', 'not installed/unavailable')
+
+
+def test_dpkg_preserves_exit_status_and_uses_utf8_locale(monkeypatch):
+    def unknown(argv, *, stdout, stderr, env, **kwargs):
+        assert argv == ['dpkg-query', '-W', '-f=${db:Status-Abbrev}\t${Version}\n', 'chromium']
+        assert env['LC_ALL'] == 'C.UTF-8'
+        code, out, err = unknown_package('chromium')
+        stdout.write(out.encode())
+        stderr.write(err.encode())
+        return f.subprocess.CompletedProcess(argv, code)
+
+    monkeypatch.setenv('LC_ALL', 'ja_JP.EUC-JP')
+    monkeypatch.setattr(f.subprocess, 'run', unknown)
+    assert f.probe_dpkg('chromium', f.run_probe) == ('absent', '', 'not installed/unavailable')
+
+
+@pytest.mark.parametrize('stdout,state,version', [
+    ('ii \t1:123.4-1~deb12u1\n', 'installed', 'chromium=1:123.4-1~deb12u1'),
+    ('un \t\n', 'absent', ''),
+    ('rc \t123.4\n', 'absent', ''),
+    ('iU \t123.4\n', 'unmeasured', ''),
+    ('iF \t123.4\n', 'unmeasured', ''),
+    ('hi \t123.4\n', 'unmeasured', ''),
+    ('iiR\t123.4\n', 'unmeasured', ''),
+    ('ii \t\n', 'unmeasured', ''),
+    ('un \t\nmalformed row\n', 'unmeasured', ''),
+    ('', 'unmeasured', ''),
+    ('un \t\nrc \t123.3\n', 'absent', ''),
+    ('rc \t123.3\niU \t123.4\n', 'unmeasured', ''),
+    ('iU \t123.4\nii \t123.5\nii \t123.6\n', 'installed', 'chromium=123.5'),
+])
+def test_dpkg_status_including_multi_arch(stdout, state, version):
+    assert f.probe_dpkg('chromium', lambda argv: (0, stdout, ''))[:2] == (state, version)
+
+
+@pytest.mark.parametrize('result', [
+    (1, '', 'dpkg-query: error: cannot read status database'),
+    (1, 'ii \t123.4\n', unknown_package('chromium')[2]),
+    (2, '', unknown_package('chromium')[2]),
+    (1, '', unknown_package('other-package')[2]),
+])
+def test_dpkg_errors_are_unmeasured(result):
+    assert f.probe_dpkg('chromium', lambda argv: result)[:2] == ('unmeasured', '')
+
+
+@pytest.mark.parametrize('primary,alternative,absence_allowed,state,versions', [
+    ('ii \t123.4\n', 'rc \t123.3\n', True, 'installed', ['chromium=123.4']),
+    ('ii \t123.4\n', 'iU \t123.3\n', True, 'unmeasured', ['chromium=123.4']),
+    ('ii \t123.4\n', 'ii \t123.3\n', True, 'installed', ['chromium=123.4', 'chromium-browser=123.3']),
+    ('un \t\n', 'rc \t123.3\n', True, 'absent', []),
+    ('un \t\n', 'rc \t123.3\n', False, 'unmeasured', []),
+])
+def test_alternative_packages(config, primary, alternative, absence_allowed, state, versions):
+    rule = next(rule for rule in RULES if rule['product'] == 'Chromium')
+    if absence_allowed:
+        rule = dict(rule, absence_by_dpkg=True)
+    outputs = {'chromium': primary, 'chromium-browser': alternative}
+    result = f.probe_products(['Chromium'], [rule], config, lambda argv: (0, outputs[argv[-1]], ''))
+    assert result['evidence']['Chromium'] == dict(scope='fleet', state=state, versions=versions)
+    assert ('Chromium' in result['versions']) == (state != 'absent')
+
+
+@pytest.mark.parametrize('product', ['OpenSSL', 'curl', 'zlib', 'Python'])
+def test_host_absence_is_inconclusive_for_container_dependencies(config, product):
+    result = f.probe_products([product], RULES, config, lambda argv: unknown_package(argv[-1]))
+    assert result['evidence'][product] == dict(scope='fleet', state='unmeasured', versions=[])
+
+
+@pytest.mark.parametrize('probe,display', [
+    ({'kind': 'container', 'containers': ['docker-db-1'], 'argv': ['postgres', '--version']}, 'docker-db-1'),
+    ({'kind': 'command', 'argv': ['trivy', '--version']}, 'trivy --version'),
+    ({'kind': 'uname'}, 'kernel'),
+])
+@pytest.mark.parametrize('measured', [True, False])
+def test_non_dpkg_command_probes_are_never_absent(config, probe, display, measured):
+    rules = [dict(product='test', probes=[probe])]
+    runner = measured_probe if measured else lambda argv: (1, '', '')
+    result = f.probe_products(['test'], rules, config, runner)
+    assert result['evidence']['test'] == dict(scope='fleet', state='installed' if measured else 'unmeasured', versions=[])
+    assert result['versions']['test'] == [display + (': fake 1.2.3' if measured else ': not installed/unavailable')]
 
 
 def test_probe_kinds_and_dependency_specs(config):
     calls = []
     def runner(argv):
         calls.append(argv)
-        return '1.2.3'
+        return measured_probe(argv)
     probes = [{'kind':'dpkg','packages':['chromium']}, {'kind':'container','containers':['docker-db-1'],'argv':['postgres','--version']},
               {'kind':'command','argv':['trivy','--version']}, {'kind':'uname'}, {'kind':'os_release'},
               {'kind':'package_json','path':'apps/api/package.json','name':'fastify'},
               {'kind':'package_json','path':'apps/api/package.json','name':'not-a-package'}]
-    versions = f.probe_versions(['test'], [{'product':'test','probes':probes}], config, runner)['test']
+    versions = f.probe_products(['test'], [{'product':'test','probes':probes}], config, runner)['versions']['test']
     assert ['docker','exec','docker-db-1','postgres','--version'] in calls
+    assert versions[0] == 'chromium: 1.2.3'
     assert any('dependency spec' in v and 'fastify' in v for v in versions)
     assert versions[-1].endswith('not installed')
+
+
+def collector_fixture_job(config, case):
+    page = b'<p>Chromium and Node.js affected.</p>'
+    runner = lambda argv: unknown_package(argv[-1]) if argv[-1] == 'chromium-browser' else measured_probe(argv)
+    if case == 'absent':
+        # No production rule currently proves absence for a Pi5-only product.
+        chromium = next(rule for rule in RULES if rule['product'] == 'Chromium')
+        rules_path = Path(config['state_path']).with_name('rules.json')
+        rules_path.write_text(json.dumps([dict(chromium, scope='pi5', absence_by_dpkg=True)]))
+        config['rules_path'] = str(rules_path)
+        page = b'<p>Chromium affected.</p>'
+        runner = lambda argv: unknown_package(argv[-1])
+
+    def opener(request, **kwargs):
+        return Response(FEED if request.full_url == config['feed_url'] else page)
+
+    assert f.fetch(config, opener, lambda: NOW, runner) == 0
+    job_path, = jobs(config)
+    return json.loads(job_path.read_text())
+
+
+@pytest.mark.parametrize('case', ['absent', 'installed'])
+def test_collector_job_matches_api_fixture(config, case):
+    job = collector_fixture_job(config, case)
+    assert job == json.loads(JOB_FIXTURE.read_text())[case]
+    if case == 'absent':
+        assert 'Chromium' not in job['versions']
+        assert job['evidence']['Chromium'] == dict(scope='pi5', state='absent', versions=[])
+    else:
+        assert job['products'] == ['Chromium', 'Node.js']
+        assert 'Node.js' not in job['title'] + job['description']
+        assert job['evidence']['Node.js']['state'] == 'installed'
+        assert job['remedies']['Node.js'] == {'kind': 'manual'}
+
+
+def test_page_product_limit_preserves_rss_matches(config):
+    rules = [dict(product=f'pkg{i}', aliases=[f'pkg{i}']) for i in range(31)]
+    rules.append(dict(product='rss', aliases=['rss']))
+    item = dict(title='rss', description='', date=f.utc(NOW), link='https://www.jpcert.or.jp/a')
+    page = ' '.join(rule['product'] for rule in rules[:-1]).encode()
+    f.write_job(config, item['link'] + '|' + item['date'], NOW, item, ['rss'], rules,
+                lambda *args, **kwargs: Response(page), measured_probe)
+    job = json.loads(jobs(config)[0].read_text())
+    assert job['products'] == ['rss'] + [f'pkg{i}' for i in range(29)]
+    assert set(job['products']) == set(job['evidence']) == set(job['remedies'])
+
+
+def test_dpkg_evidence_limits_keep_complete_versions(config):
+    packages = ['huge'] + [f'pkg{i}' for i in range(31)]
+    rules = [dict(product='test', probes=[dict(kind='dpkg', packages=packages)])]
+
+    def runner(argv):
+        return (0, 'ii \t' + '1' * 2000 + '\n', '') if argv[-1] == 'huge' else measured_probe(argv)
+
+    result = f.probe_products(['test'], rules, config, runner)
+    assert result['evidence']['test']['versions'] == [f'pkg{i}=1.2.3' for i in range(30)]
 
 
 def test_completed_job_not_recreated_after_state_loss(config):

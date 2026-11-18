@@ -10,7 +10,7 @@ import { logger } from '../../lib/logger.js';
 import { advisoryCheckEnvShape } from '../../config/env/advisory-check.js';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { deliverSystemNotice } from '../kiosk-inquiry/system-notice.service.js';
-import { AdvisoryCheckService, advisoryJobSchema, advisoryMessages, advisoryNotice } from './advisory-check.service.js';
+import { AdvisoryCheckService, advisoryJobSchema, advisoryMessages, advisoryNotice, triageAdvisory } from './advisory-check.service.js';
 
 let root: string;
 const now = new Date('2026-10-31T00:00:00Z');
@@ -54,6 +54,15 @@ beforeEach(async () => {
 afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 
 describe('advisory jobs', () => {
+  it.each([
+    ['absent', 'none'],
+    ['installed', 'manual'],
+  ] as const)('parses the collector %s fixture and triages it as %s', async (fixtureName, expected) => {
+    const fixtures = JSON.parse(await readFile(new URL('./__tests__/fixtures/collector-jobs.json', import.meta.url), 'utf8'));
+    const job = advisoryJobSchema.parse(fixtures[fixtureName]);
+    expect(triageAdvisory(job, { ...answer, verdict: 'not_affected' })).toBe(expected);
+  });
+
   it('claims before inference, validates feed dates, persists verdict and delivers a compact notice', async () => {
     await enqueue();
     complete.mockImplementationOnce(async request => {
