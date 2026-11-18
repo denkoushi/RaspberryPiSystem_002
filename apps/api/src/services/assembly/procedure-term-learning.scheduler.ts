@@ -12,7 +12,7 @@ export class ProcedureTermLearningScheduler {
     this.task = cron.schedule('30 4 * * *', () => {
       if (this.active) return;
       this.abort = new AbortController();
-      const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(20 * 60_000)]);
+      const signal = AbortSignal.any([this.abort.signal, AbortSignal.timeout(60 * 60_000)]);
       this.active = runProcedureTermLearningOnce({ signal })
         .then(results => logger.info({ results }, 'assembly_procedure_term_learning_completed'))
         .catch(error => logger.warn({ err: error }, 'assembly_procedure_term_learning_failed'))

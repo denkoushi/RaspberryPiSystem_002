@@ -6,6 +6,7 @@ import { prisma } from '../../lib/prisma.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
+import { evaluateProcedureDictation } from './procedure-dictation-evaluation.service.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
 import { learnSiteVocabulary, recordLearningSnapshot } from './procedure-site-vocabulary.js';
@@ -100,7 +101,8 @@ export async function runProcedureTermLearningOnce(options: { dryRun?: boolean; 
   }
   for (const site of Object.keys(contexts) as Site[]) {
     try {
-      const counts = await recordLearningSnapshot(site, now, options.dryRun, vocabularyResults[site]);
+      const { snapshot } = await evaluateProcedureDictation(site, { ...options, now });
+      const counts = await recordLearningSnapshot(site, now, options.dryRun, vocabularyResults[site], snapshot);
       const result = results.find(result => result.site === site);
       if (result) result.counts = counts;
     } catch (error) {

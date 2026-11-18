@@ -3749,24 +3749,31 @@ model AssemblyProcedureSiteVocabulary {
 }
 
 model AssemblyProcedureLearningSnapshot {
-  id                  String   @id @default(uuid())
-  site                String
-  day                 DateTime @db.Date
-  publishedDocuments  Int
-  textKept            Int
-  textEdited          Int
-  textReverted        Int
-  dictationKept       Int      @default(0)
-  dictationEdited     Int      @default(0)
-  dictationReverted   Int      @default(0)
-  captionKept         Int
-  captionEdited       Int
-  captionDeleted      Int
-  learnedTerms        Int
-  vocabularyTerms     Int
-  vocabularyBuiltAt   DateTime?
-  vocabularyDocuments Int?
-  createdAt           DateTime @default(now())
+  id                             String    @id @default(uuid())
+  site                           String
+  day                            DateTime  @db.Date
+  publishedDocuments             Int
+  textKept                       Int
+  textEdited                     Int
+  textReverted                   Int
+  dictationKept                  Int       @default(0)
+  dictationEdited                Int       @default(0)
+  dictationReverted              Int       @default(0)
+  captionKept                    Int
+  captionEdited                  Int
+  captionDeleted                 Int
+  learnedTerms                   Int
+  vocabularyTerms                Int
+  vocabularyBuiltAt              DateTime?
+  vocabularyDocuments            Int?
+  dictationEvalCases             Int?
+  dictationBaselineScore         Float?
+  dictationCandidateScore        Float?
+  dictationBaselineNumberMisses  Int?
+  dictationCandidateNumberMisses Int?
+  dictationLearningAdopted       Boolean?
+  dictationLearning              Json?
+  createdAt                      DateTime  @default(now())
 
   @@unique([site, day])
 }

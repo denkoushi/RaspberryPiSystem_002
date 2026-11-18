@@ -1,0 +1,12 @@
+[
+  { "id": "assembly-01", "mode": "new", "spokenText": "えーと、車高マンでLMレールを基準面に押し当てて", "expected": "シャコマンでLMレールを基準面に押し当てる。" },
+  { "id": "assembly-02", "mode": "new", "spokenText": "あのー、プラハンでCキャップを打ち込んでね", "expected": "プラハンでCキャップを打ち込む。" },
+  { "id": "assembly-03", "mode": "new", "spokenText": "使い終わったトルクレンチは棚に直しといて", "expected": "使用後のトルクレンチを棚に戻す。" },
+  { "id": "assembly-04", "mode": "new", "spokenText": "ボルトを、えー、12.5 N·mで締めてください", "expected": "ボルトを12.5 N·mで締め付ける。" },
+  { "id": "assembly-05", "mode": "new", "spokenText": "マニホールドにつないだナイロンチューブが抜けてへんか見て", "expected": "マニホールドに接続したナイロンチューブが抜けていないことを確認する。" },
+  { "id": "assembly-06", "mode": "new", "spokenText": "あの、しん振れが0.005 mm以内かダイヤルゲージで測って", "expected": "ダイヤルゲージで芯振れを測定し、0.005 mm以内であることを確認する。" },
+  { "id": "assembly-07", "mode": "append", "spokenText": "で、グリスニップルからAFFを給脂して", "currentText": "マニホールドを取り付ける。", "expected": "マニホールドを取り付ける。\nグリスニップルからAFFを給脂する。" },
+  { "id": "assembly-08", "mode": "append", "spokenText": "それからエルボユニオンを2個付けといて", "currentText": "配管の取付面を清掃する。", "expected": "配管の取付面を清掃する。\nエルボユニオンを2個取り付ける。" },
+  { "id": "assembly-09", "mode": "revise", "spokenText": "あのー、締付トルクを18 N·mにして", "currentText": "支持ブラケットのボルトを16 N·mで締め付ける。", "expected": "支持ブラケットのボルトを18 N·mで締め付ける。" },
+  { "id": "assembly-10", "mode": "revise", "spokenText": "エルエムガイドに直して", "currentText": "リニアモーターを取り付ける。", "expected": "LMガイドを取り付ける。" }
+]

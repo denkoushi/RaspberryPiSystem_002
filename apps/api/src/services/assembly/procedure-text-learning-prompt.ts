@@ -1,18 +1,23 @@
 type Example = { aiText: string; finalText: string | null };
 type Term = { wrongText: string; rightText: string };
 
-function smallEdit(before: string, after: string): boolean {
-  if (before.split('\n').length !== after.split('\n').length) return false;
-  const a = Array.from(before), b = Array.from(after);
+export function characterEditDistance(a: string[], b: string[]): number {
   let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  let current = new Array<number>(b.length + 1);
   for (let i = 1; i <= a.length; i++) {
-    const current = [i];
+    current[0] = i;
     for (let j = 1; j <= b.length; j++) {
       current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
     }
-    previous = current;
+    [previous, current] = [current, previous];
   }
-  return previous[b.length] <= Math.max(a.length, b.length) / 2;
+  return previous[b.length];
+}
+
+export function smallEdit(before: string, after: string): boolean {
+  if (before.split('\n').length !== after.split('\n').length) return false;
+  const a = Array.from(before), b = Array.from(after);
+  return characterEditDistance(a, b) <= Math.max(a.length, b.length) / 2;
 }
 
 export function buildProcedureTextLearningPrompt(examples: Example[], terms: Term[]): string {

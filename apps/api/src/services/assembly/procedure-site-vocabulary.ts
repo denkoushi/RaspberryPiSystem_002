@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import type { AssemblyProcedureTextFeedbackSource } from '@prisma/client';
+import { Prisma, type AssemblyProcedureTextFeedbackSource } from '@prisma/client';
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
+import type { DictationEvaluationSnapshot } from './procedure-dictation-evaluation.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { compareStrings, loadPublishedProcedures, type ProcedureSite, type PublishedProcedure } from './procedure-published-examples.js';
 import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
@@ -57,7 +58,9 @@ export async function learnSiteVocabulary(site: ProcedureSite, options: { now: D
   return 'updated';
 }
 
-export async function recordLearningSnapshot(site: ProcedureSite, now: Date, dryRun = false, vocabularyResult?: 'updated' | 'skipped') {
+export async function recordLearningSnapshot(
+  site: ProcedureSite, now: Date, dryRun = false, vocabularyResult?: 'updated' | 'skipped', dictation?: DictationEvaluationSnapshot,
+) {
   const countTextFeedback = (source: AssemblyProcedureTextFeedbackSource) => Promise.all(
     (['KEPT', 'EDITED', 'REVERTED'] as const).map(outcome => prisma.assemblyProcedureTextFeedback.count({ where: { site, source, outcome } }))
   );
@@ -82,12 +85,14 @@ export async function recordLearningSnapshot(site: ProcedureSite, now: Date, dry
     vocabularyDocuments: vocabularyResult === 'updated' ? documents.length : latest?.vocabularyDocuments ?? null,
   };
   const day = new Date(new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10) + 'T00:00:00Z');
+  const { dictationLearning, ...dictationScores } = dictation ?? {};
+  const evaluation = dictation && { ...dictationScores, dictationLearning: dictationLearning ?? Prisma.DbNull };
   if (!dryRun) await prisma.assemblyProcedureLearningSnapshot.upsert({
-    where: { site_day: { site, day } }, create: { site, day, ...counts, ...vocabulary, createdAt: now }, update: { ...counts, ...vocabulary, createdAt: now },
+    where: { site_day: { site, day } },
+    create: { site, day, ...counts, ...vocabulary, ...evaluation, createdAt: now },
+    update: { ...counts, ...vocabulary, ...evaluation, createdAt: now },
   });
-  return counts;
+  return { ...counts, ...dictationScores };
 }
 
-export function buildSiteVocabularyPrompt(terms: { term: string }[]): string {
-  return terms.length ? `この課の手順書で使われている呼び名: ${terms.map(t => t.term).join('、')}\n` : '';
-}
+export { buildSiteVocabularyPrompt } from './procedure-site-context.js';

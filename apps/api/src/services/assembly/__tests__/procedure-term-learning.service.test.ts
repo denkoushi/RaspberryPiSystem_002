@@ -3,23 +3,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   db: {
     assemblyProcedureTextFeedback: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn() },
-    assemblyProcedureLearnedTerm: { findFirst: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), count: vi.fn() },
+    assemblyProcedureLearnedTerm: { findFirst: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), count: vi.fn() },
     assemblyProcedureCaptionFeedback: { count: vi.fn() },
-    assemblyProcedureSiteVocabulary: { deleteMany: vi.fn(), createMany: vi.fn(), count: vi.fn() },
+    assemblyProcedureSiteVocabulary: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), count: vi.fn() },
     assemblyProcedureLearningSnapshot: { findFirst: vi.fn(), upsert: vi.fn() },
     $transaction: vi.fn()
   },
   runtime: { ensureReady: vi.fn(), release: vi.fn() },
   env: { BUSINESS_HERMES_BACKGROUND_ENABLED: 'false' },
-  published: vi.fn(), complete: vi.fn(), warn: vi.fn()
+  published: vi.fn(), complete: vi.fn(), warn: vi.fn(), info: vi.fn(), evaluate: vi.fn()
 }));
 vi.mock('../procedure-published-examples.js', async importOriginal => ({ ...await importOriginal<typeof import('../procedure-published-examples.js')>(), loadPublishedProcedures: mocks.published }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.db }));
 vi.mock('../../../config/env.js', () => ({ env: mocks.env }));
-vi.mock('../../../lib/logger.js', () => ({ logger: { warn: mocks.warn } }));
+vi.mock('../../../lib/logger.js', () => ({ logger: { warn: mocks.warn, info: mocks.info } }));
+vi.mock('../procedure-dictation-evaluation.service.js', () => ({ evaluateProcedureDictation: mocks.evaluate }));
 vi.mock('../../inference/runtime/get-local-llm-runtime-controller.js', () => ({ getLocalLlmRuntimeController: () => mocks.runtime }));
 vi.mock('../../inference/inference-runtime.js', () => ({ getInferenceRuntime: () => ({ createTextCompletionPort: () => ({ complete: mocks.complete }) }) }));
 import { InferenceDeferredError } from '../../inference/ports/text-completion.port.js';
+import { dictationFeedbackSplit } from '../procedure-dictation-evaluation.js';
+import { loadDictationLearning } from '../procedure-dictation-learning.js';
 import { learnSiteVocabulary } from '../procedure-site-vocabulary.js';
 import { runProcedureTermLearningOnce } from '../procedure-term-learning.service.js';
 
@@ -31,6 +34,11 @@ const evidence = (aiText = '胃ケールを固定する', finalText = 'イケー
 ];
 const response = (pairs = [pair]) => ({ rawText: JSON.stringify({ pairs }), model: 'test' });
 const run = (options = {}) => runProcedureTermLearningOnce({ now, ...options });
+const dictationSnapshot = {
+  dictationEvalCases: 10, dictationBaselineScore: 0.3, dictationCandidateScore: 0.2,
+  dictationBaselineNumberMisses: 2, dictationCandidateNumberMisses: 1, dictationLearningAdopted: true,
+  dictationLearning: { vocabulary: ['専用受台'], terms: [], examples: [] },
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -43,6 +51,7 @@ beforeEach(() => {
   mocks.db.assemblyProcedureTextFeedback.findMany.mockResolvedValue(evidence());
   mocks.db.$transaction.mockImplementation(async work => work(mocks.db));
   mocks.complete.mockResolvedValue(response());
+  mocks.evaluate.mockResolvedValue({ snapshot: dictationSnapshot });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -60,7 +69,12 @@ describe('procedure term learning', () => {
       where: { site_day: { site: 'grinding', day: new Date('2026-10-21T00:00:00Z') } },
       create: expect.objectContaining({ publishedDocuments: 0, textKept: 14, textEdited: 1, textReverted: 1, captionKept: 3, captionEdited: 3, captionDeleted: 3, learnedTerms: 4, vocabularyTerms: 5 }),
     }));
-    expect(results[1].counts).toMatchObject({ textKept: 14, vocabularyTerms: 5 });
+    expect(results[1].counts).toMatchObject({ textKept: 14, vocabularyTerms: 5, dictationLearningAdopted: true });
+    expect(mocks.evaluate.mock.calls.map(([site]) => site)).toEqual(['assembly', 'grinding']);
+    expect(mocks.db.assemblyProcedureLearningSnapshot.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining(dictationSnapshot),
+      update: expect.objectContaining(dictationSnapshot),
+    }));
   });
   it('does not call the vocabulary LLM for unchanged published documents', async () => {
     mocks.db.assemblyProcedureTextFeedback.findFirst.mockResolvedValue(null);
@@ -230,6 +244,8 @@ describe('procedure term learning', () => {
     expect(mocks.db.$transaction).not.toHaveBeenCalled();
     expect(mocks.db.assemblyProcedureLearnedTerm.deleteMany).not.toHaveBeenCalled();
     expect(mocks.db.assemblyProcedureLearnedTerm.createMany).not.toHaveBeenCalled();
+    expect(mocks.evaluate).toHaveBeenCalledTimes(2);
+    expect(mocks.db.assemblyProcedureLearningSnapshot.upsert).not.toHaveBeenCalled();
   });
   it('uses background admission without holding the runtime', async () => {
     mocks.env.BUSINESS_HERMES_BACKGROUND_ENABLED = 'true';
@@ -262,5 +278,132 @@ describe('procedure term learning', () => {
     expect((await run({ signal: abort.signal }))[1].status).toBe('failed');
     expect(mocks.db.$transaction).not.toHaveBeenCalled();
     expect(mocks.runtime.release).toHaveBeenCalledOnce();
+  });
+});
+
+describe('nightly dictation evaluation', () => {
+  async function enableEvaluation() {
+    const { evaluateProcedureDictation } = await vi.importActual<typeof import('../procedure-dictation-evaluation.service.js')>('../procedure-dictation-evaluation.service.js');
+    mocks.evaluate.mockImplementation(evaluateProcedureDictation);
+    mocks.db.assemblyProcedureTextFeedback.findFirst.mockResolvedValue(null);
+    mocks.db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([]);
+    mocks.db.assemblyProcedureSiteVocabulary.findMany.mockResolvedValue([{ term: '専用受台' }]);
+    mocks.db.assemblyProcedureLearnedTerm.findMany.mockResolvedValue([]);
+    return evaluateProcedureDictation;
+  }
+
+  it('records measured scores and disables an adopted site if even one LLM call fails', async () => {
+    await enableEvaluation();
+    mocks.db.assemblyProcedureLearningSnapshot.findFirst.mockResolvedValue({ dictationLearningAdopted: true, vocabularyBuiltAt: now, vocabularyDocuments: 0 });
+    mocks.complete.mockResolvedValue({ rawText: '棚に戻す。', model: 'test' })
+      .mockRejectedValueOnce(new Error('LLM temporarily unavailable'))
+      .mockResolvedValueOnce({ rawText: 'シャコマンでLMレールを基準面に押し当てる。', model: 'test' });
+    await run();
+    expect(mocks.complete).toHaveBeenCalledTimes(32);
+    expect(mocks.runtime.ensureReady).toHaveBeenCalledTimes(2);
+    expect(mocks.runtime.release).toHaveBeenCalledTimes(2);
+    expect(mocks.warn).toHaveBeenCalledWith(expect.objectContaining({ site: 'assembly', failedCalls: 1 }), 'assembly_procedure_dictation_evaluation_failed');
+    expect(mocks.info).toHaveBeenCalledWith(expect.objectContaining({ site: 'assembly', dictationLearningAdopted: false }), 'assembly_procedure_dictation_evaluation_completed');
+    const snapshot = expect.objectContaining({
+      dictationEvalCases: 9, dictationLearningAdopted: false,
+      dictationBaselineScore: expect.any(Number), dictationCandidateScore: expect.any(Number),
+      dictationBaselineNumberMisses: expect.any(Number), dictationCandidateNumberMisses: expect.any(Number),
+      dictationLearning: dictationSnapshot.dictationLearning,
+    });
+    const assemblyResult = mocks.info.mock.calls.find(([result]) => result.site === 'assembly')?.[0];
+    expect(assemblyResult).toMatchObject({ wins: 0, losses: 0, failedCalls: 1, failed: true });
+    expect(assemblyResult.dictationBaselineScore).toBe(assemblyResult.dictationCandidateScore);
+    expect(mocks.db.assemblyProcedureLearningSnapshot.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { site_day: { site: 'assembly', day: expect.any(Date) } }, create: snapshot, update: snapshot,
+    }));
+    expect(mocks.db.assemblyProcedureLearningSnapshot.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ site: 'grinding', dictationEvalCases: 6, dictationLearningAdopted: false }),
+    }));
+    const candidatePrompt = mocks.complete.mock.calls[1][0].messages[0].content;
+    expect(candidatePrompt).toContain(dictationSnapshot.dictationLearning.vocabulary[0]);
+  });
+
+  it('rejects an otherwise winning evaluation when the signal aborts after the case loop', async () => {
+    const evaluate = await enableEvaluation();
+    const abort = new AbortController();
+    mocks.runtime.release.mockImplementationOnce(async () => { abort.abort(); });
+    mocks.complete.mockResolvedValue({ rawText: '棚に戻す。', model: 'test' })
+      .mockResolvedValueOnce({ rawText: '棚に戻す。', model: 'test' })
+      .mockResolvedValueOnce({ rawText: 'シャコマンでLMレールを基準面に押し当てる。', model: 'test' });
+    const { result } = await evaluate('assembly', { now, signal: abort.signal });
+    expect(result).toMatchObject({ dictationEvalCases: 10, wins: 1, losses: 0, failedCalls: 0, failed: true, dictationLearningAdopted: false });
+    expect(result.dictationCandidateScore).toBeLessThan(result.dictationBaselineScore!);
+  });
+
+  it('compares both prompts without acquiring or releasing the runtime when manageRuntime is false', async () => {
+    const evaluate = await enableEvaluation();
+    mocks.complete.mockResolvedValue({ rawText: '棚に戻す。', model: 'test' })
+      .mockResolvedValueOnce({ rawText: '棚に戻す。', model: 'test' })
+      .mockResolvedValueOnce({ rawText: 'イケールにワークを押し当てて固定する。', model: 'test' });
+    const { snapshot } = await evaluate('grinding', { now, manageRuntime: false });
+    expect(snapshot).toMatchObject({ dictationEvalCases: 6, dictationLearningAdopted: true, dictationLearning: dictationSnapshot.dictationLearning });
+    expect(mocks.complete).toHaveBeenCalledTimes(12);
+    expect(mocks.runtime.ensureReady).not.toHaveBeenCalled();
+    expect(mocks.runtime.release).not.toHaveBeenCalled();
+  });
+
+  it('writes false if evaluation cannot start', async () => {
+    await enableEvaluation();
+    mocks.db.assemblyProcedureSiteVocabulary.findMany.mockRejectedValueOnce(new Error('lookup failed'));
+    await run();
+    expect(mocks.db.assemblyProcedureLearningSnapshot.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ site: 'assembly', dictationLearningAdopted: false, dictationBaselineScore: null, dictationCandidateScore: null }),
+      update: expect.objectContaining({ dictationLearningAdopted: false }),
+    }));
+    expect(mocks.warn).toHaveBeenCalledWith(expect.objectContaining({ site: 'assembly' }), 'assembly_procedure_dictation_evaluation_failed');
+  });
+
+  it('uses gold cases first and fills the remaining confirmation slots with small EDITED corrections', async () => {
+    await enableEvaluation();
+    mocks.env.BUSINESS_HERMES_BACKGROUND_ENABLED = 'true';
+    const row = { mode: 'new', originalText: '', finalText: '確認する。', aiText: '確認した。', outcome: 'EDITED' };
+    const rows = Array.from({ length: 100 }, (_, i) => ({ ...row, id: `row-${i}`, spokenText: `確認用${i}` }));
+    const confirmed = rows.filter(({ spokenText, finalText }) => dictationFeedbackSplit(spokenText, finalText) === 'confirmation');
+    const improvement = rows.find(({ spokenText, finalText }) => dictationFeedbackSplit(spokenText, finalText) === 'improvement')!;
+    const kept = { ...confirmed[0], id: 'kept', outcome: 'KEPT' };
+    const majorEdit = { ...confirmed[0], id: 'major', aiText: '大きく書き直された。' };
+    mocks.db.assemblyProcedureTextFeedback.findMany.mockImplementation(async ({ where, take }) =>
+      where.site === 'assembly' ? [improvement, kept, majorEdit, ...confirmed.slice(1)].slice(0, take) : []);
+    mocks.complete.mockResolvedValue({ rawText: '確認する。', model: 'test' });
+    await run({ dryRun: true });
+    const requests = mocks.complete.mock.calls.map(([request]) => request);
+    expect(requests).toHaveLength(72); // 30 assembly + 6 grinding, two versions each.
+    expect(requests.every(request => request.background === true)).toBe(true);
+    expect(requests[0].messages[1].content).toContain('車高マン');
+    expect(mocks.db.assemblyProcedureTextFeedback.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ outcome: 'EDITED' }) }));
+    expect(requests[0].messages[0].content).not.toContain(JSON.stringify(improvement.spokenText));
+    expect(requests[1].messages[0].content).toContain(JSON.stringify(improvement.spokenText));
+    expect(requests[1].messages[0].content).not.toContain(JSON.stringify(confirmed[0].spokenText));
+    expect(requests.slice(20, 60).filter((_, i) => i % 2 === 0).map(request => JSON.parse(request.messages[1].content).spokenText))
+      .toEqual(confirmed.slice(1, 21).map(test => test.spokenText));
+    expect(mocks.runtime.ensureReady).not.toHaveBeenCalled();
+    expect(mocks.runtime.release).not.toHaveBeenCalled();
+    expect(mocks.db.assemblyProcedureLearningSnapshot.upsert).not.toHaveBeenCalled();
+  });
+
+  it('takes only the newly appended text and ignores revised or non-prefix feedback', async () => {
+    await enableEvaluation();
+    const originalText = '既'.repeat(210);
+    const appended = '棚に戻す。';
+    const feedback = (id: string, mode: string, finalText: string, aiText = finalText, outcome = 'KEPT') => {
+      const spokenText = Array.from({ length: 100 }, (_, i) => `${id}の発話${i}`)
+        .find(spoken => dictationFeedbackSplit(spoken, finalText) === 'improvement')!;
+      return { id, mode, spokenText, originalText, finalText, aiText, outcome };
+    };
+    const append = feedback('append', 'append', `${originalText}\n${appended}`);
+    const edited = feedback('edited', 'new', appended, '棚に直す。', 'EDITED');
+    const noPrefix = feedback('non-prefix', 'append', appended);
+    const revise = feedback('revise', 'revise', appended);
+    mocks.db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([append, edited, noPrefix, revise]);
+    const learning = await loadDictationLearning('assembly', now);
+    expect(learning.examples).toEqual([
+      { mode: 'append', spokenText: append.spokenText, finalText: appended },
+      { mode: 'new', spokenText: edited.spokenText, finalText: appended },
+    ]);
   });
 });
