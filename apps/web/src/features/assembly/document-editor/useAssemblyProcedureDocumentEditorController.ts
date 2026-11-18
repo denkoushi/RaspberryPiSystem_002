@@ -1,3 +1,4 @@
+import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
@@ -36,6 +37,12 @@ import { useDocumentEditorMaterialPlacements } from './useDocumentEditorMaterial
 import type { InlineTextElement, InlineTextFlush } from './InlineTextEditor';
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureTextCandidateDto } from '../types';
 import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+
+function duplicateOverlayId(sourceId: string, generateId: () => string): string {
+  return sourceId.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX)
+    ? `${ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}${createAssemblyRequestId()}`
+    : generateId();
+}
 
 // Event callbacks keep their identity while reading the latest editor state.
 function useEditorCallback<Args extends unknown[], Result>(callback: (...args: Args) => Result) {
@@ -465,7 +472,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     if (readOnly || busyRef.current || !selectedPage) return;
     const source = elements.find((element) => element.id === sourceId);
     if (!source || source.pageIndex === selectedPage.pageIndex) return;
-    const id = createOverlayId();
+    const id = duplicateOverlayId(source.id, createOverlayId);
     const placement = pendingMaterials.current.get(sourceId);
     if (placement) pendingMaterials.current.set(id, { ...placement, elementId: id, fallbackAssetId: undefined });
     dispatch({ type: 'duplicate', sourceId, id, pageIndex: selectedPage.pageIndex });
@@ -474,7 +481,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
 
   const duplicateSelectedOverlay = useEditorCallback(() => {
     if (!selectedElement || readOnly || busyRef.current) return;
-    const copy = { ...selectedElement, id: createAssemblyRequestId(), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
+    const copy = { ...selectedElement, id: duplicateOverlayId(selectedElement.id, createAssemblyRequestId), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
     const placement = pendingMaterials.current.get(selectedElement.id);
     if (placement) pendingMaterials.current.set(copy.id, { ...placement, elementId: copy.id, fallbackAssetId: undefined });
     dispatch({ type: 'add', element: copy });

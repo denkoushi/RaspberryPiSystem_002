@@ -10,6 +10,7 @@ export type OverlayDraftAction =
   | { type: 'replace'; elements: AssemblyProcedureOverlayElement[]; preserveHistory?: boolean }
   | { type: 'applyLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[] }
   | { type: 'splitLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[]; nextPageElements: AssemblyProcedureOverlayElement[] }
+  | { type: 'addPair'; elements: [AssemblyProcedureOverlayElement, AssemblyProcedureOverlayElement] }
   | { type: 'add'; element: AssemblyProcedureOverlayElement }
   | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
@@ -79,6 +80,11 @@ export function overlayDraftReducer(
     }
     case 'replace':
       return action.elements.map((element) => ({ ...element }));
+    case 'addPair': {
+      const [first, second] = action.elements;
+      const zIndex = nextPageZIndex(state, first.pageIndex);
+      return [...state, { ...first, zIndex }, { ...second, zIndex: zIndex + 1 }];
+    }
     case 'add':
       return [...state, { ...action.element, zIndex: nextPageZIndex(state, action.element.pageIndex) }];
     case 'duplicate': {
@@ -136,6 +142,7 @@ export function createOverlayId(): string {
 }
 
 export type OverlayCreationKind = 'TEXT' | 'IMAGE' | 'SHAPE';
+export type OverlayRangeChoice = OverlayCreationKind | 'TEXT_REWRITE';
 
 function nextPageZIndex(elements: AssemblyProcedureOverlayElement[], pageIndex: number): number {
   const pageElements = pageOverlayElements(elements, pageIndex);
@@ -227,6 +234,12 @@ export function convertOverlayShapeKind(
   return { ...next, start: undefined, end: undefined };
 }
 
+export function createOverlayForRange<K extends OverlayCreationKind>(
+  kind: K,
+  pageIndex: number,
+  bbox: AssemblyProcedureOverlayBBox,
+  elements?: AssemblyProcedureOverlayElement[]
+): Extract<AssemblyProcedureOverlayElement, { kind: K }>;
 export function createOverlayForRange(
   kind: OverlayCreationKind,
   pageIndex: number,

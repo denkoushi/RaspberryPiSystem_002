@@ -164,12 +164,14 @@ export const overlayRegionImageSchema = z.object({
 
 export type OverlayRegionImage = z.infer<typeof overlayRegionImageSchema>;
 
+export const OVERLAY_REGION_MAX_IMAGES = 20;
+
 /** Shared body contract for image/text extraction from a page ROI. */
 export const overlayRegionInputSchema = z.object({
   accessPassword: z.string().max(128).default(''),
   pageIndex: z.coerce.number().int().min(0),
   bbox: overlayRegionBBoxSchema,
-  overlays: z.array(overlayRegionImageSchema).max(20).optional()
+  overlays: z.array(overlayRegionImageSchema).max(OVERLAY_REGION_MAX_IMAGES).optional()
 });
 
 type OverlayElementBase = {

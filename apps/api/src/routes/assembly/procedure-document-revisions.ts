@@ -250,6 +250,23 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
   );
 
   app.post(
+    '/assembly/procedure-documents/:id/regions/text-rewrite',
+    { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
+    async (request) => {
+      const params = idParamsSchema.parse(request.params);
+      const body = assemblyProcedureOverlayRegionInputSchema.parse(request.body ?? {});
+      return assetsService.createTextRewriteRegion({
+        documentId: params.id,
+        ...await resolveAssemblyProcedureEditWriter(request),
+        accessPassword: body.accessPassword,
+        pageIndex: body.pageIndex,
+        bbox: body.bbox,
+        ...(body.overlays ? { overlays: body.overlays } : {})
+      });
+    }
+  );
+
+  app.post(
     '/assembly/procedure-documents/:id/regions/text',
     { preHandler: options.allowWriteKiosk },
     async (request) => {

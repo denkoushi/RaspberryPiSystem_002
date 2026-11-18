@@ -48,6 +48,7 @@ export type OverlayLayerProps = {
   className?: string;
   testId?: string;
   testIdPrefix?: string;
+  unpaddedImageIdPrefix?: string;
 };
 
 type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
@@ -288,7 +289,8 @@ export function OverlayLayer({
   resolveAssetUrl = defaultAssetUrl,
   className,
   testId = 'overlay-layer',
-  testIdPrefix = 'overlay'
+  testIdPrefix = 'overlay',
+  unpaddedImageIdPrefix
 }: OverlayLayerProps) {
   const layerRef = useRef<HTMLDivElement>(null);
   const pointerRef = useRef<PointerInteraction | null>(null);
@@ -401,12 +403,12 @@ export function OverlayLayer({
         assetSource={source.kind === 'IMAGE' && source.assetId ? resolveAssetUrl(source.assetId, assets?.[source.assetId]) : null}
         onSelect={select} onNudge={nudge} onUpdateBBox={onUpdateBBox ? updateBBox : undefined}
         beginPointerInteraction={beginPointerInteraction} queuePointerInteraction={queuePointerInteraction}
-        endPointerInteraction={endPointerInteraction} testIdPrefix={testIdPrefix} />)}
+        endPointerInteraction={endPointerInteraction} testIdPrefix={testIdPrefix} unpaddedImageIdPrefix={unpaddedImageIdPrefix} />)}
     </div>
   );
 }
 
-const OverlayItem = memo(function OverlayItem({ source, crop, selected, interactive, assetSource, onSelect, onNudge, onUpdateBBox, beginPointerInteraction, queuePointerInteraction, endPointerInteraction, testIdPrefix }: {
+const OverlayItem = memo(function OverlayItem({ source, crop, selected, interactive, assetSource, onSelect, onNudge, onUpdateBBox, beginPointerInteraction, queuePointerInteraction, endPointerInteraction, testIdPrefix, unpaddedImageIdPrefix }: {
   source: OverlayElement;
   crop?: OverlayCropRect | null;
   selected: boolean;
@@ -419,6 +421,7 @@ const OverlayItem = memo(function OverlayItem({ source, crop, selected, interact
   queuePointerInteraction: (event: ReactPointerEvent<HTMLElement>) => void;
   endPointerInteraction: (event: ReactPointerEvent<HTMLElement>, cancelled?: boolean) => void;
   testIdPrefix: string;
+  unpaddedImageIdPrefix?: string;
 }) {
   const element = useMemo(() => projectElement(source, crop), [source, crop]);
   if (!element) return null;
@@ -435,7 +438,9 @@ const OverlayItem = memo(function OverlayItem({ source, crop, selected, interact
   return (
     <span key={element.id}>
       <div
-        className={clsx('absolute overflow-hidden p-0.5', interactive ? 'pointer-events-auto cursor-pointer rounded-sm' : 'pointer-events-none', transformable && 'touch-none cursor-move', selected && 'outline outline-2 outline-cyan-400 outline-offset-1')}
+        className={clsx('absolute overflow-hidden',
+          !(unpaddedImageIdPrefix && element.kind === 'IMAGE' && element.id.startsWith(unpaddedImageIdPrefix)) && 'p-0.5',
+          interactive ? 'pointer-events-auto cursor-pointer rounded-sm' : 'pointer-events-none', transformable && 'touch-none cursor-move', selected && 'outline outline-2 outline-cyan-400 outline-offset-1')}
         style={style}
         data-overlay-id={element.id}
         data-testid={`${testIdPrefix}-${element.id}`}

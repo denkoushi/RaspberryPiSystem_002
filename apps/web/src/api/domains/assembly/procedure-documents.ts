@@ -78,14 +78,16 @@ export async function uploadAssemblyProcedureOverlayImage(input: {
   return data.asset;
 }
 
-export async function createAssemblyProcedureImageRegion(input: {
+type AssemblyProcedureImageRegionInput = {
   holderToken?: string | null;
   id: string;
   accessPassword: string;
   pageIndex: number;
   bbox: AssemblyProcedureOverlayElement['bbox'];
   overlays?: OverlayRegionImage[];
-}) {
+};
+
+export async function createAssemblyProcedureImageRegion(input: AssemblyProcedureImageRegionInput) {
   const { data } = await api.post<{ asset: AssemblyProcedureOverlayAssetDto }>(
     `/assembly/procedure-documents/${encodeURIComponent(input.id)}/regions/image`,
     {
@@ -97,6 +99,27 @@ export async function createAssemblyProcedureImageRegion(input: {
     procedureEditHeaders(input.holderToken)
   );
   return data.asset;
+}
+
+export async function createAssemblyProcedureTextRewriteRegion(input: AssemblyProcedureImageRegionInput) {
+  const { data } = await api.post<{
+    asset: AssemblyProcedureOverlayAssetDto;
+    patchBBox: AssemblyProcedureOverlayElement['bbox'];
+    text: string;
+    textBBox: AssemblyProcedureOverlayElement['bbox'];
+    color: string;
+    fontSizeRatio: number;
+  }>(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/regions/text-rewrite`,
+    {
+      accessPassword: input.accessPassword,
+      pageIndex: input.pageIndex,
+      bbox: input.bbox,
+      ...(input.overlays ? { overlays: input.overlays } : {})
+    },
+    procedureEditHeaders(input.holderToken)
+  );
+  return data;
 }
 
 export async function findAssemblyProcedureTextCandidates(input: {

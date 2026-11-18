@@ -340,4 +340,40 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
       await cleanFixtures(fixture);
     }
   });
+
+  it('keeps the text-erase prefix when cloning an image overlay into a revision', async () => {
+    const documentId = randomUUID();
+    const assetId = randomUUID();
+    const patchId = `text-erase-${randomUUID()}`;
+    const documentIds = [documentId];
+    const revisionService = new AssemblyProcedureDocumentRevisionService(accessService, assetGc);
+    try {
+      await prisma.assemblyProcedureAsset.create({ data: {
+        id: assetId, kind: 'OVERLAY_IMAGE', storageKey: `revision-patch-${assetId}`,
+        sha256: 'a'.repeat(64), byteSize: 1, contentType: 'image/jpeg'
+      } });
+      await prisma.assemblyProcedureDocument.create({ data: {
+        id: documentId, name: 'text-erase-revision', status: 'PUBLISHED', publishedAt: new Date(),
+        imageRelativePath: '/page.png',
+        pages: { create: { pageIndex: 0, imageRelativePath: '/page.png' } }
+      } });
+      await prisma.assemblyProcedureOverlayElement.create({ data: {
+        id: patchId, documentId, pageIndex: 0, kind: 'IMAGE', assetId, objectFit: 'fill',
+        xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.05
+      } });
+
+      const revision = await revisionService.createRevision(documentId, ACCESS_PASSWORD);
+      documentIds.push(revision.id);
+      expect(revision.overlayElements).toEqual([expect.objectContaining({
+        id: expect.stringMatching(/^text-erase-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/),
+        kind: 'IMAGE', assetId, objectFit: 'fill'
+      })]);
+      expect(revision.overlayElements[0].id).not.toBe(patchId);
+    } finally {
+      await prisma.assemblyProcedureOverlayElement.deleteMany({ where: { documentId: { in: documentIds } } });
+      await prisma.assemblyProcedureDocumentRevision.deleteMany({ where: { documentId: { in: documentIds } } });
+      await prisma.assemblyProcedureDocument.deleteMany({ where: { id: { in: documentIds } } });
+      await prisma.assemblyProcedureAsset.deleteMany({ where: { id: assetId } });
+    }
+  });
 });

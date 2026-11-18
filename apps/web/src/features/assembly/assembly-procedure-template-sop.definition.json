@@ -108,9 +108,10 @@
         {
           "id": "assembly-document-editor-types",
           "title": "オーバーレイ種類を選ぶ",
-          "summary": "選択範囲を文章、画像、図形・記号のいずれかへ変換します。",
+          "summary": "選択範囲を文章、文字の書き換え、画像、図形・記号のいずれかへ変換します。",
           "steps": [
             { "id": "document-editor-type-text", "targetId": "assembly-document-editor-type-text", "necessity": "required", "title": "文章を選ぶ", "description": "文章として入力・修正する範囲は「文章」を選びます。" },
+            { "id": "document-editor-type-text-rewrite", "targetId": "assembly-document-editor-type-text-rewrite", "necessity": "required", "title": "文字を書き換えるを選ぶ", "description": "画像に焼き込まれた文字を打ち直すときは「文字を書き換える」を選びます。" },
             { "id": "document-editor-type-image", "targetId": "assembly-document-editor-type-image", "necessity": "required", "title": "画像を選ぶ", "description": "画像assetとして配置する範囲は「画像」を選びます。" },
             { "id": "document-editor-type-shape", "targetId": "assembly-document-editor-type-shape", "necessity": "required", "title": "図形・記号を選ぶ", "description": "矩形・楕円・線・矢印を配置する範囲は「図形・記号」を選びます。" }
           ]

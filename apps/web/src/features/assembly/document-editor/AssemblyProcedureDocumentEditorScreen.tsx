@@ -338,7 +338,11 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
       <AssemblyProcedureOverlayTypeDialog
         isOpen={controller.pendingRange != null}
         onClose={controller.cancelPendingRange}
-        onSelect={controller.createOverlay}
+        onSelect={(kind) => {
+          const layer = overlayLayerRef.current;
+          const heightToWidth = layer?.clientWidth ? layer.clientHeight / layer.clientWidth : undefined;
+          void controller.createOverlay(kind, heightToWidth);
+        }}
       />
       <AssemblyProcedureTextCandidateDialog
         isOpen={controller.textCandidates.length > 0}

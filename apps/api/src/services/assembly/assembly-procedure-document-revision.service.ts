@@ -2,6 +2,7 @@ import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditAc
 import { procedureVideoLinksInclude } from './procedure-video.service.js';
 import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
 import { randomUUID } from 'node:crypto';
+import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
 
 import type { Prisma } from '@prisma/client';
 
@@ -241,7 +242,9 @@ export class AssemblyProcedureDocumentRevisionService {
         await tx.assemblyProcedureOverlayElement.createMany({
           data: sourceRecord.overlayElements.map((overlay) => ({
             ...overlayToCreateDataFromRow(created.id, overlay),
-            id: randomUUID()
+            id: overlay.id.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX)
+              ? `${ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}${randomUUID()}`
+              : randomUUID()
           }))
         });
       }

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   },
   pageImage: vi.fn(), warn: vi.fn()
 }));
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.db }));
 vi.mock('../../../lib/assembly-procedure-image-storage.js', () => ({
   AssemblyProcedureImageStorage: { readImage: mocks.pageImage }
@@ -64,6 +65,89 @@ describe('assembly procedure region assets service', () => {
     expect(data[0]).toBeGreaterThan(240);
     expect(data[1]).toBeLessThan(15);
     expect(mocks.db.assemblyProcedureAsset.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ ownerDocumentId: 'draft', width: 50, height: 50 }) }));
+  });
+
+  it('rewrites a full OCR line from a partial selection on top of an image overlay', async () => {
+    const base = await image('#efefef', 160, 100);
+    const bakedText = await sharp(base).composite([
+      { input: await image('#202020', 15, 10), left: 44, top: 43 },
+      { input: await image('#202020', 15, 10), left: 63, top: 43 }
+    ]).png().toBuffer();
+    mocks.pageImage.mockResolvedValue({ buffer: base });
+    storage.read.mockResolvedValue(bakedText);
+    layoutOcr.runLayoutOcrOnImage.mockResolvedValue({ text: '圧力 確認', engine: 'mock', words: [
+      { text: '確認', confidence: 92, bbox: { x0: 63, y0: 43, x1: 78, y1: 53 } },
+      { text: '圧力', confidence: 93, bbox: { x0: 44, y0: 43, x1: 59, y1: 53 } },
+      { text: '別の行', confidence: 95, bbox: { x0: 40, y0: 73, x1: 70, y1: 84 } }
+    ] });
+    const result = await service().createTextRewriteRegion({
+      ...params,
+      bbox: { xRatio: 0.3, yRatio: 0.47, widthRatio: 0.03, heightRatio: 0.04 }
+    });
+    expect(result).toMatchObject({ asset: { assetId: 'crop', kind: 'OVERLAY_IMAGE' }, text: '圧力確認' });
+    expect(result.textBBox.xRatio).toBeCloseTo(44 / 160);
+    expect(result.textBBox.widthRatio).toBeCloseTo(34 / 160);
+    expect(result.patchBBox.xRatio).toBeLessThan(result.textBBox.xRatio);
+    expect(result.patchBBox.xRatio + result.patchBBox.widthRatio).toBeGreaterThan(78 / 160);
+    expect(result.fontSizeRatio).toBeCloseTo(0.1);
+    expect(result.color).toBe('#202020');
+    const jpeg = storage.save.mock.calls[0][0].data;
+    const { data, info } = await sharp(jpeg).raw().toBuffer({ resolveWithObject: true });
+    expect(info.width).toBeCloseTo(result.patchBBox.widthRatio * 160);
+    expect(info.height).toBeCloseTo(result.patchBBox.heightRatio * 100);
+    expect(data.reduce((sum, value) => sum + value, 0) / data.length).toBeCloseTo(239, 0);
+  });
+
+  it('returns 422 without saving a patch when OCR has no words', async () => {
+    await expect(service().createTextRewriteRegion(params)).rejects.toMatchObject({
+      statusCode: 422, message: '文字が見つかりませんでした'
+    });
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects the oversized selection and its margins before OCR or overlay loading', async () => {
+    mocks.pageImage.mockResolvedValue({ buffer: await image('white', 2020, 2000) });
+    await expect(service().createTextRewriteRegion({
+      ...params, bbox: { ...full, widthRatio: 0.98 }
+    })).rejects.toMatchObject({ statusCode: 422, message: '範囲が広すぎます。文字の行を囲んでください' });
+    expect(layoutOcr.runLayoutOcrOnImage).not.toHaveBeenCalled();
+    expect(mocks.db.assemblyProcedureAsset.findMany).not.toHaveBeenCalled();
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('checks the actual context again after a candidate expands the selection', async () => {
+    mocks.pageImage.mockResolvedValue({ buffer: await image('white', 3000, 3000) });
+    mocks.db.assemblyProcedureDocument.findUnique.mockResolvedValue({ ...document, revisionMetadata: {
+      ...document.revisionMetadata, sourceAsset: { kind: 'SOURCE', contentType: 'application/pdf', storageKey: 'source.pdf' }
+    } });
+    pdfTextCandidates.extractCandidates.mockResolvedValue([
+      { text: 'wide', confidence: 1, bounds: { ...full, yRatio: 0.35, heightRatio: 0.2 }, pageIndex: 0, source: 'poppler' }
+    ]);
+    await expect(service().createTextRewriteRegion({
+      ...params, bbox: { xRatio: 0.3, yRatio: 0.4, widthRatio: 0.1, heightRatio: 0.04 },
+      overlays: [{ ...overlay, bbox: { ...roi, xRatio: 0.5 } }]
+    })).rejects.toMatchObject({ statusCode: 422, message: '範囲が広すぎます。文字の行を囲んでください' });
+    expect(pdfTextCandidates.extractCandidates).toHaveBeenCalledOnce();
+    expect(storage.read.mock.calls).toEqual([[{ storageKey: 'source.pdf' }]]);
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('rewrites from the composed image instead of the PDF when an image overlaps the selection', async () => {
+    mocks.db.assemblyProcedureDocument.findUnique.mockResolvedValue({ ...document, revisionMetadata: {
+      ...document.revisionMetadata, sourceAsset: { kind: 'SOURCE', contentType: 'application/pdf', storageKey: 'source.pdf' }
+    } });
+    pdfTextCandidates.extractCandidates.mockResolvedValue([
+      { text: 'original', confidence: 1, bounds: roi, pageIndex: 0, source: 'poppler' }
+    ]);
+    layoutOcr.runLayoutOcrOnImage.mockResolvedValue({ text: 'new', engine: 'mock', words: [
+      { text: 'new', confidence: 95, bbox: { x0: 30, y0: 45, x1: 46, y1: 55 } }
+    ] });
+    await expect(service().createTextRewriteRegion(params)).resolves.toMatchObject({ text: 'new' });
+    expect(pdfTextCandidates.extractCandidates).not.toHaveBeenCalled();
+    expect(storage.read).not.toHaveBeenCalledWith({ storageKey: 'source.pdf' });
+    const { data } = await sharp(layoutOcr.runLayoutOcrOnImage.mock.calls[0][0].imageBytes).raw().toBuffer({ resolveWithObject: true });
+    expect(data[0]).toBeGreaterThan(240);
+    expect(data[1]).toBeLessThan(15);
   });
 
   it('preserves the original page crop when overlays are omitted', async () => {

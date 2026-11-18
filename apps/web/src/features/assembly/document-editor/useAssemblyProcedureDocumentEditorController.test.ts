@@ -8,6 +8,7 @@ const apiMocks = vi.hoisted(() => ({
   createRevision: vi.fn(),
   findTextCandidates: vi.fn(),
   createImageRegion: vi.fn(),
+  createTextRewriteRegion: vi.fn(),
   uploadImage: vi.fn(),
   saveOverlays: vi.fn(),
   publishDocument: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('../../../api/client', () => ({
   createAssemblyProcedureDocumentRevision: apiMocks.createRevision,
   findAssemblyProcedureTextCandidates: apiMocks.findTextCandidates,
   createAssemblyProcedureImageRegion: apiMocks.createImageRegion,
+  createAssemblyProcedureTextRewriteRegion: apiMocks.createTextRewriteRegion,
   uploadAssemblyProcedureOverlayImage: apiMocks.uploadImage,
   saveAssemblyProcedureDocumentOverlays: apiMocks.saveOverlays,
   publishAssemblyProcedureDocument: apiMocks.publishDocument,
@@ -47,6 +49,7 @@ import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEdi
 import { createOverlayForRange } from './assemblyDocumentEditorDraft';
 import { readAssemblyDocumentEditorRecovery, writeAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
 import { AssemblyProcedureDocumentEditorCanvas } from './AssemblyProcedureDocumentEditorCanvas';
+import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { useAssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 
 import type { AssemblyProcedureDocumentDto } from '../types';
@@ -535,6 +538,26 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
     expect(hook.result.current.elements).toEqual([source]);
     expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it('preserves the text-erase prefix for same-page and cross-page copies', async () => {
+    const source = { ...createOverlayForRange('IMAGE', 0, range), id: 'text-erase-original', assetId: 'patch', objectFit: 'fill' as const };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [source] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [] }
+    ] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    const patchId = /^text-erase-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+    act(() => hook.result.current.setSelectedOverlayId(source.id));
+    act(() => hook.result.current.duplicateSelectedOverlay());
+    const samePageCopy = hook.result.current.selectedElement;
+    expect(samePageCopy).toMatchObject({ id: expect.stringMatching(patchId), pageIndex: 0, assetId: 'patch', objectFit: 'fill' });
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    act(() => hook.result.current.duplicateOverlayToCurrentPage(source.id));
+    const otherPageCopy = hook.result.current.selectedElement;
+    expect(otherPageCopy).toMatchObject({ id: expect.stringMatching(patchId), pageIndex: 1, assetId: 'patch', objectFit: 'fill' });
+    expect(new Set([source.id, samePageCopy?.id, otherPageCopy?.id]).size).toBe(3);
   });
 
   it('uses valid entrance access without asking or verifying again', async () => {
@@ -1757,6 +1780,79 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     await act(async () => hook.result.current.createOverlay('IMAGE'));
     expect(apiMocks.createImageRegion).toHaveBeenLastCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range, overlays });
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+  });
+
+  it('offers text rewriting second and undoes the patch and text together', async () => {
+    const image: AssemblyProcedureOverlayElement = {
+      id: 'existing', kind: 'IMAGE', assetId: 'existing-asset', pageIndex: 0, zIndex: 7,
+      bbox: { ...range, xRatio: 0.5 }, objectFit: 'cover'
+    };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
+    await authenticate(hook.result);
+    const asset = { assetId: 'erased', storageKey: 'erased.jpg', relativeUrl: '/erased.jpg', contentType: 'image/jpeg' };
+    const patchBBox = { ...range, widthRatio: 0.45 };
+    const textBBox = { ...range, heightRatio: 0.04 };
+    apiMocks.createTextRewriteRegion.mockResolvedValue({ asset, patchBBox, text: '締付確認', textBBox, color: '#171717', fontSizeRatio: 0.04 });
+    act(() => hook.result.current.handleRangeSelected(range));
+    render(createElement(AssemblyProcedureOverlayTypeDialog, {
+      isOpen: true,
+      onClose: hook.result.current.cancelPendingRange,
+      onSelect: kind => { void hook.result.current.createOverlay(kind, 1.5); }
+    }));
+    const choices = screen.getAllByRole('radio');
+    expect(choices[1]).toHaveTextContent('文字を書き換える');
+    expect(choices[1]).toHaveTextContent('元の文字を消して、打ち直せる文章にします。');
+    fireEvent.click(choices[1]);
+    await waitFor(() => expect(hook.result.current.elements).toHaveLength(3));
+    expect(apiMocks.createTextRewriteRegion).toHaveBeenCalledWith({
+      holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range,
+      overlays: [{ assetId: image.assetId, zIndex: image.zIndex, bbox: image.bbox, objectFit: 'cover' }]
+    });
+    expect(hook.result.current.elements[1]).toMatchObject({ kind: 'IMAGE', bbox: patchBBox, objectFit: 'fill', assetId: asset.assetId, zIndex: 8 });
+    expect(hook.result.current.selectedElement).toMatchObject({
+      kind: 'TEXT', text: '締付確認', bbox: { ...textBBox, heightRatio: 0.06 },
+      style: { color: '#171717', fontSizeRatio: 0.06 }, mask: { enabled: false }, zIndex: 9
+    });
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([image]);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toHaveLength(3);
+  });
+
+  it('sends the highest 20 images in the full-width rewrite band in z order', async () => {
+    const selection = { ...range, yRatio: 0.4, heightRatio: 0.1 };
+    const image: AssemblyProcedureOverlayElement = {
+      id: 'image', kind: 'IMAGE', assetId: 'image-asset', pageIndex: 0, zIndex: 0,
+      bbox: { xRatio: 0.75, yRatio: 0.32, widthRatio: 0.1, heightRatio: 0.05 }
+    };
+    const inBand = Array.from({ length: 22 }, (_, zIndex) => ({
+      ...image, id: `image-${zIndex}`, assetId: `asset-${zIndex}`, zIndex
+    }));
+    const outside = { ...image, id: 'outside', assetId: 'outside-asset', zIndex: 99, bbox: { ...image.bbox, yRatio: 0.7 } };
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [outside, ...[...inBand].reverse()] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [{ ...image, id: 'other', pageIndex: 1, zIndex: 100 }] }
+    ] }));
+    await authenticate(hook.result);
+    apiMocks.createTextRewriteRegion.mockResolvedValue({
+      asset: { assetId: 'patch' }, patchBBox: selection, text: '確認', textBBox: selection, color: '#000000', fontSizeRatio: 0.05
+    });
+    act(() => hook.result.current.handleRangeSelected(selection));
+    await act(async () => hook.result.current.createOverlay('TEXT_REWRITE'));
+    expect(apiMocks.createTextRewriteRegion).toHaveBeenCalledWith(expect.objectContaining({
+      bbox: selection,
+      overlays: inBand.slice(2).map(({ assetId, bbox, zIndex }) => ({ assetId, bbox, zIndex }))
+    }));
+  });
+
+  it('shows the rewrite error without adding overlays', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    apiMocks.createTextRewriteRegion.mockRejectedValue({ response: { status: 422, data: { message: '文字が見つかりませんでした' } } });
+    act(() => hook.result.current.handleRangeSelected(range));
+    await act(async () => hook.result.current.createOverlay('TEXT_REWRITE'));
+    expect(hook.result.current.message).toBe('文字が見つかりませんでした');
+    expect(hook.result.current.elements).toEqual([]);
   });
 
   it('creates an image from an ROI and replaces its asset through upload', async () => {
