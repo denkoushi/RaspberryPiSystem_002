@@ -1,16 +1,22 @@
-import { projectAssemblyProcedureOverlayBBoxToCrop } from '@raspi-system/shared-types';
+import {
+  ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX,
+  OVERLAY_REGION_MAX_IMAGES,
+  projectAssemblyProcedureOverlayBBoxToCrop
+} from '@raspi-system/shared-types';
 import { useCallback, useRef } from 'react';
 
 import {
   placeProcedureMaterial,
   createAssemblyProcedureImageRegion,
+  createAssemblyProcedureTextRewriteRegion,
   findAssemblyProcedureTextCandidates,
   uploadAssemblyProcedureOverlayImage
 } from '../../../api/client';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { createOverlayForRange, type OverlayCreationKind, type OverlayDraftAction } from './assemblyDocumentEditorDraft';
+import { createOverlayForRange, type OverlayCreationKind, type OverlayDraftAction, type OverlayRangeChoice } from './assemblyDocumentEditorDraft';
 import { centerMaterialBBox } from './overlaySnap';
+import { fitRewriteFontSize } from './rewriteTextFontSize';
 
 import type { ProcedureMaterialDto } from '../procedure-manuals/procedure-material-types';
 import type {
@@ -64,7 +70,8 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
 function regionOverlays(
   elements: AssemblyProcedureOverlayElement[],
   pageIndex: number,
-  bbox: AssemblyProcedureOverlayBBox
+  bbox: AssemblyProcedureOverlayBBox,
+  maxImages?: number
 ): { overlays?: OverlayRegionImage[] } {
   const overlays = elements
     .filter((element): element is Extract<AssemblyProcedureOverlayElement, { kind: 'IMAGE' }> =>
@@ -72,7 +79,7 @@ function regionOverlays(
       Boolean(element.assetId) && projectAssemblyProcedureOverlayBBoxToCrop(element.bbox, bbox) !== null)
     .sort((left, right) => left.zIndex - right.zIndex)
     .map(({ assetId, bbox, zIndex, objectFit, opacity }) => ({ assetId, bbox, zIndex, objectFit, opacity }));
-  return overlays.length ? { overlays } : {};
+  return overlays.length ? { overlays: maxImages === undefined ? overlays : overlays.slice(-maxImages) } : {};
 }
 
 export function useAssemblyProcedureDocumentOverlayCommands(
@@ -99,7 +106,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     return element;
   }, [session]);
 
-  const createOverlay = useCallback(async (kind: OverlayCreationKind) => {
+  const createOverlay = useCallback(async (kind: OverlayRangeChoice, pageHeightToWidth = 1) => {
     const {
       busy,
       document,
@@ -125,7 +132,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       return;
     }
     setBusy(true);
-    setMessage(kind === 'TEXT' ? '選択範囲から文章候補を抽出しています…' : '選択範囲を画像assetに切り出しています…');
+    setMessage(kind !== 'IMAGE' ? '選択範囲から文章候補を抽出しています…' : '選択範囲を画像assetに切り出しています…');
     try {
       if (kind === 'TEXT') {
         const candidates = await findAssemblyProcedureTextCandidates({
@@ -143,6 +150,47 @@ export function useAssemblyProcedureDocumentOverlayCommands(
           addCreatedOverlay(kind, range);
           setMessage('文章候補が見つからないため、手入力の文章オーバーレイを追加しました。');
         }
+      } else if (kind === 'TEXT_REWRITE') {
+        const pageIndex = selectedPage.pageIndex;
+        const bandTop = Math.max(0, range.yRatio - range.heightRatio);
+        const bandBottom = Math.min(1, range.yRatio + 2 * range.heightRatio);
+        const band = { xRatio: 0, yRatio: bandTop, widthRatio: 1, heightRatio: bandBottom - bandTop };
+        const rewritten = await createAssemblyProcedureTextRewriteRegion({
+          ...(session.holderToken ? { holderToken: session.holderToken } : {}),
+          id: document.id,
+          accessPassword: passwordInput,
+          pageIndex,
+          bbox: range,
+          ...regionOverlays(session.elements, pageIndex, band, OVERLAY_REGION_MAX_IMAGES)
+        });
+        const { asset, patchBBox, text, textBBox, color, fontSizeRatio } = rewritten;
+        const patchImage = createOverlayForRange('IMAGE', pageIndex, patchBBox);
+        const image = {
+          ...patchImage,
+          id: `${ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}${patchImage.id}`,
+          assetId: asset.assetId,
+          objectFit: 'fill' as const,
+          mask: { enabled: false, color: '#ffffff' }
+        };
+        const fontSize = fitRewriteFontSize(text, textBBox.widthRatio, fontSizeRatio * pageHeightToWidth);
+        const textElement = {
+          ...createOverlayForRange('TEXT', pageIndex, {
+            ...textBBox,
+            heightRatio: Math.min(1 - textBBox.yRatio, Math.max(
+              textBBox.heightRatio, 1.5 * (fontSize / pageHeightToWidth) * text.split('\n').length
+            ))
+          }),
+          text,
+          style: { color, fontSizeRatio: fontSize },
+          mask: { enabled: false, color: '#ffffff' }
+        };
+        setDocument((current) => current ? {
+          ...current,
+          assets: { ...(current.assets ?? {}), [asset.assetId]: asset }
+        } : current);
+        session.dispatch({ type: 'addPair', elements: [image, textElement] });
+        session.setSelectedOverlayId(textElement.id);
+        setMessage('文章オーバーレイを追加しました。内容を編集して保存してください。');
       } else {
         const asset = await createAssemblyProcedureImageRegion({
           ...(session.holderToken ? { holderToken: session.holderToken } : {}),
@@ -164,6 +212,8 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       if (kind === 'TEXT') {
         addCreatedOverlay(kind, range);
         (session.setErrorMessage ?? setMessage)(`文章抽出に失敗したため、手入力の文章オーバーレイを追加しました。${readAssemblyApiErrorMessage(error, '')}`);
+      } else if (kind === 'TEXT_REWRITE') {
+        (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '文字の書き換えに失敗しました。'));
       } else {
         addCreatedOverlay(kind, range);
         (session.setErrorMessage ?? setMessage)(`画像切り出しに失敗しました。画像assetを指定して保存してください。${readAssemblyApiErrorMessage(error, '')}`);

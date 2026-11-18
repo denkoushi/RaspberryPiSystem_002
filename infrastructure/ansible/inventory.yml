@@ -351,6 +351,8 @@ all:
               ibus_disable_competing_autostart: true
               tailscale_enabled: true
               ansible_command_timeout: 600
+              # JPCERT 注意喚起の前倒し OS 更新(段階3)をこの端末だけで先に試す
+              os_security_update_early_enabled: true
               status_agent_client_id: raspi4-kensaku-stonebase01-kiosk1
               status_agent_client_key: "{{ vault_raspi4_kensaku_stonebase01_status_agent_client_key }}"
               status_agent_location: "第2工場 - StoneBase01"

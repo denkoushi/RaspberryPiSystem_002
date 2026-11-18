@@ -1,3 +1,5 @@
+import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
+
 import { OverlayLayer, overlayElementLabel } from '../overlays/OverlayLayer';
 
 import type { AssemblyProcedureOverlayAssetDto } from './types';
@@ -28,6 +30,7 @@ export function AssemblyProcedureOverlayLayer(props: Props) {
       {...props}
       testId="assembly-procedure-overlay-layer"
       testIdPrefix="assembly-procedure-overlay"
+      unpaddedImageIdPrefix={ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}
       resolveAssetUrl={(assetId, asset) => asset?.url ?? asset?.relativeUrl ?? `/api/storage/assembly-procedure-assets/${encodeURIComponent(assetId)}`}
     />
   );

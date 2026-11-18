@@ -128,7 +128,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     try {
       const { documentId, pageIndex, elementId, originalText: originalElementText, ...input } = body;
       const { signal } = abortController;
-      const result = await new ProcedureDictationRewriteService().rewrite({ ...input, signal });
+      const result = await new ProcedureDictationRewriteService().rewrite({ ...input, ...(documentId === undefined ? {} : { documentId }), signal });
       if (documentId === undefined || pageIndex === undefined || elementId === undefined || signal.aborted) return result;
       const originalText = input.mode === 'new' ? originalElementText ?? '' : input.currentText ?? '';
       const aiText = input.mode === 'append' ? originalText + '\n' + result.text : result.text;
@@ -299,6 +299,23 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
         ...(body.overlays ? { overlays: body.overlays } : {})
       });
       return { asset };
+    }
+  );
+
+  app.post(
+    '/assembly/procedure-documents/:id/regions/text-rewrite',
+    { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
+    async (request) => {
+      const params = idParamsSchema.parse(request.params);
+      const body = assemblyProcedureOverlayRegionInputSchema.parse(request.body ?? {});
+      return assetsService.createTextRewriteRegion({
+        documentId: params.id,
+        ...await resolveAssemblyProcedureEditWriter(request),
+        accessPassword: body.accessPassword,
+        pageIndex: body.pageIndex,
+        bbox: body.bbox,
+        ...(body.overlays ? { overlays: body.overlays } : {})
+      });
     }
   );
 

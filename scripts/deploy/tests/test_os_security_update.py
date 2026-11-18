@@ -1,11 +1,13 @@
 import copy
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from contextlib import nullcontext
+from datetime import datetime, timedelta
 import fcntl
 import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import threading
 import unittest
@@ -159,6 +161,144 @@ class RunTests(unittest.TestCase):
 
     def state(self):
         return json.loads(self.state_path.read_text())
+
+    def early_config(self):
+        self.config.update(earlyEnabled=True, weeklyWeekday=6)
+        now = datetime.fromisoformat('2026-11-18T02:00:00+09:00')
+        patch = mock.patch.object(UPDATER, 'datetime', wraps=datetime)
+        clock = patch.start()
+        self.addCleanup(patch.stop)
+        clock.now.side_effect = lambda tz=None: now.astimezone(tz)
+        return now
+
+    def write_request(self, expiry):
+        path = self.state_path.with_name('request.json')
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps({'requests': [
+            {'id': 'r1', 'packages': ['chromium', 'openssl'], 'expiresAt': expiry.isoformat()},
+        ]}))
+        return path
+
+    def test_disabled_flag_uses_existing_path_without_reading_requests(self):
+        self.config['earlyEnabled'] = False
+        with mock.patch.object(UPDATER, 'active_requests') as requests:
+            self.assertEqual(UPDATER.run(self.config), 0)
+        requests.assert_not_called()
+        self.assertEqual(self.state()['installed'], self.selected)
+        self.assertNotIn('check', self.state())
+
+    def test_early_nonweekly_day_does_not_write_without_active_requests(self):
+        now = self.early_config()
+        self.assertEqual(UPDATER.run(self.config), 0)
+        self.assertEqual(list(self.root.iterdir()), [])
+        request = self.write_request(now)
+        self.assertEqual(UPDATER.run(self.config), 0)
+        self.assertEqual(list(request.parent.iterdir()), [request])
+        self.assertFalse(self.log.exists())
+        self.assertEqual(self.calls, [])
+
+    def test_early_runs_on_the_weekday_or_after_seven_days_since_latest_run(self):
+        now = self.early_config()
+        UPDATER.write_state(self.state_path, {
+            'lastSuccessAt': (now - timedelta(days=8)).isoformat(),
+            'lastFailureAt': (now - timedelta(days=6, hours=12) + timedelta(seconds=1)).isoformat(),
+            'check': {'requestIds': ['previous']},
+        })
+        self.assertEqual(UPDATER.run(self.config), 0)
+        self.assertEqual(self.calls, [])
+        state = self.state()
+        state['lastFailureAt'] = (now - timedelta(days=6, hours=12)).isoformat()
+        UPDATER.write_state(self.state_path, state)
+        with mock.patch.object(UPDATER, 'apt_selection', return_value=([], [])):
+            self.assertEqual(UPDATER.run(self.config), 0)
+            self.assertEqual(self.state()['check'], state['check'])
+            self.assertEqual(len(self.calls), 1)
+            self.config['weeklyWeekday'] = now.weekday()
+            self.assertEqual(UPDATER.run(self.config), 0)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_early_force_or_unreadable_schedule_runs_the_normal_update(self):
+        self.early_config()
+        with mock.patch.object(UPDATER, 'apt_selection', return_value=([], [])):
+            self.assertEqual(UPDATER.run(self.config, force=True), 0)
+            self.assertEqual(len(self.calls), 1)
+            del self.config['weeklyWeekday']
+            self.assertEqual(UPDATER.run(self.config), 0)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_early_request_reports_result_and_keeps_request_file(self):
+        now = self.early_config()
+        path = self.write_request(now + timedelta(days=1))
+        original = path.read_bytes()
+        measured = {'chromium': {'state': 'installed', 'version': '2', 'candidateRemaining': False},
+                    'openssl': {'state': 'absent', 'version': None, 'candidateRemaining': None}}
+        for selected, failure, mode, result in [
+            (self.selected, None, 'apply', 'applied'),
+            ([], None, 'apply', 'no_candidates'),
+            ([], 'update', 'apply', 'failed'),
+            (self.selected, None, 'dry-run', 'failed'),
+        ]:
+            with self.subTest(result=result, mode=mode):
+                self.config['mode'] = mode
+                self.fail = failure
+                with mock.patch.object(UPDATER, 'apt_selection', return_value=(selected, [])), \
+                     mock.patch.object(UPDATER, 'measure_requested_packages', return_value=measured) as measure:
+                    self.assertEqual(UPDATER.run(self.config), int(bool(failure)))
+                check = self.state()['check']
+                self.assertEqual(check, {'requestIds': ['r1'], 'result': result,
+                                         'finishedAt': self.state()['lastRunAt'], 'packages': measured})
+                if mode == 'apply':
+                    measure.assert_called_once_with({'r1': ['chromium', 'openssl']})
+                else:
+                    measure.assert_not_called()
+                self.assertEqual(path.read_bytes(), original)
+
+    def test_early_skips_preserve_check_and_request(self):
+        now = self.early_config()
+        path = self.write_request(now + timedelta(days=1))
+        original = path.read_bytes()
+        check = {'requestIds': ['previous'], 'result': 'applied'}
+        UPDATER.write_state(self.state_path, {'check': check})
+        Path(self.config['releaseMarker']).touch()
+        for reason in ('skipped_release', 'skipped_locked'):
+            with self.subTest(reason=reason), open(self.config['lockPath'], 'a') as lock:
+                if reason == 'skipped_locked':
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.assertEqual(UPDATER.run(self.config), 0)
+                self.assertEqual(self.state()['result'], reason)
+                self.assertEqual(self.state()['check'], check)
+                self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(self.calls, [])
+
+    def test_requested_packages_measure_dpkg_and_current_apt_candidate(self):
+        results = {
+            'absent': (1, '', 'dpkg-query: no packages found matching absent\n'),
+            'ahead': (0, 'installed\tok\t2\n', ''),
+            'equal': (0, 'installed\tok\t2\n', ''),
+            'unknown': (0, 'unpacked\tok\t2\n', ''),
+            'missing-candidate': (0, 'installed\tok\t2\n', ''),
+        }
+        candidate_cache = {name: SimpleNamespace(candidate=SimpleNamespace(version=version))
+                           for name, version in [('ahead', '3'), ('equal', '2')]}
+
+        def dpkg(argv, **kwargs):
+            self.assertEqual(kwargs['env']['LC_ALL'], 'C.UTF-8')
+            self.assertEqual(kwargs['encoding'], 'utf-8')
+            code, stdout, stderr = results[argv[-1]]
+            return SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
+
+        with mock.patch.object(UPDATER.subprocess, 'run', side_effect=dpkg), mock.patch.dict(sys.modules, {
+            'apt': SimpleNamespace(Cache=lambda: nullcontext(candidate_cache)),
+            'apt_pkg': SimpleNamespace(version_compare=lambda left, right: int(left) - int(right)),
+        }):
+            measured = UPDATER.measure_requested_packages({'r1': list(results), 'r2': ['equal']})
+        self.assertEqual(measured, {
+            'absent': {'state': 'absent', 'version': None, 'candidateRemaining': None},
+            'ahead': {'state': 'installed', 'version': '2', 'candidateRemaining': True},
+            'equal': {'state': 'installed', 'version': '2', 'candidateRemaining': False},
+            'missing-candidate': {'state': 'installed', 'version': '2', 'candidateRemaining': None},
+            'unknown': {'state': 'unmeasured', 'version': None, 'candidateRemaining': None},
+        })
 
     def test_apply_pins_versions_and_restarts_only_changed_active_browser(self):
         self.assertEqual(UPDATER.run(self.config), 0)

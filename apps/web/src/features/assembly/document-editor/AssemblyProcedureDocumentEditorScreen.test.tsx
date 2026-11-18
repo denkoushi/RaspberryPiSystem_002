@@ -569,6 +569,12 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(actions.at(-1)).toHaveAttribute('aria-label', 'やり直す');
   });
 
+  it('shows the common target only in the document name', () => {
+    const controller = makeController({ document: { ...editorDocument, name: 'トルクレンチ_使い方' } });
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'トルクレンチ', modelCodeKey: 'トルクレンチ', processId: 'tools', processName: '共通 › 工具', mode: 'make' }} /></AssemblyProcedureDocumentEditorProvider>);
+    expect(within(screen.getByTestId('assembly-document-editor-details')).getByText('共通 › 工具 › トルクレンチ_使い方')).toBeInTheDocument();
+  });
+
   it.each([
     ['組立 › 組立', 'procedure-assembly'], ['研削 › 平面研削', 'procedure-grinding'],
     [' › 組立', 'procedure-assembly'], ['工程 › 研削', 'procedure-grinding'],

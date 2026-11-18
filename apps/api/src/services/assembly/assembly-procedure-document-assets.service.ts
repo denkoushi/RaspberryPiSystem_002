@@ -6,7 +6,10 @@ import path from 'path';
 import sharp from 'sharp';
 import type { Prisma } from '@prisma/client';
 import { projectOverlayBBoxToCrop, type OverlayRegionImage } from '@raspi-system/shared-types';
-import { composeRegionImage } from '../assembly-procedure-assets/assembly-procedure-region-image.js';
+import { assemblyProcedureAssetRoiToPixels, type AssemblyProcedureAssetPixelRoi } from '../assembly-procedure-assets/assembly-procedure-asset-roi.js';
+import { composeRegionImage, composeRegionRgb } from '../assembly-procedure-assets/assembly-procedure-region-image.js';
+import { padPixels, pixelsToBox, selectRewriteText, unionBoxes } from '../assembly-procedure-assets/assembly-procedure-text-rewrite.js';
+import { eraseText } from '../image-region/text-erase.js';
 import type { ImageOcrLayoutPort } from '../ocr/ports/image-ocr-layout.port.js';
 import { logger } from '../../lib/logger.js';
 
@@ -56,6 +59,45 @@ export type AssemblyProcedureDocumentAssetsServiceDeps = {
   layoutOcr?: ImageOcrLayoutPort;
   accessService?: AssemblyTemplateAccessService;
 };
+
+type RegionParams = AssemblyProcedureEditActor & {
+  documentId: string;
+  accessPassword?: string;
+  pageIndex: number;
+  bbox: AssemblyProcedureRegionBBox;
+  overlays?: OverlayRegionImage[];
+};
+
+const FULL_PAGE = { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 };
+const MAX_TEXT_REWRITE_PIXELS = 4_000_000;
+const MIN_REWRITE_PATCH_MARGIN = 6;
+const MIN_REWRITE_CONTEXT_MARGIN = 24;
+
+function assertTextRewritePixelLimit({ width, height }: AssemblyProcedureAssetPixelRoi) {
+  if (width * height > MAX_TEXT_REWRITE_PIXELS) {
+    throw new ApiError(422, '範囲が広すぎます。文字の行を囲んでください');
+  }
+}
+
+function normalizeRegion(bbox: AssemblyProcedureRegionBBox) {
+  try {
+    return normalizeAssemblyProcedureAssetRoi(bbox);
+  } catch (error) {
+    throw new ApiError(400, error instanceof Error ? error.message : 'ROIが不正です');
+  }
+}
+
+async function pageDimensions(buffer: Buffer) {
+  try {
+    const metadata = await sharp(buffer, { failOn: 'none', limitInputPixels: 40_000_000 }).metadata();
+    return { width: metadata.width ?? 0, height: metadata.height ?? 0 };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Input image exceeds pixel limit')) {
+      throw new ApiError(400, '画像の画素数が大きすぎます');
+    }
+    throw error;
+  }
+}
 
 function extensionForContentType(contentType: string): string {
   switch (contentType.trim().toLowerCase()) {
@@ -179,14 +221,24 @@ export class AssemblyProcedureDocumentAssetsService {
     }
   }
 
-  private async pageImage(documentId: string, pageIndex: number) {
+  private async pageImagePath(documentId: string, pageIndex: number, db: Prisma.TransactionClient = prisma) {
     if (!Number.isInteger(pageIndex) || pageIndex < 0) throw new ApiError(400, 'ページ番号が不正です');
-    const page = await prisma.assemblyProcedureDocumentPage.findUnique({
+    const page = await db.assemblyProcedureDocumentPage.findUnique({
       where: { documentId_pageIndex: { documentId, pageIndex } },
       select: { imageRelativePath: true }
     });
     if (!page) throw new ApiError(400, '指定ページが存在しません');
-    return AssemblyProcedureImageStorage.readImage(page.imageRelativePath);
+    return page.imageRelativePath;
+  }
+
+  private async pageImage(documentId: string, pageIndex: number) {
+    return AssemblyProcedureImageStorage.readImage(await this.pageImagePath(documentId, pageIndex));
+  }
+
+  private async lockEditableRegion(params: RegionParams, db: Prisma.TransactionClient) {
+    await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
+    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
+    return this.assertEditable(params.documentId, params.accessPassword, db, params);
   }
 
   async uploadOverlayImage(params: AssemblyProcedureEditActor & {
@@ -269,6 +321,14 @@ export class AssemblyProcedureDocumentAssetsService {
     return storageKeys;
   }
 
+  private async loadRegionAssets(storageKeys: ReadonlyMap<string, string>) {
+    const assets = new Map<string, Buffer>();
+    for (const [assetId, storageKey] of storageKeys) {
+      assets.set(assetId, await this.storage.read({ storageKey }));
+    }
+    return assets;
+  }
+
   private async regionImage(
     pageBuffer: Buffer,
     roi: AssemblyProcedureRegionBBox,
@@ -277,11 +337,7 @@ export class AssemblyProcedureDocumentAssetsService {
   ) {
     try {
       if (!overlays.length) return await cropAssemblyProcedureAssetRoi(pageBuffer, roi);
-      const assets = new Map<string, Buffer>();
-      for (const [assetId, storageKey] of storageKeys) {
-        assets.set(assetId, await this.storage.read({ storageKey }));
-      }
-      return await composeRegionImage({ pageBuffer, roi, overlays, assets });
+      return await composeRegionImage({ pageBuffer, roi, overlays, assets: await this.loadRegionAssets(storageKeys) });
     } catch (error) {
       if (error instanceof Error && error.message.includes('Input image exceeds pixel limit')) {
         throw new ApiError(400, '画像の画素数が大きすぎます');
@@ -290,26 +346,21 @@ export class AssemblyProcedureDocumentAssetsService {
     }
   }
 
-  async createImageRegion(params: AssemblyProcedureEditActor & {
-    documentId: string;
-    accessPassword?: string;
-    pageIndex: number;
-    bbox: AssemblyProcedureRegionBBox;
-    overlays?: OverlayRegionImage[];
-  }, db?: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
+  async createImageRegion(params: RegionParams, db?: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
     if (!db) return runAssemblyTransaction((tx) => this.createImageRegion(params, tx));
-    await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
-    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
-    const editable = await this.assertEditable(params.documentId, params.accessPassword, db, params);
-    let roi: ReturnType<typeof normalizeAssemblyProcedureAssetRoi>;
-    try {
-      roi = normalizeAssemblyProcedureAssetRoi(params.bbox);
-    } catch (error) {
-      throw new ApiError(400, error instanceof Error ? error.message : 'ROIが不正です');
-    }
+    const editable = await this.lockEditableRegion(params, db);
+    const roi = normalizeRegion(params.bbox);
     const source = await this.pageImage(params.documentId, params.pageIndex);
     const storageKeys = await this.regionAssets(params.documentId, editable.revisionMetadata!.revisionRootId, params.overlays ?? [], roi, db);
     const cropped = await this.regionImage(source.buffer, roi, params.overlays ?? [], storageKeys);
+    return this.saveRegionAsset(params.documentId, cropped, db);
+  }
+
+  private async saveRegionAsset(
+    documentId: string,
+    cropped: { buffer: Buffer; width: number; height: number; contentType: 'image/jpeg' },
+    db: Prisma.TransactionClient
+  ) {
     const saved = await this.storage.save({
       data: cropped.buffer,
       contentType: cropped.contentType,
@@ -324,7 +375,7 @@ export class AssemblyProcedureDocumentAssetsService {
           sha256: saved.sha256,
           byteSize: saved.size,
           contentType: saved.contentType,
-          ownerDocumentId: params.documentId,
+          ownerDocumentId: documentId,
           width: cropped.width,
           height: cropped.height
         }
@@ -336,27 +387,87 @@ export class AssemblyProcedureDocumentAssetsService {
     }
   }
 
-  async findTextCandidates(params: AssemblyProcedureEditActor & {
-    documentId: string;
-    accessPassword?: string;
-    pageIndex: number;
-    bbox: AssemblyProcedureRegionBBox;
-    overlays?: OverlayRegionImage[];
-  }): Promise<AssemblyProcedureTextCandidate[]> {
+  async createTextRewriteRegion(params: RegionParams) {
+    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(
+      params.documentId, params.holderKey ?? null, undefined, params.holderToken ?? null
+    );
     const editable = await this.assertEditable(params.documentId, params.accessPassword, prisma, params);
-    let roi: ReturnType<typeof normalizeAssemblyProcedureAssetRoi>;
-    try {
-      roi = normalizeAssemblyProcedureAssetRoi(params.bbox);
-    } catch (error) {
-      throw new ApiError(400, error instanceof Error ? error.message : 'ROIが不正です');
-    }
+    const selection = normalizeRegion(params.bbox);
+    const pagePath = await this.pageImagePath(params.documentId, params.pageIndex);
+    const source = await AssemblyProcedureImageStorage.readImage(pagePath);
+    const { width, height } = await pageDimensions(source.buffer);
+    const selectionPixels = assemblyProcedureAssetRoiToPixels(selection, width, height);
+    // Both margins can grow after text detection, so check their minimum before OCR.
+    assertTextRewritePixelLimit(padPixels(selectionPixels, MIN_REWRITE_PATCH_MARGIN + MIN_REWRITE_CONTEXT_MARGIN, width, height));
+    // OCR on a band can read complete lines even when the selection intersects
+    // only one word. For PDFs the source layout already covers the whole page.
+    const band = padPixels(selectionPixels, Math.max(selectionPixels.height, 48), width, height);
+    const searchRoi = pixelsToBox({ ...band, left: 0, width }, width, height);
+    const candidates = await this.extractRegionCandidates(params, editable, searchRoi, {
+      selection, pageBuffer: source.buffer, width, height
+    });
+    const selected = selectRewriteText(candidates, selection, width, height);
+    if (!selected) throw new ApiError(422, '文字が見つかりませんでした');
 
+    const { bounds, textBBox, text, fontSizeRatio } = selected;
+    const textHeight = Math.max(...bounds.map((box) => box.heightRatio * height));
+    const union = assemblyProcedureAssetRoiToPixels(unionBoxes(selection, textBBox), width, height);
+    const patch = padPixels(union, Math.max(MIN_REWRITE_PATCH_MARGIN, Math.ceil(textHeight * 0.25)), width, height);
+    const context = padPixels(patch, Math.max(MIN_REWRITE_CONTEXT_MARGIN, Math.ceil(textHeight)), width, height);
+    assertTextRewritePixelLimit(context);
+    const patchBBox = pixelsToBox(patch, width, height);
+    const contextBBox = pixelsToBox(context, width, height);
+    const overlays = params.overlays ?? [];
+    const storageKeys = await this.regionAssets(params.documentId, editable.revisionMetadata!.revisionRootId, overlays, contextBBox);
+    const rgb = await composeRegionRgb({
+      pageBuffer: source.buffer, roi: contextBBox, overlays, assets: await this.loadRegionAssets(storageKeys)
+    }, context, width, height);
+    const inContext = (box: typeof patch) => ({ ...box, left: box.left - context.left, top: box.top - context.top });
+    const erase = inContext(patch);
+    const erased = eraseText({
+      width: context.width,
+      height: context.height,
+      rgb,
+      erase,
+      candidates: bounds.map((box) => inContext(assemblyProcedureAssetRoiToPixels(box, width, height)))
+    });
+    const buffer = await sharp(erased.rgb, {
+      raw: { width: context.width, height: context.height, channels: 3 }
+    }).extract(erase).jpeg({ quality: 90 }).toBuffer();
+
+    // OCR may outlast a transaction. Recheck write access and the page identity
+    // under the same lock as image-region creation before storing the patch.
+    const asset = await runAssemblyTransaction(async (db) => {
+      const current = await this.lockEditableRegion(params, db);
+      if (await this.pageImagePath(params.documentId, params.pageIndex, db) !== pagePath ||
+          current.revisionMetadata?.sourceAsset?.storageKey !== editable.revisionMetadata?.sourceAsset?.storageKey) {
+        throw new ApiError(409, 'ページが更新されました。選択し直してください。');
+      }
+      await this.regionAssets(params.documentId, current.revisionMetadata!.revisionRootId, overlays, contextBBox, db);
+      return this.saveRegionAsset(params.documentId, { buffer, width: patch.width, height: patch.height, contentType: 'image/jpeg' }, db);
+    });
+    return { asset, patchBBox, text, textBBox, color: erased.color, fontSizeRatio };
+  }
+
+  async findTextCandidates(params: RegionParams): Promise<AssemblyProcedureTextCandidate[]> {
+    const editable = await this.assertEditable(params.documentId, params.accessPassword, prisma, params);
+    return this.extractRegionCandidates(params, editable, normalizeRegion(params.bbox));
+  }
+
+  private async extractRegionCandidates(
+    params: RegionParams,
+    editable: Awaited<ReturnType<AssemblyProcedureDocumentAssetsService['assertEditable']>>,
+    roi: AssemblyProcedureRegionBBox,
+    rewrite?: { selection: AssemblyProcedureRegionBBox; pageBuffer: Buffer; width: number; height: number }
+  ): Promise<AssemblyProcedureTextCandidate[]> {
     const storageKeys = await this.regionAssets(params.documentId, editable.revisionMetadata!.revisionRootId, params.overlays ?? [], roi);
     const sourceAsset = editable.revisionMetadata?.sourceAsset;
     const isPdfSource =
       sourceAsset?.kind === 'SOURCE' &&
       sourceAsset.contentType.trim().toLowerCase() === 'application/pdf';
-    if (isPdfSource) {
+    const selectionHasOverlay = rewrite && params.overlays?.some(({ bbox }) =>
+      projectOverlayBBoxToCrop(bbox, rewrite.selection) !== null);
+    if (isPdfSource && !selectionHasOverlay) {
       try {
         const candidates = await this.withTemporarySourcePdf(
           sourceAsset.storageKey,
@@ -364,10 +475,14 @@ export class AssemblyProcedureDocumentAssetsService {
             this.textCandidates.extractCandidates({
               pdfPath,
               pageIndex: params.pageIndex,
-              roi,
+              roi: rewrite ? FULL_PAGE : roi,
             }),
         );
-        if (candidates.length > 0) {
+        if (rewrite) {
+          if (candidates.some(({ bounds }) => bounds && projectOverlayBBoxToCrop(bounds, rewrite.selection))) {
+            return candidates;
+          }
+        } else if (candidates.length > 0) {
           let roiAspectRatio = 1;
           try {
             const source = await this.pageImage(params.documentId, params.pageIndex);
@@ -395,10 +510,10 @@ export class AssemblyProcedureDocumentAssetsService {
       }
     }
 
-    const source = await this.pageImage(params.documentId, params.pageIndex);
+    const pageBuffer = rewrite?.pageBuffer ?? (await this.pageImage(params.documentId, params.pageIndex)).buffer;
     try {
-      const cropped = await this.regionImage(source.buffer, roi, params.overlays ?? [], storageKeys);
-      const imageBytes = params.overlays?.length
+      const cropped = await this.regionImage(pageBuffer, roi, params.overlays ?? [], storageKeys);
+      const imageBytes = !rewrite && params.overlays?.length
         ? await sharp(cropped.buffer, { limitInputPixels: 40_000_000 })
           .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
           .jpeg().toBuffer()
@@ -409,6 +524,9 @@ export class AssemblyProcedureDocumentAssetsService {
         pageIndex: params.pageIndex,
         roi,
       });
+      if (rewrite) {
+        return mapSourceBounds(candidates, pixelsToBox(cropped.pixelRoi, rewrite.width, rewrite.height));
+      }
       const grouped = groupAssemblyProcedureTextCandidates(
         params.overlays?.length ? candidates.map((candidate) => ({
           ...candidate,

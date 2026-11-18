@@ -4,6 +4,7 @@ import datetime as dt
 from email.message import Message
 import io
 import importlib.util
+import json
 import sys
 import ssl
 import urllib.error
@@ -73,6 +74,72 @@ class StatusAgentTest(unittest.TestCase):
                     self.assertIs(https_handler._context, context)
                     self.assertIsInstance(redirect_handler, agent.NoRedirectHandler)
                     self.assertEqual(build.return_value.open.call_args.kwargs, {"timeout": 10.0})
+
+    def test_post_adds_report_and_reads_requests_only_when_early_update_is_enabled(self) -> None:
+        agent = load_status_agent()
+        payload = {"clientId": "pi4-test", "logs": []}
+        response_body = json.dumps({"osSecurityUpdateRequests": [
+            {"id": "new", "packages": ["chromium"], "expiresAt": "2099-01-01T00:00:00Z"},
+        ]}).encode("utf-8")
+        baseline = {"state": "installed", "version": "1"}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os_config = Path(temp_dir) / "os-update.conf"
+            request_path = Path(temp_dir) / "request.json"
+            config = {"API_BASE_URL": "http://server.test/api", "CLIENT_KEY": "fixture",
+                      "OS_SECURITY_UPDATE_CONFIG_FILE": str(os_config)}
+            for raw_config in (None, "{", "{}", '{"earlyEnabled": false}'):
+                if raw_config is not None:
+                    os_config.write_text(raw_config, encoding="utf-8")
+                with patch.object(agent.urllib.request, "build_opener") as build:
+                    response = build.return_value.open.return_value.__enter__.return_value
+                    response.getcode.return_value = 200
+                    response.read.return_value = response_body
+                    with patch.object(agent.os_update_health, "_measure_baseline", return_value=baseline) as probe:
+                        agent.post_payload(config, payload)
+                    self.assertEqual(build.return_value.open.call_args.args[0].data,
+                                     json.dumps(payload).encode("utf-8"))
+                    probe.assert_not_called()
+                    self.assertFalse(request_path.exists())
+
+            os_config.write_text(json.dumps({"earlyEnabled": True, "stateDir": temp_dir}), encoding="utf-8")
+            with patch.object(agent.urllib.request, "build_opener") as build, patch.object(
+                agent.os_update_health, "_measure_baseline", return_value=baseline
+            ) as probe:
+                response = build.return_value.open.return_value.__enter__.return_value
+                response.getcode.return_value = 200
+                response.read.return_value = response_body
+                agent.post_payload(config, payload)
+                agent.post_payload(config, payload)
+                sent = json.loads(build.return_value.open.call_args.args[0].data)
+            stored = json.loads(request_path.read_text())["requests"][0]
+            self.assertEqual(sent, {**payload, "osSecurityUpdate": {
+                "earlyEnabled": True, "requests": [{
+                    "id": "new", "receivedAt": stored["receivedAt"], "baseline": {"chromium": baseline},
+                }], "check": None,
+            }})
+            probe.assert_called_once_with("chromium")
+
+    def test_early_update_exceptions_do_not_fail_post_or_log_delivery(self) -> None:
+        agent = load_status_agent()
+        logs = [{"level": "WARN", "message": "m", "context": {"category": "os_update_health"}}]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os_config = Path(temp_dir) / "os-update.conf"
+            os_config.write_text(json.dumps({"earlyEnabled": True, "stateDir": temp_dir}), encoding="utf-8")
+            config = {"API_BASE_URL": "http://server.test/api", "CLIENT_KEY": "fixture",
+                      "OS_SECURITY_UPDATE_CONFIG_FILE": str(os_config)}
+            with patch.object(agent, "load_config", return_value=config), patch.object(
+                agent, "build_payload", return_value={"clientId": "pi4-test", "logs": logs}
+            ), patch.object(agent.urllib.request, "build_opener") as build, patch.object(
+                agent.os_update_health, "mark_logs_delivered"
+            ) as mark, patch.object(agent.os_update_health, "_stored_requests", side_effect=RuntimeError), patch.object(
+                sys, "argv", ["status-agent.py"]
+            ), self.assertLogs(level="WARNING"):
+                response = build.return_value.open.return_value.__enter__.return_value
+                response.getcode.return_value = 200
+                response.read.side_effect = OSError
+                self.assertEqual(agent.main(), 0)
+            build.return_value.open.assert_called_once()
+            mark.assert_called_once_with(config, logs)
 
     def test_parse_config_defaults_disable_success_log_and_storage_health(self) -> None:
         status_agent = load_status_agent()

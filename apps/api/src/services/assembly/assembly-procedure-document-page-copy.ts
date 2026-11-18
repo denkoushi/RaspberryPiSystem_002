@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
+
 import type { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
@@ -25,7 +27,10 @@ export async function copyProcedurePages(
     return pageIndex === undefined ? [] : [{
       ...overlayToCreateDataFromRow(documentId, overlay),
       pageIndex,
-      id: randomUUID()
+      // Keep the text-erase marker so the patch still renders without padding.
+      id: overlay.id.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX)
+        ? `${ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}${randomUUID()}`
+        : randomUUID()
     }];
   });
   if (overlays.length) await tx.assemblyProcedureOverlayElement.createMany({ data: overlays });

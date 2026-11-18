@@ -1,7 +1,7 @@
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 
-import type { OverlayCreationKind } from './assemblyDocumentEditorDraft';
+import type { OverlayRangeChoice } from './assemblyDocumentEditorDraft';
 
 export function AssemblyProcedureOverlayTypeDialog({
   isOpen,
@@ -10,7 +10,7 @@ export function AssemblyProcedureOverlayTypeDialog({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (kind: OverlayCreationKind) => void;
+  onSelect: (kind: OverlayRangeChoice) => void;
 }) {
   return (
     <Dialog
@@ -23,13 +23,14 @@ export function AssemblyProcedureOverlayTypeDialog({
       <div className="mt-4 grid gap-2" role="radiogroup" aria-label="オーバーレイ種類">
         {([
           ['TEXT', '文章', '文字を入力・修正します。'],
+          ['TEXT_REWRITE', '文字を書き換える', '元の文字を消して、打ち直せる文章にします。'],
           ['IMAGE', '画像', '画像assetを配置します。'],
           ['SHAPE', '図形・記号', '矩形・楕円・線・矢印を配置します。']
         ] as const).map(([kind, label, description]) => (
           <Button
             key={kind}
             type="button"
-            data-kiosk-sop-target={`assembly-document-editor-type-${kind.toLowerCase()}`}
+            data-kiosk-sop-target={`assembly-document-editor-type-${kind.toLowerCase().replace('_', '-')}`}
             variant="ghost"
             className="flex min-h-11 flex-col items-start gap-0.5 !px-3 !py-2 text-left"
             role="radio"

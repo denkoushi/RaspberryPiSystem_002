@@ -11,3 +11,8 @@ export function resolveProcedureTextFeedback(row: FeedbackState, element: Assemb
     : finalText.trim() === row.originalText.trim() ? 'REVERTED' : 'EDITED';
   return outcome === row.outcome && finalText === row.finalText ? null : { outcome, finalText };
 }
+
+/** Resolved feedback older than this is not used for learning or evaluation. */
+export function procedureFeedbackLearningWindow(now: Date) {
+  return { gte: new Date(now.getTime() - 180 * 86400_000), lte: now };
+}
