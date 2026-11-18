@@ -8,8 +8,15 @@ import { readWinnerRowsByLogicalKeyFseibans } from './source.js';
 export async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<string, string>> {
   assertWritablePlanningItemIds(itemIds);
   const logicalKeyByItem = new Map<string, string>();
+  const pieceItemIds = itemIds.filter((itemId) => sessakuPieceIdFromItemId(itemId));
+  // One lookup for every piece item; on any failure fall back to the per-item loop so errors keep their order.
+  const pieceKeys = pieceItemIds.length > 1
+    ? await resolveSessakuPieceItemKeys(prisma, pieceItemIds).catch(() => null)
+    : null;
   for (const itemId of itemIds) {
-    const pieceKey = sessakuPieceIdFromItemId(itemId) ? (await resolveSessakuPieceItemKeys(prisma, [itemId])).get(itemId) : null;
+    const pieceKey = sessakuPieceIdFromItemId(itemId)
+      ? pieceKeys?.get(itemId) ?? (await resolveSessakuPieceItemKeys(prisma, [itemId])).get(itemId)
+      : null;
     const logicalKey = pieceKey ? encodeSessakuPieceKey(pieceKey) : decodeRowItemId(itemId);
     if (logicalKey == null) throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
     logicalKeyByItem.set(itemId, logicalKey);
