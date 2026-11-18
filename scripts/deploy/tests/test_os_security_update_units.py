@@ -35,6 +35,7 @@ class OSUpdateUnitTests(unittest.TestCase):
         return self.environment.from_string((ANSIBLE / f'templates/{name}.j2').read_text()).render(**variables)
 
     def test_all_groups_render_strict_service_timer_and_config(self):
+        self.assertIs(self.variables['os_security_update_early_enabled'], False)
         for group, time, delay, browser in [('server', '02:00:00', '0', ''),
                                            ('kiosk', '01:00:00', '90min', 'kiosk-browser.service'),
                                            ('signage', '01:30:00', '30min', '')]:
@@ -50,7 +51,8 @@ class OSUpdateUnitTests(unittest.TestCase):
                 for line in ('Type=oneshot', 'ExecStart=/usr/local/sbin/raspi-os-security-update',
                              'Nice=10', 'IOSchedulingClass=idle', 'TimeoutStartSec=2h'):
                     self.assertIn(line, service.splitlines())
-                config = json.loads(self.render('raspi-os-security-update.conf', variables))
+                rendered = self.render('raspi-os-security-update.conf', variables)
+                config = json.loads(rendered)
                 self.assertEqual(config['mode'], 'apply')
                 self.assertEqual(config['browserUnit'], browser)
                 self.assertEqual(config['blacklist'], self.variables['os_security_update_package_blacklist'])
@@ -61,6 +63,33 @@ class OSUpdateUnitTests(unittest.TestCase):
                 self.assertEqual(config['releaseMarkerMaxAgeSeconds'], 14400)
                 self.assertEqual(config['lockPath'], '/run/lock/raspi-os-security-update.lock')
                 self.assertEqual(config['stateDir'], '/var/lib/raspi-os-security-update')
+                self.assertEqual(rendered, json.dumps({
+                    'mode': 'apply', 'blacklist': self.variables['os_security_update_package_blacklist'],
+                    'allowlist': ['^chromium', '^rpi-chromium-mods$'], 'browserUnit': browser,
+                    'stateDir': '/var/lib/raspi-os-security-update', 'windowStartHour': 0,
+                    'windowEndHour': 5, 'releaseMarker': '/run/raspi-release/active',
+                    'releaseMarkerMaxAgeSeconds': 14400, 'lockPath': '/run/lock/raspi-os-security-update.lock',
+                }))
+                self.assertEqual(timer, (
+                    '[Unit]\nDescription=Run Raspberry Pi OS security updates weekly at night\n\n'
+                    f'[Timer]\nOnCalendar=Sun *-*-* {time} Asia/Tokyo\nRandomizedDelaySec={delay}\n'
+                    'FixedRandomDelay=true\nPersistent=true\n\n[Install]\nWantedBy=timers.target'))
+
+    def test_early_update_uses_daily_calendar_and_preserves_weekly_day_in_config(self):
+        for group, time in [('server', '02:00:00'), ('kiosk', '01:00:00'), ('signage', '01:30:00')]:
+            with self.subTest(group=group):
+                variables = {**self.variables}
+                if group != 'server':
+                    variables.update(tasks(f'group_vars/{group}.yml'))
+                before_timer = self.render('raspi-os-security-update.timer', variables)
+                before_conf = json.loads(self.render('raspi-os-security-update.conf', variables))
+                variables['os_security_update_early_enabled'] = True
+                self.assertEqual(self.render('raspi-os-security-update.timer', variables),
+                                 before_timer.replace('OnCalendar=Sun ', 'OnCalendar='))
+                self.assertIn(f'OnCalendar=*-*-* {time} Asia/Tokyo',
+                              self.render('raspi-os-security-update.timer', variables).splitlines())
+                self.assertEqual(json.loads(self.render('raspi-os-security-update.conf', variables)),
+                                 {**before_conf, 'earlyEnabled': True, 'weeklyWeekday': 6})
 
     def test_every_host_is_enabled_and_applies(self):
         self.assertTrue(self.variables['os_security_update_enabled'])
