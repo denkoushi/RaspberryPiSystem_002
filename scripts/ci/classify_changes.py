@@ -129,6 +129,8 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
         "infrastructure/ansible/roles/kiosk/tasks/package-integrity.yml",
         "infrastructure/ansible/roles/kiosk/tasks/clamav.yml",
+        "infrastructure/ansible/roles/kiosk/tasks/usb-audio-input.yml",
+        "infrastructure/ansible/roles/kiosk/files/50-kiosk-usb-audio-input.conf",
         "infrastructure/ansible/templates/clamav-scan.sh.j2",
         "infrastructure/ansible/templates/package-integrity-scan.sh.j2",
         "infrastructure/ansible/templates/logrotate-security.conf.j2",

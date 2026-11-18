@@ -1,0 +1,34 @@
+---
+- name: Create the WirePlumber configuration drop-in directory
+  ansible.builtin.file:
+    path: /etc/wireplumber/wireplumber.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Prefer USB audio profiles with capture on the kiosk
+  ansible.builtin.copy:
+    src: 50-kiosk-usb-audio-input.conf
+    dest: /etc/wireplumber/wireplumber.conf.d/50-kiosk-usb-audio-input.conf
+    owner: root
+    group: root
+    mode: '0644'
+  register: kiosk_usb_audio_input_config
+
+- name: Restart WirePlumber in the active kiosk GUI session after a configuration change
+  ansible.builtin.shell: |
+    set -eu
+    uid="$(id -u)"
+    export XDG_RUNTIME_DIR="/run/user/${uid}"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+    if test -S "${XDG_RUNTIME_DIR}/bus" && pgrep -u "${uid}" -x labwc >/dev/null; then
+      systemctl --user restart wireplumber
+      echo restarted
+    fi
+  become: true
+  become_user: '{{ kiosk_gui_user | default(ansible_user) }}'
+  register: kiosk_usb_audio_input_restart
+  changed_when: kiosk_usb_audio_input_restart.stdout | default('') == 'restarted'
+  ignore_errors: true
+  when: kiosk_usb_audio_input_config.changed
