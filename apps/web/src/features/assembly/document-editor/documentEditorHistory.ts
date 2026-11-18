@@ -6,7 +6,7 @@ import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types
 export type MaterialHistoryUpdate = { placement: PendingMaterialPlacement; assetId?: string };
 export type OverlayHistoryAction = OverlayDraftAction
   | { type: 'releaseMaterials'; placements: PendingMaterialPlacement[]; replacement?: AssemblyProcedureOverlayElement; preserveHistory?: boolean }
-  | { type: 'shiftPages'; afterPageIndex: number }
+  | { type: 'shiftPages'; afterPageIndex: number; pageCount?: number; importedElements?: AssemblyProcedureOverlayElement[] }
   | { type: 'deletePage'; pageIndex: number }
   | { type: 'undo'; restoredMaterials?: MaterialHistoryUpdate[]; failedMaterials?: PendingMaterialPlacement[] }
   | { type: 'redo'; restoredMaterials?: MaterialHistoryUpdate[]; failedMaterials?: PendingMaterialPlacement[] }
@@ -41,7 +41,10 @@ export function historyReducer(state: OverlayHistory, action: OverlayHistoryActi
     return { past: compact(state.past.map(remove).reverse()).reverse(), present, future: compact(state.future.map(remove)), dragStart: state.dragStart ? remove(state.dragStart) : null };
   }
   if (action.type === 'shiftPages') {
-    const shift = (elements: AssemblyProcedureOverlayElement[]) => shiftOverlayPages(elements, action.afterPageIndex);
+    const shift = (elements: AssemblyProcedureOverlayElement[]) => [
+      ...shiftOverlayPages(elements, action.afterPageIndex, action.pageCount),
+      ...(action.importedElements ?? [])
+    ];
     return { past: state.past.map(shift), present: shift(state.present), future: state.future.map(shift), dragStart: state.dragStart ? shift(state.dragStart) : null };
   }
   if (action.type === 'beginDrag') return { ...state, dragStart: state.present };
