@@ -8,17 +8,31 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 ANSIBLE = ROOT / 'infrastructure/ansible'
+RULES = json.loads((ROOT / 'scripts/server/jpcert-advisories/rules.json').read_text())
 
 
 def test_rules_schema_and_repository_evidence():
-    rules = json.loads((ROOT / 'scripts/server/jpcert-advisories/rules.json').read_text())
-    assert isinstance(rules, list) and rules
+    assert isinstance(RULES, list) and RULES
+    # A job keeps at most 30 products; more rules could silently drop page-only matches.
+    assert len(RULES) <= 30
     products = set()
-    for rule in rules:
-        assert set(rule) <= {'product', 'aliases', 'exclude', 'evidence', 'probes'}
-        assert {'product', 'aliases', 'evidence'} <= set(rule)
+    required = {'product', 'aliases', 'evidence', 'scope', 'remedy'}
+    for rule in RULES:
+        assert required <= set(rule) <= required | {'exclude', 'probes', 'absence_by_dpkg'}
         assert isinstance(rule['product'], str) and rule['product'] and rule['product'] not in products
         products.add(rule['product'])
+        assert rule['scope'] in {'pi5', 'fleet'}
+        remedy = rule['remedy']
+        if remedy['kind'] == 'os-security-update':
+            assert set(remedy) == {'kind', 'packages', 'upstream_version_comparable'}
+            assert isinstance(remedy['packages'], list) and 1 <= len(remedy['packages']) <= 30
+            assert all(isinstance(package, str) and package.strip() for package in remedy['packages'])
+            assert remedy['upstream_version_comparable'] is (rule['product'] == 'Chromium')
+        else:
+            assert remedy == {'kind': 'manual'}
+        if 'absence_by_dpkg' in rule:
+            assert rule['absence_by_dpkg'] is True
+            assert rule['probes'] and all(probe['kind'] == 'dpkg' for probe in rule['probes'])
         for key in ('aliases', 'exclude'):
             values = rule.get(key, [])
             assert isinstance(values, list)
@@ -47,6 +61,28 @@ def test_rules_schema_and_repository_evidence():
             assert re.search(evidence['pattern'], (ROOT / path).read_text()), evidence
     assert {'Chromium', 'Node.js', 'PostgreSQL', 'OpenSSH', 'Docker Engine'} <= products
     assert not {'rkhunter', 'nginx', 'Redis', 'Brotli', 'glibc'} & products
+
+
+def test_remedies_respect_weekly_security_update_blacklist():
+    path = ROOT / 'scripts/os-security-update/raspi-os-security-update.py'
+    spec = importlib.util.spec_from_file_location('os_security_update', path)
+    updater = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(updater)
+    # These probes measure the running kernel and Tailscale binary rather than dpkg.
+    unprobed_packages = {'Linux kernel': ['linux-image-rpi-2712'], 'Tailscale': ['tailscale']}
+    blocked_products = set()
+    for rule in RULES:
+        remedy = rule['remedy']
+        packages = unprobed_packages.get(rule['product'], []) + [
+            package for probe in rule.get('probes', []) if probe['kind'] == 'dpkg'
+            for package in probe['packages']
+        ]
+        if any(updater.matches(package, updater.DEFAULT_BLACKLIST) for package in packages):
+            blocked_products.add(rule['product'])
+            assert remedy == {'kind': 'manual'}
+        if remedy['kind'] == 'os-security-update':
+            assert not any(updater.matches(package, updater.DEFAULT_BLACKLIST) for package in remedy['packages'])
+    assert {'Linux kernel', 'Tailscale', 'Docker Engine', 'containerd'} <= blocked_products
 
 
 def test_ansible_delivery_units_configuration_and_collector_markers():

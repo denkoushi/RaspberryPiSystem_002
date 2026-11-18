@@ -16,7 +16,11 @@
       {
         "kind": "os_release"
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Linux kernel",
@@ -35,7 +39,11 @@
       {
         "kind": "uname"
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Node.js",
@@ -60,7 +68,11 @@
           "--version"
         ]
       }
-    ]
+    ],
+    "scope": "pi5",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "PostgreSQL",
@@ -84,7 +96,11 @@
           "--version"
         ]
       }
-    ]
+    ],
+    "scope": "pi5",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Caddy",
@@ -109,7 +125,11 @@
           "version"
         ]
       }
-    ]
+    ],
+    "scope": "pi5",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Docker Engine",
@@ -131,7 +151,12 @@
           "docker.io"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    },
+    "absence_by_dpkg": true
   },
   {
     "product": "containerd",
@@ -152,7 +177,12 @@
           "containerd"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    },
+    "absence_by_dpkg": true
   },
   {
     "product": "Chromium",
@@ -177,7 +207,16 @@
           "chromium-browser"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "os-security-update",
+      "packages": [
+        "chromium",
+        "chromium-browser"
+      ],
+      "upstream_version_comparable": true
+    }
   },
   {
     "product": "Tailscale",
@@ -198,7 +237,11 @@
           "version"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "ClamAV",
@@ -218,7 +261,17 @@
           "clamav"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "os-security-update",
+      "packages": [
+        "clamav",
+        "clamav-daemon",
+        "clamav-freshclam"
+      ],
+      "upstream_version_comparable": false
+    }
   },
   {
     "product": "fail2ban",
@@ -238,7 +291,16 @@
           "fail2ban"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "os-security-update",
+      "packages": [
+        "fail2ban"
+      ],
+      "upstream_version_comparable": false
+    },
+    "absence_by_dpkg": true
   },
   {
     "product": "OpenSSH",
@@ -259,7 +321,16 @@
           "openssh-client"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "os-security-update",
+      "packages": [
+        "openssh-server",
+        "openssh-client"
+      ],
+      "upstream_version_comparable": false
+    }
   },
   {
     "product": "sudo",
@@ -279,7 +350,16 @@
           "sudo"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "os-security-update",
+      "packages": [
+        "sudo"
+      ],
+      "upstream_version_comparable": false
+    },
+    "absence_by_dpkg": true
   },
   {
     "product": "Python",
@@ -299,7 +379,11 @@
           "python3"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Prisma",
@@ -318,7 +402,11 @@
         "path": "apps/api/package.json",
         "name": "@prisma/client"
       }
-    ]
+    ],
+    "scope": "pi5",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Fastify",
@@ -337,7 +425,11 @@
         "path": "apps/api/package.json",
         "name": "fastify"
       }
-    ]
+    ],
+    "scope": "pi5",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "React",
@@ -356,7 +448,11 @@
         "path": "apps/web/package.json",
         "name": "react"
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Vite",
@@ -375,7 +471,11 @@
         "path": "apps/web/package.json",
         "name": "vite"
       }
-    ]
+    ],
+    "scope": "pi5",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Ansible",
@@ -400,7 +500,11 @@
           "--version"
         ]
       }
-    ]
+    ],
+    "scope": "pi5",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "Trivy",
@@ -421,7 +525,11 @@
           "--version"
         ]
       }
-    ]
+    ],
+    "scope": "pi5",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "OpenSSL",
@@ -443,7 +551,11 @@
           "libssl3"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "curl",
@@ -463,7 +575,11 @@
           "curl"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    }
   },
   {
     "product": "zlib",
@@ -483,6 +599,10 @@
           "zlib1g"
         ]
       }
-    ]
+    ],
+    "scope": "fleet",
+    "remedy": {
+      "kind": "manual"
+    }
   }
 ]
