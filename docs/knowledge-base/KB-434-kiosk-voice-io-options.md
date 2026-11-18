@@ -52,6 +52,13 @@
 - `feat/voice-terminal-kit` の AtomEcho S3R 音声端末の計画（未マージ）で、「内蔵スピーカーは現場には小さすぎる。返答は別の出力が必要」と記録されている。USB スピーカーフォンはその出力の候補になる。
 - 音声認識の経路（`apps/web/src/features/voice/voiceTranscription.ts`、`apps/api/src/services/inference/adapters/http-speech-to-text.adapter.ts`）と、工場 GPU での文字起こしの計測は、上の計画と ADR-20261011 にある。USB 方式でも同じ経路を使う想定。
 
+## USB 機器の入力プロファイル（2026-11-18）
+
+- 事象: `raspi4-kensaku-stonebase01` に USB ヘッドセット（JMTek `0c76:161f`）を挿しても、編集画面の音声入力でマイクが使えなかった。カーネルと ALSA は録音側も認識していた。
+- 原因: WirePlumber 0.5.8 がこのカードを `output:analog-stereo`（出力のみ）に自動で選び、Source が0件になった。この機種には出力と入力を同時に使うプロファイルが無い。`wpctl set-profile` での手動切り替えは保存されず、抜き差しや再起動で戻る。
+- 対処: `infrastructure/ansible/roles/kiosk/files/50-kiosk-usb-audio-input.conf` を `/etc/wireplumber/wireplumber.conf.d/` に置く（初期構築と標準デプロイの両方）。USB カードは「出力+入力の組み合わせ → 入力のみ」の順で選ぶ。組み合わせを持つ機種はスピーカーも使え、持たない機種はマイクを優先する。入力の無い USB スピーカーは従来どおり。設定が変わったときだけ、画面ユーザーの WirePlumber を再起動する。
+- 確認: 画面ユーザー（`kiosk-display` など）で `wpctl status` の Sources に USB 機器が出ること。
+
 ## 別件
 
 - Pi4 を 20〜50台、今のルーター1台と中継機1台でつなぐと通信が詰まりやすい。台数が増える前に、現場の Wi-Fi 自体を見直す必要がある。

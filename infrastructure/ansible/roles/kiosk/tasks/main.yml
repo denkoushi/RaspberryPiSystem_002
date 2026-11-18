@@ -213,6 +213,13 @@
     insertbefore: "</keyboard>"
   when: manage_kiosk_browser | default(false) | bool
 
+- name: Apply the Pi4 kiosk USB audio input policy during full provisioning
+  ansible.builtin.import_tasks: usb-audio-input.yml
+  when:
+    - "'kiosk' in group_names"
+    - terminal_release_mode | default('full') == 'full'
+    - manage_kiosk_browser | default(false) | bool
+
 - name: Apply the optional GUI autologin account after full provisioning
   ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-session-switch.yml"
   environment:
