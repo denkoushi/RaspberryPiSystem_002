@@ -18,7 +18,7 @@ export function useInspectionDrawingDimensionModeReset(
   }, [mode, selectedPoint, setMode]);
 }
 
-/** 寸法線を保存し、寸法線モード中なら丸数字モードへ戻すハンドラを作る */
+/** 寸法線を保存し、寸法線モード中ならもう一方の向きが未配置ならその向きへ、そろったら丸数字モードへ移すハンドラを作る */
 export function createInspectionDrawingCalloutDimsChangeHandler(
   mode: InspectionDrawingToolbarMode,
   setMode: (mode: InspectionDrawingToolbarMode) => void,
@@ -26,6 +26,8 @@ export function createInspectionDrawingCalloutDimsChangeHandler(
 ): (id: string, dims: InspectionDrawingCalloutDim[]) => void {
   return (id, dims) => {
     updatePoint(id, { calloutDims: dims });
-    if (mode === 'dimX' || mode === 'dimY') setMode('place');
+    if (mode !== 'dimX' && mode !== 'dimY') return;
+    const missing = mode === 'dimX' ? 'y' : 'x';
+    setMode(dims.some((dim) => dim.dir === missing) ? 'place' : missing === 'x' ? 'dimX' : 'dimY');
   };
 }
