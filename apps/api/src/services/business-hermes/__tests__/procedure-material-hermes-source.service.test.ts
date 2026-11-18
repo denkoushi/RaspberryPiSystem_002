@@ -48,6 +48,7 @@ describe('procedure material corpus', () => {
     expect(sql).not.toContain('CASE WHEN');
     expect(sql).toContain('LEFT("imageDescription", ?::int) AS "imageDescription"');
     expect(sql).toContain('WHERE "discardedAt" IS NULL');
+    expect(sql).toContain(`NOT ("origin" = 'APP' AND "kind" = 'TEXT')`);
     expect(sql).toContain('ORDER BY "receivedAt" DESC, "createdAt" DESC, "id" DESC LIMIT ?');
     expect(sql).not.toContain('fromEmail');
     queryRaw.mockResolvedValue([row('1', { text: '変更した本文', imageDescription: '新しい説明' })]);
