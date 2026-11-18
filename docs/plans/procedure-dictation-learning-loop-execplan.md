@@ -14,7 +14,7 @@ Improve the conversion of spoken Japanese into written procedure text using fina
 
 ## Surprises & Discoveries
 
-The existing overlay save identifies the latest proposal per element across sources. For append mode, the editor inserts the existing text, a newline, and the rewrite result. The stored proposal needs the full string for the save to recognize a kept proposal.
+The existing overlay save identifies the latest proposal per element and source. For append mode, the editor inserts the existing text, a newline, and the rewrite result. The stored proposal needs the full string for the save to recognize a kept proposal.
 
 The API skips proposals that exceed the editor's text limit. The editor sends the original text for new-mode proposals so saving the restored `ここに文章を入力` placeholder resolves as `REVERTED`.
 
@@ -34,7 +34,7 @@ Stage 1 establishes the data needed to pair proposals with human corrections. St
 
 ## Plan of Work
 
-Stage 1 adds a source, input mode, and transcript in `apps/api/prisma/schema.prisma`. When a rewrite targets an active head draft and the request can write under the edit lease, store its proposal. Saving the overlay pairs the latest proposal for each element with the final text and marks it kept, edited, or reverted.
+Stage 1 adds a source, input mode, and transcript in `apps/api/prisma/schema.prisma`. When a rewrite targets an active head draft and the request can write under the edit lease, store its proposal. Saving the overlay pairs the latest proposal for each element and source with the final text and marks it kept, edited, or reverted.
 
 Stage 2 extracts instruction assembly in `apps/api/src/services/assembly/procedure-dictation-rewrite.service.ts` into one pure function, meaning its output depends only on its arguments. Supply the site glossary, learned term corrections, and saved dictation corrections. Each night, run both versions of the prompt on the same fixed questions and questions built from recorded feedback. Keep confirmation cases separate from the examples fed into the prompt. Adopt the enriched version only if its score on the confirmation cases does not regress. Persist both scores and the decision on every run.
 
@@ -64,7 +64,7 @@ The additive SQL is in `apps/api/prisma/migrations/20261118120000_add_procedure_
 
 ## Known Limitations
 
-When several proposals target the same element before a save, only the latest row resolves. Earlier rows remain proposed and are excluded from outcome counts and learning. A recorded row can remain even if the Web editor discards a late result or the operator undoes it. Saving a different text can mark that row `EDITED`. The next PR's evaluation uses only `smallEdit` rows, where the final text is a small edit of the proposal, so substantially different pairs are excluded.
+When several proposals from the same source target the same element before a save, only the latest row resolves. Earlier rows remain proposed and are excluded from outcome counts and learning. A recorded row can remain even if the Web editor discards a late result or the operator undoes it. Saving a different text can mark that row `EDITED`. The next PR's evaluation uses only `smallEdit` rows, where the final text is a small edit of the proposal, so substantially different pairs are excluded.
 
 ## Interfaces and Dependencies
 

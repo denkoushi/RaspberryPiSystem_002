@@ -88,12 +88,16 @@ describe('caption feedback after overlay save', () => {
 
 describe('text feedback after overlay save', () => {
   const row = { ...feedback, originalText: 'Original line' };
-  it.each(['LAYOUT', 'DICTATION'])('resolves only the latest %s proposal and re-resolves later edits', async source => {
+  it.each(['LAYOUT', 'DICTATION'])('resolves only the latest %s proposal per source and re-resolves later edits', async source => {
     const latest = { ...row, source };
-    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([latest, { ...row, id: 'older', source: source === 'LAYOUT' ? 'DICTATION' : 'LAYOUT' }]);
+    const other = source === 'LAYOUT' ? 'DICTATION' : 'LAYOUT';
+    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([latest, { ...row, id: 'other-source', source: other }, { ...row, id: 'older', source }]);
     await save();
     expect(db.assemblyProcedureTextFeedback.findMany).toHaveBeenCalledWith({ where: { documentId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
-    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledExactlyOnceWith({ where: { id: 'feedback' }, data: { outcome: 'KEPT', finalText: 'AI line', resolvedAt: expect.any(Date) } });
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledTimes(2);
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledWith({ where: { id: 'feedback' }, data: { outcome: 'KEPT', finalText: 'AI line', resolvedAt: expect.any(Date) } });
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledWith({ where: { id: 'other-source' }, data: { outcome: 'KEPT', finalText: 'AI line', resolvedAt: expect.any(Date) } });
+    vi.mocked(db.assemblyProcedureTextFeedback.update).mockClear();
     db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([{ ...latest, outcome: 'KEPT', finalText: 'AI line' }]);
     await save([{ ...caption, text: 'Human line' }]);
     expect(db.assemblyProcedureTextFeedback.update).toHaveBeenLastCalledWith({ where: { id: 'feedback' }, data: { outcome: 'EDITED', finalText: 'Human line', resolvedAt: expect.any(Date) } });
