@@ -333,7 +333,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => onRankChange?.(item, event.target.value ? Number(event.target.value) : null)}
               >
-                {(rank != null && !rankOptions.some((option) => option === rank) ? [rank, ...rankOptions] : rankOptions).map((option) => (
+                {rankChoices.map((option) => (
                   <option key={option ?? 'none'} value={option ?? ''}>
                     {option == null ? '－' : option}
                   </option>

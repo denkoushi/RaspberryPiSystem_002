@@ -3,8 +3,9 @@ import { PLANNING_BOARD_MAX_DUE_OFFSET_DAYS } from '@raspi-system/shared-types';
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 
+import { formatPlanningBoardDate } from './planningBoardDateLabel';
 import { formatPlanningBoardLoadSummary, formatPlanningBoardResourceLoad } from './planningBoardLoad';
-import { addUtcDays, displayedDue, shortDate, todayJst } from './planningBoardPageModel';
+import { addUtcDays, displayedDue, todayJst } from './planningBoardPageModel';
 import { resolveGrindingPlanningBoardResource } from './sortGrindingPlanningBoardItems';
 
 import type { DueMode, ResourceChoice } from './planningBoardPageModel';
@@ -44,15 +45,15 @@ export function PlanningBoardBulkEditDialog({
   const previewDue = (item: GrindingPlanningBoardItem) => {
     const before = displayedDue(item, allocation);
     const base = before ?? todayJst();
-    if (dueMode === 'date') return `${shortDate(before)} → ${shortDate(dueDate)}`;
+    if (dueMode === 'date') return `${formatPlanningBoardDate(before)} → ${formatPlanningBoardDate(dueDate)}`;
     if (dueMode === 'offsetDays') {
       const offset = Number(offsetDays);
       return Number.isInteger(offset) && offset >= 1 && offset <= PLANNING_BOARD_MAX_DUE_OFFSET_DAYS
-        ? `${shortDate(before)} → ${shortDate(addUtcDays(base, offset))}`
-        : `${shortDate(before)} → 入力エラー`;
+        ? `${formatPlanningBoardDate(before)} → ${formatPlanningBoardDate(addUtcDays(base, offset))}`
+        : `${formatPlanningBoardDate(before)} → 入力エラー`;
     }
-    if (dueMode === 'restore') return `${shortDate(before)} → ${shortDate(item.originalDueDate)}`;
-    return `${shortDate(before)} → 変更なし`;
+    if (dueMode === 'restore') return `${formatPlanningBoardDate(before)} → ${formatPlanningBoardDate(item.originalDueDate)}`;
+    return `${formatPlanningBoardDate(before)} → 変更なし`;
   };
 
   const editorResources = (editorSnapshot?.resources ?? []).filter((resource) => editorItems.every((item) => canMoveResource(item, resource)));
