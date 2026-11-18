@@ -79,8 +79,27 @@ describe('common mode in the shared screens', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('?common=1');
     expect(screen.queryByRole('button', { name: '作る' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '清掃', exact: true }));
+    expect(screen.getByRole('button', { name: '清掃', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('creates in the category selected in the left pane and returns to that category', async () => {
+    showWorkshop();
+    fireEvent.click(await screen.findByRole('button', { name: '清掃', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '作る' }));
-    expect(within(screen.getByRole('dialog', { name: '共通の手順を作る' })).getByRole('button', { name: '清掃', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const dialog = within(screen.getByRole('dialog', { name: '共通の手順を作る' }));
+    expect(dialog.queryByRole('region', { name: '分類', exact: true })).not.toBeInTheDocument();
+    expect(dialog.queryByRole('button', { name: '分類を編集' })).not.toBeInTheDocument();
+    fireEvent.change(dialog.getByLabelText('対象'), { target: { value: 'エアブロー' } });
+    fireEvent.click(dialog.getByRole('button', { name: '使い方', exact: true }));
+    fireEvent.click(dialog.getByRole('button', { name: '作ってエディタへ' }));
+    await waitFor(() => expect(api.create).toHaveBeenCalledWith({ categoryId: 'clean', target: 'エアブロー', actionId: 'use', kanaRow: 'あ' }));
+    await waitFor(() => expect(JSON.parse(screen.getByTestId('location').textContent ?? '')).toMatchObject({
+      pathname: '/kiosk/assembly/procedure-documents/new-manual/edit',
+      state: {
+        returnTo: '/kiosk/assembly/manuals/workshop?common=1&process=clean',
+        context: { modelCode: 'エアブロー', modelCodeKey: 'エアブロー', processId: 'clean', processName: '共通 › 清掃', mode: 'make' }
+      }
+    }));
   });
 
   it('keeps refreshed common data when older overview and catalog requests finish later', async () => {
@@ -92,10 +111,8 @@ describe('common mode in the shared screens', () => {
     api.overview.mockReturnValueOnce(new Promise(resolve => { finishOverview = resolve; }));
     api.catalog.mockReturnValueOnce(new Promise(resolve => { finishCatalog = resolve; }));
     showWorkshop('?common=1&process=tools');
-    fireEvent.click(screen.getByRole('button', { name: '作る' }));
-    const dialog = within(screen.getByRole('dialog', { name: '共通の手順を作る' }));
-    fireEvent.click(dialog.getByRole('button', { name: '分類を編集' }));
-    const section = within(dialog.getByRole('region', { name: '分類', exact: true }));
+    const section = within(screen.getByRole('region', { name: '分類', exact: true }));
+    fireEvent.click(section.getByRole('button', { name: '分類を編集' }));
     fireEvent.change(section.getByLabelText('分類の名前'), { target: { value: '新しい分類' } });
     const updated = { ...catalog, categories: [...catalog.categories, { ...catalog.categories[0], id: 'new', name: '新しい分類' }] };
     api.catalog.mockResolvedValue(updated);
@@ -104,7 +121,7 @@ describe('common mode in the shared screens', () => {
     expect(await screen.findByRole('row', { name: '新しい工具_使い方' })).toBeInTheDocument();
     await act(async () => { finishCatalog(catalog); finishOverview({ processes: [{ processId: 'tools', items }] }); });
     expect(screen.getByRole('row', { name: '新しい工具_使い方' })).toBeInTheDocument();
-    expect(dialog.getByRole('button', { name: '新しい分類', exact: true })).toBeInTheDocument();
+    expect(section.getByRole('button', { name: '新しい分類', exact: true })).toBeInTheDocument();
     expect(screen.queryByRole('row', { name: 'トルクレンチ_使い方' })).not.toBeInTheDocument();
   });
 
@@ -132,6 +149,16 @@ describe('common mode in the shared screens', () => {
     fireEvent.click(within(screen.getByRole('dialog', { name: '下書きを削除' })).getByRole('button', { name: '削除' }));
     await waitFor(() => expect(api.deleteDocument).toHaveBeenCalledWith('micrometer', 'test-pin'));
     expect(api.replace).toHaveBeenCalledWith('マイクロメータ', 'tools', { modelCode: 'マイクロメータ', assignments: [] });
+  });
+
+  it('keeps the common prefix when opening an existing procedure from the workshop', async () => {
+    showWorkshop('?common=1&process=tools');
+    const row = await screen.findByRole('row', { name: 'トルクレンチ_使い方' });
+    fireEvent.click(within(row).getByRole('button', { name: '直す' }));
+    expect(JSON.parse(screen.getByTestId('location').textContent ?? '')).toMatchObject({
+      pathname: '/kiosk/assembly/procedure-documents/torque/edit',
+      state: { context: { processId: 'tools', processName: '共通 › 工具', mode: 'fix' } }
+    });
   });
 
   it('browser restores the common route, lists published only and opens the existing viewer', async () => {
@@ -172,14 +199,14 @@ describe('common create dialog', () => {
     expect(dialog.firstElementChild).toHaveClass('!bg-[#161c22]', '!text-[#eef3f6]', '!max-w-[1180px]', '!my-auto', '!border', '!border-[#344252]', '!rounded-xl', '!px-7', '!py-6');
     expect(within(dialog).getByRole('heading', { name: '共通の手順を作る' })).toHaveClass('text-[#eef3f6]');
     expect(within(dialog).getByLabelText('対象')).toHaveClass('bg-[#0b0f13]', 'text-[#eef3f6]');
-    expect(within(dialog).getByRole('button', { name: '工具', exact: true })).toHaveClass('bg-[#3ba77626]', 'text-[#eef3f6]');
-    fireEvent.click(within(dialog).getByRole('button', { name: '分類を編集' }));
-    expect(within(dialog).getByLabelText('分類の名前')).toHaveClass('bg-[#0b0f13]', 'text-[#eef3f6]');
+    fireEvent.click(within(dialog).getByRole('button', { name: '作業を編集' }));
+    expect(within(dialog).getByLabelText('作業の名前')).toHaveClass('bg-[#0b0f13]', 'text-[#eef3f6]');
+    fireEvent.click(within(dialog).getByRole('button', { name: '使い方', exact: true }));
+    expect(within(dialog).getByRole('button', { name: '使い方', exact: true })).toHaveClass('bg-[#3ba77626]', 'text-[#eef3f6]');
   });
 
-  it('preselects category, suggests its known targets and blocks an exact duplicate; similar item opens editor', () => {
+  it('suggests the selected category’s known targets and blocks an exact duplicate; similar item opens editor', () => {
     showDialog();
-    expect(screen.getByRole('button', { name: '工具', exact: true })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'トルクレンチ', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '使い方', exact: true }));
     expect(screen.getByLabelText('名前のプレビュー')).toHaveTextContent('トルクレンチ_使い方');
@@ -214,31 +241,56 @@ describe('common create dialog', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('同じ手順があります');
   });
 
+});
+
+describe('common choice editors', () => {
   it.each([['分類', 'categories', '清掃', 'clean', '工具'], ['作業', 'actions', '校正', 'calibrate', '使い方']] as const)('supports %s edit-mode add, rename, delete, in-use delete guard and inline errors', async (title, kind, unusedName, unusedId, usedName) => {
-    showDialog();
+    const isCategory = kind === 'categories';
+    if (isCategory) {
+      showWorkshop('?common=1&process=clean');
+      await screen.findByRole('row', { name: '研削盤_使い方' });
+    } else {
+      showDialog();
+    }
+    const refresh = isCategory ? api.catalog : onChanged;
+    const initialRefreshCount = refresh.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: `${title}を編集` }));
     const section = within(screen.getByRole('region', { name: title, exact: true }));
     fireEvent.change(section.getByLabelText(`${title}の名前`), { target: { value: '新しい名前' } });
     fireEvent.click(section.getByRole('button', { name: '追加' }));
     await waitFor(() => expect(api.save).toHaveBeenCalledWith(kind, '新しい名前', undefined));
-    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(initialRefreshCount + 1));
+    await waitFor(() => expect(section.getByLabelText(`${title}の名前`)).toHaveValue(''));
     fireEvent.click(section.getByRole('button', { name: unusedName, exact: true }));
     fireEvent.change(section.getByLabelText(`${title}の名前`), { target: { value: '変更名' } });
     fireEvent.click(section.getByRole('button', { name: '変更' }));
     await waitFor(() => expect(api.save).toHaveBeenCalledWith(kind, '変更名', unusedId));
-    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(initialRefreshCount + 2));
+    await waitFor(() => expect(section.getByLabelText(`${title}の名前`)).toHaveValue(''));
     fireEvent.click(section.getByRole('button', { name: usedName, exact: true }));
     expect(section.getByRole('button', { name: '削除' })).toBeDisabled();
     fireEvent.click(section.getByRole('button', { name: unusedName, exact: true }));
     fireEvent.click(section.getByRole('button', { name: '削除' }));
-    fireEvent.click(within(screen.getByRole('dialog', { name: `${title}を削除` })).getByRole('button', { name: '削除' }));
+    const confirmation = within(screen.getByRole('dialog', { name: `${title}を削除` }));
+    expect(api.delete).not.toHaveBeenCalled();
+    if (isCategory) {
+      api.catalog.mockResolvedValue({ ...catalog, categories: catalog.categories.filter(row => row.id !== unusedId) });
+      api.overview.mockResolvedValue({ processes: [{ processId: 'tools', items: items.filter(row => row.processId === 'tools') }] });
+    }
+    fireEvent.click(confirmation.getByRole('button', { name: '削除' }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(kind, unusedId));
-    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(initialRefreshCount + 3));
+    await waitFor(() => expect(section.getByLabelText(`${title}の名前`)).toHaveValue(''));
     api.save.mockRejectedValue({ response: { data: { message: '同じ名前があります' } } });
     fireEvent.change(section.getByLabelText(`${title}の名前`), { target: { value: '同名' } });
     fireEvent.click(section.getByRole('button', { name: '追加' }));
     expect(await section.findByRole('alert')).toHaveTextContent('同じ名前があります');
     fireEvent.click(section.getByRole('button', { name: '完了' }));
     expect(screen.queryByLabelText(`${title}の名前`)).not.toBeInTheDocument();
+    if (isCategory) {
+      expect(screen.getByRole('heading', { name: '共通', exact: true })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '清掃', exact: true })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '工具', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    }
   });
 });
