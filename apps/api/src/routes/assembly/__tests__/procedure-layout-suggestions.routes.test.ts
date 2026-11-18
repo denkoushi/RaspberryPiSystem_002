@@ -157,7 +157,7 @@ describe('procedure layout suggestion routes', () => {
       expect(system()).toContain(`AI: "${site}誤り" → 人: "${site}訂正"`);
       expect(system()).toContain(`「${site}誤語」→「${site}正語」`);
       expect(system()).not.toContain(site === 'assembly' ? 'grinding' : 'assembly');
-      expect(prisma.assemblyProcedureTextFeedback.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { site, outcome: 'EDITED', finalText: { not: null } } }));
+      expect(prisma.assemblyProcedureTextFeedback.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { site, source: 'LAYOUT', outcome: 'EDITED', finalText: { not: null } } }));
       expect(prisma.assemblyProcedureLearnedTerm.findMany).toHaveBeenLastCalledWith({ where: { site }, orderBy: { wrongText: 'asc' } });
       for (const model of [prisma.assemblyProcedureTextFeedback, prisma.assemblyProcedureLearnedTerm]) {
         vi.mocked(model.findMany).mockRejectedValueOnce(new Error('lookup failed'));

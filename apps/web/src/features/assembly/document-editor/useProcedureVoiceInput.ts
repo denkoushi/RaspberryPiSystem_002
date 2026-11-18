@@ -10,7 +10,7 @@ import type { OverlayTextElement } from '@raspi-system/shared-types';
 export { WHISPER_BASE_URL as PROCEDURE_WHISPER_BASE_URL } from '../../voice/voiceTranscription';
 export const PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS = 20000;
 
-export function useProcedureVoiceInput(element: OverlayTextElement | null, enabled: boolean, onUpdate: (element: OverlayTextElement) => void, context?: string) {
+export function useProcedureVoiceInput(element: OverlayTextElement | null, enabled: boolean, onUpdate: (element: OverlayTextElement) => void, context?: string, documentId?: string, pageIndex?: number, holderToken?: string | null) {
   const [status, setStatus] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [error, setError] = useState('');
   const [transcript, setTranscript] = useState('');
@@ -66,7 +66,11 @@ export function useProcedureVoiceInput(element: OverlayTextElement | null, enabl
       session.abort.signal.addEventListener('abort', onAbort, { once: true });
       const limitTimer = setTimeout(onAbort, PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS);
       try {
-        const result = await rewriteAssemblyProcedureDictation({ mode, spokenText, currentText: mode === 'new' ? undefined : original.text, signal: limit.signal });
+        const result = await rewriteAssemblyProcedureDictation({
+          mode, spokenText, currentText: mode === 'new' ? undefined : original.text, signal: limit.signal,
+          ...(documentId && pageIndex !== undefined && { documentId, pageIndex, elementId: original.id, originalText: original.text }),
+          ...(holderToken && { holderToken }),
+        });
         apply(result.text);
       } catch {
         if (active()) {
