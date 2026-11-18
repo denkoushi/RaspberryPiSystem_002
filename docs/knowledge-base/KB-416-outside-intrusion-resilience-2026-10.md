@@ -40,7 +40,7 @@ Done on 2026-10-07:
 | Change | PR | Commit on `main` | In production |
 | --- | --- | --- | --- |
 | Pending OS packages applied on the Pi5 by hand: 231 upgraded, kernel, boot firmware, bootloader, Docker and Tailscale kept back, no reboot, application up throughout (12:00 to 12:11 JST) | none | none | yes |
-| Scheduled backup failure queues an ops alert; the nightly snapshot unit gets an on-failure alert unit | #1787 | `aa629bbe` | API part released (run `20261007-032350-30ac43`); the unit files need the dedicated snapshot playbook |
+| Scheduled backup failure queues an ops alert; the nightly snapshot unit gets an on-failure alert unit | #1787 | `aa629bbe` | API part released (run `20261007-032350-30ac43`); unit files applied with the dedicated DR playbook on 2026-11-18 (`c2823fd9`) |
 | Security monitor no longer alerts on short-lived outbound UDP sockets | #1786 | `ee2591e7` | needs the server role |
 | Backup verification failure queues an ops alert; duplicate logrotate entries removed | #1792 | `d2e453fb` | needs the server role |
 | The standard Pi5 release installs `unattended-upgrades`: Debian security origin only, no automatic reboot, Docker, Tailscale, kernel, firmware and Chromium excluded | #1788 | `69d0199c` | released (run `20261007-034510-c5ed02`); dry run shows the single allowed origin, the exclusion list and nothing pending; first automatic run 2026-10-08 06:03 JST |
@@ -84,7 +84,7 @@ The [dedicated DR playbook](../../infrastructure/ansible/playbooks/deploy-google
 
 - Done. The offline copy script is in the repository, and the dedicated playbook installs the 30-day reminder. The owner still refreshes the copy by hand and has no paper copy of the repository password (password manager only).
 - The Pi5 bootloader EEPROM update is still offered and not applied. The OS package backlog on the Pi4 kiosks and the Pi3 is also open; there the kiosk browser version is being moved deliberately ([KB-413](./KB-413-kiosk-chromium-canary-stonebase01.md)).
-- Applying the server role and the snapshot playbook for #1786, #1787 (unit files) and #1792, after a dry run that shows the application environment files are not rewritten.
+- Applying the server role for #1786 and #1792, after a dry run that shows the application environment files are not rewritten. The #1787 unit files were applied with the dedicated DR playbook on 2026-11-18.
 - A "no successful backup for N hours" alert, because a run that is skipped does not fail; a reboot-required notice; extending automatic security updates to the kiosks.
 - The stale targets of the daily backup lane are owned by the session working on that lane.
 - Account checks outside the repository (two-factor on the network, storage and mail accounts; removing unused devices from the private network) are with the system owner.
