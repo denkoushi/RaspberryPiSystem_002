@@ -91,10 +91,11 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
 
   app.post('/clients/status', async (request) => {
     const clientKey = requireClientKey(request.headers['x-client-key']);
-    const metrics = metricSchema.parse(request.body);
+    const { osSecurityUpdate, ...metrics } = metricSchema.parse(request.body);
     return upsertClientStatus({
       clientKey,
       metrics,
+      osSecurityUpdate,
       requestId: request.id
     });
   });

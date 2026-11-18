@@ -1,6 +1,14 @@
 vi.mock('../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
 vi.mock('../kiosk-inquiry/system-notice.service.js', () => ({ deliverSystemNotice: vi.fn() }));
+const db = vi.hoisted(() => ({
+  clientDevice: { findMany: vi.fn() },
+  clientStatus: { findMany: vi.fn() },
+  osSecurityUpdateClientReport: { findMany: vi.fn() },
+  osSecurityUpdateRequest: { findMany: vi.fn(), findUnique: vi.fn(), createMany: vi.fn(), findUniqueOrThrow: vi.fn() },
+  osSecurityUpdateTarget: { createMany: vi.fn() },
+}));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { ...db, $transaction: (fn: (tx: typeof db) => unknown) => fn(db) } }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -50,6 +58,14 @@ beforeEach(async () => {
   vi.mocked(deliverSystemNotice).mockReset().mockResolvedValue();
   vi.mocked(logger.info).mockClear();
   vi.mocked(logger.warn).mockClear();
+  db.osSecurityUpdateRequest.findMany.mockReset().mockResolvedValue([]);
+  db.osSecurityUpdateRequest.findUnique.mockReset().mockResolvedValue(null);
+  db.osSecurityUpdateClientReport.findMany.mockReset().mockResolvedValue([]);
+  db.clientDevice.findMany.mockReset().mockResolvedValue([]);
+  db.clientStatus.findMany.mockReset().mockResolvedValue([]);
+  db.osSecurityUpdateRequest.createMany.mockReset().mockResolvedValue({ count: 1 });
+  db.osSecurityUpdateRequest.findUniqueOrThrow.mockReset();
+  db.osSecurityUpdateTarget.createMany.mockReset();
 });
 afterEach(async () => { vi.useRealTimers(); vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); });
 
@@ -567,5 +583,90 @@ describe('advisory jobs', () => {
     expect(z.object(advisoryCheckEnvShape).parse({})).toEqual({ ADVISORY_CHECK_ENABLED: 'false',
       ADVISORY_CHECK_DIR: '/app/storage/security-review/advisories', ADVISORY_CHECK_CRON: '*/5 * * * *' });
     expect(z.object(advisoryCheckEnvShape).safeParse({ ADVISORY_CHECK_CRON: 'bad' }).success).toBe(false);
+  });
+});
+
+describe('OS security update triage', () => {
+  const chromium = { kind: 'os-security-update', packages: ['chromium'], upstream_version_comparable: true };
+  const eligible = () => ({
+    ...fixture(), page_text: '修正版 131.9 と 131.10', result: {
+      ...answer, fixed_versions: { Chromium: ['131.10', '999.0', '131.9'] },
+    }, remedies: { Chromium: chromium },
+  });
+
+  it.each(['auto', 'trial'] as const)('creates a fixed set of targets in %s mode', async mode => {
+    vi.stubEnv('CLIENT_HEARTBEAT_CLIENT_ID_PATTERN', '^raspi');
+    db.clientDevice.findMany.mockResolvedValue([
+      { statusClientId: 'raspi-registered', createdAt: new Date(0) },
+      { statusClientId: 'outside-monitoring', createdAt: new Date(0) },
+    ]);
+    db.clientStatus.findMany.mockResolvedValue([
+      { clientId: 'raspi-recent', lastSeen: now },
+      { clientId: 'outside-monitoring', lastSeen: now },
+    ]);
+    db.osSecurityUpdateClientReport.findMany.mockResolvedValue([
+      { clientId: 'raspi-recent' }, { clientId: 'outside-monitoring' },
+      ...(mode === 'auto' ? [{ clientId: 'raspi-registered' }] : []),
+    ]);
+    try {
+      await enqueue(eligible());
+      await service().tick(signal());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(db.clientStatus.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { OR: [
+      { lastSeen: { gte: new Date('2026-10-24T00:00:00Z') } },
+      { clientId: { in: ['raspi-registered'] } },
+    ] } }));
+    expect(db.osSecurityUpdateRequest.createMany).toHaveBeenCalledExactlyOnceWith({
+      data: expect.objectContaining({
+        mode, advisoryKey: 'jpcert:abc-123', noticeKey: 'jpcert:abc-123',
+        packages: ['chromium'], expiresAt: new Date('2026-11-14T00:00:00Z'),
+        products: { Chromium: { packages: ['chromium'], comparable: true, fixedVersion: '131.10' } },
+      }),
+      skipDuplicates: true,
+    });
+    const id = db.osSecurityUpdateRequest.createMany.mock.calls[0][0].data.id;
+    expect(db.osSecurityUpdateTarget.createMany).toHaveBeenCalledExactlyOnceWith({ data: [
+      { requestId: id, clientId: 'raspi-recent', detail: { reason: 'awaiting_check' } },
+      ...(mode === 'auto' ? [{ requestId: id, clientId: 'raspi-registered', detail: { reason: 'awaiting_check' } }] : []),
+    ] });
+    expect((await load('done')).triage).toBe(mode === 'auto' ? 'auto' : 'manual');
+    expect(deliverSystemNotice).toHaveBeenCalledTimes(mode === 'auto' ? 0 : 1);
+  });
+
+  it('leaves existing notification behavior with no opted-in terminals', async () => {
+    await enqueue(eligible());
+    await service().tick(signal());
+    expect(db.osSecurityUpdateRequest.createMany).not.toHaveBeenCalled();
+    expect(db.clientDevice.findMany).not.toHaveBeenCalled();
+    expect((await load('done')).triage).toBe('manual');
+    expect(deliverSystemNotice).toHaveBeenCalledOnce();
+  });
+
+  it('uses the mode already persisted for a retried job', async () => {
+    db.osSecurityUpdateRequest.findUnique.mockResolvedValue({ mode: 'auto' });
+    await enqueue(eligible());
+    await service().tick(signal());
+    expect(db.osSecurityUpdateRequest.createMany).not.toHaveBeenCalled();
+    expect((await load('done')).triage).toBe('auto');
+    expect(deliverSystemNotice).not.toHaveBeenCalled();
+  });
+
+  it.each(['unknown', 'manual-remedy', 'page-error'])('leaves %s on the existing manual path', async kind => {
+    const job = eligible();
+    await enqueue({
+      ...job,
+      ...(kind === 'unknown' ? { result: { ...answer, verdict: 'unknown' } } : {}),
+      ...(kind === 'page-error' ? { page_error: 'fetch failed' } : {}),
+      ...(kind === 'manual-remedy' ? {
+        products: ['Chromium', 'Another product'],
+        remedies: { ...job.remedies, 'Another product': { kind: 'manual' } },
+      } : {}),
+    });
+    await service().tick(signal());
+    expect(db.osSecurityUpdateRequest.findUnique).not.toHaveBeenCalled();
+    expect((await load('done')).triage).toBe('manual');
+    expect(deliverSystemNotice).toHaveBeenCalledOnce();
   });
 });

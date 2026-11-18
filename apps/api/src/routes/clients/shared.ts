@@ -34,6 +34,7 @@ export const metricSchema = z.object({
   temperature: z.number().min(-50).max(120).optional(),
   uptimeSeconds: z.number().int().min(0).optional(),
   lastBoot: z.coerce.date().optional(),
+  osSecurityUpdate: z.unknown().optional(),
   logs: z
     .array(
       z.object({

@@ -15,8 +15,8 @@ async function lockNotice(tx: Prisma.TransactionClient, key: string) {
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text`;
 }
 
-export async function deliverSystemNotice(notice: SystemNotice, now = new Date()): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+export async function deliverSystemNotice(notice: SystemNotice, now = new Date(), transaction?: Prisma.TransactionClient): Promise<void> {
+  const deliver = async (tx: Prisma.TransactionClient) => {
     await lockNotice(tx, notice.key);
     const thread = await tx.kioskInquiryThread.findFirst({
       where: { kind: 'SYSTEM_NOTICE', noticeKey: notice.key, ...(notice.once ? {} : { noticeResolvedAt: null }) },
@@ -45,7 +45,9 @@ export async function deliverSystemNotice(notice: SystemNotice, now = new Date()
       ...(notice.state === 'recovered' ? { noticeResolvedAt: now } : {}),
       messages: { create: { side: 'SYSTEM', body: notice.state === 'recovered' ? '復旧しました。' : notice.body, createdAt: now } }
     } });
-  });
+  };
+  if (transaction) await deliver(transaction);
+  else await prisma.$transaction(deliver);
 }
 
 export async function resolveInactiveFileNotices(now = new Date(), type?: string): Promise<void> {
