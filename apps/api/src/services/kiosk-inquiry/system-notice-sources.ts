@@ -70,15 +70,22 @@ export async function expireFileAlertNotice(type: string | undefined, timestamp:
   }
 }
 
+const fileAlertText = new Map([
+  ['rkhunter-warning', { title: 'システムの安全確認', body: '安全確認で注意事項が見つかりました。' }],
+  ['offline-dr-copy-overdue', {
+    title: 'USBメモリの控え',
+    body: 'USBメモリへの写しから30日以上たっています。Pi5に挿して写してください。'
+  }]
+]);
+
 export async function deliverFileAlertNotice(type: string | undefined, timestamp: Date, now = new Date(), message?: string): Promise<void> {
   if (!type?.trim() || now.getTime() - timestamp.getTime() >= FILE_NOTICE_EXPIRY_MS) return;
   try {
-    await deliverSystemNotice({ key: `${FILE_NOTICE_PREFIX}${type}`, state: 'open',
+    const text = type === 'pi5-watchdog-recovered'
       // Event time dedupes re-ingestion, while each later recovery can append immediately.
-      ...(type === 'pi5-watchdog-recovered' ? { repeatMs: 1 } : {}),
-      title: type === 'pi5-watchdog-recovered' ? '業務用Pi5の復旧' : type === 'rkhunter-warning' ? 'システムの安全確認' : 'システムの確認',
-      body: type === 'pi5-watchdog-recovered' ? message?.trim().slice(0, 500) || '業務用Pi5が戻りました。' : type === 'rkhunter-warning' ? '安全確認で注意事項が見つかりました。' : 'システムの確認が必要です。'
-    }, timestamp);
+      ? { title: '業務用Pi5の復旧', body: message?.trim().slice(0, 500) || '業務用Pi5が戻りました。', repeatMs: 1 }
+      : fileAlertText.get(type) ?? { title: 'システムの確認', body: 'システムの確認が必要です。' };
+    await deliverSystemNotice({ key: `${FILE_NOTICE_PREFIX}${type}`, state: 'open', ...text }, timestamp);
   } catch (err) {
     logger.warn({ err, type }, '[SystemNotice] File alert notice failed');
   }

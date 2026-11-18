@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the offline DR copy every morning
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 Asia/Tokyo
+Persistent=true
+Unit=offline-dr-copy-check.service
+
+[Install]
+WantedBy=timers.target

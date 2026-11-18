@@ -1,0 +1,15 @@
+[Unit]
+Description=Check whether the offline DR copy is overdue
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=WEBHOOK_URL=
+Environment="OFFLINE_DR_ALERT_SCRIPT={{ google_drive_dr_project_root }}/scripts/generate-alert.sh"
+ExecStart=/bin/bash "{{ google_drive_dr_install_root }}/offline-dr-copy-check.sh"
+TimeoutStartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal

@@ -133,6 +133,17 @@
         - restore_validator.py
         - runner.py
 
+    - name: Install the offline DR copy and check scripts
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../scripts/google_drive_dr/{{ item }}.sh"
+        dest: "{{ google_drive_dr_install_root }}/{{ item }}.sh"
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - offline-dr-copy
+        - offline-dr-copy-check
+
     - name: Install the non-secret DR environment contract
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/raspi-google-drive-dr.env.j2"
@@ -169,7 +180,19 @@
         mode: '0644'
       notify: Reload systemd units
 
-    - name: Flush unit installation handlers before managing the timer
+    - name: Install the offline DR copy check service and timer
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/offline-dr-copy-check.{{ item }}.j2"
+        dest: "/etc/systemd/system/offline-dr-copy-check.{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - service
+        - timer
+      notify: Reload systemd units
+
+    - name: Flush unit installation handlers before managing the timers
       ansible.builtin.meta: flush_handlers
 
     - name: Apply the configured DR timer state (disabled when undefined)
@@ -178,6 +201,12 @@
         enabled: "{{ google_drive_dr_timer_enabled | default(false) | bool }}"
         state: "{{ 'started' if (google_drive_dr_timer_enabled | default(false) | bool) else 'stopped' }}"
         daemon_reload: true
+
+    - name: Enable and start the offline DR copy check timer
+      ansible.builtin.systemd:
+        name: offline-dr-copy-check.timer
+        enabled: true
+        state: started
 
   handlers:
     - name: Reload systemd units
