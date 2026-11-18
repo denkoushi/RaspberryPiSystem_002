@@ -66,7 +66,7 @@ describe('dictation rewrite route', () => {
     expect(result.statusCode).toBe(200);
     expect(result.json()).toEqual({ text: '棚に戻す。' });
     expect(ProcedureDictationRewriteService.prototype.rewrite).toHaveBeenCalledExactlyOnceWith({
-      mode, spokenText: '棚に直す', ...(currentText === undefined ? {} : { currentText }), signal: expect.any(AbortSignal),
+      mode, documentId: target.documentId, spokenText: '棚に直す', ...(currentText === undefined ? {} : { currentText }), signal: expect.any(AbortSignal),
     });
     expect(prisma.procedureManualAssignment.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { assemblyProcedureDocument: { revisionMetadata: { revisionRootId: 'root' } } },
@@ -78,6 +78,7 @@ describe('dictation rewrite route', () => {
   it('skips recording with a partial target', async () => {
     register();
     expect((await app.inject({ method: 'POST', url, payload: { ...payload, documentId: target.documentId, pageIndex: 0 } })).statusCode).toBe(200);
+    expect(ProcedureDictationRewriteService.prototype.rewrite).toHaveBeenCalledWith(expect.objectContaining({ documentId: target.documentId }));
     expect(prisma.assemblyProcedureDocument.findUnique).not.toHaveBeenCalled();
   });
   it('returns the rewrite without recording an append the editor cannot apply', async () => {

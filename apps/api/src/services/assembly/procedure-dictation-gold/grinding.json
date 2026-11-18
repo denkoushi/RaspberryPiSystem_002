@@ -1,0 +1,8 @@
+[
+  { "id": "grinding-01", "mode": "new", "spokenText": "えーと、胃ケールにワークを押し当てて固定して", "expected": "イケールにワークを押し当てて固定する。" },
+  { "id": "grinding-02", "mode": "new", "spokenText": "ワークは、あのー、マグネットチャックにベタ置きして", "expected": "ワークをマグネットチャックにベタ置きする。" },
+  { "id": "grinding-03", "mode": "new", "spokenText": "磁力マックスにしてから、通り出しして", "expected": "磁力をMAXに設定してから、通りだしを行う。" },
+  { "id": "grinding-04", "mode": "append", "spokenText": "ほんで、0.05 mmのシムを入れといて", "currentText": "ワークをコマに載せる。", "expected": "ワークをコマに載せる。\n0.05 mmのシムを入れる。" },
+  { "id": "grinding-05", "mode": "revise", "spokenText": "NCプログラムはO3182に差し替えて", "currentText": "NCプログラムO3128を選択する。", "expected": "NCプログラムO3182を選択する。" },
+  { "id": "grinding-06", "mode": "append", "spokenText": "えー、ダイヤルゲージで平面度が0.01 mm以内か見て", "currentText": "仕上げ研削を行う。", "expected": "仕上げ研削を行う。\nダイヤルゲージで平面度が0.01 mm以内であることを確認する。" }
+]

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { logger } from '../../../lib/logger.js';
+import { prisma } from '../../../lib/prisma.js';
+import { buildProcedureDictationMessages } from '../procedure-dictation-prompt.js';
 import { ProcedureDictationRewriteService } from '../procedure-dictation-rewrite.service.js';
 import * as inferenceRuntime from '../../inference/inference-runtime.js';
 import * as runtimeController from '../../inference/runtime/get-local-llm-runtime-controller.js';
@@ -17,7 +20,10 @@ beforeEach(() => {
   port = { complete: vi.fn().mockResolvedValue({ rawText: '棚に戻す。', model: 'fake' }) };
   service = new ProcedureDictationRewriteService(port);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('procedure dictation rewrite', () => {
   it.each(['new', 'append', 'revise'] as const)('builds %s instructions and separates data from system rules', async mode => {
@@ -87,5 +93,121 @@ describe('procedure dictation rewrite', () => {
   it('supports a runtime without a controller', async () => {
     vi.mocked(runtimeController.getLocalLlmRuntimeController).mockReturnValue(null);
     expect(await service.rewrite({ ...input, mode: 'new' })).toEqual({ text: '棚に戻す。' });
+  });
+});
+
+describe('adopted dictation learning', () => {
+  const siteInput = { ...input, mode: 'new', documentId: 'document' } as const;
+  const learning = {
+    vocabulary: ['専用受台'],
+    terms: [{ wrongText: '胃ケール', rightText: 'イケール' }],
+    examples: [{ mode: 'new', spokenText: 'コマに載せて', finalText: 'コマに載せる。' }],
+  } as const;
+
+  function mockLearningLookups() {
+    const documents = vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({
+      revisionMetadata: { revisionRootId: 'root' },
+    } as never);
+    const assignments = vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([
+      { process: { name: '仕上げ', parent: { name: '研削' } } },
+    ] as never);
+    const snapshot = vi.spyOn(prisma.assemblyProcedureLearningSnapshot, 'findFirst').mockResolvedValue({
+      dictationLearningAdopted: true, createdAt: new Date(), dictationLearning: learning,
+    } as never);
+    const vocabulary = vi.spyOn(prisma.assemblyProcedureSiteVocabulary, 'findMany').mockResolvedValue([{ term: '変更後の用語' }] as never);
+    const terms = vi.spyOn(prisma.assemblyProcedureLearnedTerm, 'findMany').mockResolvedValue([]);
+    const feedback = vi.spyOn(prisma.assemblyProcedureTextFeedback, 'findMany').mockResolvedValue([]);
+    return { documents, assignments, snapshot, vocabulary, terms, feedback };
+  }
+
+  it('uses the frozen learning of the latest decision for the document site', async () => {
+    const { assignments, snapshot, vocabulary, terms, feedback } = mockLearningLookups();
+    await service.rewrite(siteInput);
+    expect(assignments).toHaveBeenCalledWith(expect.objectContaining({
+      where: { assemblyProcedureDocument: { revisionMetadata: { revisionRootId: 'root' } } },
+    }));
+    expect(snapshot).toHaveBeenCalledWith({
+      where: { site: 'grinding', dictationLearningAdopted: { not: null } },
+      orderBy: [{ createdAt: 'desc' }, { day: 'desc' }], select: { dictationLearningAdopted: true, createdAt: true, dictationLearning: true },
+    });
+    for (const lookup of [vocabulary, terms, feedback]) expect(lookup).not.toHaveBeenCalled();
+    const [system] = vi.mocked(port.complete).mock.calls[0][0].messages;
+    expect(system.content).toContain('専用受台');
+    expect(system.content).toContain(JSON.stringify(learning.terms[0]));
+    expect(system.content).toContain('コマに載せる。');
+  });
+
+  it.each([false, null])('uses the original prompt when the latest adoption is %s', async adopted => {
+    const { snapshot } = mockLearningLookups();
+    snapshot.mockResolvedValue({ dictationLearningAdopted: adopted, createdAt: new Date(), dictationLearning: learning } as never);
+    await service.rewrite(siteInput);
+    expect(vi.mocked(port.complete).mock.calls[0][0].messages).toEqual(buildProcedureDictationMessages(siteInput));
+  });
+
+  it.each([false, true])('expires the evaluated learning only beyond two days (expired=%s)', async expired => {
+    vi.useFakeTimers();
+    const { snapshot } = mockLearningLookups();
+    snapshot.mockResolvedValue({
+      dictationLearningAdopted: true, createdAt: new Date(Date.now() - 2 * 86400_000 - Number(expired)), dictationLearning: learning,
+    } as never);
+    await service.rewrite(siteInput);
+    const messages = vi.mocked(port.complete).mock.calls[0][0].messages;
+    expect(messages[0].content.includes(learning.vocabulary[0])).toBe(!expired);
+  });
+
+  it.each([null, { ...learning, examples: [{ ...learning.examples[0], mode: 'unknown' }] }, { ...learning, terms: ['broken'] }])(
+    'uses the original prompt when the snapshot JSON is invalid', async dictationLearning => {
+      const { snapshot } = mockLearningLookups();
+      snapshot.mockResolvedValue({ dictationLearningAdopted: true, createdAt: new Date(), dictationLearning } as never);
+      await service.rewrite(siteInput);
+      expect(vi.mocked(port.complete).mock.calls[0][0].messages).toEqual(buildProcedureDictationMessages(siteInput));
+    },
+  );
+
+  it('uses the original prompt when the document has no site', async () => {
+    const { assignments, snapshot } = mockLearningLookups();
+    assignments.mockResolvedValue([]);
+    await service.rewrite(siteInput);
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(vi.mocked(port.complete).mock.calls[0][0].messages).toEqual(buildProcedureDictationMessages(siteInput));
+  });
+
+  it('uses the original prompt if reading the decision fails', async () => {
+    const { snapshot } = mockLearningLookups();
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    snapshot.mockRejectedValueOnce(new Error('snapshot unavailable'));
+    expect(await service.rewrite(siteInput)).toEqual({ text: '棚に戻す。' });
+    expect(vi.mocked(port.complete).mock.calls[0][0].messages).toEqual(buildProcedureDictationMessages(siteInput));
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it('falls back after a total of 1500 ms across all lookups', async () => {
+    vi.useFakeTimers();
+    const { documents, snapshot } = mockLearningLookups();
+    documents.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({
+      revisionMetadata: { revisionRootId: 'root' },
+    } as never), 1000)) as never);
+    snapshot.mockImplementation(() => new Promise(() => {}) as never);
+    const rewrite = service.rewrite(siteInput);
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(snapshot).toHaveBeenCalledOnce();
+    expect(port.complete).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(rewrite).resolves.toEqual({ text: '棚に戻す。' });
+    expect(vi.mocked(port.complete).mock.calls[0][0].messages).toEqual(buildProcedureDictationMessages(siteInput));
+  });
+
+  it('stops waiting immediately when the request aborts during lookup', async () => {
+    vi.useFakeTimers();
+    const { documents, assignments } = mockLearningLookups();
+    documents.mockImplementation(() => new Promise(() => {}) as never);
+    const abort = new AbortController();
+    const rewrite = service.rewrite({ ...siteInput, signal: abort.signal });
+    expect(documents).toHaveBeenCalledOnce();
+    abort.abort();
+    await expect(rewrite).rejects.toMatchObject({ statusCode: 499 });
+    expect(assignments).not.toHaveBeenCalled();
+    expect(port.complete).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

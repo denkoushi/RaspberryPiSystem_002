@@ -59,12 +59,19 @@ describe('useInspectionDrawingDimensionModeReset', () => {
 describe('createInspectionDrawingCalloutDimsChangeHandler', () => {
   const dims: InspectionDrawingCalloutDim[] = [{ dir: 'x', baseXRatio: 0.5, baseYRatio: 0.5, offsetRatio: 0.1 }];
 
-  it.each(['dimX', 'dimY'] as const)('saves the dims and returns %s to place', (mode) => {
+  const both: InspectionDrawingCalloutDim[] = [...dims, { dir: 'y', baseXRatio: 0.5, baseYRatio: 0.5, offsetRatio: 0.9 }];
+
+  it.each([
+    ['dimX', dims, 'dimY'],
+    ['dimY', [both[1]], 'dimX'],
+    ['dimX', both, 'place'],
+    ['dimY', both, 'place']
+  ] as const)('saves the dims in %s and moves on to the next mode', (mode, next, expected) => {
     const setMode = vi.fn();
     const updatePoint = vi.fn();
-    createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint)('p1', dims);
-    expect(updatePoint).toHaveBeenCalledWith('p1', { calloutDims: dims });
-    expect(setMode).toHaveBeenCalledWith('place');
+    createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint)('p1', [...next]);
+    expect(updatePoint).toHaveBeenCalledWith('p1', { calloutDims: [...next] });
+    expect(setMode).toHaveBeenCalledWith(expected);
   });
 
   it.each(['place', 'callout'] as const)('saves the dims and keeps %s', (mode) => {

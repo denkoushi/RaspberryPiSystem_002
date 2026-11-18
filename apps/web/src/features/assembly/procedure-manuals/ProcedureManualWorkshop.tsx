@@ -60,6 +60,9 @@ export function ProcedureManualWorkshop() {
   const isCommon = subjectKind === 'COMMON';
   const [kanaRow, setKanaRow] = useState('');
   const [commonCatalog, setCommonCatalog] = useState<ProcedureManualCommonCatalogDto>(() => readManualList('common') ?? { categories: [], actions: [], subjects: [] });
+  const [categoryBusy, setCategoryBusy] = useState(false);
+  const latestParams = useRef(params);
+  useEffect(() => { latestParams.current = params; }, [params]);
   const commonReturnTo = kioskAssemblyManualsWorkshopPath({ common: '1', process: processId });
   const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>(() => readManualList('overview')?.processes.flatMap(row => row.items) ?? []);
   const [previewSequence, setPreviewSequence] = useState<AssemblyProcedureSequenceDto | null>(null);
@@ -102,6 +105,18 @@ export function ProcedureManualWorkshop() {
     setAccessGranted(granted);
     return granted;
   }, []);
+  const beforeMutation = () => {
+    if (!checkAccess()) return false;
+    clearManualLists();
+    return true;
+  };
+  const clearDeletedCategory = (id: string) => {
+    const current = latestParams.current;
+    if (!mounted.current || !current.has('common') || current.get('process') !== id) return;
+    const next = new URLSearchParams(current);
+    next.delete('process');
+    setParams(next, { replace: true });
+  };
   useEffect(() => {
     checkAccess();
     // Access is sessionStorage-based: monitor this tab, not other tabs' sessions.
@@ -217,6 +232,7 @@ export function ProcedureManualWorkshop() {
   });
   const rowProcessName = (item: ProcedureManualAssignmentOverviewItemDto) => {
     const child = processes.find(row => row.id === item.processId);
+    if (item.subjectKind === 'COMMON' || child?.subjectKind === 'COMMON') return `共通 › ${child?.name ?? item.category ?? ''}`;
     return `${shortName(processes.find(row => row.id === child?.parentId))} › ${shortName(child)}`;
   };
   const openEditor = (item: ProcedureManualAssignmentOverviewItemDto) => {
@@ -311,11 +327,12 @@ export function ProcedureManualWorkshop() {
     </header>
     <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
       <ProcedureManualFilterPane topActions={(isCommon ? process?.subjectKind === 'COMMON' : modelCodeKey && process) ? <>
-        <button className={`${primaryAction} h-14 shrink-0`} disabled={busy || (isCommon && previewLoading)} onClick={() => { if (checkAccess()) { clearManualLists(); setBlankOpen(true); } }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
+        <button className={`${primaryAction} h-14 shrink-0`} disabled={busy || (isCommon && (previewLoading || categoryBusy))} onClick={() => { if (checkAccess()) { clearManualLists(); setBlankOpen(true); } }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
         {!isCommon ? <button aria-label="既存の要領書を割り当てる" className={`${action} h-14 shrink-0`} disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存を割り当てる</button> : null}
       </> : null} allowKindChangeWithProcess subjectKind={subjectKind} onKindChange={kind => { if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); setKanaRow(''); select('', '', kind); } }} processes={processes} items={items} models={candidates} partSearchCandidates={partCandidates} modelCodeKey={modelCodeKey} processId={processId}
         search={search} digitQuery={digitQuery} onSearchChange={setSearch} onDigitQueryChange={setDigitQuery}
         onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={selectProcess}
+        categoryEditor={accessGranted ? { choices: commonCatalog.categories, onChanged: refreshCommon, beforeMutation, onDeleted: clearDeletedCategory, onBusyChange: setCategoryBusy, disabled: categoryBusy } : undefined}
         kanaRow={kanaRow} onKanaRowChange={setKanaRow} loading={isCommon ? overviewLoading : searchLoading} error={searchError} hasMore={hasMore} />
       <section aria-label="要領書一覧" className={isCommon ? 'flex min-h-0 min-w-0 flex-col' : 'grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3'}>
         {isCommon ? <ProcedureManualCommonList items={filteredItems} processes={processes} categoryId={processId} kanaRow={kanaRow} busy={busy || previewLoading}
@@ -390,7 +407,7 @@ export function ProcedureManualWorkshop() {
       setAccessGranted(true);
       return true;
     }} /> : null}
-    {accessGranted && blankOpen && isCommon ? <ProcedureManualCommonDialog catalog={commonCatalog} items={items.filter(item => item.subjectKind === 'COMMON' || processes.find(row => row.id === item.processId)?.subjectKind === 'COMMON')} categoryId={processId} beforeMutation={() => { if (!checkAccess()) return false; clearManualLists(); return true; }} onClose={() => setBlankOpen(false)} onChanged={refreshCommon} onFix={fix} /> : null}
+    {accessGranted && blankOpen && isCommon ? <ProcedureManualCommonDialog catalog={commonCatalog} items={items.filter(item => item.subjectKind === 'COMMON' || processes.find(row => row.id === item.processId)?.subjectKind === 'COMMON')} categoryId={processId} beforeMutation={beforeMutation} onClose={() => setBlankOpen(false)} onChanged={refreshCommon} onFix={fix} /> : null}
     {accessGranted && blankOpen && !isCommon ? <ProcedureManualBlankDialog subjectKind={subjectKind === 'PART' ? 'PART' : 'MODEL'} beforeMutation={() => { if (!checkAccess()) return false; clearManualLists(); return true; }} models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
     {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
     {accessGranted && reattaching ? <ProcedureManualReattachPartDialog item={reattaching} processes={processes} currentPartName={partCandidates.find(row => row.partNumberKey === reattaching.modelCodeKey)?.partName}

@@ -2,7 +2,7 @@
 Description=Run Raspberry Pi OS security updates weekly at night
 
 [Timer]
-OnCalendar={{ os_security_update_oncalendar }} Asia/Tokyo
+OnCalendar={{ os_security_update_early_oncalendar if os_security_update_early_enabled | bool else os_security_update_oncalendar }} Asia/Tokyo
 RandomizedDelaySec={{ os_security_update_randomized_delay_sec }}
 FixedRandomDelay=true
 Persistent=true
