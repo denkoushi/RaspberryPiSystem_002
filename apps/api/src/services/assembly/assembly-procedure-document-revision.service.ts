@@ -483,8 +483,10 @@ export class AssemblyProcedureDocumentRevisionService {
       const byId = new Map(normalized.map(element => [element.id, element]));
       const seen = new Set<string>();
       for (const row of feedback) {
-        if (seen.has(row.elementId)) continue;
-        seen.add(row.elementId);
+        // Resolve the latest proposal per element and source, so a later dictation does not strand an earlier layout row.
+        const key = `${row.source}:${row.elementId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
         const change = resolveProcedureTextFeedback(row, byId.get(row.elementId));
         if (change) await prisma.assemblyProcedureTextFeedback.update({ where: { id: row.id }, data: { ...change, resolvedAt: new Date() } });
       }

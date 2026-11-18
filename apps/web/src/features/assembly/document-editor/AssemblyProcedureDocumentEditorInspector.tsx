@@ -49,7 +49,9 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   busy = false,
   textReadOnly = false,
   voiceInputEnabled = false,
-  voiceContext
+  voiceContext,
+  documentId,
+  holderToken
 }: {
   element: AssemblyProcedureOverlayElement | null;
   onDuplicate?: () => void;
@@ -67,9 +69,14 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   textReadOnly?: boolean;
   voiceInputEnabled?: boolean;
   voiceContext?: string;
+  documentId?: string;
+  holderToken?: string | null;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const voice = useProcedureVoiceInput(element?.kind === 'TEXT' ? element : null, voiceInputEnabled && !readOnly && !busy && !textReadOnly, onUpdate, voiceContext);
+  const voice = useProcedureVoiceInput(
+    element?.kind === 'TEXT' ? element : null, voiceInputEnabled && !readOnly && !busy && !textReadOnly,
+    onUpdate, voiceContext, documentId, element?.pageIndex, holderToken,
+  );
   if (!element) return null;
 
   const patch = (next: Partial<AssemblyProcedureOverlayElement>) => onUpdate({ ...element, ...next } as AssemblyProcedureOverlayElement);

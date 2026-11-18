@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AssemblyProcedureTextFeedbackSource } from '@prisma/client';
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
@@ -57,17 +58,25 @@ export async function learnSiteVocabulary(site: ProcedureSite, options: { now: D
 }
 
 export async function recordLearningSnapshot(site: ProcedureSite, now: Date, dryRun = false, vocabularyResult?: 'updated' | 'skipped') {
-  const [documents, textCounts, captionCounts, learnedTerms, vocabularyTerms, latest] = await Promise.all([
+  const countTextFeedback = (source: AssemblyProcedureTextFeedbackSource) => Promise.all(
+    (['KEPT', 'EDITED', 'REVERTED'] as const).map(outcome => prisma.assemblyProcedureTextFeedback.count({ where: { site, source, outcome } }))
+  );
+  const [documents, textCounts, dictationCounts, captionCounts, learnedTerms, vocabularyTerms, latest] = await Promise.all([
     loadPublishedProcedures(site),
-    Promise.all((['KEPT', 'EDITED', 'REVERTED'] as const).map(outcome => prisma.assemblyProcedureTextFeedback.count({ where: { site, outcome } }))),
+    countTextFeedback('LAYOUT'),
+    countTextFeedback('DICTATION'),
     Promise.all((['KEPT', 'EDITED', 'DELETED'] as const).map(outcome => prisma.assemblyProcedureCaptionFeedback.count({ where: { site, outcome } }))),
     prisma.assemblyProcedureLearnedTerm.count({ where: { site } }),
     prisma.assemblyProcedureSiteVocabulary.count({ where: { site } }),
     prisma.assemblyProcedureLearningSnapshot.findFirst({ where: { site }, orderBy: { createdAt: 'desc' } }),
   ]);
   const [textKept, textEdited, textReverted] = textCounts;
+  const [dictationKept, dictationEdited, dictationReverted] = dictationCounts;
   const [captionKept, captionEdited, captionDeleted] = captionCounts;
-  const counts = { publishedDocuments: documents.length, textKept, textEdited, textReverted, captionKept, captionEdited, captionDeleted, learnedTerms, vocabularyTerms };
+  const counts = {
+    publishedDocuments: documents.length, textKept, textEdited, textReverted, dictationKept, dictationEdited,
+    dictationReverted, captionKept, captionEdited, captionDeleted, learnedTerms, vocabularyTerms,
+  };
   const vocabulary = {
     vocabularyBuiltAt: vocabularyResult === 'updated' ? now : latest?.vocabularyBuiltAt ?? null,
     vocabularyDocuments: vocabularyResult === 'updated' ? documents.length : latest?.vocabularyDocuments ?? null,
