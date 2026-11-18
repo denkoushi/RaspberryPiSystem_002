@@ -22,6 +22,7 @@
 - [x] (2026-11-18) 段階2a: 収集側で製品ごとの `evidence` と `remedies` を付け、本文に出る製品もジョブに加える(PR2)。
 - [x] (2026-11-18) 段階2b: 任意の `fixed_versions` と導入版の比較を API にローカル実装。
 - [ ] 段階3: 端末の版の報告、前倒し要求、更新後の確認(PR3)。
+- [x] (2026-11-18) 段階3a(API): 前倒し要求、端末報告による確認、期限・失敗時の通知をローカル実装。
 - [ ] kensaku-stonebase01 だけで前倒しを有効にして1回確かめる。
 - [ ] 全台で前倒しを有効にする。
 
@@ -57,6 +58,11 @@
   理由: ホストに無いことは Pi5 に無いことを意味しないため。日付: 2026-11-18。
 - (2026-11-18) 段階2a の時点で `scope: pi5` かつ `absent` になりうる製品は0件である。通知件数は段階2b と段階3まで変わらない。
 - 判断: 段階ごとに PR を分け、反映の順番を「API が新しい形を受け入れる → 収集側 → 端末」に固定する。日付: 2026-11-18。
+- 判断: 段階3は API(3a)と端末(3b)の2つの PR に分ける。API は端末が `earlyEnabled: true` を報告するまで何もしない。日付: 2026-11-18。
+- 判断: 前倒しの対象端末は heartbeat 監視と同じ定義(期待端末と7日以内に報告した監視対象)で、要求の作成時に固定する。全対象が `earlyEnabled: true` のときだけ `auto`(通知しない)。一部だけなら `trial` として有効な端末へ要求を出し、通知は従来どおり出す。
+  理由: kensaku-stonebase01 だけで試す間も通知を止めないため(fail closed)。日付: 2026-11-18。
+- 判断: 比べられない製品は「要求を受けたときの導入版(baseline)から版が変わり、更新後に候補が残っていない」ときだけ確認済みとする。版が変わらないまま期限が来たら、配布待ちの可能性として通知する。日付: 2026-11-18。
+- 判断: 応答に `osSecurityUpdateRequests` が無いときは、端末は手元の要求を保つ。空配列のときだけ消す。旧 API との混在や切り戻しで要求を失わないため。日付: 2026-11-18。
 
 ## Outcomes & Retrospective
 
@@ -97,7 +103,7 @@
 
 - DB に前倒し要求と、端末ごとの確認状態を置く(Prisma の migration)。
 - `auto` は、対象の全製品が `os-security-update` で、かつ `affected` のときとする。要求を作り、通知は出さない。
-- status の応答に `osSecurityUpdateRequest`(id、packages、期限)を任意で足す。古い status-agent はこれを無視するので、互換を保てる。
+- status の応答に `osSecurityUpdateRequests`(id、packages、期限の配列)を任意で足す。古い status-agent はこれを無視するので、互換を保てる。
 - status-agent は要求を `/var/lib/raspi-os-security-update/request.json` に原子的に書く。次の status POST では、要求された package について、導入版、APT の候補、測った時刻、要求 id を報告する。
 - 更新の timer は毎日動かす。本体は、日曜か、期限内の要求があるときだけ更新する。フラグが false の端末は日曜だけ更新する(今と同じ)。
 - API は報告を突き合わせる。全端末で確かめられたら記録だけ残す。期限切れ、確かめられなかった端末、配布待ちは `manual` の通知にする(端末名を書く)。
@@ -129,6 +135,29 @@
 
 ## Interfaces and Dependencies
 
-- `POST /api/clients/status` の応答に、任意の `osSecurityUpdateRequest` を足す(後方互換)。
-- status の本文に、任意の `osSecurityPackages` を足す(後方互換)。
+`POST /api/clients/status` の本文に任意の `osSecurityUpdate` を足す。時刻は ISO 8601 で送る。省略または形式不正のときも従来どおり status を保存する。更新をスキップしたときは端末の `check` を更新しない。
+
+```json
+{
+  "osSecurityUpdate": {
+    "earlyEnabled": true,
+    "requests": [{ "id": "<要求ID>", "receivedAt": "<ISO8601>", "baseline": {
+      "chromium": { "state": "installed", "version": "131.0.6778.85-1~deb12u1" }
+    } }],
+    "check": {
+      "requestIds": ["<要求ID>"], "result": "applied", "finishedAt": "<ISO8601>",
+      "packages": { "chromium": { "state": "installed", "version": "131.0.6778.86-1~deb12u1", "candidateRemaining": false } }
+    }
+  }
+}
+```
+
+`state` は `installed | absent | unmeasured`、`version` は文字列または `null`。 `check` は `null` も可。 `result` は `applied | no_candidates | failed`、`candidateRemaining` は `true | false | null`。
+
+応答に任意の `osSecurityUpdateRequests` を足す。有効な `earlyEnabled: true` の報告にだけ返す。空配列 `[]` で端末は手元の要求を消し、キーの省略時は保持する。
+
+```json
+{ "osSecurityUpdateRequests": [{ "id": "<要求ID>", "packages": ["chromium"], "expiresAt": "<ISO8601>" }] }
+```
+
 - ジョブの JSON には任意の `evidence` と `remedies` を足す。`version: 1` のまま、API が先に受け入れる。

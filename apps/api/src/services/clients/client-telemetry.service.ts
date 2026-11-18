@@ -1,3 +1,4 @@
+import { recordOsSecurityUpdateReport, type OsSecurityUpdateReport } from '../advisory-check/os-security-early-update.js';
 import { claimStatusClientId } from './status-client-id-claim.js';
 import crypto from 'crypto';
 import type { ClientDevice } from '@prisma/client';
@@ -297,6 +298,7 @@ export async function upsertClientStatus(params: {
     lastBoot?: Date;
     logs?: ClientTelemetryLogEntry[];
   };
+  osSecurityUpdate?: OsSecurityUpdateReport;
   requestId: string;
 }) {
   const { clientKey, metrics, requestId } = params;
@@ -369,7 +371,15 @@ export async function upsertClientStatus(params: {
     });
   }
 
+  const osSecurityUpdateRequests = params.osSecurityUpdate
+    ? await recordOsSecurityUpdateReport(statusClientId, params.osSecurityUpdate, now).catch(error => {
+      logger.warn({ clientId: statusClientId, error: error instanceof Error ? error.name : 'unknown' },
+        '[ClientTelemetry] failed to process OS security update report');
+      return undefined;
+    })
+    : undefined;
   return {
+    ...(osSecurityUpdateRequests !== undefined ? { osSecurityUpdateRequests } : {}),
     requestId,
     statusId: status.id,
     clientDeviceId: clientDevice.id,

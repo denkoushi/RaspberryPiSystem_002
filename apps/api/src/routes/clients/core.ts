@@ -4,6 +4,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import type { FastifyInstance } from 'fastify';
+import { osSecurityUpdateReportSchema } from '../../services/advisory-check/os-security-early-update.js';
 
 import {
   getClientStatusesWithLatestLogs,
@@ -91,10 +92,12 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
 
   app.post('/clients/status', async (request) => {
     const clientKey = requireClientKey(request.headers['x-client-key']);
-    const metrics = metricSchema.parse(request.body);
+    const { osSecurityUpdate, ...metrics } = metricSchema.parse(request.body);
+    const report = osSecurityUpdateReportSchema.safeParse(osSecurityUpdate);
     return upsertClientStatus({
       clientKey,
       metrics,
+      osSecurityUpdate: report.data,
       requestId: request.id
     });
   });

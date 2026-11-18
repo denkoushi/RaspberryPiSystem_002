@@ -847,6 +847,61 @@ model ClientStatus {
   @@index([lastSeen])
 }
 
+enum OsSecurityUpdateRequestMode {
+  auto
+  trial
+}
+
+enum OsSecurityUpdateRequestStatus {
+  open
+  verified
+  notified
+}
+
+enum OsSecurityUpdateTargetState {
+  pending
+  verified
+  failed
+}
+
+model OsSecurityUpdateRequest {
+  id          String                        @id @default(uuid())
+  advisoryKey String                        @unique
+  title       String
+  url         String
+  noticeKey   String
+  products    Json
+  packages    String[]
+  mode        OsSecurityUpdateRequestMode
+  status      OsSecurityUpdateRequestStatus @default(open)
+  createdAt   DateTime                      @default(now())
+  expiresAt   DateTime
+  resolvedAt  DateTime?
+  targets     OsSecurityUpdateTarget[]
+
+  @@index([status])
+}
+
+model OsSecurityUpdateTarget {
+  requestId   String
+  clientId    String
+  state       OsSecurityUpdateTargetState @default(pending)
+  deliveredAt DateTime?
+  verifiedAt  DateTime?
+  detail      Json
+  request     OsSecurityUpdateRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@id([requestId, clientId])
+  @@index([clientId])
+}
+
+model OsSecurityUpdateClientReport {
+  clientId     String @id
+  earlyEnabled Boolean
+  report       Json
+  receivedAt   DateTime
+}
+
 /// 業務Hermesの自発提案。一般クライアントログや通知へ混在させずADMINだけが参照する。
 model BusinessHermesProactiveSuggestion {
   id             String   @id @default(uuid())
