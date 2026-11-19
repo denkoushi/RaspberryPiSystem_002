@@ -32,43 +32,41 @@ function isPhoto(element: AssemblyProcedureOverlayElement): boolean {
   return element.kind === 'IMAGE' && !isErasePatch(element);
 }
 
-function bboxesOverlap(a: AssemblyProcedureOverlayBBox, b: AssemblyProcedureOverlayBBox): boolean {
-  return Math.min(a.xRatio + a.widthRatio, b.xRatio + b.widthRatio) > Math.max(a.xRatio, b.xRatio)
-    && Math.min(a.yRatio + a.heightRatio, b.yRatio + b.heightRatio) > Math.max(a.yRatio, b.yRatio);
+function containsCenter(bbox: AssemblyProcedureOverlayBBox, inner: AssemblyProcedureOverlayBBox): boolean {
+  const { xRatio, yRatio } = assemblyProcedureOverlayBBoxCenter(inner);
+  return xRatio >= bbox.xRatio && xRatio <= bbox.xRatio + bbox.widthRatio
+    && yRatio >= bbox.yRatio && yRatio <= bbox.yRatio + bbox.heightRatio;
 }
 
 export function findAttachedOverlayIds(elements: AssemblyProcedureOverlayElement[], parentId: string): string[] {
   const parent = elements.find(element => element.id === parentId);
   if (!parent || !isPhoto(parent)) return [];
 
-  const page = pageOverlayElements(elements, parent.pageIndex);
-  const patches = page.filter(isErasePatch).sort((a, b) => b.zIndex - a.zIndex);
+  // Match the stable back-to-front sort used by OverlayLayer.
+  const page = pageOverlayElements(elements, parent.pageIndex).sort((a, b) => a.zIndex - b.zIndex);
+  const positions = new Map(page.map((element, index) => [element, index]));
+  const isBelow = (a: AssemblyProcedureOverlayElement, b: AssemblyProcedureOverlayElement) =>
+    positions.get(a)! < positions.get(b)!;
+  const patches = page.filter(isErasePatch).reverse();
   if (!patches.length) return [];
-  const photos = page.filter(isPhoto).sort((a, b) => b.zIndex - a.zIndex);
-  const attachedPatches = new Set(patches.filter(patch => {
-    if (patch.zIndex <= parent.zIndex) return false;
-    const { xRatio, yRatio } = assemblyProcedureOverlayBBoxCenter(patch.bbox);
-    return photos.find(photo => {
-      const bbox = photo.bbox;
-      return photo.zIndex < patch.zIndex
-        && xRatio >= bbox.xRatio && xRatio <= bbox.xRatio + bbox.widthRatio
-        && yRatio >= bbox.yRatio && yRatio <= bbox.yRatio + bbox.heightRatio;
-    })?.id === parentId;
-  }));
+  const photos = page.filter(isPhoto).reverse();
+  const attachedPatches = new Set(patches.filter(patch => isBelow(parent, patch)
+    && photos.find(photo => isBelow(photo, patch) && containsCenter(photo.bbox, patch.bbox)) === parent));
   if (!attachedPatches.size) return [];
 
   return page.filter(element => {
     if (attachedPatches.has(element)) return true;
-    if (element.kind !== 'TEXT' || element.zIndex <= parent.zIndex) return false;
-    const patch = patches.find(candidate => candidate.zIndex < element.zIndex && bboxesOverlap(candidate.bbox, element.bbox));
+    if (element.kind !== 'TEXT' || !isBelow(parent, element)) return false;
+    const patch = patches.find(candidate => isBelow(candidate, element) && containsCenter(candidate.bbox, element.bbox));
     return patch !== undefined && attachedPatches.has(patch);
-  }).sort((a, b) => a.zIndex - b.zIndex).map(element => element.id);
+  }).map(element => element.id);
 }
 
 function carryAttachedOverlays(
   before: AssemblyProcedureOverlayElement[],
   after: AssemblyProcedureOverlayElement[],
-  layoutPageIndex?: number
+  layoutPageIndex?: number,
+  attachmentElements = before
 ): AssemblyProcedureOverlayElement[] {
   const proposed = new Map(after.map(element => [element.id, element]));
   const carried = new Map<string, AssemblyProcedureOverlayElement>();
@@ -85,8 +83,9 @@ function carryAttachedOverlays(
 
     const sx = newBox.widthRatio / oldBox.widthRatio;
     const sy = newBox.heightRatio / oldBox.heightRatio;
-    for (const id of findAttachedOverlayIds(before, photo.id)) {
-      const attachment = original.get(id)!;
+    for (const id of findAttachedOverlayIds(attachmentElements, photo.id)) {
+      const attachment = original.get(id);
+      if (!attachment) continue;
       const element = proposed.get(id) ?? attachment;
       const box = attachment.bbox;
       const bbox = sameBox ? box : normalizeOverlayBBox({
@@ -130,15 +129,21 @@ function reorderElement(
     : direction === 'forward' ? Math.min(position + 1, order.length - 1)
     : Math.max(position - 1, 0);
   if (isPhoto(target) && nextPosition !== position && (direction === 'forward' || direction === 'backward')) {
-    // Cross the neighbor's entire group without changing its internal order.
-    const neighborId = order[nextPosition];
+    const spans: { first: number; last: number }[] = [];
     for (const photo of page) {
       if (!isPhoto(photo) || photo.id === id) continue;
-      const group = [photo.id, ...findAttachedOverlayIds(page, photo.id)];
-      if (!group.includes(neighborId)) continue;
-      const positions = group.map(elementId => order.indexOf(elementId));
-      nextPosition = direction === 'forward' ? Math.max(...positions) : Math.min(...positions);
-      break;
+      const lastId = findAttachedOverlayIds(page, photo.id).at(-1);
+      if (lastId !== undefined) spans.push({ first: order.indexOf(photo.id), last: order.indexOf(lastId) });
+    }
+    // Extend the move if crossing one group leaves the insertion point inside another.
+    if (direction === 'forward') {
+      for (const { first, last } of spans) {
+        if (first <= nextPosition && nextPosition < last) nextPosition = last;
+      }
+    } else {
+      for (const { first, last } of spans.sort((a, b) => b.last - a.last)) {
+        if (first < nextPosition && nextPosition <= last) nextPosition = first;
+      }
     }
   }
   order.splice(position, 1);
@@ -166,7 +171,8 @@ function nudgeElement(
 
 export function overlayDraftReducer(
   state: AssemblyProcedureOverlayElement[],
-  action: OverlayDraftAction
+  action: OverlayDraftAction,
+  attachmentElements?: AssemblyProcedureOverlayElement[]
 ): AssemblyProcedureOverlayElement[] {
   switch (action.type) {
     case 'splitLayout':
@@ -206,7 +212,7 @@ export function overlayDraftReducer(
     }
     case 'update': {
       const updated = state.map((element) => (element.id === action.element.id ? action.element : element));
-      return isPhoto(action.element) ? carryAttachedOverlays(state, updated) : updated;
+      return isPhoto(action.element) ? carryAttachedOverlays(state, updated, undefined, attachmentElements) : updated;
     }
     case 'remove': {
       const attachedIds = new Set(findAttachedOverlayIds(state, action.id));

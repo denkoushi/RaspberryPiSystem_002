@@ -209,13 +209,13 @@ describe('photo text-rewrite attachments', () => {
   const zOrder = (elements: AssemblyProcedureOverlayElement[]) =>
     elements.filter(element => element.pageIndex === 0).sort((a, b) => a.zIndex - b.zIndex).map(element => element.id);
 
-  it('uses strict z-order, the patch center, and positive text overlap on the same page', () => {
+  it('uses the patch and text centers and requires attachments to be above their owners on the same page', () => {
     const elements = [
-      ...group, ordinaryText, shape, otherPage, backgroundPatch, backgroundText,
       { ...patch, id: 'text-erase-same-z', zIndex: photo.zIndex },
+      { ...text, id: 'text-same-z', zIndex: patch.zIndex },
+      ...group, ordinaryText, shape, otherPage, backgroundPatch, backgroundText,
       { ...patch, id: 'text-erase-other-page', pageIndex: 1 },
-      { ...patch, id: 'text-erase-center-outside', bbox: { ...patchBox, xRatio: 0.5625, widthRatio: 0.25 } },
-      { ...text, id: 'text-same-z', zIndex: patch.zIndex }
+      { ...patch, id: 'text-erase-center-outside', bbox: { ...patchBox, xRatio: 0.5625, widthRatio: 0.25 } }
     ];
     expect(findAttachedOverlayIds(elements, photo.id)).toEqual([patch.id, text.id]);
     expect(findAttachedOverlayIds(elements, patch.id)).toEqual([]);
@@ -228,6 +228,15 @@ describe('photo text-rewrite attachments', () => {
     const elements = [photo, upperPhoto, patch, upperPatch, { ...text, zIndex: 5 }];
     expect(findAttachedOverlayIds(elements, photo.id)).toEqual([patch.id]);
     expect(findAttachedOverlayIds(elements, upperPhoto.id)).toEqual([upperPatch.id, text.id]);
+  });
+
+  it('uses array order to break z-index ties between overlapping photos, patches, and text', () => {
+    const laterPhoto = { ...photo, id: 'later-photo' };
+    const tiedPatch = { ...patch, zIndex: photo.zIndex };
+    const tiedText = { ...text, zIndex: photo.zIndex };
+    const elements = [photo, laterPhoto, tiedPatch, tiedText];
+    expect(findAttachedOverlayIds(elements, photo.id)).toEqual([]);
+    expect(findAttachedOverlayIds(elements, laterPhoto.id)).toEqual([patch.id, text.id]);
   });
 
   it('moves a saved photo group in one history entry while leaving independent overlays in place', () => {
@@ -257,10 +266,10 @@ describe('photo text-rewrite attachments', () => {
 
   it('nudges by the photo’s actual movement at the page edge and clamps extending text', () => {
     const edgePhoto = { ...photo, bbox: { ...photoBox, xRatio: 0.4375 } };
-    const edgePatch = { ...patch, bbox: { ...patchBox, xRatio: 0.5625 } };
-    const edgeText = { ...text, bbox: { ...patchBox, xRatio: 0.625, widthRatio: 0.375 } };
+    const edgePatch = { ...patch, bbox: { ...patchBox, xRatio: 0.8125 } };
+    const edgeText = { ...text, bbox: { ...patchBox, xRatio: 0.75, widthRatio: 0.25 } };
     const nudged = overlayDraftReducer([edgePhoto, edgePatch, edgeText], { type: 'nudge', id: photo.id, dxRatio: 0.25, dyRatio: 0 });
-    expect(nudged.map(element => element.bbox.xRatio)).toEqual([0.5, 0.625, 0.625]);
+    expect(nudged.map(element => element.bbox.xRatio)).toEqual([0.5, 0.875, 0.75]);
   });
 
   it.each([patch, text])('keeps other elements in place when moving $id by itself', attachment => {
@@ -273,6 +282,18 @@ describe('photo text-rewrite attachments', () => {
     expect(overlayDraftReducer([...group, ordinaryText, shape, backgroundPatch, backgroundText], { type: 'remove', id: photo.id }))
       .toEqual([ordinaryText, shape, backgroundPatch, backgroundText]);
     expect(overlayDraftReducer(group, { type: 'remove', id: patch.id })).toEqual([photo, text]);
+  });
+
+  it('leaves ordinary text whose edge overlaps the patch in place when moving or deleting the photo', () => {
+    const edgeText = { ...ordinaryText, bbox: { ...patchBox, xRatio: 0.34375 } };
+    const elements = [...group, edgeText];
+    const moved = overlayDraftReducer(elements, {
+      type: 'update',
+      element: { ...photo, bbox: { ...photoBox, xRatio: 0.25 } }
+    });
+    expect(byId(moved, patch.id)?.bbox.xRatio).toBe(0.375);
+    expect(byId(moved, edgeText.id)).toBe(edgeText);
+    expect(overlayDraftReducer(elements, { type: 'remove', id: photo.id })).toEqual([edgeText]);
   });
 
   it.each([0, 1])('duplicates a photo group to page %i with distinct ownership and consecutive z-indices', pageIndex => {
@@ -315,6 +336,44 @@ describe('photo text-rewrite attachments', () => {
     expect(findAttachedOverlayIds(reordered, copiedPhoto.id)).toEqual([copiedPatch.id, copiedText.id]);
     expect(findAttachedOverlayIds(reordered, photo.id)).toEqual([patch.id, text.id]);
     expect(zOrder(overlayDraftReducer(reordered, { type: 'sendBackward', id: photo.id }))).toEqual(zOrder(copied));
+  });
+
+  it.each([
+    ['bringForward', 0],
+    ['sendBackward', 6],
+    ['bringToFront', 0],
+    ['sendToBack', 6]
+  ] as const)('preserves the ownership of interleaved photo groups with %s', (type, targetZ) => {
+    const target = { ...photo, id: 'photo-a', zIndex: targetZ };
+    const firstPhoto = { ...photo, id: 'photo-c', zIndex: 1 };
+    const secondPhoto = { ...photo, id: 'photo-b', bbox: { ...photoBox, xRatio: 0.375 }, zIndex: 2 };
+    const firstPatch = { ...patch, zIndex: 3 };
+    const secondPatch = { ...patch, id: 'text-erase-b', bbox: { ...patchBox, xRatio: 0.5 }, zIndex: 4 };
+    const secondText = { ...text, bbox: secondPatch.bbox, zIndex: 5 };
+    const others = [firstPhoto, secondPhoto, firstPatch, secondPatch, secondText];
+    const elements = [target, ...others];
+    const next = overlayDraftReducer(elements, { type, id: target.id });
+    const otherIds = others.map(element => element.id);
+
+    expect(zOrder(next)).toEqual(targetZ === 0 ? [...otherIds, target.id] : [target.id, ...otherIds]);
+    for (const [owner, attached] of [[firstPhoto, [firstPatch.id]], [secondPhoto, [secondPatch.id, secondText.id]]] as const) {
+      expect(findAttachedOverlayIds(elements, owner.id)).toEqual(attached);
+      expect(findAttachedOverlayIds(next, owner.id)).toEqual(attached);
+    }
+  });
+
+  it('moves forward by one group when the next two photo groups are contiguous', () => {
+    const target = { ...photo, id: 'photo-a', zIndex: 0 };
+    const nextPhoto = { ...photo, id: 'photo-c', zIndex: 4 };
+    const nextPatch = { ...patch, id: 'text-erase-c', zIndex: 5 };
+    const nextText = { ...text, id: 'rewrite-c', zIndex: 6 };
+    const elements = [target, ...group, nextPhoto, nextPatch, nextText];
+    const next = overlayDraftReducer(elements, { type: 'bringForward', id: target.id });
+
+    expect(zOrder(next)).toEqual([photo.id, patch.id, text.id, target.id, nextPhoto.id, nextPatch.id, nextText.id]);
+    for (const owner of [photo, nextPhoto]) {
+      expect(findAttachedOverlayIds(next, owner.id)).toEqual(findAttachedOverlayIds(elements, owner.id));
+    }
   });
 
   it('changes the patch’s own z-order independently', () => {

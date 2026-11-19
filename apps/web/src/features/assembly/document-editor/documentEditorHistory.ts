@@ -61,7 +61,7 @@ export function historyReducer(state: OverlayHistory, action: OverlayHistoryActi
     if (!state.future.length) return state;
     return { dragStart: null, past: [...state.past, state.present], present: state.future[0], future: state.future.slice(1) };
   }
-  const present = overlayDraftReducer(state.present, action);
+  const present = overlayDraftReducer(state.present, action, state.dragStart ?? undefined);
   if (action.type === 'replace' && action.preserveHistory) return { ...state, present };
   if (action.type === 'replace' || action.type === 'clear') return { dragStart: null, past: [], present, future: [] };
   if (overlayDraftSnapshot(present) === overlayDraftSnapshot(state.present)) return state;
