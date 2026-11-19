@@ -240,8 +240,7 @@ export function PlanningBoardToolbar({
     (scalePanel.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? scalePanel.current.querySelector<HTMLButtonElement>('button'))?.focus();
   }, [scaleOpen]);
   return (
-    // The three-line order comparison is 58px tall, so leave room to center it within 66px.
-    <div data-planning-board-toolbar className="[&_button[aria-disabled=true]]:opacity-55 flex min-h-[66px] min-w-0 flex-wrap content-center items-center gap-2 rounded-lg border border-slate-800 bg-slate-925 px-2 py-[3px]">
+    <div data-planning-board-toolbar className="[&_button[aria-disabled=true]]:opacity-55 flex h-[66px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
         type="button"
         onClick={onOpenDrawer}
@@ -379,74 +378,72 @@ export function PlanningBoardToolbar({
           元割当
         </SegmentButton>
       </SegmentGroup>
-      <div className="flex shrink-0 grow items-center gap-2">
-        <div className="h-11 w-0 min-w-0 flex-1 overflow-hidden">{feedback}</div>
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
-          {onSpecialDueModeChange ? (
-            <div className="flex shrink-0 items-center gap-1" role="group" aria-label="特別納期">
-              {(['overnight', 'today'] as const).map((mode) => (
-                <div key={mode} className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    aria-pressed={specialDueMode === mode}
-                    aria-disabled={frozen || undefined}
-                    disabled={specialDueDisabled}
-                    className={clsx(
-                      'min-h-11 shrink-0 rounded-md border px-2 text-[11px] font-semibold transition-colors',
-                      specialDueMode === mode
-                        ? 'border-amber-300 bg-amber-400/25 text-amber-100'
-                        : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-amber-300/70 hover:text-white',
-                      specialDueDisabled && 'cursor-not-allowed opacity-55'
-                    )}
-                    onClick={() => onSpecialDueModeChange(specialDueMode === mode ? null : mode)}
-                  >
-                    {mode === 'overnight' ? '朝まで' : '今日中'}
-                  </button>
-                  <span
-                    className="mr-1 whitespace-nowrap text-xs font-semibold tabular-nums text-amber-200"
-                    aria-label={`${mode === 'overnight' ? '朝まで' : '今日中'}のアイテム件数`}
-                    aria-live="polite"
-                  >
-                    {specialDueCounts[mode]}件
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-emerald-300" aria-live="polite">
-            {selectedCount}件
-          </span>
-          <button
-            type="button"
-            aria-disabled={frozen || undefined}
-            onClick={onOpenDueEditor}
-            disabled={bulkDisabled}
-            className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-4 text-[13px] font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-          >
-            一括変更
-          </button>
-        </div>
-        {ganttEnabled && <button type="button" aria-label="同じ部品の片を線でつなぐ" aria-pressed={pieceLinks}
-          onClick={() => changePieceLinks(!pieceLinks)}
-          className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', pieceLinks ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
-            <circle cx="5" cy="6" r="2" /><path d="M5 8c0 7 14 1 14 8" /><circle cx="19" cy="18" r="2" />
-          </svg>
-        </button>}
-        {showFillHeight && <button type="button" aria-label="行を縦いっぱいに伸ばす" aria-pressed={fill.fillHeight}
-          onClick={() => fill.changeFillHeight(!fill.fillHeight)}
-          className={clsx('ml-auto grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', fill.fillHeight ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
-            <path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4" /><path d="M4 12h16" opacity=".5" />
-          </svg>
-        </button>}
-        <button type="button" aria-label="50インチ表示" aria-pressed={largeScreen} onClick={onToggleLargeScreen}
-          className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', !showFillHeight && 'ml-auto', largeScreen ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="13" rx="2" /><path d="M12 17v4m-4 0h8" />
-          </svg>
+      <div className="h-11 min-w-0 flex-1 overflow-hidden">{feedback}</div>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
+        {onSpecialDueModeChange ? (
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label="特別納期">
+            {(['overnight', 'today'] as const).map((mode) => (
+              <div key={mode} className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  aria-pressed={specialDueMode === mode}
+                  aria-disabled={frozen || undefined}
+                  disabled={specialDueDisabled}
+                  className={clsx(
+                    'min-h-11 shrink-0 rounded-md border px-2 text-[11px] font-semibold transition-colors',
+                    specialDueMode === mode
+                      ? 'border-amber-300 bg-amber-400/25 text-amber-100'
+                      : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-amber-300/70 hover:text-white',
+                    specialDueDisabled && 'cursor-not-allowed opacity-55'
+                  )}
+                  onClick={() => onSpecialDueModeChange(specialDueMode === mode ? null : mode)}
+                >
+                  {mode === 'overnight' ? '朝まで' : '今日中'}
+                </button>
+                <span
+                  className="mr-1 whitespace-nowrap text-xs font-semibold tabular-nums text-amber-200"
+                  aria-label={`${mode === 'overnight' ? '朝まで' : '今日中'}のアイテム件数`}
+                  aria-live="polite"
+                >
+                  {specialDueCounts[mode]}件
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <span className="whitespace-nowrap text-xs font-semibold tabular-nums text-emerald-300" aria-live="polite">
+          {selectedCount}件
+        </span>
+        <button
+          type="button"
+          aria-disabled={frozen || undefined}
+          onClick={onOpenDueEditor}
+          disabled={bulkDisabled}
+          className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-4 text-[13px] font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+        >
+          一括変更
         </button>
       </div>
+      {ganttEnabled && <button type="button" aria-label="同じ部品の片を線でつなぐ" aria-pressed={pieceLinks}
+        onClick={() => changePieceLinks(!pieceLinks)}
+        className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', pieceLinks ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+          <circle cx="5" cy="6" r="2" /><path d="M5 8c0 7 14 1 14 8" /><circle cx="19" cy="18" r="2" />
+        </svg>
+      </button>}
+      {showFillHeight && <button type="button" aria-label="行を縦いっぱいに伸ばす" aria-pressed={fill.fillHeight}
+        onClick={() => fill.changeFillHeight(!fill.fillHeight)}
+        className={clsx('ml-auto grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', fill.fillHeight ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+          <path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4" /><path d="M4 12h16" opacity=".5" />
+        </svg>
+      </button>}
+      <button type="button" aria-label="50インチ表示" aria-pressed={largeScreen} onClick={onToggleLargeScreen}
+        className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', !showFillHeight && 'ml-auto', largeScreen ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="13" rx="2" /><path d="M12 17v4m-4 0h8" />
+        </svg>
+      </button>
     </div>
   );
 }
