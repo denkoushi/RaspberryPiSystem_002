@@ -13,6 +13,7 @@ import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualCommonCat
 import type { ReactNode } from 'react';
 
 const api = vi.hoisted(() => ({ catalog: vi.fn(), overview: vi.fn(), create: vi.fn(), save: vi.fn(), delete: vi.fn(), assignments: vi.fn(), replace: vi.fn(), deleteDocument: vi.fn(), document: vi.fn() }));
+vi.mock('../../../api/hooks/kiosk', () => ({ useKioskConfig: () => ({ data: undefined }) }));
 vi.mock('../../../api/client', () => ({
   listProcedureManualCommon: api.catalog, getProcedureManualOverview: api.overview,
   createProcedureManualCommon: api.create, saveProcedureManualCommonChoice: api.save, deleteProcedureManualCommonChoice: api.delete,

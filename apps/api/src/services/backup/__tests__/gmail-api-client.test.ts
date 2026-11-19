@@ -1,12 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { OAuth2Client } from 'google-auth-library';
 import { GmailApiClient } from '../gmail-api-client.js';
+import { ApiError } from '../../../lib/errors.js';
 
 // googleapisをモック
 const mockGmailMessages = {
   list: vi.fn(),
   get: vi.fn(),
   modify: vi.fn(),
+  send: vi.fn(),
   trash: vi.fn(),
   delete: vi.fn(),
   attachments: {
@@ -56,6 +58,53 @@ describe('GmailApiClient', () => {
       execute: vi.fn(async (_op: string, fn: () => Promise<unknown>) => fn()),
     };
     gmailClient = new GmailApiClient(oauth2Client, { gate: gate as any, allowWait: false });
+  });
+
+  it('uploads MIME as multipart RFC 822 media without JSON raw encoding', async () => {
+    const mime = 'Subject: example\r\n\r\nPDF attachment';
+    mockGmailMessages.send.mockResolvedValueOnce({ data: { id: 'sent-id' } });
+    await expect(gmailClient.sendMessageFromMimeUpload(mime)).resolves.toEqual({ id: 'sent-id' });
+    expect(mockGmailMessages.send).toHaveBeenCalledWith({
+      userId: 'me',
+      requestBody: {},
+      media: { mimeType: 'message/rfc822', body: mime },
+    }, { retry: false, timeout: expect.any(Number) });
+    expect(gate.execute).toHaveBeenCalledWith('gmail.users.messages.send', expect.any(Function), { allowWait: false });
+  });
+
+  it('rechecks eligibility when the shared Gmail gate admits the upload', async () => {
+    let releaseGate!: () => void;
+    const wait = new Promise<void>((resolve) => { releaseGate = resolve; });
+    gate.execute.mockImplementationOnce(async (_operation, submit) => {
+      await wait;
+      return submit();
+    });
+    const stale = new ApiError(409, 'Revision changed');
+    let current = true;
+    const beforeSend = vi.fn(async () => {
+      if (!current) throw stale;
+    });
+    const sending = gmailClient.sendMessageFromMimeUpload('mime', beforeSend);
+    expect(beforeSend).not.toHaveBeenCalled();
+    current = false;
+    releaseGate();
+    await expect(sending).rejects.toBe(stale);
+    expect(mockGmailMessages.send).not.toHaveBeenCalled();
+  });
+
+  it('uses the MIME upload timeout override and blocks late uploads after cancellation', async () => {
+    const controller = new AbortController();
+    const options = { timeoutMs: 60_000, signal: controller.signal };
+    mockGmailMessages.send.mockResolvedValueOnce({ data: { id: 'sent-id' } });
+    await expect(gmailClient.sendMessageFromMimeUpload('mime', undefined, options)).resolves.toEqual({ id: 'sent-id' });
+    expect(mockGmailMessages.send).toHaveBeenCalledWith(expect.anything(), {
+      timeout: 60_000, retry: false, signal: controller.signal,
+    });
+
+    const cancelled = new ApiError(504, 'Send deadline passed');
+    const beforeSend = vi.fn(async () => { controller.abort(cancelled); });
+    await expect(gmailClient.sendMessageFromMimeUpload('mime', beforeSend, options)).rejects.toBe(cancelled);
+    expect(mockGmailMessages.send).toHaveBeenCalledTimes(1);
   });
 
   describe('searchMessages', () => {

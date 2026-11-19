@@ -47,6 +47,7 @@ export interface KioskConfig {
   initialKioskPath?: string;
   navTabOrder?: string[];
   portalHiddenTabIds?: string[];
+  assemblyProcedureMail?: { enabled: boolean; domain: string | null };
   clientStatus?: {
     temperature: number | null;
     cpuUsage: number;

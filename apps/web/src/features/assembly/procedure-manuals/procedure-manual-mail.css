@@ -1,0 +1,305 @@
+.procedure-mail-overlay {
+  --mail-unit: min(1vw, 1.78dvh);
+  --mail-blue: #7cc4ff;
+  --mail-green: #22c08a;
+  --mail-line: #344252;
+  --mail-muted: #9fadb9;
+  align-items: center;
+  background: #000000b8;
+  padding: 0;
+}
+
+.procedure-mail-overlay .procedure-mail-dialog {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.2 * var(--mail-unit));
+  width: calc(78 * var(--mail-unit));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  margin: 0;
+  padding: calc(1.6 * var(--mail-unit));
+  border: 1px solid var(--mail-line);
+  border-radius: calc(1 * var(--mail-unit));
+  background: #161c22;
+  color: #eef3f6;
+}
+
+.procedure-mail-dialog .procedure-mail-title {
+  font-size: calc(2 * var(--mail-unit));
+  font-weight: 700;
+}
+
+.procedure-mail-dialog button:focus-visible {
+  outline: 2px solid var(--mail-blue);
+  outline-offset: 2px;
+}
+
+.procedure-mail-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--mail-unit);
+}
+
+.procedure-mail-row button {
+  min-height: max(44px, calc(4.2 * var(--mail-unit)));
+  padding-inline: calc(2.6 * var(--mail-unit));
+  border: 1px solid var(--mail-line);
+  border-radius: calc(0.7 * var(--mail-unit));
+  background: #161c22;
+  font-size: calc(1.7 * var(--mail-unit));
+  font-weight: 700;
+}
+
+.procedure-mail-row .procedure-mail-primary {
+  border-color: var(--mail-green);
+  background: var(--mail-green);
+  color: #04140d;
+}
+
+.procedure-mail-row button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.procedure-mail-tap,
+.procedure-mail-result {
+  display: grid;
+  place-items: center;
+  gap: calc(1.4 * var(--mail-unit));
+  padding-block: calc(2 * var(--mail-unit));
+  text-align: center;
+  font-size: calc(2.2 * var(--mail-unit));
+  font-weight: 700;
+}
+
+.procedure-mail-reader,
+.procedure-mail-mark {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.procedure-mail-reader {
+  width: calc(14 * var(--mail-unit));
+  aspect-ratio: 1;
+  border: calc(0.3 * var(--mail-unit)) solid var(--mail-blue);
+  background: #7cc4ff14;
+  color: var(--mail-blue);
+  animation: procedure-mail-pulse 1.6s ease-in-out infinite;
+}
+
+.procedure-mail-reader svg {
+  width: 50%;
+}
+
+.procedure-mail-address {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: calc(0.3 * var(--mail-unit));
+  padding: var(--mail-unit);
+  border: 1px solid var(--mail-line);
+  border-radius: calc(0.7 * var(--mail-unit));
+  background: #0a0d10;
+  color: var(--mail-muted);
+  font-size: calc(3 * var(--mail-unit));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.procedure-mail-local {
+  min-width: 1ch;
+  color: #eef3f6;
+  border-bottom: calc(0.2 * var(--mail-unit)) solid var(--mail-blue);
+  padding-inline: calc(0.3 * var(--mail-unit));
+}
+
+.procedure-mail-local:empty::after {
+  content: "\00a0";
+}
+
+.procedure-mail-keys {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: calc(0.5 * var(--mail-unit));
+}
+
+.procedure-mail-keys button {
+  height: max(40px, calc(4.4 * var(--mail-unit)));
+  border: 1px solid var(--mail-line);
+  border-radius: calc(0.6 * var(--mail-unit));
+  background: #27313b;
+  font: 700 calc(2 * var(--mail-unit)) ui-monospace, Menlo, monospace;
+}
+
+.procedure-mail-keys button:active {
+  background: var(--mail-line);
+}
+
+.procedure-mail-keys .procedure-mail-wide {
+  grid-column: span 2;
+  font-size: calc(1.6 * var(--mail-unit));
+  font-family: inherit;
+}
+
+.procedure-mail-confirm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(22 * var(--mail-unit));
+  gap: calc(1.6 * var(--mail-unit));
+  align-items: start;
+}
+
+.procedure-mail-recipient {
+  font-size: calc(3.2 * var(--mail-unit));
+  line-height: 1.25;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.procedure-mail-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: calc(0.6 * var(--mail-unit)) calc(1.4 * var(--mail-unit));
+  margin-top: calc(1.4 * var(--mail-unit));
+  font-size: calc(1.5 * var(--mail-unit));
+  overflow-wrap: anywhere;
+}
+
+.procedure-mail-facts dt,
+.procedure-mail-sent-address {
+  color: var(--mail-muted);
+}
+
+.procedure-mail-thumb {
+  overflow: hidden;
+  border: 1px solid var(--mail-line);
+  border-radius: 2px;
+  background: white;
+}
+
+.procedure-mail-paper {
+  container-type: inline-size;
+  display: grid;
+  grid-template-rows: 2.85% minmax(0, 1fr) 2.85%;
+  aspect-ratio: 210 / 297;
+  background: white;
+  color: #1b2228;
+  pointer-events: none;
+}
+
+.procedure-mail-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1cqw;
+  padding-inline: 3.3cqw;
+  overflow: hidden;
+  background: #1b2228;
+  color: white;
+  font-size: 1.35cqw;
+  white-space: nowrap;
+}
+
+.procedure-mail-band > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.procedure-mail-band-footer {
+  border-top: 1px solid #1b2228;
+  background: #eef1f3;
+  color: #1b2228;
+}
+
+.procedure-mail-paper-body {
+  position: relative;
+  overflow: hidden;
+}
+
+.procedure-mail-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-35deg);
+  color: #1b222821;
+  font-size: 7.6cqw;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.procedure-mail-overlay .procedure-mail-expanded {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  padding: calc(1.4 * var(--mail-unit));
+  border: 0;
+  border-radius: 0;
+  background: #000000e6;
+}
+
+.procedure-mail-expanded .procedure-mail-row {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  float: right;
+}
+
+.procedure-mail-expanded .procedure-mail-paper {
+  width: 794px;
+  margin-inline: auto;
+}
+
+.procedure-mail-result {
+  gap: var(--mail-unit);
+  padding-block: calc(2.4 * var(--mail-unit));
+}
+
+.procedure-mail-mark {
+  width: calc(7 * var(--mail-unit));
+  aspect-ratio: 1;
+  background: var(--mail-green);
+  color: #04140d;
+}
+
+.procedure-mail-mark svg {
+  width: 57%;
+}
+
+.procedure-mail-sent-address {
+  font-size: calc(1.7 * var(--mail-unit));
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.procedure-mail-error {
+  color: #fca5a5;
+}
+
+.procedure-mail-spin {
+  width: calc(5 * var(--mail-unit));
+  aspect-ratio: 1;
+  border: calc(0.5 * var(--mail-unit)) solid var(--mail-line);
+  border-top-color: var(--mail-blue);
+  border-radius: 50%;
+  animation: procedure-mail-spin 0.9s linear infinite;
+}
+
+@keyframes procedure-mail-pulse {
+  50% { box-shadow: 0 0 0 calc(1.4 * var(--mail-unit)) #7cc4ff22; }
+}
+
+@keyframes procedure-mail-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .procedure-mail-reader,
+  .procedure-mail-spin {
+    animation: none;
+  }
+}

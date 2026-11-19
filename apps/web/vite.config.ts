@@ -42,7 +42,8 @@ export default defineConfig({
       input: {
         app: 'index.html',
         hermesSearchTrial: 'hermes-search-device-trial.html',
-        a2uiPrint: 'a2ui-print.html'
+        a2uiPrint: 'a2ui-print.html',
+        assemblyProcedurePrint: 'assembly-procedure-print.html'
       },
       output: {
         manualChunks: {

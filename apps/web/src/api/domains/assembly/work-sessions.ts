@@ -3,7 +3,7 @@ import { api } from '../../http';
 import type { AssemblyCheckRecordDto, AssemblyCheckSummaryDto, AssemblyProcedureSequenceDto, AssemblyLotCreateInput, AssemblyLotSummaryDto, AssemblyOperatorAccessInput, AssemblyTorqueRecordOutcome, AssemblyWorkSessionDto, AssemblyWorkSessionSummaryDto, AssemblyWorkSessionStartInput } from '../../../features/assembly/types';
 
 export async function resolveAssemblyOperatorNfc(uid: string) {
-  const { data } = await api.post<{ employeeId: string; displayName: string }>(
+  const { data } = await api.post<{ employeeId: string; employeeCode: string; displayName: string }>(
     '/assembly/operators/resolve-nfc',
     { uid }
   );

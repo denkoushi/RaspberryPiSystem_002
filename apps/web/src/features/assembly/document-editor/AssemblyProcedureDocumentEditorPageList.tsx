@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { AssemblyProcedureOverlayLayer } from '../AssemblyProcedureOverlayLayer';
@@ -104,24 +104,41 @@ const PageThumbnail = memo(function PageThumbnail({ page, assets, selected, onSe
       onDragStart={event => event.preventDefault()}
       onClick={() => onSelect(page.pageIndex)}
     >
-      <AssemblyProcedureDocumentEditorPagePreview page={page} assets={assets} />
+      <AssemblyProcedureDocumentEditorPagePreview page={page} assets={assets} lazy />
       <span className="absolute bottom-1 left-1.5 font-mono text-sm text-[#333]">{page.pageIndex + 1}</span>
     </button>
   );
 });
 
-export function AssemblyProcedureDocumentEditorPagePreview({ page, assets }: {
+export const AssemblyProcedureDocumentEditorPagePreview = memo(function AssemblyProcedureDocumentEditorPagePreview({ page, assets, lazy = false }: {
   page: AssemblyProcedureDocumentPageDto;
   assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
+  lazy?: boolean;
 }) {
-  return <div className="relative aspect-[1/1.414] overflow-hidden rounded bg-white">
-    <KioskDocumentPageImage
-      pageUrl={page.imageRelativePath}
-      alt=""
-      className="h-full w-full object-contain"
-      loadingFallback={<span />}
-      errorFallback={<span className="flex h-full items-center justify-center text-[0.6rem] text-red-600">読込失敗</span>}
-    />
-    <AssemblyProcedureOverlayLayer elements={page.overlays} assets={assets} />
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [hasIntersected, setHasIntersected] = useState(false);
+  const showContent = !lazy || hasIntersected || typeof IntersectionObserver === 'undefined';
+
+  useEffect(() => {
+    const preview = previewRef.current;
+    if (showContent || !preview) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) setHasIntersected(true);
+    }, { rootMargin: '300px' });
+    observer.observe(preview);
+    return () => observer.disconnect();
+  }, [showContent]);
+
+  return <div ref={previewRef} className="relative aspect-[1/1.414] overflow-hidden rounded bg-white">
+    {showContent ? <>
+      <KioskDocumentPageImage
+        pageUrl={page.imageRelativePath}
+        alt=""
+        className="h-full w-full object-contain"
+        loadingFallback={<span />}
+        errorFallback={<span className="flex h-full items-center justify-center text-[0.6rem] text-red-600">読込失敗</span>}
+      />
+      <AssemblyProcedureOverlayLayer elements={page.overlays} assets={assets} />
+    </> : null}
   </div>;
-}
+});

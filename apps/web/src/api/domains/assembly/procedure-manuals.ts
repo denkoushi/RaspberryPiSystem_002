@@ -1,5 +1,13 @@
 import { api } from '../../http';
 
+export async function sendProcedureManualMail(input: { documentId: string; revisionId: string; nfcUid: string; localPart: string }) {
+  // Allow 75 seconds for rendering, 80 for Gmail, and time for DB work.
+  const { data } = await api.post<{
+    deliveryId: string; sentAt: string; gmailMessageId: string; pageCount: number; pdfByteSize: number;
+  }>('/assembly/procedure-manuals/mail', input, { timeout: 180_000 });
+  return data;
+}
+
 export async function listProcedureManualProcesses() {
   const { data } = await api.get<{ processes: import('../../../features/assembly/types').ProcedureManualProcessDto[] }>('/assembly/procedure-manuals/processes');
   return data.processes;
