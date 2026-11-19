@@ -1,13 +1,19 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentPageImportDialog } from './AssemblyProcedureDocumentPageImportDialog';
 
 import type { AssemblyProcedureDocumentSummaryDto, ProcedureManualUsageDto } from '../types';
 
 const api = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn() }));
+const renderImage = vi.hoisted(() => vi.fn<(pageUrl: string) => void>());
 vi.mock('../../../api/client', () => ({ listAssemblyProcedureDocumentSummaries: api.list, getAssemblyProcedureDocument: api.get }));
-vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: ({ pageUrl }: { pageUrl: string }) => <span data-testid="image" data-url={pageUrl} /> }));
+vi.mock('../KioskDocumentPageImage', () => ({
+  KioskDocumentPageImage: ({ pageUrl }: { pageUrl: string }) => {
+    renderImage(pageUrl);
+    return <span data-testid="image" data-url={pageUrl} />;
+  }
+}));
 
 const myUsage = { modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立' };
 const otherUsage = { modelCode: 'DFD2', modelCodeKey: 'DFD2', processId: 'cut', processName: '切断' };
@@ -17,6 +23,7 @@ function makeDocument(id: string, name: string, manualAssignments: ProcedureManu
     imageRelativePath: `/${id}-0.png`,
     updatedAt: '2026-01-01T00:00:00.000Z', createdAt: '2026-01-01T00:00:00.000Z',
     pages: [0, 1, 2].map(pageIndex => ({ pageIndex, imageRelativePath: `/${id}-${pageIndex}.png` })),
+    assets: {},
     activeTemplateCount: 0, totalTemplateCount: 0
   };
 }
@@ -35,8 +42,71 @@ function renderDialog(onClose = vi.fn()) {
 
 describe('page import picker', () => {
   beforeEach(() => {
+    renderImage.mockClear();
     api.list.mockResolvedValue([destination, source, other]);
     api.get.mockResolvedValue(source);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('defers source, destination and insertion thumbnails while showing zoom immediately', async () => {
+    const notifyByBox = new Map<Element, () => void>();
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(private callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        notifyByBox.set(target, () => this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver));
+      }
+      disconnect() {}
+    });
+
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: /同じ機種の公開版/ }));
+    const firstSource = await screen.findByRole('button', { name: '1ページ目' });
+    const destinationPages = within(screen.getByRole('region', { name: '差し込み先のページ' }));
+    const firstDestination = destinationPages.getByRole('button', { name: '1ページ目を拡大' });
+    fireEvent.click(firstSource);
+    const position = screen.getByRole('button', { name: '2ページ目の後ろに入れる' });
+    expect(screen.queryByTestId('image')).not.toBeInTheDocument();
+
+    fireEvent.click(firstDestination);
+    const viewer = screen.getByRole('dialog', { name: '1ページ目' });
+    expect(within(viewer).getByTestId('image')).toHaveAttribute('data-url', '/current-0.png');
+    fireEvent.click(within(viewer).getByRole('button', { name: '閉じる' }));
+
+    for (const [button, url] of [
+      [firstSource, '/source-0.png'],
+      [firstDestination, '/current-0.png'],
+      [position, '/source-0.png']
+    ] as const) {
+      const box = [...notifyByBox.keys()].find(target => button.contains(target))!;
+      act(() => notifyByBox.get(box)!());
+      expect(within(button).getByTestId('image')).toHaveAttribute('data-url', url);
+    }
+    expect(screen.getAllByTestId('image')).toHaveLength(3);
+  });
+
+  it('does not rerender existing thumbnails when choosing pages, moving the position or filtering', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: /同じ機種の公開版/ }));
+    const first = await screen.findByRole('button', { name: '1ページ目' });
+    expect(screen.getAllByTestId('image')).toHaveLength(6);
+
+    renderImage.mockClear();
+    fireEvent.click(first);
+    expect(renderImage.mock.calls).toEqual([['/source-0.png']]);
+
+    renderImage.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'すべて選ぶ' }));
+    expect(renderImage.mock.calls).toEqual([['/source-1.png'], ['/source-2.png']]);
+
+    renderImage.mockClear();
+    const position = screen.getByRole('button', { name: '先頭に入れる' });
+    fireEvent.click(position);
+    expect(renderImage.mock.calls).toEqual([['/source-0.png'], ['/source-1.png'], ['/source-2.png']]);
+    expect(within(position).getAllByTestId('image')).toHaveLength(3);
+
+    renderImage.mockClear();
+    fireEvent.change(screen.getByRole('searchbox', { name: '名前で絞り込み' }), { target: { value: '公' } });
+    expect(renderImage).not.toHaveBeenCalled();
   });
 
   it('starts with the editor filters and supports independently clearing them and filtering by name', async () => {
