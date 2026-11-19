@@ -60,6 +60,10 @@ import {
   templateToCreateDraft,
   useInspectionDrawingUnsavedChangesGuard
 } from '../../features/part-measurement/inspection-drawing';
+import {
+  shouldRequestDrawingOcrCandidates,
+  type DrawingOcrCandidateState
+} from '../../features/part-measurement/inspection-drawing/drawingOcrCandidateState';
 import { InspectionDrawingCreateSidebar } from '../../features/part-measurement/inspection-drawing/InspectionDrawingCreateSidebar';
 import { InspectionDrawingProposalLegend } from '../../features/part-measurement/inspection-drawing/InspectionDrawingProposalPanel';
 import { InspectionDrawingResourceCdMultiSelect } from '../../features/part-measurement/inspection-drawing/InspectionDrawingResourceCdMultiSelect';
@@ -98,8 +102,6 @@ import type { InspectionDrawingToolbarMode } from '../../features/part-measureme
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type {
   PartMeasurementProcessGroup,
-  PartMeasurementDrawingOcrCandidateDto,
-  PartMeasurementDrawingOcrStatus,
   PartMeasurementDrawingOcrStatusDto,
   PartMeasurementTemplateDto,
   PartMeasurementVisualTemplateDto,
@@ -118,14 +120,6 @@ function confirmVisualChange(message: string): boolean {
   if (typeof window === 'undefined') return true;
   return window.confirm(message);
 }
-
-type DrawingOcrCandidateState = {
-  requestId: number;
-  loading: boolean;
-  status: PartMeasurementDrawingOcrStatus | null;
-  candidates: PartMeasurementDrawingOcrCandidateDto[];
-  error: string | null;
-};
 
 export function KioskInspectionDrawingCreatePage() {
   const { templateId } = useParams<{ templateId: string }>();
@@ -1011,8 +1005,7 @@ export function KioskInspectionDrawingCreatePage() {
   useEffect(() => {
     if (!candidateSourceReady) return;
     if (!selectedPoint) return;
-    const current = ocrCandidatesByPointId[selectedPoint.id];
-    if (current?.loading || current?.candidates.length || current?.status === 'completed') return;
+    if (!shouldRequestDrawingOcrCandidates(ocrCandidatesByPointId[selectedPoint.id])) return;
     requestOcrCandidatesForPoint(selectedPoint);
   }, [candidateSourceReady, ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint]);
 
