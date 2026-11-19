@@ -1,4 +1,4 @@
-import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
+import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX, assemblyProcedureOverlayBBoxCenter } from '@raspi-system/shared-types';
 
 import type { AssemblyProcedureDocumentDto } from '../types';
 import type {
@@ -14,7 +14,7 @@ export type OverlayDraftAction =
   | { type: 'splitLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[]; nextPageElements: AssemblyProcedureOverlayElement[] }
   | { type: 'addPair'; elements: [AssemblyProcedureOverlayElement, AssemblyProcedureOverlayElement] }
   | { type: 'add'; element: AssemblyProcedureOverlayElement }
-  | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number }
+  | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number; attachedIds: ReadonlyMap<string, string> }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
   | { type: 'remove'; id: string }
   | { type: 'bringForward'; id: string }
@@ -24,6 +24,96 @@ export type OverlayDraftAction =
   | { type: 'nudge'; id: string; dxRatio: number; dyRatio: number }
   | { type: 'clear' };
 
+function isErasePatch(element: AssemblyProcedureOverlayElement): boolean {
+  return element.kind === 'IMAGE' && element.id.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX);
+}
+
+function isPhoto(element: AssemblyProcedureOverlayElement): boolean {
+  return element.kind === 'IMAGE' && !isErasePatch(element);
+}
+
+function bboxesOverlap(a: AssemblyProcedureOverlayBBox, b: AssemblyProcedureOverlayBBox): boolean {
+  return Math.min(a.xRatio + a.widthRatio, b.xRatio + b.widthRatio) > Math.max(a.xRatio, b.xRatio)
+    && Math.min(a.yRatio + a.heightRatio, b.yRatio + b.heightRatio) > Math.max(a.yRatio, b.yRatio);
+}
+
+export function findAttachedOverlayIds(elements: AssemblyProcedureOverlayElement[], parentId: string): string[] {
+  const parent = elements.find(element => element.id === parentId);
+  if (!parent || !isPhoto(parent)) return [];
+
+  const page = pageOverlayElements(elements, parent.pageIndex);
+  const patches = page.filter(isErasePatch).sort((a, b) => b.zIndex - a.zIndex);
+  if (!patches.length) return [];
+  const photos = page.filter(isPhoto).sort((a, b) => b.zIndex - a.zIndex);
+  const attachedPatches = new Set(patches.filter(patch => {
+    if (patch.zIndex <= parent.zIndex) return false;
+    const { xRatio, yRatio } = assemblyProcedureOverlayBBoxCenter(patch.bbox);
+    return photos.find(photo => {
+      const bbox = photo.bbox;
+      return photo.zIndex < patch.zIndex
+        && xRatio >= bbox.xRatio && xRatio <= bbox.xRatio + bbox.widthRatio
+        && yRatio >= bbox.yRatio && yRatio <= bbox.yRatio + bbox.heightRatio;
+    })?.id === parentId;
+  }));
+  if (!attachedPatches.size) return [];
+
+  return page.filter(element => {
+    if (attachedPatches.has(element)) return true;
+    if (element.kind !== 'TEXT' || element.zIndex <= parent.zIndex) return false;
+    const patch = patches.find(candidate => candidate.zIndex < element.zIndex && bboxesOverlap(candidate.bbox, element.bbox));
+    return patch !== undefined && attachedPatches.has(patch);
+  }).sort((a, b) => a.zIndex - b.zIndex).map(element => element.id);
+}
+
+function carryAttachedOverlays(
+  before: AssemblyProcedureOverlayElement[],
+  after: AssemblyProcedureOverlayElement[],
+  layoutPageIndex?: number
+): AssemblyProcedureOverlayElement[] {
+  const proposed = new Map(after.map(element => [element.id, element]));
+  const carried = new Map<string, AssemblyProcedureOverlayElement>();
+  const original = new Map(before.map(element => [element.id, element]));
+  for (const photo of before) {
+    if (!isPhoto(photo)) continue;
+    const next = proposed.get(photo.id);
+    if (!next || !isPhoto(next)) continue;
+    const oldBox = photo.bbox;
+    const newBox = next.bbox;
+    const sameBox = oldBox.xRatio === newBox.xRatio && oldBox.yRatio === newBox.yRatio
+      && oldBox.widthRatio === newBox.widthRatio && oldBox.heightRatio === newBox.heightRatio;
+    if (sameBox && photo.pageIndex === next.pageIndex && photo.pageIndex !== layoutPageIndex) continue;
+
+    const sx = newBox.widthRatio / oldBox.widthRatio;
+    const sy = newBox.heightRatio / oldBox.heightRatio;
+    for (const id of findAttachedOverlayIds(before, photo.id)) {
+      const attachment = original.get(id)!;
+      const element = proposed.get(id) ?? attachment;
+      const box = attachment.bbox;
+      const bbox = sameBox ? box : normalizeOverlayBBox({
+        xRatio: newBox.xRatio + (box.xRatio - oldBox.xRatio) * sx,
+        yRatio: newBox.yRatio + (box.yRatio - oldBox.yRatio) * sy,
+        widthRatio: box.widthRatio * sx,
+        heightRatio: box.heightRatio * sy
+      }, 0);
+      const moved = { ...element, pageIndex: next.pageIndex, bbox };
+      if (moved.kind === 'TEXT' && attachment.kind === 'TEXT') {
+        const oldFontSize = attachment.style?.fontSizeRatio;
+        const fontSizeRatio = sx === 1 ? oldFontSize : (oldFontSize ?? 0.025) * sx;
+        if (fontSizeRatio !== moved.style?.fontSizeRatio) {
+          carried.set(id, { ...moved, style: { ...moved.style, fontSizeRatio } });
+          continue;
+        }
+      }
+      carried.set(id, moved);
+    }
+  }
+  if (!carried.size) return after;
+  return [
+    ...after.map(element => carried.get(element.id) ?? element),
+    ...[...carried.values()].filter(element => !proposed.has(element.id))
+  ];
+}
+
 function reorderElement(
   state: AssemblyProcedureOverlayElement[],
   id: string,
@@ -31,18 +121,29 @@ function reorderElement(
 ): AssemblyProcedureOverlayElement[] {
   const target = state.find((element) => element.id === id);
   if (!target) return state;
-  const pageElements = state
-    .map((element, index) => ({ element, index }))
-    .filter(({ element }) => element.pageIndex === target.pageIndex)
-    .sort((a, b) => a.element.zIndex - b.element.zIndex || a.index - b.index);
-  const position = pageElements.findIndex(({ element }) => element.id === id);
-  const nextPosition = direction === 'front' ? pageElements.length - 1
+  const page = pageOverlayElements(state, target.pageIndex).sort((a, b) => a.zIndex - b.zIndex);
+  const attachedIds = new Set(findAttachedOverlayIds(page, id));
+  const order = page.filter(element => !attachedIds.has(element.id)).map(element => element.id);
+  const position = order.indexOf(id);
+  let nextPosition = direction === 'front' ? order.length - 1
     : direction === 'back' ? 0
-    : direction === 'forward' ? Math.min(position + 1, pageElements.length - 1)
+    : direction === 'forward' ? Math.min(position + 1, order.length - 1)
     : Math.max(position - 1, 0);
-  const [current] = pageElements.splice(position, 1);
-  pageElements.splice(nextPosition, 0, current);
-  const zIndexes = new Map(pageElements.map(({ element }, index) => [element.id, index]));
+  if (isPhoto(target) && nextPosition !== position && (direction === 'forward' || direction === 'backward')) {
+    // Cross the neighbor's entire group without changing its internal order.
+    const neighborId = order[nextPosition];
+    for (const photo of page) {
+      if (!isPhoto(photo) || photo.id === id) continue;
+      const group = [photo.id, ...findAttachedOverlayIds(page, photo.id)];
+      if (!group.includes(neighborId)) continue;
+      const positions = group.map(elementId => order.indexOf(elementId));
+      nextPosition = direction === 'forward' ? Math.max(...positions) : Math.min(...positions);
+      break;
+    }
+  }
+  order.splice(position, 1);
+  order.splice(nextPosition, 0, id, ...attachedIds);
+  const zIndexes = new Map(order.map((elementId, index) => [elementId, index]));
   return state.map((element) => {
     if (element.pageIndex !== target.pageIndex) return element;
     return { ...element, zIndex: zIndexes.get(element.id)! };
@@ -69,16 +170,18 @@ export function overlayDraftReducer(
 ): AssemblyProcedureOverlayElement[] {
   switch (action.type) {
     case 'splitLayout':
-      return [...state.filter(element => element.pageIndex !== action.pageIndex && element.pageIndex !== action.pageIndex + 1),
+      return carryAttachedOverlays(state, [
+        ...state.filter(element => element.pageIndex !== action.pageIndex && element.pageIndex !== action.pageIndex + 1),
         ...action.elements.map(element => ({ ...element, pageIndex: action.pageIndex })),
-        ...action.nextPageElements.map(element => ({ ...element, pageIndex: action.pageIndex + 1 }))];
+        ...action.nextPageElements.map(element => ({ ...element, pageIndex: action.pageIndex + 1 }))
+      ], action.pageIndex);
     case 'applyLayout': {
       const proposed = new Map(action.elements.map(element => [element.id, element]));
       const existingIds = new Set(state.filter(element => element.pageIndex === action.pageIndex).map(element => element.id));
-      return [
+      return carryAttachedOverlays(state, [
         ...state.map(element => element.pageIndex === action.pageIndex ? { ...(proposed.get(element.id) ?? element) } : element),
         ...action.elements.filter(element => element.pageIndex === action.pageIndex && !existingIds.has(element.id)).map(element => ({ ...element }))
-      ];
+      ], action.pageIndex);
     }
     case 'replace':
       return action.elements.map((element) => ({ ...element }));
@@ -92,13 +195,23 @@ export function overlayDraftReducer(
     case 'duplicate': {
       const source = state.find((element) => element.id === action.sourceId);
       if (!source) return state;
-      const copy = { ...structuredClone(source), id: action.id, pageIndex: action.pageIndex, zIndex: nextPageZIndex(state, action.pageIndex) };
-      return [...state, copy];
+      const zIndex = nextPageZIndex(state, action.pageIndex);
+      const attached = state.filter(element => action.attachedIds.has(element.id)).sort((a, b) => a.zIndex - b.zIndex);
+      return [...state, ...[source, ...attached].map((element, index) => ({
+        ...structuredClone(element),
+        id: index === 0 ? action.id : action.attachedIds.get(element.id)!,
+        pageIndex: action.pageIndex,
+        zIndex: zIndex + index
+      }))];
     }
-    case 'update':
-      return state.map((element) => (element.id === action.element.id ? action.element : element));
-    case 'remove':
-      return state.filter((element) => element.id !== action.id);
+    case 'update': {
+      const updated = state.map((element) => (element.id === action.element.id ? action.element : element));
+      return isPhoto(action.element) ? carryAttachedOverlays(state, updated) : updated;
+    }
+    case 'remove': {
+      const attachedIds = new Set(findAttachedOverlayIds(state, action.id));
+      return state.filter((element) => element.id !== action.id && !attachedIds.has(element.id));
+    }
     case 'bringForward':
       return reorderElement(state, action.id, 'forward');
     case 'sendBackward':
@@ -108,7 +221,7 @@ export function overlayDraftReducer(
     case 'sendToBack':
       return reorderElement(state, action.id, 'back');
     case 'nudge':
-      return nudgeElement(state, action.id, action.dxRatio, action.dyRatio);
+      return carryAttachedOverlays(state, nudgeElement(state, action.id, action.dxRatio, action.dyRatio));
     case 'clear':
       return [];
     default:
@@ -150,6 +263,17 @@ export function duplicateOverlayId(sourceId: string, generateId: () => string = 
     : generateId();
 }
 
+export function createDuplicateOverlayAction(
+  elements: AssemblyProcedureOverlayElement[],
+  sourceId: string,
+  id: string,
+  pageIndex: number
+): Extract<OverlayDraftAction, { type: 'duplicate' }> {
+  const attachedIds = new Map(findAttachedOverlayIds(elements, sourceId)
+    .map(elementId => [elementId, duplicateOverlayId(elementId)]));
+  return { type: 'duplicate', sourceId, id, pageIndex, attachedIds };
+}
+
 export type OverlayCreationKind = 'TEXT' | 'IMAGE' | 'SHAPE';
 export type OverlayRangeChoice = OverlayCreationKind | 'TEXT_REWRITE';
 
@@ -160,9 +284,9 @@ function nextPageZIndex(elements: AssemblyProcedureOverlayElement[], pageIndex: 
 
 const MIN_OVERLAY_RATIO = 0.005;
 
-export function normalizeOverlayBBox(bbox: AssemblyProcedureOverlayBBox): AssemblyProcedureOverlayBBox {
-  const widthRatio = Math.max(MIN_OVERLAY_RATIO, Math.min(1, Number.isFinite(bbox.widthRatio) ? bbox.widthRatio : MIN_OVERLAY_RATIO));
-  const heightRatio = Math.max(MIN_OVERLAY_RATIO, Math.min(1, Number.isFinite(bbox.heightRatio) ? bbox.heightRatio : MIN_OVERLAY_RATIO));
+export function normalizeOverlayBBox(bbox: AssemblyProcedureOverlayBBox, minRatio = MIN_OVERLAY_RATIO): AssemblyProcedureOverlayBBox {
+  const widthRatio = Math.max(minRatio, Math.min(1, Number.isFinite(bbox.widthRatio) ? bbox.widthRatio : MIN_OVERLAY_RATIO));
+  const heightRatio = Math.max(minRatio, Math.min(1, Number.isFinite(bbox.heightRatio) ? bbox.heightRatio : MIN_OVERLAY_RATIO));
   const xRatio = Math.max(0, Math.min(1 - widthRatio, Number.isFinite(bbox.xRatio) ? bbox.xRatio : 0));
   const yRatio = Math.max(0, Math.min(1 - heightRatio, Number.isFinite(bbox.yRatio) ? bbox.yRatio : 0));
   return { xRatio, yRatio, widthRatio, heightRatio };
