@@ -3737,13 +3737,18 @@ model AssemblyProcedureAsset {
   /// Temporary ownership lease for uploads made while an active DRAFT is edited.
   /// The lease is cleared when an IMAGE overlay references the asset.
   ownerDocumentId  String?
+  derivedFromAssetId String?
   createdAt        DateTime                            @default(now())
   overlayElements  AssemblyProcedureOverlayElement[]
   sourceRevisions  AssemblyProcedureDocumentRevision[]
   captionFeedback  AssemblyProcedureCaptionFeedback[]
   ownerDocument    AssemblyProcedureDocument?          @relation("AssemblyProcedureAssetOwnerDocument", fields: [ownerDocumentId], references: [id], onDelete: SetNull)
 
+  derivedFromAsset AssemblyProcedureAsset? @relation("AssemblyProcedureAssetDerivation", fields: [derivedFromAssetId], references: [id], onDelete: Restrict)
+  derivedAssets    AssemblyProcedureAsset[] @relation("AssemblyProcedureAssetDerivation")
+
   @@index([sha256], map: "AssemblyProcedureAsset_idx_sha256")
+  @@index([derivedFromAssetId])
   @@index([ownerDocumentId, createdAt], map: "AssemblyProcedureAsset_idx_owner_created")
 }
 

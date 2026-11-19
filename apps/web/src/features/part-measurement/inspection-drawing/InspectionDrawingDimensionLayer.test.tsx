@@ -33,6 +33,7 @@ it.each(['read-only', 'unselected', 'unmount'])(
     const props = { points: [point], selectedPointId: point.id, image, width: 800, height: 600, editable: true, onChange };
     const { rerender, unmount } = render(<InspectionDrawingDimensionLayer {...props} />);
     const svg = screen.getByLabelText('寸法線');
+    expect(svg).toHaveClass('z-30');
     const getRect = vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0 } as DOMRect);
     const handle = screen.getByLabelText('X寸法基準点');
     const lines = [...svg.querySelectorAll('line')];
@@ -53,6 +54,6 @@ it.each(['read-only', 'unselected', 'unmount'])(
     expect(getRect).toHaveBeenCalledTimes(1);
     fireEvent.pointerUp(handle, { clientX: 100, clientY: 140 });
     expect(onChange).not.toHaveBeenCalled();
-    if (interruption !== 'unmount') expect(svg).not.toHaveClass('z-20');
+    if (interruption !== 'unmount') expect(svg).not.toHaveClass('z-30');
   }
 );

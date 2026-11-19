@@ -1,6 +1,7 @@
 import { videosForPage, type ProcedureVideoSummary, type ProcedureVideoPageLink } from './procedure-video.service.js';
 import {
   type AssemblyProcedureImageObjectFit,
+  type AssemblyProcedureOverlayAssetMetadata,
   type AssemblyProcedureOverlayElement,
   type AssemblyProcedureOverlayTextStyle
 } from '@raspi-system/shared-types';
@@ -19,6 +20,12 @@ export function serializeLastProcedureManualApproval(approvals?: ProcedureManual
   return approval ? { employeeName: approval.employeeNameSnapshot, positionName: approval.employeePositionSnapshot, approvedAt: approval.createdAt.toISOString() } : null;
 }
 
+type ProcedureAssetSummary = Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>;
+export type ProcedureAssetWithOriginal = ProcedureAssetSummary & {
+  derivedFromAssetId?: string | null;
+  derivedFromAsset?: ProcedureAssetSummary | null;
+};
+
 type AssemblyProcedureDocumentRevisionSerializationInput = {
   procedureManualApprovals?: ProcedureManualApprovalSnapshot[];
   procedureVideoLinks?: ProcedureVideoPageLink[];
@@ -34,8 +41,8 @@ type AssemblyProcedureDocumentRevisionSerializationInput = {
     pageIndex: number;
     imageRelativePath: string;
   }>;
-  overlayElements: AssemblyProcedureOverlayElementRow[];
-  ownedAssets?: Array<Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>>;
+  overlayElements: Array<AssemblyProcedureOverlayElementRow & { asset: ProcedureAssetWithOriginal | null }>;
+  ownedAssets?: ProcedureAssetWithOriginal[];
   revisionMetadata: {
     revisionRootId: string;
     revisionNumber: number;
@@ -71,13 +78,7 @@ export type AssemblyProcedureDocumentRevisionDto = {
     overlays: AssemblyProcedureOverlayElement[];
     videos: ProcedureVideoSummary[];
   }>;
-  assets: Record<string, {
-    assetId: string;
-    storageKey: string;
-    contentType: string;
-    byteSize: number;
-    url: string;
-  }>;
+  assets: Record<string, AssemblyProcedureOverlayAssetMetadata & { url: string }>;
 };
 
 export function assemblyProcedureAssetUrl(assetId: string, storageKey: string): string {
@@ -85,6 +86,33 @@ export function assemblyProcedureAssetUrl(assetId: string, storageKey: string): 
   return storageName
     ? `/api/storage/assembly-procedure-assets/${encodeURIComponent(storageName)}`
     : `/api/storage/assembly-procedure-assets/${encodeURIComponent(assetId)}`;
+}
+
+export function serializeAssemblyProcedureAssets(doc: {
+  status: 'DRAFT' | 'PUBLISHED';
+  ownedAssets?: ProcedureAssetWithOriginal[];
+  overlayElements?: Array<{ asset: ProcedureAssetWithOriginal | null }>;
+}): AssemblyProcedureDocumentRevisionDto['assets'] {
+  const assets: AssemblyProcedureDocumentRevisionDto['assets'] = {};
+  const addAsset = (asset: ProcedureAssetWithOriginal) => {
+    assets[asset.id] = {
+      assetId: asset.id,
+      storageKey: asset.storageKey,
+      contentType: asset.contentType,
+      byteSize: asset.byteSize,
+      url: assemblyProcedureAssetUrl(asset.id, asset.storageKey),
+      ...(doc.status === 'DRAFT' && asset.derivedFromAssetId
+        ? { derivedFromAssetId: asset.derivedFromAssetId } : {})
+    };
+  };
+  for (const asset of [
+    ...(doc.ownedAssets ?? []),
+    ...(doc.overlayElements ?? []).flatMap(({ asset }) => asset ? [asset] : [])
+  ]) {
+    addAsset(asset);
+    if (doc.status === 'DRAFT' && asset.derivedFromAsset) addAsset(asset.derivedFromAsset);
+  }
+  return assets;
 }
 
 export function serializeAssemblyProcedureOverlayElement(
@@ -142,27 +170,9 @@ export function serializeAssemblyProcedureOverlayElement(
 export function serializeAssemblyProcedureDocumentRevision(
   doc: AssemblyProcedureDocumentRevisionSerializationInput
 ): AssemblyProcedureDocumentRevisionDto {
-  const assets: AssemblyProcedureDocumentRevisionDto['assets'] = {};
-  for (const asset of doc.ownedAssets ?? []) {
-    assets[asset.id] = {
-      assetId: asset.id,
-      storageKey: asset.storageKey,
-      contentType: asset.contentType,
-      byteSize: asset.byteSize,
-      url: assemblyProcedureAssetUrl(asset.id, asset.storageKey)
-    };
-  }
+  const assets = serializeAssemblyProcedureAssets(doc);
   const overlaysByPage = new Map<number, AssemblyProcedureOverlayElement[]>();
   for (const overlay of doc.overlayElements) {
-    if (overlay.asset) {
-      assets[overlay.asset.id] = {
-        assetId: overlay.asset.id,
-        storageKey: overlay.asset.storageKey,
-        contentType: overlay.asset.contentType,
-        byteSize: overlay.asset.byteSize,
-        url: assemblyProcedureAssetUrl(overlay.asset.id, overlay.asset.storageKey)
-      };
-    }
     const values = overlaysByPage.get(overlay.pageIndex) ?? [];
     values.push(serializeAssemblyProcedureOverlayElement(overlay));
     overlaysByPage.set(overlay.pageIndex, values);

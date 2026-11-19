@@ -78,6 +78,37 @@ export async function uploadAssemblyProcedureOverlayImage(input: {
   return data.asset;
 }
 
+export async function rotateAssemblyProcedureAsset(input: {
+  id: string;
+  assetId: string;
+  direction: 'left' | 'right';
+  accessPassword: string;
+  holderToken?: string | null;
+}) {
+  const { data } = await api.post<{
+    asset: AssemblyProcedureOverlayAssetDto & { originalAsset?: AssemblyProcedureOverlayAssetDto };
+  }>(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/assets/${encodeURIComponent(input.assetId)}/rotate`,
+    { accessPassword: input.accessPassword, direction: input.direction },
+    procedureEditHeaders(input.holderToken)
+  );
+  return data.asset;
+}
+
+export async function sharpenAssemblyProcedureOverlayImage(input: {
+  id: string;
+  assetId: string;
+  accessPassword: string;
+  holderToken?: string | null;
+}) {
+  const { data } = await api.post<{ asset: AssemblyProcedureOverlayAssetDto & { derivedFromAssetId: string } }>(
+    `/assembly/procedure-documents/${encodeURIComponent(input.id)}/assets/${encodeURIComponent(input.assetId)}/sharpen`,
+    { accessPassword: input.accessPassword },
+    procedureEditHeaders(input.holderToken)
+  );
+  return data.asset;
+}
+
 type AssemblyProcedureImageRegionInput = {
   holderToken?: string | null;
   id: string;

@@ -945,6 +945,22 @@ describe('two-machine chain links', () => {
     expect(bar(1 - selected)).not.toHaveClass('outline-white');
   });
 
+  it('keeps the colored curve aligned while either machine scrolls and preserves the white chain', () => {
+    render(<PlanningBoardGanttDisplay {...pieces()} />);
+    const path = () => screen.getByTestId('planning-gantt-normal-piece-link');
+    expect(path()).toHaveAttribute('data-from-to', 'piece:p0->piece:p1');
+    fireEvent.click(bar(0));
+    expect(screen.getByTestId('planning-gantt-piece-link')).toHaveAttribute('stroke', 'white');
+    expect(path()).not.toHaveAttribute('stroke', 'white');
+    for (const viewport of screen.getAllByLabelText('ガントの日付と工程')) {
+      const before = path().getAttribute('d');
+      viewport.scrollTop += 20;
+      fireEvent.scroll(viewport);
+      act(() => vi.advanceTimersByTime(20));
+      expect(path().getAttribute('d')).not.toBe(before);
+    }
+  });
+
   const controls = (): NonNullable<PlanningBoardGanttProps['testBarControls']> => ({
     bars: [], nextSequence: 1, selectedId: null, selectedBar: null, disabled: false,
     select: vi.fn(), create: vi.fn(async () => true), remove: vi.fn(), complete: vi.fn(), accept: vi.fn(), undo: vi.fn()

@@ -47,12 +47,16 @@ describe('PlanningBoardToolbar forward controls', () => {
     rerender(<PlanningBoardToolbar {...values} orderPreview={{ before: metrics, after: metrics }} />);
     expect(screen.queryByRole('button', { name: 'SCAW' })).not.toBeInTheDocument();
   });
-  it('reserves the same toolbar height across Gantt and focus controls', () => {
+  it('allows wrapping without horizontal scrolling and keeps a 66px minimum height', () => {
     const values = props();
     const { container, rerender } = render(<PlanningBoardToolbar {...values} />);
-    expect(container.firstElementChild).toHaveClass('h-[66px]');
+    const toolbar = container.firstElementChild;
+    expect(toolbar).toHaveClass('min-h-[66px]', 'flex-wrap');
+    for (const className of ['h-[66px]', 'flex-nowrap', 'overflow-x-auto', '[scrollbar-width:none]', '[&::-webkit-scrollbar]:hidden']) {
+      expect(toolbar).not.toHaveClass(className);
+    }
     rerender(<PlanningBoardToolbar {...values} ganttEnabled={false} focusedSeiban="26-1041" />);
-    expect(container.firstElementChild).toHaveClass('h-[66px]');
+    expect(container.firstElementChild).toHaveClass('min-h-[66px]', 'flex-wrap');
   });
   it.each([false, true])('keeps the icon-only scan control outside the Gantt group with gantt=%s', (ganttEnabled) => {
     render(<PlanningBoardToolbar {...props()} ganttEnabled={ganttEnabled} onOrderScan={() => null} />);
@@ -272,7 +276,7 @@ describe('PlanningBoardToolbar forward controls', () => {
   it('disables undo without history and keeps feedback shrinkable', () => {
     render(<PlanningBoardToolbar {...props()} canUndoOrder={false} feedback={<span>保存中</span>} />);
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
-    expect(screen.getByText('保存中').parentElement).toHaveClass('min-w-0', 'flex-1');
+    expect(screen.getByText('保存中').parentElement).toHaveClass('w-0', 'min-w-0', 'flex-1');
   });
 });
 

@@ -4,7 +4,7 @@ import {
   type AssemblyProcedureOverlayElement
 } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
 import { OverlayRangeSelectionSurface } from '../../overlays/OverlayRangeSelectionSurface';
 import { AssemblyProcedureCanvas } from '../AssemblyProcedureCanvas';
@@ -22,6 +22,7 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
   pageIndex,
   crop,
   elements,
+  imageAngles,
   selectionMode,
   editable,
   locked = false,
@@ -46,6 +47,7 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
   pageIndex: number;
   crop?: AssemblyProcedureCropRect | null;
   elements: AssemblyProcedureOverlayElement[];
+  imageAngles?: ReadonlyMap<string, number>;
   selectionMode: boolean;
   editable: boolean;
   locked?: boolean;
@@ -86,6 +88,24 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
   const tap = useRef<{ id: string; edit: boolean; x: number; y: number; moved: boolean } | null>(null);
   const ownLayerRef = useRef<HTMLDivElement>(null);
   const layerRef = externalLayerRef ?? ownLayerRef;
+  useLayoutEffect(() => {
+    if (!imageAngles?.size) return;
+    const overlays = layerRef.current?.querySelectorAll<HTMLElement>('[data-overlay-id]');
+    const rotated: HTMLElement[] = [];
+    for (const node of overlays ?? []) {
+      const angle = imageAngles.get(node.dataset.overlayId!);
+      if (!angle) continue;
+      node.dataset.editorImageRotation = angle % 180 === 0 ? 'half' : 'quarter';
+      node.style.setProperty('--editor-image-angle', `${angle}deg`);
+      rotated.push(node);
+    }
+    return () => {
+      for (const node of rotated) {
+        delete node.dataset.editorImageRotation;
+        node.style.removeProperty('--editor-image-angle');
+      }
+    };
+  }, [crop, elements, imageAngles, layerRef]);
   const interaction = useRef<{ id: string; mode: SnapMode; original: AssemblyProcedureOverlayBBox } | null>(null);
   const active = useRef(false);
   const beginEditingRef = useRef(beginEditing);
@@ -128,6 +148,24 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
           event.stopPropagation(); event.preventDefault(); beginEditing(id);
         }
       }}>
+      {/* Swap the image content-box dimensions before object-fit is applied on a quarter turn. */}
+      {imageAngles?.size ? <style>{`
+        [data-editor-image-rotation] > img {
+          transform: rotate(var(--editor-image-angle));
+        }
+        [data-editor-image-rotation="quarter"] {
+          container-type: size;
+        }
+        [data-editor-image-rotation="quarter"] > img {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 100cqh;
+          height: 100cqw;
+          max-width: none;
+          transform: translate(-50%, -50%) rotate(var(--editor-image-angle));
+        }
+      `}</style> : null}
       <AssemblyProcedureOverlayLayer
         elements={elements}
         crop={crop}

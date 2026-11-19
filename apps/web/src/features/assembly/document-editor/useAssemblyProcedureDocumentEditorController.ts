@@ -1,7 +1,7 @@
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
-import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision } from '../../../api/client';
+import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision, sharpenAssemblyProcedureOverlayImage } from '../../../api/client';
 import { DEFAULT_UNSAVED_NAVIGATION_MESSAGE, useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
@@ -17,7 +17,7 @@ import {
 } from './assemblyDocumentEditorDraft';
 import { readDocumentEditorConflict } from './documentEditorConflict';
 import { historyReducer } from './documentEditorHistory';
-import { removeMaterialPlacements } from './documentEditorMaterialPlacements';
+import { matchesMaterialPlacement, removeMaterialPlacements } from './documentEditorMaterialPlacements';
 import {
   selectDocumentElement,
   selectDocumentPage,
@@ -31,6 +31,7 @@ import { useAssemblyProcedureDocumentOverlayCommands } from './useAssemblyProced
 import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
 import { useAssemblyProcedureLayoutSuggestions } from './useAssemblyProcedureLayoutSuggestions';
 import { useDocumentEditorHistoryCommands } from './useDocumentEditorHistoryCommands';
+import { useDocumentEditorImageRotation } from './useDocumentEditorImageRotation';
 import { useDocumentEditorMaterialPlacements } from './useDocumentEditorMaterialPlacements';
 import { useDocumentEditorPageCommands } from './useDocumentEditorPageCommands';
 
@@ -95,10 +96,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const draftElements = useMemo(() => inlineDraft ? elements.map(element => element.id === inlineDraft.id ? inlineDraft : element) : elements, [elements, inlineDraft]);
   const snapshot = useMemo(() => overlayDraftSnapshot(draftElements), [draftElements]);
   const isDirty = baselineSnapshot != null && baselineSnapshot !== snapshot;
-  const selectedPage = useMemo(
-    () => selectDocumentPage(document, selectedPageIndex),
-    [document, selectedPageIndex]
-  );
+  const selectedPage = useMemo(() => selectDocumentPage(document, selectedPageIndex), [document, selectedPageIndex]);
   const selectedElement = useMemo(
     () => selectDocumentElement(elements, selectedOverlayId),
     [elements, selectedOverlayId]
@@ -296,6 +294,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     materialScope, setBusy
   ]);
   const overlayCommands = useAssemblyProcedureDocumentOverlayCommands(overlaySession);
+  const imageRotation = useDocumentEditorImageRotation({ ...overlaySession, get busy() { return busyRef.current; }, materials });
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -445,6 +444,50 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectionMode(false);
   });
 
+  const selectedImageAssetId = selectedElement?.kind === 'IMAGE' ? selectedElement.assetId : undefined;
+  const originalPhotoAssetId = selectedImageAssetId ? document?.assets?.[selectedImageAssetId]?.derivedFromAssetId : undefined;
+  const canTogglePhotoSharpen = Boolean(selectedImageAssetId) && !conflict;
+  const isCurrentPhotoEdit = useEditorCallback((documentId: string, requestedDocumentId: string, holderToken: string | null, scope: number) =>
+    document?.id === documentId && input.documentId === requestedDocumentId &&
+    editLease.holderToken === holderToken && materialScope.current === scope && !readOnly && !conflict
+  );
+  const togglePhotoSharpen = useEditorCallback(async () => {
+    if (!document || selectedElement?.kind !== 'IMAGE' || !selectedImageAssetId ||
+        !canTogglePhotoSharpen || readOnly || busyRef.current) return;
+    if (originalPhotoAssetId) {
+      dispatch({ type: 'update', element: { ...selectedElement, assetId: originalPhotoAssetId } });
+      return;
+    }
+    const holderToken = editLease.holderToken;
+    const scope = materialScope.current;
+    const requestedDocumentId = input.documentId;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const asset = await sharpenAssemblyProcedureOverlayImage({
+        id: document.id, assetId: selectedImageAssetId, accessPassword: passwordInput, holderToken
+      });
+      if (!isCurrentPhotoEdit(document.id, requestedDocumentId, holderToken, scope)) return;
+      setDocument(current => current?.id === document.id
+        ? { ...current, assets: { ...current.assets, [asset.assetId]: asset } } : current);
+      const placement = pendingMaterials.current.get(selectedElement.id);
+      if (placement && matchesMaterialPlacement(selectedElement, placement)) {
+        pendingMaterials.current.set(selectedElement.id, {
+          ...placement, sharpenedAssetIds: [...(placement.sharpenedAssetIds ?? []), asset.assetId]
+        });
+      }
+      dispatch({ type: 'update', element: { ...selectedElement, assetId: asset.assetId } });
+    } catch (error) {
+      if (isCurrentPhotoEdit(document.id, requestedDocumentId, holderToken, scope) && !onEditLeaseError(error)) {
+        const fallback = '写真をくっきりできませんでした。';
+        const status = isAxiosError(error) ? error.response?.status : undefined;
+        setErrorMessage(status && status < 500 ? readAssemblyApiErrorMessage(error, fallback) : fallback);
+      }
+    } finally {
+      setBusy(false);
+    }
+  });
+
   const beginOverlayDrag = useCallback(() => { if (!readOnly && !busyRef.current) dispatch({ type: 'beginDrag' }); }, [readOnly]);
   const endOverlayDrag = useCallback(() => dispatch({ type: 'endDrag' }), []);
   const { undo, redo } = useDocumentEditorHistoryCommands({ history, dispatch, materials, document, setDocument, passwordInput, holderToken: editLease.holderToken, readOnly, materialPlacementAllowed: !conflict && editLease.mine, get busy() { return busyRef.current; }, setBusy, setErrorMessage, onEditLeaseError });
@@ -478,6 +521,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     placeMaterial: overlayCommands.placeMaterial,
     materialRevision,
     replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,
+    ...imageRotation,
     document,
     pages: selectDocumentPages(document),
     loading,
@@ -500,6 +544,9 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     selectedOverlayId,
     setSelectedOverlayId: selectOverlay,
     selectedElement,
+    canTogglePhotoSharpen,
+    photoSharpened: Boolean(originalPhotoAssetId),
+    togglePhotoSharpen,
     elements,
     selectionMode: selectionMode && !readOnly,
     setSelectionMode: selectMode,

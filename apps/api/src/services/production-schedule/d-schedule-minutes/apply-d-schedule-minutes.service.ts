@@ -8,6 +8,7 @@ import { readWinnerRowsByFseibans } from '../grinding-planning-board/source.js';
 import { asRowData, valueAsString } from '../grinding-planning-board/shared.js';
 import type { DScheduleMinutesParseResult, DScheduleMinutesWarning } from './parse-d-schedule-minutes.js';
 import type { DScheduleMinutesMetrics } from './import-summary.js';
+import { isMachineSectionAssigned } from './machine-section-assignee.js';
 import type { DScheduleMinutesKind } from './minutes-kind.js';
 import { autoRegisterDScheduleMinutes } from './auto-register-d-schedule-minutes.service.js';
 
@@ -157,6 +158,10 @@ export async function applyDScheduleMinutes(input: {
         surfaceSendOutDates: applyDCompany ? block.surfaceSendOutDates : previous?.surfaceSendOutDates ?? [],
         memo: applyDCompany ? block.memo : previous?.memo ?? null
       };
+      if (applyDCompany && previous?.assigneesKnown && dCompanyValues.assigneesKnown &&
+          !isMachineSectionAssigned(previous.assignees) && isMachineSectionAssigned(dCompanyValues.assignees)) {
+        (metrics.machineSectionAssignedFseibans ??= []).push(fseiban);
+      }
       const partsValues = {
         partsCompleteDate,
         rawPartsCompleteText: applyParts ? block.rawPartsCompleteText : previous?.rawPartsCompleteText ?? null,

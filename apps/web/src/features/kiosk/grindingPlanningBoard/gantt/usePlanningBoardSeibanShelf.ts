@@ -21,17 +21,17 @@ export function planningBoardSeibansWithVisibleBars(bars: readonly GanttBar[], r
 }
 
 export function usePlanningBoardSeibanShelf(layout: GanttLayout, items: readonly GrindingPlanningBoardItem[] | undefined,
-  resources: readonly string[], seibanOrder: readonly string[], visibleSeibans: ReadonlySet<string>, enabled = true) {
+  resources: readonly string[], seibanOrder: readonly string[], visibleSeibans: ReadonlySet<string>, enabled = true, category?: 'grinding' | 'cutting' | 'all', includeAllSeibans = false) {
   return useMemo(() => {
     if (!enabled) return EMPTY_COLUMNS;
     const bars = [...layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)), ...(layout.forwardQueue ?? [])];
     const members = items ?? bars.filter(isNormalGanttBar).map(bar => bar.item);
-    const seibans = [...new Set(members.filter(item => visibleSeibans.has(item.fseiban)).map(item => item.fseiban))];
+    const seibans = [...new Set(members.filter(item => includeAllSeibans || visibleSeibans.has(item.fseiban)).map(item => item.fseiban))];
     const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
     seibans.sort((a, b) => rank(a) - rank(b));
     const colors = new Map(seibans.map(seiban => [seiban, planningBoardSeibanColor(seiban, seibanOrder)]));
-    return buildPlanningBoardSeibanShelf(members, bars, resources, colors);
-  }, [layout, items, resources, seibanOrder, visibleSeibans, enabled]);
+    return buildPlanningBoardSeibanShelf(members, bars, resources, colors, category);
+  }, [layout, items, resources, seibanOrder, visibleSeibans, enabled, category, includeAllSeibans]);
 }
 
 export function usePlanningBoardSeibanColors(visibleSeibans: ReadonlySet<string>, colorBySeiban: boolean, seibanOrder: readonly string[]) {

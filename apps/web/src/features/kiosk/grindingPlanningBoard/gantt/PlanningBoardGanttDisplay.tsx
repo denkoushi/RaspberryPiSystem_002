@@ -6,10 +6,12 @@ import { PlanningBoardTestBarDialog } from '../PlanningBoardTestBarDialog';
 import { planningBoardPair, planningBoardResourceMatches } from '../planningBoardTwoMachine';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
+import { usePersistedPlanningBoardPieceLinks } from '../usePersistedPlanningBoardPieceLinks';
 
 import { planningBoardHasPieceLinks } from './PlanningBoardChainLinks';
 import { isNormalGanttBar, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
+import { PlanningBoardPieceLinks } from './PlanningBoardPieceLinks';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 import { PlanningBoardSeibanShelf } from './PlanningBoardSeibanShelf';
 import { PlanningBoardTwoMachineChainLinks, TwoMachineChainContext, type ChainPane } from './PlanningBoardTwoMachineChainLinks';
@@ -17,12 +19,13 @@ import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardC
 import { usePlanningBoardChainPartChange } from './usePlanningBoardChainPartChange';
 import { planningBoardSeibansWithVisibleBars, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
 import { usePlanningBoardDragPreview } from './usePlanningBoardSharedDrag';
+import { shelfSelectionPreview } from './usePlanningBoardShelfInteraction';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
 import type { SharedForwardDrag } from './usePlanningBoardSharedDrag';
-import type { SharedShelfInteraction, ShelfDropResolver, ShelfPlacementActions, SeibanShelfHandle } from './usePlanningBoardShelfInteraction';
+import type { SharedShelfInteraction, ShelfDropResolver, ShelfPlacementActions, SeibanShelfHandle, ShelfSelection } from './usePlanningBoardShelfInteraction';
 import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
 
 const EMPTY_SEIBAN_ORDER: readonly string[] = [];
@@ -39,8 +42,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     if (lanes) paneDragLanes.current.set(resource, lanes); else paneDragLanes.current.delete(resource);
     dragLanes.current = [...paneDragLanes.current.values()].flat();
   }, []);
-  const sharedDrag = useMemo<SharedForwardDrag>(() => ({ preview: dragPreview, setPreview: setDragPreview, pointer: dragPointer, subscribe: subscribeDragPreview,
-    lanes: dragLanes, registerLanes: registerDragLanes }), [dragPreview, setDragPreview, dragPointer, subscribeDragPreview, registerDragLanes]);
+  const [shelfSelection, setShelfSelection] = useState<ShelfSelection | null>(null);
   const shelfHandle = useRef<SeibanShelfHandle | null>(null);
   const shelfResolvers = useRef(new Map<string, ShelfDropResolver>());
   const shelfInteraction = useMemo<SharedShelfInteraction>(() => ({ shelf: shelfHandle, resolvers: shelfResolvers }), []);
@@ -58,10 +60,21 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const [chainOwner, setChainOwner] = useState<string | null>(null);
   const [partKey, setPartKey] = useState<string | null>(null);
   const { view: chainView, changeView } = usePersistedPlanningBoardChainView();
+  const { pieceLinks } = usePersistedPlanningBoardPieceLinks();
   const [panes, setPanes] = useState<ReadonlyMap<string, ChainPane>>(new Map());
   const register = useCallback((resource: string, pane: ChainPane | null) => {
     setPanes(current => { const next = new Map(current); if (pane) next.set(resource, pane); else next.delete(resource); return next; });
   }, []);
+  const piecePanes = useMemo(() => resources.flatMap(resource => {
+    const pane = panes.get(resource);
+    return pane ? [pane] : [];
+  }), [resources, panes]);
+  const selectionPreview = useMemo(() => shelfSelection ? shelfSelectionPreview(shelfSelection,
+    resources.flatMap(resource => paneDragLanes.current.get(resource) ?? []),
+    props.layout.start, resource => panes.get(resource)?.dayWidth ?? 0) : null, [shelfSelection, resources, props.layout.start, panes]);
+  const sharedDrag = useMemo<SharedForwardDrag>(() => ({ preview: dragPreview, setPreview: setDragPreview, pointer: dragPointer, subscribe: subscribeDragPreview,
+    lanes: dragLanes, registerLanes: registerDragLanes, selectionPreview }),
+  [dragPreview, setDragPreview, dragPointer, subscribeDragPreview, registerDragLanes, selectionPreview]);
   const focus = useCallback((key: string | null, resource: string | null) => { setPartKey(key); if (resource) setChainOwner(resource); }, []);
   const selectedTestResource = props.testBarControls?.selectedBar?.resourceCd;
   useEffect(() => { if (selectedTestResource) { setChainOwner(selectedTestResource); setPartKey(null); } }, [selectedTestResource, props.testBarControls?.selectedId]);
@@ -112,7 +125,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     seibans.sort((a, b) => rank(a) - rank(b));
     return new Map(seibans.map(seiban => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
   }, [props.colorBySeiban, props.seibanOrder, visibleSeibans]);
-  const shelfColumns = usePlanningBoardSeibanShelf(props.layout, resourceMinutesItems, resources, props.seibanOrder ?? EMPTY_SEIBAN_ORDER, visibleSeibans, Boolean(props.colorBySeiban));
+  const shelfColumns = usePlanningBoardSeibanShelf(props.layout, resourceMinutesItems, resources, props.seibanOrder ?? EMPTY_SEIBAN_ORDER, visibleSeibans, Boolean(props.colorBySeiban), props.category);
   const { focusedSeiban, onFocusedSeibanChange } = props;
   useEffect(() => {
     if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban) && !shelfColumns.some(column => column.seiban === focusedSeiban)) onFocusedSeibanChange(null);
@@ -161,6 +174,8 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     window.addEventListener('resize', measure);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     if (container?.parentElement) observer?.observe(container.parentElement);
+    const toolbar = container?.closest('main')?.querySelector('[data-planning-board-toolbar]');
+    if (toolbar) observer?.observe(toolbar);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [container]);
   const nextSelection = (resource: string) => {
@@ -198,8 +213,9 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         props.onSingleResourceChange?.(nextSelection(resource));
         setPicker(null);
       }} />}
+    {pieceLinks && <PlanningBoardPieceLinks panes={piecePanes} container={container} />}
     <PlanningBoardTwoMachineChainLinks container={container} panes={panes} bars={chainBars} view={effectiveView} />
-    {seibanColors && <PlanningBoardSeibanShelf interactionRef={shelfHandle} writePending={props.resourceOrderPending} onDragPreview={setDragPreview} getDrop={getShelfDrop} resources={resources} actions={shelfActions}
+    {seibanColors && <PlanningBoardSeibanShelf interactionRef={shelfHandle} writePending={props.resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} getDrop={getShelfDrop} resources={resources} actions={shelfActions}
       disabled={props.layout.mode !== 'forward' || props.disabled || props.dragDisabled || props.pieceDisabled || props.pinMode} columns={shelfColumns} highlightedItemId={[...props.selectedItemIds].at(-1) ?? null} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
       onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={focusSeiban} />}
   </div></TwoMachineChainContext.Provider>;

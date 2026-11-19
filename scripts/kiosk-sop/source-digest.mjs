@@ -102,9 +102,9 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     const stale = await staleManuals(repoRoot);
     if (stale.length) {
       console.error(`Kiosk SOP source digest is stale: ${stale.join(', ')}.`);
-      console.error('A watched kiosk source changed after the manual was generated.');
-      console.error('- Manual screens unchanged: run `pnpm kiosk-sop:source-refresh` and commit the manifest.');
-      console.error('- Manual screens changed: run `pnpm kiosk-sop:generate` (Docker) and commit the output.');
+      console.error('- If the manual screens are unchanged or you are unsure, run `pnpm kiosk-sop:source-refresh`, commit and push, and let the CI kiosk-sop job check them.');
+      console.error('- If the job fails, run `pnpm kiosk-sop:from-ci <run-id>` to import its candidate and commit the output.');
+      console.error('- Run `pnpm kiosk-sop:generate` locally only when your Mac is idle.');
       process.exit(1);
     }
     console.log('Kiosk SOP source digests are current.');

@@ -23,6 +23,7 @@ import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTy
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 import { DocumentEditorMaterials } from './DocumentEditorMaterials';
 import { useMaterialDrag } from './useMaterialDrag';
+import { useRotationImagePreload } from './useRotationImagePreload';
 
 import type { AssemblyProcedureDocumentPageDto } from '../types';
 
@@ -30,6 +31,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const controller = useAssemblyProcedureDocumentEditor();
   const shelfResources = useShelfResources(controller.accessGranted);
   const { setSelectedOverlayId, setErrorMessage, addBlankPage: addControllerBlankPage, pages: controllerPages, placeMaterial: placeControllerMaterial, replaceSelectedImageMaterial: replaceControllerImageMaterial } = controller;
+  const { rotateSelectedImage, rotationPreview } = controller;
+  const { preload, preloader } = useRotationImagePreload(controller.busy);
   const controllerElements = controller.pagePreviewElements ?? controller.elements;
   const processNames = context?.processName.split(' › ') ?? [];
   const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
@@ -130,6 +133,11 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     (controller.layoutSuggestions.locked ? controller.selectedPageElements :
       controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id))),
   [controller.layoutSuggestions.previewElements, controller.layoutSuggestions.locked, controller.selectedPageElements, hiddenOverlayIds]);
+  const canvasElements = useMemo(() => {
+    if (!rotationPreview || controller.layoutSuggestions.locked) return visibleElements;
+    const byId = new Map(rotationPreview.elements.map(element => [element.id, element]));
+    return visibleElements.map(element => byId.get(element.id) ?? element);
+  }, [rotationPreview, controller.layoutSuggestions.locked, visibleElements]);
   const placeMaterial = useCallback(async (...args: Parameters<typeof placeControllerMaterial>) => {
     await placeControllerMaterial(...args);
     refreshMaterials();
@@ -148,6 +156,10 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   });
   const closeInspector = useCallback(() => setSelectedOverlayId(null), [setSelectedOverlayId]);
   const replaceImage = useCallback(() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }, []);
+  const rotateImage = useCallback((direction: 'left' | 'right') => {
+    const layer = overlayLayerRef.current;
+    if (layer?.clientHeight) void rotateSelectedImage(direction, layer.clientWidth / layer.clientHeight, preload);
+  }, [preload, rotateSelectedImage]);
   const openMaterial = useCallback(() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }, []);
   const openVideo = useCallback(() => setVideoLinkOpen(true), []);
   const openPublish = useCallback(() => setPublishOpen(true), []);
@@ -158,12 +170,15 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     canSave: controller.canSave, canPublish: controller.canPublish,
     canUndo: controller.canUndo, canRedo: controller.canRedo,
     selectionMode: controller.selectionMode, selectedKind: controller.selectedElement?.kind,
+    canTogglePhotoSharpen: controller.canTogglePhotoSharpen, photoSharpened: controller.photoSharpened,
+    togglePhotoSharpen: controller.togglePhotoSharpen,
     layoutLocked: controller.layoutSuggestions.locked, canSuggest: controller.layoutSuggestions.canSuggest,
     startLayout: controller.layoutSuggestions.start,
     navigateBack: controller.navigateBack, save: controller.save, addOverlay: controller.addOverlay,
     setSelectionMode: controller.setSelectionMode, undo: controller.undo, redo: controller.redo
   }), [controller.readOnly, controller.busy, controller.saving, controller.isDirty, controller.canSave, controller.canPublish,
     controller.canUndo, controller.canRedo, controller.selectionMode, controller.selectedElement?.kind,
+    controller.canTogglePhotoSharpen, controller.photoSharpened, controller.togglePhotoSharpen,
     controller.layoutSuggestions.locked,
     controller.layoutSuggestions.canSuggest, controller.layoutSuggestions.start, controller.navigateBack,
     controller.save, controller.addOverlay, controller.setSelectionMode, controller.undo, controller.redo]);
@@ -184,12 +199,13 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   }, [controller.accessGranted, controller.loading, canvasSaving, controller.layoutSuggestions.locked, dialogOpen, inlineEditingId, setSelectedOverlayId]);
 
   if (!controller.accessGranted || controller.loading) {
-    return <AssemblyProcedureDocumentEditorAuthGate context={context} />;
+    return <>{preloader}<AssemblyProcedureDocumentEditorAuthGate context={context} /></>;
   }
 
   if (!selectedPage) {
     return (
       <main className="flex min-h-0 flex-1 items-center justify-center bg-slate-800 p-4 text-white" role="alert">
+        {preloader}
         手順書ページがありません。
       </main>
     );
@@ -197,6 +213,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
 
   return (
     <main className={`relative grid min-h-0 flex-1 [--details-width:min(400px,26vw)] max-[1099px]:[--details-width:0px] ${partsPaneOpen ? 'grid-cols-[120px_280px_minmax(0,1fr)_var(--details-width)_64px]' : 'grid-cols-[120px_0_minmax(0,1fr)_var(--details-width)_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`} data-testid="assembly-document-editor-layout">
+      {preloader}
       {controller.document?.status === 'draft' && (!controller.editLeaseMine || controller.editLeaseUnavailable) ? (
         <div className="absolute bottom-16 left-[136px] z-50 flex max-w-[calc(100%-216px-var(--details-width))] flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-[#161c22] px-3 py-2" role="status">
           <p className="text-sm font-semibold text-amber-100">
@@ -281,7 +298,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             materialPreview={materialDrag.preview}
             pageUrl={selectedPage.imageRelativePath}
             pageIndex={selectedPage.pageIndex}
-            elements={visibleElements}
+            elements={canvasElements}
+            imageAngles={rotationPreview?.imageAngles}
             selectionMode={controller.selectionMode}
             editable={!controller.readOnly}
             locked={controller.layoutSuggestions.locked}
@@ -340,6 +358,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onBringToFront={controller.bringToFront}
           onSendToBack={controller.sendToBack}
           onReplaceImage={replaceImage}
+          onRotateImage={rotateImage}
+          canQueueRotation={controller.canQueueRotation}
           onRefetchTextCandidates={controller.refetchTextCandidates}
           readOnly={controller.readOnly}
           busy={controller.busy}

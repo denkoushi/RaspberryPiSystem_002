@@ -78,7 +78,9 @@ describe('assembly procedure document revision serializers', () => {
   });
 
   it('serializes a revision with page grouping and the shared asset URL', () => {
-    const row = makeImageOverlayRow();
+    const image = makeImageOverlayRow();
+    const original = { ...image.asset!, id: 'original', storageKey: 'assembly-procedure-assets/original.png' };
+    const row = { ...image, asset: { ...image.asset!, derivedFromAssetId: original.id, derivedFromAsset: original } };
     const document = {
       id: 'document-1',
       name: '手順書',
@@ -98,7 +100,7 @@ describe('assembly procedure document revision serializers', () => {
         }
       ],
       overlayElements: [row],
-      ownedAssets: [{ ...row.asset, id: 'pending-photo', storageKey: 'assembly-procedure-assets/pending.png', ownerDocumentId: 'document-1' }],
+      ownedAssets: [{ ...image.asset, id: 'pending-photo', storageKey: 'assembly-procedure-assets/pending.png', ownerDocumentId: 'document-1' }],
       revisionMetadata: {
         id: 'revision-1',
         documentId: 'document-1',
@@ -126,11 +128,16 @@ describe('assembly procedure document revision serializers', () => {
           contentType: 'image/png',
           byteSize: 42
         },
+        original: { assetId: 'original', url: '/api/storage/assembly-procedure-assets/original.png' },
         'asset-1': {
+          derivedFromAssetId: 'original',
           url: '/api/storage/assembly-procedure-assets/image.png',
           storageKey: 'assembly-procedure-assets/nested/image.png'
         }
       }
     });
+    const published = serializeAssemblyProcedureDocumentRevision({ ...document, status: 'PUBLISHED' });
+    expect(published.assets).not.toHaveProperty('original');
+    expect(published.assets['asset-1']).not.toHaveProperty('derivedFromAssetId');
   });
 });

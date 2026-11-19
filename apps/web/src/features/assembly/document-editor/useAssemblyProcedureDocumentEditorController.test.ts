@@ -10,6 +10,8 @@ const apiMocks = vi.hoisted(() => ({
   createImageRegion: vi.fn(),
   createTextRewriteRegion: vi.fn(),
   uploadImage: vi.fn(),
+  rotateImage: vi.fn(),
+  sharpenPhoto: vi.fn(),
   saveOverlays: vi.fn(),
   publishDocument: vi.fn(),
   addBlankPage: vi.fn(),
@@ -43,6 +45,8 @@ vi.mock('../../../api/client', () => ({
   createAssemblyProcedureImageRegion: apiMocks.createImageRegion,
   createAssemblyProcedureTextRewriteRegion: apiMocks.createTextRewriteRegion,
   uploadAssemblyProcedureOverlayImage: apiMocks.uploadImage,
+  rotateAssemblyProcedureAsset: apiMocks.rotateImage,
+  sharpenAssemblyProcedureOverlayImage: apiMocks.sharpenPhoto,
   saveAssemblyProcedureDocumentOverlays: apiMocks.saveOverlays,
   publishAssemblyProcedureDocument: apiMocks.publishDocument,
 }));
@@ -50,7 +54,7 @@ vi.mock('../../../api/client', () => ({
 import { api, getResolvedClientKey } from '../../../api/http';
 import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
-import { createOverlayForRange } from './assemblyDocumentEditorDraft';
+import { createOverlayForRange, rotateImageOverlay } from './assemblyDocumentEditorDraft';
 import { readAssemblyDocumentEditorRecovery, writeAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
 import { AssemblyProcedureDocumentEditorCanvas } from './AssemblyProcedureDocumentEditorCanvas';
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
@@ -105,6 +109,328 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
     leaseMocks.release.mockResolvedValue(undefined);
     window.localStorage.clear(); clearProcedureEditorAccess();
+  });
+
+  it('keeps a pending material associated with the rotated photo through undo, redo and recovery', async () => {
+    const document = makeDocument();
+    const box = { xRatio: 0.25, yRatio: 0.25, widthRatio: 0.5, heightRatio: 0.375 };
+    const photo = { ...createOverlayForRange('IMAGE', 0, box), assetId: 'source-photo' };
+    const source = { assetId: photo.assetId, storageKey: 'photo.png', contentType: 'image/png', byteSize: 1 };
+    const rotated = { ...source, assetId: 'new-photo', storageKey: 'rotated.png' };
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    apiMocks.placeMaterial.mockResolvedValue({ element: photo, asset: source });
+    await act(async () => { await hook.result.current.placeMaterial({ id: 'material-photo' }); });
+    apiMocks.rotateImage.mockResolvedValue(rotated);
+
+    await act(async () => { await hook.result.current.rotateSelectedImage('right', 0.5); });
+
+    expect(apiMocks.rotateImage).toHaveBeenCalledExactlyOnceWith({
+      id: document.id, assetId: photo.assetId, accessPassword: '1234', direction: 'right', holderToken: 'session-token'
+    });
+    expect(hook.result.current.document?.assets).toMatchObject({ [rotated.assetId]: rotated });
+    expect(hook.result.current.elements[0]).toMatchObject({ assetId: rotated.assetId, bbox: { widthRatio: 0.75, heightRatio: 0.25 } });
+    const rotatedDraft = hook.result.current.elements;
+    await act(async () => hook.result.current.undo());
+    expect(hook.result.current.elements[0]).toEqual(photo);
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual(rotatedDraft);
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    const recovery = readAssemblyDocumentEditorRecovery(localStorage, document.id);
+    expect(recovery).toMatchObject({
+      elements: rotatedDraft,
+      materialPlacements: [{ elementId: photo.id, materialId: 'material-photo', assetId: photo.assetId, rotatedAssetIds: [rotated.assetId] }]
+    });
+    hook.unmount();
+    const reloaded = renderEditor({ ...document, assets: { [source.assetId]: source, [rotated.assetId]: rotated } });
+    await authenticate(reloaded.result);
+    await waitFor(() => expect(reloaded.result.current.recoveryPending).not.toBeNull());
+    act(() => reloaded.result.current.restoreRecovery());
+    expect(reloaded.result.current.elements).toEqual(rotatedDraft);
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+  });
+
+  it('keeps the photo and patch unchanged when either rotation fails', async () => {
+    const photo = { ...createOverlayForRange('IMAGE', 0, range), assetId: 'photo' };
+    const patch = { ...createOverlayForRange('IMAGE', 0, range), id: 'text-erase-patch', zIndex: 1, assetId: 'patch' };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/page.png', overlays: [photo, patch] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    act(() => hook.result.current.setSelectedOverlayId(photo.id));
+    let finishPhoto!: (asset: { assetId: string }) => void;
+    const photoRotation = new Promise<{ assetId: string }>(resolve => { finishPhoto = resolve; });
+    apiMocks.rotateImage.mockImplementation(({ assetId }) => assetId === photo.assetId ? photoRotation : Promise.reject({}));
+
+    let request: Promise<void> | undefined;
+    act(() => { request = hook.result.current.rotateSelectedImage('left', 1); });
+    expect(hook.result.current.busy).toBe(true);
+    expect(hook.result.current.rotationPreview?.imageAngles).toEqual(new Map([[photo.id, -90], [patch.id, -90]]));
+    expect(hook.result.current.elements).toEqual([photo, patch]);
+    await act(async () => { finishPhoto({ assetId: 'new-photo' }); await request; });
+
+    expect(apiMocks.rotateImage.mock.calls.map(([input]) => input.assetId)).toEqual(['photo', 'patch']);
+    expect(hook.result.current.elements).toEqual([photo, patch]);
+    expect(hook.result.current.document?.assets?.['new-photo']).toBeUndefined();
+    expect(hook.result.current.canUndo).toBe(false);
+    expect(hook.result.current.busy).toBe(false);
+    expect(hook.result.current.message).toBe('写真を回せませんでした。');
+    expect(hook.result.current.rotationPreview).toBeNull();
+  });
+
+  const photo = { ...createOverlayForRange('IMAGE', 0, range), kind: 'IMAGE' as const, id: 'photo', assetId: 'original' };
+  const original = { assetId: 'original', storageKey: 'original.png', url: '/original.png', contentType: 'image/png', byteSize: 1 };
+  const sharpened = { ...original, assetId: 'sharpened', storageKey: 'sharpened.png', url: '/sharpened.png', derivedFromAssetId: original.assetId };
+
+  it('previews the photo, attached patch and text until decode, then commits a single undo step', async () => {
+    const patch = { ...photo, id: 'text-erase-patch', assetId: 'patch', zIndex: 1 };
+    const text = { ...createOverlayForRange('TEXT', 0, range), zIndex: 2 };
+    const initial = [photo, patch, text];
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/page.png', overlays: initial }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    act(() => hook.result.current.setSelectedOverlayId(photo.id));
+    const newPhoto = { ...original, assetId: 'new-photo' };
+    const newPatch = { ...original, assetId: 'new-patch' };
+    apiMocks.rotateImage.mockResolvedValueOnce(newPhoto).mockResolvedValueOnce(newPatch);
+    let finishDecode!: () => void;
+    const preload = vi.fn(() => new Promise<void>(resolve => { finishDecode = resolve; }));
+    let request!: Promise<void>;
+
+    act(() => { request = hook.result.current.rotateSelectedImage('right', 0.5, preload); });
+    const expectedPreview = rotateImageOverlay(initial, photo.id, 'right', new Map([[photo.id, photo.assetId], [patch.id, patch.assetId]]), 0.5);
+    expect(hook.result.current.rotationPreview).toEqual({
+      elements: expectedPreview,
+      imageAngles: new Map([[photo.id, 90], [patch.id, 90]])
+    });
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.canUndo).toBe(false);
+    await waitFor(() => expect(preload).toHaveBeenCalledExactlyOnceWith([newPhoto, newPatch]));
+    expect(hook.result.current.rotationPreview?.elements).toEqual(expectedPreview);
+    expect(hook.result.current.elements).toEqual(initial);
+
+    await act(async () => { finishDecode(); await request; });
+    expect(hook.result.current.rotationPreview).toBeNull();
+    expect(hook.result.current.elements).toEqual([
+      { ...expectedPreview[0], assetId: newPhoto.assetId },
+      { ...expectedPreview[1], assetId: newPatch.assetId },
+      expectedPreview[2]
+    ]);
+    await act(async () => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual(initial);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it('clears the preview and discards a late result after editor access expires', async () => {
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/page.png', overlays: [photo] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    act(() => hook.result.current.setSelectedOverlayId(photo.id));
+    const rotated = { ...original, assetId: 'late-rotation' };
+    let finishRotation!: () => void;
+    apiMocks.rotateImage.mockImplementationOnce(() => new Promise(resolve => { finishRotation = () => resolve(rotated); }));
+    let request!: Promise<void>;
+
+    act(() => { request = hook.result.current.rotateSelectedImage('right', 1); });
+    expect(hook.result.current.rotationPreview?.imageAngles.get(photo.id)).toBe(90);
+    act(() => clearProcedureEditorAccess());
+    expect(hook.result.current.rotationPreview).toBeNull();
+
+    await act(async () => { finishRotation(); await request; });
+    expect(hook.result.current.document?.assets?.[rotated.assetId]).toBeUndefined();
+    expect(hook.result.current.elements).toEqual([photo]);
+    expect(hook.result.current.canUndo).toBe(false);
+    expect(hook.result.current.busy).toBe(false);
+  });
+
+  it.each([true, false])('queues two clicks in order and keeps only successful rotations when second success is %s', async secondSucceeds => {
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/page.png', overlays: [photo] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    act(() => hook.result.current.setSelectedOverlayId(photo.id));
+    const firstAsset = { ...original, assetId: 'first-rotation' };
+    const secondAsset = { ...original, assetId: 'second-rotation' };
+    let finishFirst!: () => void;
+    let finishSecond!: () => void;
+    apiMocks.rotateImage
+      .mockImplementationOnce(() => new Promise(resolve => { finishFirst = () => resolve(firstAsset); }))
+      .mockImplementationOnce(() => new Promise((resolve, reject) => {
+        finishSecond = () => secondSucceeds ? resolve(secondAsset) : reject(new Error('rotate failed'));
+      }));
+    let request!: Promise<void>;
+    act(() => { request = hook.result.current.rotateSelectedImage('right', 1); });
+    act(() => { void hook.result.current.rotateSelectedImage('right', 1); });
+    expect(hook.result.current.canQueueRotation).toBe(true);
+    expect(hook.result.current.rotationPreview?.imageAngles.get(photo.id)).toBe(180);
+    expect(apiMocks.rotateImage).toHaveBeenCalledOnce();
+
+    await act(async () => finishFirst());
+    expect(apiMocks.rotateImage.mock.calls.map(([input]) => [input.assetId, input.direction])).toEqual([
+      [photo.assetId, 'right'], [firstAsset.assetId, 'right']
+    ]);
+    const firstDraft = hook.result.current.elements;
+    expect(firstDraft[0]).toMatchObject({ assetId: firstAsset.assetId });
+    expect(hook.result.current.rotationPreview?.imageAngles.get(photo.id)).toBe(90);
+    expect(hook.result.current.busy).toBe(true);
+    if (!secondSucceeds) act(() => { void hook.result.current.rotateSelectedImage('left', 1); });
+
+    await act(async () => { finishSecond(); await request; });
+    expect(apiMocks.rotateImage).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.busy).toBe(false);
+    expect(hook.result.current.rotationPreview).toBeNull();
+    if (secondSucceeds) {
+      expect(hook.result.current.elements[0]).toMatchObject({ assetId: secondAsset.assetId });
+      await act(async () => hook.result.current.undo());
+    } else {
+      expect(hook.result.current.messageIsError).toBe(true);
+    }
+    expect(hook.result.current.elements).toEqual(firstDraft);
+    await act(async () => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([photo]);
+    expect(hook.result.current.canUndo).toBe(false);
+  });
+
+  it('toggles sharpening on one overlay with undo, redo and dirty state', async () => {
+    const second = { ...photo, id: 'second' };
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const empty = { ...photo, id: 'empty', assetId: '' };
+    const document = makeDocument({
+      pages: [{ pageIndex: 0, imageRelativePath: '/page.png', overlays: [photo, second, text, empty] }],
+      assets: { original }
+    });
+    apiMocks.sharpenPhoto.mockResolvedValue(sharpened);
+    const { result } = renderEditor(document);
+    await authenticate(result);
+    expect(result.current.canTogglePhotoSharpen).toBe(false);
+    for (const id of ['text', 'empty']) {
+      act(() => result.current.setSelectedOverlayId(id));
+      expect(result.current.canTogglePhotoSharpen).toBe(false);
+    }
+    act(() => result.current.setSelectedOverlayId(photo.id));
+    expect(result.current.canTogglePhotoSharpen).toBe(true);
+    await act(async () => result.current.togglePhotoSharpen());
+    expect(apiMocks.sharpenPhoto).toHaveBeenCalledExactlyOnceWith({
+      id: document.id, assetId: 'original', accessPassword: '1234', holderToken: 'session-token'
+    });
+    const sharpenedPhoto = { ...photo, assetId: 'sharpened' };
+    expect(result.current.elements.slice(0, 2)).toEqual([sharpenedPhoto, second]);
+    expect(result.current.photoSharpened).toBe(true);
+    expect(result.current.isDirty).toBe(true);
+
+    act(() => { void result.current.undo(); });
+    expect(result.current.selectedElement).toEqual(photo);
+    expect(result.current.isDirty).toBe(false);
+    act(() => { void result.current.redo(); });
+    expect(result.current.selectedElement).toEqual(sharpenedPhoto);
+
+    await act(async () => result.current.togglePhotoSharpen());
+    expect(result.current.selectedElement).toEqual(photo);
+    expect(result.current.photoSharpened).toBe(false);
+    expect(result.current.isDirty).toBe(false);
+    expect(apiMocks.sharpenPhoto).toHaveBeenCalledOnce();
+    act(() => { void result.current.undo(); });
+    expect(result.current.selectedElement).toEqual(sharpenedPhoto);
+    expect(result.current.isDirty).toBe(true);
+  });
+
+  it('restores a previously saved photo and keeps the sharper variant in undo history after saving', async () => {
+    const sharpenedPhoto = { ...photo, assetId: 'sharpened' };
+    const page = { pageIndex: 0, imageRelativePath: '/page.png' };
+    const document = makeDocument({ pages: [{ ...page, overlays: [sharpenedPhoto] }], assets: { original, sharpened } });
+    const { result } = renderEditor(document);
+    await authenticate(result);
+    act(() => result.current.setSelectedOverlayId(photo.id));
+    expect(result.current.photoSharpened).toBe(true);
+
+    await act(async () => result.current.togglePhotoSharpen());
+    expect(result.current.selectedElement).toEqual(photo);
+    expect(result.current.isDirty).toBe(true);
+    expect(apiMocks.sharpenPhoto).not.toHaveBeenCalled();
+    apiMocks.saveOverlays.mockResolvedValue({ ...document, editVersion: 1, pages: [{ ...page, overlays: [photo] }], assets: { original } });
+    await act(async () => result.current.save());
+    expect(apiMocks.saveOverlays).toHaveBeenCalledWith(expect.objectContaining({ elements: [photo] }));
+    expect(result.current.isDirty).toBe(false);
+    act(() => { void result.current.undo(); });
+    expect(result.current.selectedElement).toEqual(sharpenedPhoto);
+    expect(result.current.photoSharpened).toBe(true);
+    expect(result.current.isDirty).toBe(true);
+  });
+
+  it('keeps a pending material placed when its photo is sharpened or restored', async () => {
+    const document = makeDocument();
+    apiMocks.placeMaterial.mockResolvedValue({ element: photo, asset: original });
+    apiMocks.sharpenPhoto.mockResolvedValue(sharpened);
+    const { result } = renderEditor(document);
+    await authenticate(result);
+    await act(async () => result.current.placeMaterial({ id: 'material-photo' }));
+
+    await act(async () => result.current.togglePhotoSharpen());
+    expect(result.current.selectedElement).toMatchObject({ assetId: 'sharpened' });
+    act(() => { void result.current.undo(); });
+    expect(result.current.selectedElement).toMatchObject({ assetId: 'original' });
+    act(() => { void result.current.redo(); });
+    expect(result.current.selectedElement).toMatchObject({ assetId: 'sharpened' });
+    await act(async () => result.current.togglePhotoSharpen());
+    expect(result.current.selectedElement).toMatchObject({ assetId: 'original' });
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+  });
+
+  it('sharpens a rotated material and restores its unsharpened copy in the latest orientation', async () => {
+    const rotated = { ...original, assetId: 'rotated' };
+    const rotatedSharpened = { ...sharpened, derivedFromAssetId: rotated.assetId };
+    const twiceRotated = { ...original, assetId: 'twice-rotated' };
+    const twiceRotatedSharpened = {
+      ...sharpened, assetId: 'twice-rotated-sharpened', derivedFromAssetId: twiceRotated.assetId, originalAsset: twiceRotated
+    };
+    apiMocks.placeMaterial.mockResolvedValue({ element: photo, asset: original });
+    apiMocks.rotateImage.mockResolvedValueOnce(rotated).mockResolvedValueOnce(twiceRotatedSharpened);
+    apiMocks.sharpenPhoto.mockResolvedValue(rotatedSharpened);
+    const { result } = renderEditor(makeDocument());
+    await authenticate(result);
+    await act(async () => result.current.placeMaterial({ id: 'material-photo' }));
+
+    await act(async () => result.current.rotateSelectedImage('right', 1));
+    expect(result.current.photoSharpened).toBe(false);
+    await act(async () => result.current.togglePhotoSharpen());
+    expect(apiMocks.sharpenPhoto).toHaveBeenCalledWith(expect.objectContaining({ assetId: rotated.assetId }));
+    await act(async () => result.current.rotateSelectedImage('right', 1));
+    expect(apiMocks.rotateImage).toHaveBeenLastCalledWith(expect.objectContaining({ assetId: rotatedSharpened.assetId }));
+    expect(result.current.photoSharpened).toBe(true);
+    expect(result.current.document?.assets?.[twiceRotated.assetId]).toEqual(twiceRotated);
+    const twiceRotatedPhoto = result.current.selectedElement;
+
+    await act(async () => result.current.togglePhotoSharpen());
+    expect(result.current.selectedElement).toEqual({ ...twiceRotatedPhoto, assetId: twiceRotated.assetId });
+    expect(result.current.photoSharpened).toBe(false);
+    act(() => { void result.current.undo(); });
+    expect(result.current.selectedElement).toEqual(twiceRotatedPhoto);
+    act(() => { void result.current.redo(); });
+    expect(result.current.selectedElement).toEqual({ ...twiceRotatedPhoto, assetId: twiceRotated.assetId });
+    expect(apiMocks.sharpenPhoto).toHaveBeenCalledOnce();
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+  });
+
+  it('shows an editor error and leaves the photo intact if sharpening fails', async () => {
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/page.png', overlays: [photo] }], assets: { original } });
+    const { result } = renderEditor(document);
+    await authenticate(result);
+    act(() => result.current.setSelectedOverlayId(photo.id));
+    let rejectPhoto: (reason: Error) => void = () => {};
+    apiMocks.sharpenPhoto.mockReturnValue(new Promise((_resolve, reject) => { rejectPhoto = reject; }));
+    let sharpening: Promise<void> | undefined;
+    act(() => { sharpening = result.current.togglePhotoSharpen(); });
+    expect(result.current.busy).toBe(true);
+    await act(async () => {
+      rejectPhoto(new Error('Network Error'));
+      await sharpening;
+    });
+    expect(result.current.message).toBe('写真をくっきりできませんでした。');
+    expect(result.current.messageIsError).toBe(true);
+    expect(result.current.selectedElement).toEqual(photo);
+    expect(result.current.isDirty).toBe(false);
+    expect(result.current.busy).toBe(false);
   });
 
   it('rebases unsaved edits, undo, redo and recovery while keeping imported overlays on the next save', async () => {

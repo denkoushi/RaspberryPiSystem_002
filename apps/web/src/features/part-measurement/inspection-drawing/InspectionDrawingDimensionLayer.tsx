@@ -22,7 +22,7 @@ export function InspectionDrawingDimensionLayer({ points, selectedPointId, image
   const hasEditableHandles = editable && !!onChange && points.some((point) => point.id === selectedPointId
     && inspectionDrawingPointHasCalloutTip(point) && !!point.calloutDims?.length);
   return (
-    <svg className={`pointer-events-none absolute inset-0${hasEditableHandles ? ' z-20' : ''}`} width={width} height={height} aria-label="寸法線">
+    <svg className={`pointer-events-none absolute inset-0${hasEditableHandles ? ' z-30' : ''}`} width={width} height={height} aria-label="寸法線">
       <defs>
         {['selected', 'other'].map((tone) => (
           <marker key={tone} id={`${id}-${tone}`} viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse">

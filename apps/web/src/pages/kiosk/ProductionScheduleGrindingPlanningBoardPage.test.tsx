@@ -1986,23 +1986,27 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '取込で完了' })).toBeDisabled();
   });
 
-  it('scans a visible order, enables Gantt colors and shares legend focus, including Escape and mode reset', () => {
+  it('scans a visible order, enables Gantt colors and shares shelf focus, including Escape and mode reset', () => {
     const data = fixture();
     data.items[0]!.productNo = '1234567890';
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     fireEvent.click(screen.getByRole('button', { name: '製番ごとに色分け' }));
+    expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
     scanOrder('1234567890');
     expect(screen.queryByRole('dialog', { name: '製造オーダー番号を読み取る' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'true');
-    const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
-    expect(within(legend).getByRole('button', { name: '26-1041', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const shelf = screen.getByRole('group', { name: '製番の棚' });
+    const seiban = within(shelf).getByRole('button', { name: '26-1041', exact: true });
+    expect(seiban).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-[3px]', 'ring-white');
     expect(screen.getByText('1234567890 → 製番 26-1041')).toHaveAttribute('role', 'status');
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(within(legend).getByRole('button', { name: '26-1041', exact: true })).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(within(legend).getByRole('button', { name: '26-1041', exact: true }));
+    expect(seiban).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('ring-white');
+    fireEvent.click(seiban);
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-[3px]', 'ring-white');
     fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
     expect(screen.queryByRole('button', { name: '目立たせるのをやめる' })).not.toBeInTheDocument();
     expect(screen.getByTestId('planning-board-item-a')).not.toHaveClass('ring-white');
@@ -2700,15 +2704,15 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const bar = screen.getByTestId('planning-gantt-bar-a');
     const coloredClass = bar.className;
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
+    expect(screen.getByRole('group', { name: '製番の棚' })).toBeVisible();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(bar.className).not.toBe(coloredClass);
-    expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '製番の棚' })).not.toBeInTheDocument();
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(bar.className).toBe(coloredClass);
-    expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
+    expect(screen.getByRole('group', { name: '製番の棚' })).toBeVisible();
     fireEvent.click(toggle);
     openListView();
     expect(screen.getByRole('button', { name: 'ガント' })).toHaveAttribute('aria-pressed', 'false');
@@ -2718,7 +2722,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByTestId('planning-board-gantt')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ガント' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
+    expect(screen.getByRole('group', { name: '製番の棚' })).toBeVisible();
     expect(screen.getByTestId('planning-gantt-bar-a').className).toBe(coloredClass);
   });
   it('ガント切替と縮尺変更でボード取得条件が変わらず、通常表示へ戻る', () => {

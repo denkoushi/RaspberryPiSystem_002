@@ -31,6 +31,7 @@ vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
     element,
     onRefetchTextCandidates,
     onReplaceImage,
+    onRotateImage,
     onBringToFront,
     onSendToBack,
     onClose,
@@ -39,6 +40,7 @@ vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
     element: AssemblyProcedureOverlayElement | null;
     onRefetchTextCandidates: () => void;
     onReplaceImage: () => void;
+    onRotateImage: (direction: 'left' | 'right') => void;
     onBringToFront: (id: string) => void;
     onSendToBack: (id: string) => void;
     onClose: () => void;
@@ -51,7 +53,10 @@ vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
       {element?.kind === 'TEXT' ? (
         <button type="button" onClick={onRefetchTextCandidates}>この範囲で候補を再取得</button>
       ) : null}
-      {element?.kind === 'IMAGE' ? <button onClick={onReplaceImage}>素材から差し替え</button> : null}
+      {element?.kind === 'IMAGE' ? <>
+        <button onClick={onReplaceImage}>素材から差し替え</button>
+        <button onClick={() => onRotateImage('right')}>右に回す</button>
+      </> : null}
     </aside>
   )
 }));
@@ -97,6 +102,9 @@ function makeController(
     deletePage: vi.fn(async () => undefined),
     placeMaterial: vi.fn(async () => undefined),
     replaceSelectedImageMaterial: vi.fn(async () => undefined),
+    rotateSelectedImage: vi.fn(async () => undefined),
+    rotationPreview: null,
+    canQueueRotation: false,
     document: editorDocument,
     pages: editorDocument.pages,
     loading: false,
@@ -497,6 +505,69 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     } finally { storage.mockRestore(); }
   });
 
+  it.each([
+    { objectFit: 'contain', decodeFails: false },
+    { objectFit: 'cover', decodeFails: true }
+  ] as const)('shows the old image for $objectFit until preload settles (decode failure: $decodeFails)', async ({ objectFit, decodeFails }) => {
+    approvalMocks.realCanvas = true;
+    const oldUrl = 'data:image/png;base64,old';
+    const newUrl = 'data:image/png;base64,new';
+    const asset = { assetId: 'original', storageKey: 'old.png', contentType: 'image/png', byteSize: 1, url: oldUrl };
+    const nextAsset = { ...asset, assetId: 'rotated', url: newUrl };
+    const photo = { id: 'editor-photo', kind: 'IMAGE' as const, pageIndex: 0, zIndex: 0, assetId: asset.assetId, bbox: interactiveText.bbox, objectFit };
+    const rotatedFrame = { ...photo, bbox: { ...photo.bbox, widthRatio: 0.2, heightRatio: 0.3 } };
+    const rotatedPhoto = { ...rotatedFrame, assetId: nextAsset.assetId };
+    const document = { ...editorDocument, assets: { [asset.assetId]: asset, [nextAsset.assetId]: nextAsset } };
+    let finishDecode!: () => void;
+    const decode = vi.fn((src: string) => {
+      expect(src).toBe(newUrl);
+      return new Promise<void>((resolve, reject) => {
+        finishDecode = () => decodeFails ? reject(new Error('decode failed')) : resolve();
+      });
+    });
+    vi.stubGlobal('Image', class {
+      src = '';
+      decode() { return decode(this.src); }
+    });
+    const controller = makeController({ document, elements: [photo], selectedElement: photo,
+      selectedOverlayId: photo.id, selectedPageElements: [photo] });
+    const rotateSelectedImage = vi.fn<AssemblyProcedureDocumentEditorController['rotateSelectedImage']>();
+    const onNavigate = vi.fn();
+    const viewFor = (value: AssemblyProcedureDocumentEditorController) => (
+      <AssemblyProcedureDocumentEditorProvider value={value}>
+        <AssemblyProcedureDocumentEditorScreen onNavigateToDocument={onNavigate} />
+      </AssemblyProcedureDocumentEditorProvider>
+    );
+    const view = render(viewFor({ ...controller, rotateSelectedImage }));
+    const layer = screen.getByTestId('document-editor-overlay-surface');
+    Object.defineProperties(layer, { clientWidth: { value: 100 }, clientHeight: { value: 100 } });
+    const frame = within(layer).getByTestId('assembly-procedure-overlay-editor-photo');
+    const currentImage = frame.querySelector('img');
+    expect(currentImage).toHaveAttribute('src', oldUrl);
+    rotateSelectedImage.mockImplementation(async (_direction, _pageAspect, preload) => {
+      view.rerender(viewFor({ ...controller, rotateSelectedImage, busy: true, canQueueRotation: true,
+        rotationPreview: { elements: [rotatedFrame], imageAngles: new Map([[photo.id, 90]]) } }));
+      await preload?.([nextAsset]);
+      view.rerender(viewFor({ ...controller, elements: [rotatedPhoto], selectedPageElements: [rotatedPhoto], selectedElement: rotatedPhoto }));
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '右に回す' }));
+    expect(rotateSelectedImage).toHaveBeenCalledExactlyOnceWith('right', 1, expect.any(Function));
+    expect(frame).toHaveAttribute('data-editor-image-rotation', 'quarter');
+    expect(frame).toHaveStyle({ width: '20%', height: '30%' });
+    expect(frame.style.getPropertyValue('--editor-image-angle')).toBe('90deg');
+    expect(frame.querySelector('img')).toBe(currentImage);
+    expect(currentImage).toHaveStyle({ objectFit });
+    await waitFor(() => expect(decode).toHaveBeenCalledOnce());
+    expect(currentImage).toHaveAttribute('src', oldUrl);
+
+    await act(async () => finishDecode());
+    expect(frame).not.toHaveAttribute('data-editor-image-rotation');
+    expect(frame).toHaveStyle({ width: '20%', height: '30%' });
+    expect(frame.querySelector('img')).toHaveAttribute('src', newUrl);
+    expect(frame.querySelector('img')).toHaveStyle({ objectFit });
+  });
+
   it('hides only the canvas element, clears selection and lets the hidden part be shown again', () => {
     const element: AssemblyProcedureOverlayElement = { id: 'part', kind: 'SHAPE', shape: 'RECTANGLE', pageIndex: 0, zIndex: 2, bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 } };
     const controller = makeController({ elements: [element], selectedPageElements: [element], selectedOverlayId: element.id, selectedElement: element });
@@ -843,7 +914,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '音声入力', '元に戻す', 'やり直す']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '音声入力', '元に戻す', 'やり直す']);
     expect(within(rail).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');

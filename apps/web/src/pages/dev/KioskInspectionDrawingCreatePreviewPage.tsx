@@ -159,6 +159,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             onPointChange={(id, patch) => updatePoint(id, patch)}
             onSetCalloutTip={mode === 'callout' && selectedPointId ? (x, y) => updatePoint(selectedPointId, { calloutTipXRatio: x, calloutTipYRatio: y }) : undefined}
             onCalloutDimsChange={createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint)}
+            onCalloutDimsAdjust={(id, dims) => updatePoint(id, { calloutDims: dims })}
           />
         </div>
 

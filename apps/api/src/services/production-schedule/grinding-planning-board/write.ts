@@ -530,10 +530,22 @@ async function saveGrindingPlanningBoardResourceOrderBulk(params: { siteKey: str
   }
 }
 
-export async function saveSeibanOrderInTransaction(client: Prisma.TransactionClient, current: PlanningState, nextOrder: string[], newUncheckedFseibans: readonly string[] = []): Promise<PlanningState> {
-  if (JSON.stringify(stateOrder(current)) === JSON.stringify(nextOrder)) return current;
-  const previousOrder = new Set(stateOrder(current));
-  const unchecked = new Set([...await readStateUncheckedFseibans(current, client), ...newUncheckedFseibans.filter((fseiban) => !previousOrder.has(fseiban))]);
+export async function saveSeibanOrderInTransaction(
+  client: Prisma.TransactionClient, current: PlanningState, nextOrder: string[],
+  newUncheckedFseibans: readonly string[] = [], recheckedFseibans?: ReadonlySet<string>
+): Promise<PlanningState> {
+  const currentOrder = stateOrder(current);
+  const orderChanged = JSON.stringify(currentOrder) !== JSON.stringify(nextOrder);
+  if (!orderChanged) {
+    if (!recheckedFseibans?.size) return current;
+    const candidates = current.uncheckedFseibans == null ? currentOrder : stateUncheckedFseibans(current);
+    if (!candidates.some((fseiban) => recheckedFseibans.has(fseiban))) return current;
+  }
+  const previousOrder = new Set(currentOrder);
+  const unchecked = new Set([
+    ...(await readStateUncheckedFseibans(current, client)).filter((fseiban) => !recheckedFseibans?.has(fseiban)),
+    ...newUncheckedFseibans.filter((fseiban) => !previousOrder.has(fseiban))
+  ]);
   return client.productionScheduleGrindingPlanningBoardState.update({ where: { id: current.id }, data: {
     seibanOrder: nextOrder, uncheckedFseibans: nextOrder.filter((fseiban) => unchecked.has(fseiban)), version: { increment: 1 }
   } });
@@ -557,7 +569,10 @@ export async function updateGrindingPlanningBoardSeibanChecks(params: GrindingPl
   }
 }
 
-export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: string; sourceRevision: string; fseibans: string[]; newUncheckedFseibans?: readonly string[] }): Promise<{ sourceRevision: string; seibanOrder: string[]; uncheckedFseibans: string[] }> {
+export async function updateGrindingPlanningBoardSeibanOrder(params: {
+  siteKey: string; sourceRevision: string; fseibans: string[];
+  newUncheckedFseibans?: readonly string[]; recheckedFseibans?: ReadonlySet<string>;
+}, saveImportProgress?: (client: Prisma.TransactionClient) => Promise<void>): Promise<{ sourceRevision: string; seibanOrder: string[]; uncheckedFseibans: string[] }> {
   const normalizedOrder = normalizeUniqueFseibans(params.fseibans);
   const nextOrder = normalizedOrder;
   const rows = await readWinnerRowsByFseibans(prisma, nextOrder);
@@ -569,7 +584,10 @@ export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: 
     const state = await prisma.$transaction(async (client) => {
       const current = await lockState(client, params.siteKey);
       assertBoardRevision(params.sourceRevision, current);
-      return saveSeibanOrderInTransaction(client, current, nextOrder, params.newUncheckedFseibans);
+      const saved = await saveSeibanOrderInTransaction(client, current, nextOrder, params.newUncheckedFseibans, params.recheckedFseibans);
+      // Commit the recheck and its retry checkpoint together.
+      await saveImportProgress?.(client);
+      return saved;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     return { sourceRevision: boardRevision(state), seibanOrder: stateOrder(state), uncheckedFseibans: await readStateUncheckedFseibans(state, prisma) };
   } catch (error) {
