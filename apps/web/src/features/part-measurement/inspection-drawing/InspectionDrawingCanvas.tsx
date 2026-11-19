@@ -46,6 +46,7 @@ type Props = {
   /** 指差しモード: 選択中点の先端を置く */
   onSetCalloutTip?: (xRatio: number, yRatio: number) => void;
   onCalloutDimsChange?: (pointId: string, dims: NonNullable<InspectionDrawingPoint['calloutDims']>) => void;
+  onCalloutDimsAdjust?: (pointId: string, dims: NonNullable<InspectionDrawingPoint['calloutDims']>) => void;
   /** 1 = ビューポートにフィット。表示専用（保存座標は ratio のまま） */
   zoom?: number;
   /** 全面表示（fit）操作のたびに増える。スクロール位置リセット用 */
@@ -92,6 +93,7 @@ export function InspectionDrawingCanvas({
   onPointChange,
   onSetCalloutTip,
   onCalloutDimsChange,
+  onCalloutDimsAdjust,
   zoom = INSPECTION_DRAWING_ZOOM_DEFAULT,
   fitGeneration = 0,
   focusRequest = null,
@@ -507,7 +509,7 @@ export function InspectionDrawingCanvas({
           {image ? (
             <InspectionDrawingDimensionLayer points={points} selectedPointId={selectedPointId}
               image={image} width={zoomedLayout.contentWidth} height={zoomedLayout.contentHeight}
-              editable={mode === 'place'} onChange={onCalloutDimsChange} />
+              editable={mode === 'place' || mode === 'dimX' || mode === 'dimY'} onChange={onCalloutDimsAdjust} />
           ) : null}
           {image ? (
             <ImageMarkerCalloutOverlay
