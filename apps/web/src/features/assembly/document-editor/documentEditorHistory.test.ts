@@ -6,6 +6,37 @@ import { historyReducer, type OverlayHistory } from './documentEditorHistory';
 const bbox = { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.2, heightRatio: 0.2 };
 const elements = [0, 1, 2].map(pageIndex => ({ ...createOverlayForRange('TEXT', pageIndex, bbox), id: `page-${pageIndex}` }));
 
+describe('drag a photo with text-rewrite attachments', () => {
+  it.each([
+    ['keeps its own attachments while crossing a higher photo', 0, 1],
+    ['leaves the other photo’s attachments in place while passing under its patch', 1, 0]
+  ] as const)('%s and undoes the drag in one step', (_scenario, movingZ, stationaryZ) => {
+    const photoBox = { ...bbox, xRatio: 0.0625, widthRatio: 0.25 };
+    const patchBox = { ...bbox, xRatio: 0.125, widthRatio: 0.0625 };
+    const movedPhoto = { ...createOverlayForRange('IMAGE', 0, photoBox), id: 'a', zIndex: movingZ };
+    const movedPatch = { ...createOverlayForRange('IMAGE', 0, patchBox), id: 'text-erase-a', zIndex: 2 };
+    const movedText = { ...createOverlayForRange('TEXT', 0, patchBox), id: 'text-a', zIndex: 3 };
+    const stationaryPhoto = { ...movedPhoto, id: 'b', bbox: { ...photoBox, xRatio: 0.375 }, zIndex: stationaryZ };
+    const stationaryPatch = { ...movedPatch, id: 'text-erase-b', bbox: { ...patchBox, xRatio: 0.5625 }, zIndex: 4 };
+    const stationaryText = { ...movedText, id: 'text-b', bbox: stationaryPatch.bbox, zIndex: 5 };
+    const stationaryGroup = [stationaryPhoto, stationaryPatch, stationaryText];
+    const present = [movedPhoto, movedPatch, movedText, ...stationaryGroup];
+    let state = historyReducer({ past: [], present, future: [], dragStart: null }, { type: 'beginDrag' });
+
+    for (const xRatio of [0.375, 0.5, 0.75]) {
+      state = historyReducer(state, { type: 'update', element: { ...movedPhoto, bbox: { ...photoBox, xRatio } } });
+      const expectedBox = { ...patchBox, xRatio: xRatio + patchBox.xRatio - photoBox.xRatio };
+      expect(state.present.slice(1, 3).map(element => element.bbox)).toEqual([expectedBox, expectedBox]);
+      expect(state.present.slice(3)).toEqual(stationaryGroup);
+    }
+
+    const finished = historyReducer(state, { type: 'endDrag' });
+    expect(finished.present).toBe(state.present);
+    expect(finished.past).toEqual([present]);
+    expect(historyReducer(finished, { type: 'undo' }).present).toBe(present);
+  });
+});
+
 describe('delete a page from overlay history', () => {
   it('removes the page and shifts later indexes without mutating the input', () => {
     const result = removeOverlayPage(elements, 1);
@@ -65,4 +96,20 @@ describe('delete a page from overlay history', () => {
     expect(historyReducer(next, { type: 'redo' }).present).toEqual([changed]);
   });
 
+});
+
+it('reorders past, present, future and drag snapshots before undo and redo', () => {
+  const edited = elements.map(element => ({ ...element, zIndex: 1 }));
+  const future = elements.map(element => ({ ...element, zIndex: 2 }));
+  const initial: OverlayHistory = { past: [elements], present: edited, future: [future], dragStart: elements };
+  const next = historyReducer(initial, { type: 'movePage', from: 2, to: 0 });
+  for (const snapshot of [...next.past, next.present, ...next.future, next.dragStart!]) {
+    expect(snapshot.map(element => element.pageIndex)).toEqual([1, 2, 0]);
+  }
+  const undone = historyReducer(next, { type: 'undo' });
+  expect(undone.present).toEqual(next.past[0]);
+  const redone = historyReducer(undone, { type: 'redo' });
+  expect(redone.present).toEqual(next.present);
+  expect(historyReducer(redone, { type: 'redo' }).present).toEqual(next.future[0]);
+  expect(initial.present.map(element => element.pageIndex)).toEqual([0, 1, 2]);
 });

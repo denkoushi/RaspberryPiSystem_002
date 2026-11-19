@@ -294,3 +294,12 @@ export async function deleteAssemblyProcedurePage(input: { holderToken?: string 
   const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/${input.pageIndex}/delete`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion }, procedureEditHeaders(input.holderToken));
   return data.document;
 }
+
+export async function moveAssemblyProcedurePage({ id, pageIndex, holderToken, ...body }: {
+  id: string; pageIndex: number; toPageIndex: number; holderToken?: string | null; accessPassword: string; expectedEditVersion: number;
+}) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(id)}/pages/${pageIndex}/move`, body, procedureEditHeaders(holderToken)
+  );
+  return data.document;
+}

@@ -1,18 +1,17 @@
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
-import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision, deleteAssemblyProcedurePage, importAssemblyProcedurePages } from '../../../api/client';
+import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision } from '../../../api/client';
 import { DEFAULT_UNSAVED_NAVIGATION_MESSAGE, useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 import {
-  createOverlayForRange,
+  createDuplicateOverlayAction, createOverlayForRange,
   createOverlayId,
   duplicateOverlayId,
   isOverlayDraftSaveable,
   overlayDraftSnapshot,
-  removeOverlayPage,
   shiftOverlayPages,
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
@@ -33,6 +32,7 @@ import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProce
 import { useAssemblyProcedureLayoutSuggestions } from './useAssemblyProcedureLayoutSuggestions';
 import { useDocumentEditorHistoryCommands } from './useDocumentEditorHistoryCommands';
 import { useDocumentEditorMaterialPlacements } from './useDocumentEditorMaterialPlacements';
+import { useDocumentEditorPageCommands } from './useDocumentEditorPageCommands';
 
 import type { InlineTextElement, InlineTextFlush } from './InlineTextEditor';
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureTextCandidateDto } from '../types';
@@ -409,92 +409,12 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectedOverlayId(null);
   });
 
-  const addBlankPage = useEditorCallback(async () => {
-    if (!document || readOnly || busyRef.current || conflict) return;
-    setBusy(true);
-    try {
-      const next = await addBlankAssemblyProcedurePage({ id: document.id, holderToken: editLease.holderToken, accessPassword: passwordInput, expectedEditVersion: document.editVersion ?? 0 });
-      // Keep the unsaved overlay reducer and its baseline; only update pages/version.
-      setDocument((current) => ({ ...next, assets: { ...next.assets, ...current?.assets } }));
-      setSelectedPage(Math.max(...next.pages.map((page) => page.pageIndex)));
-      setMessage('白紙ページを追加しました。');
-      if (isDirty) {
-        saveRecoveryImmediately({ baseUpdatedAt: next.updatedAt, editVersion: next.editVersion ?? 0 });
-      }
-    } catch (error) {
-      if (onEditLeaseError(error)) return;
-      const nextConflict = readDocumentEditorConflict(error);
-      if (nextConflict) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
-      setErrorMessage(readAssemblyApiErrorMessage(error, '白紙ページを追加できませんでした。'));
-    } finally { setBusy(false); }
-  });
-
   const clearPageSelection = () => { setSelectedOverlayId(null); setPendingRange(null); setSelectionMode(false); setTextCandidates([]); setTextCandidateRange(null); };
-
-  const importPages = useEditorCallback(async (sourceDocumentId: string, sourcePageIndexes: number[], afterPageIndex: number) => {
-    if (!document || readOnly || busyRef.current || conflict || sourcePageIndexes.length === 0) return false;
-    setBusy(true); setMessage(null);
-    try {
-      const next = await importAssemblyProcedurePages({
-        id: document.id, holderToken: editLease.holderToken, accessPassword: passwordInput,
-        expectedEditVersion: document.editVersion ?? 0, sourceDocumentId, sourcePageIndexes, afterPageIndex
-      });
-      const firstPageIndex = afterPageIndex + 1, pageCount = sourcePageIndexes.length;
-      const savedElements = selectDocumentOverlayElements(next);
-      const importedElements = savedElements.filter(element => element.pageIndex >= firstPageIndex && element.pageIndex < firstPageIndex + pageCount);
-      const insert = (draft: AssemblyProcedureOverlayElement[]) => [
-        ...shiftOverlayPages(draft, afterPageIndex, pageCount),
-        ...importedElements
-      ];
-      const nextBaseline = overlayDraftSnapshot(savedElements);
-      const nextElements = insert(draftElements);
-      if (inlineDraft) dispatch({ type: 'update', element: inlineDraft });
-      dispatch({ type: 'shiftPages', afterPageIndex, pageCount, importedElements });
-      setInlineDraft(null);
-      setBaselineSnapshot(nextBaseline);
-      setDocument(current => ({ ...next, assets: { ...current?.assets, ...next.assets } }));
-      setSelectedPageIndex(firstPageIndex);
-      clearPageSelection();
-      recovery.importPages({ baseUpdatedAt: next.updatedAt, editVersion: next.editVersion ?? 0 }, insert, nextElements, overlayDraftSnapshot(nextElements) !== nextBaseline);
-      setMessage(`${pageCount}ページを入れました。`);
-      return true;
-    } catch (error) {
-      if (!onEditLeaseError(error)) {
-        const nextConflict = readDocumentEditorConflict(error);
-        if (nextConflict) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
-        setErrorMessage(readAssemblyApiErrorMessage(error, 'ページを取り込めませんでした。'));
-      }
-      return false;
-    } finally { setBusy(false); }
-  });
-
-  const deletePage = useEditorCallback(async (pageIndex: number) => {
-    if (!document || readOnly || busyRef.current || conflict) return;
-    setBusy(true);
-    try {
-      const next = await deleteAssemblyProcedurePage({ id: document.id, pageIndex, holderToken: editLease.holderToken, accessPassword: passwordInput, expectedEditVersion: document.editVersion ?? 0 });
-      const currentElements = inlineDraft ? elements.map(element => element.id === inlineDraft.id ? inlineDraft : element) : elements;
-      const nextElements = removeOverlayPage(currentElements, pageIndex);
-      const allElements = [...history.past.flat(), ...elements, ...history.future.flat(), ...(history.dragStart ?? []), ...currentElements];
-      const survivingIds = new Set(allElements.filter(element => element.pageIndex !== pageIndex).map(element => element.id));
-      const removedIds = new Set(allElements.filter(element => element.pageIndex === pageIndex && !survivingIds.has(element.id)).map(element => element.id));
-      const placements = [...pendingMaterials.current.values()].filter(item => !removedIds.has(item.elementId));
-      void materials.removePageMaterials(removedIds);
-      setInlineDraft(null);
-      if (inlineDraft && inlineDraft.pageIndex !== pageIndex) dispatch({ type: 'update', element: inlineDraft });
-      dispatch({ type: 'deletePage', pageIndex });
-      setBaselineSnapshot(current => current === null ? null : overlayDraftSnapshot(removeOverlayPage(JSON.parse(current) as AssemblyProcedureOverlayElement[], pageIndex)));
-      setDocument(current => ({ ...next, assets: { ...next.assets, ...current?.assets } }));
-      setSelectedPageIndex(Math.min(pageIndex, Math.max(...next.pages.map(page => page.pageIndex))));
-      clearPageSelection();
-      recovery.deletePage(pageIndex, { baseUpdatedAt: next.updatedAt, editVersion: next.editVersion ?? 0 }, nextElements, placements);
-      setMessage(`${pageIndex + 1}ページ目を削除しました`);
-    } catch (error) {
-      if (onEditLeaseError(error)) return;
-      const nextConflict = readDocumentEditorConflict(error);
-      if (nextConflict?.currentEditVersion != null) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
-      setErrorMessage(readAssemblyApiErrorMessage(error, 'ページを削除できませんでした。'));
-    } finally { setBusy(false); }
+  const { addBlankPage, importPages, deletePage, movePage } = useDocumentEditorPageCommands({
+    document, history, draftElements, inlineDraft, baselineSnapshot, materials, recovery,
+    holderToken: editLease.holderToken, passwordInput, readOnly, busyRef, conflict, isDirty,
+    dispatch, setDocument, setInlineDraft, setBaselineSnapshot, setSelectedPageIndex, setSelectedPage,
+    clearPageSelection, setBusy, setMessage, setErrorMessage, setConflict, setConflictEditVersion, onEditLeaseError
   });
 
   const duplicateOverlayToCurrentPage = useEditorCallback((sourceId: string) => {
@@ -504,17 +424,17 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     const id = duplicateOverlayId(source.id, createOverlayId);
     const placement = pendingMaterials.current.get(sourceId);
     if (placement) pendingMaterials.current.set(id, { ...placement, elementId: id, fallbackAssetId: undefined });
-    dispatch({ type: 'duplicate', sourceId, id, pageIndex: selectedPage.pageIndex });
+    dispatch(createDuplicateOverlayAction(elements, sourceId, id, selectedPage.pageIndex));
     setSelectedOverlayId(id);
   });
 
   const duplicateSelectedOverlay = useEditorCallback(() => {
     if (!selectedElement || readOnly || busyRef.current) return;
-    const copy = { ...selectedElement, id: duplicateOverlayId(selectedElement.id, createAssemblyRequestId), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
+    const id = duplicateOverlayId(selectedElement.id, createAssemblyRequestId);
     const placement = pendingMaterials.current.get(selectedElement.id);
-    if (placement) pendingMaterials.current.set(copy.id, { ...placement, elementId: copy.id, fallbackAssetId: undefined });
-    dispatch({ type: 'add', element: copy });
-    setSelectedOverlayId(copy.id);
+    if (placement) pendingMaterials.current.set(id, { ...placement, elementId: id, fallbackAssetId: undefined });
+    dispatch(createDuplicateOverlayAction(elements, selectedElement.id, id, selectedElement.pageIndex));
+    setSelectedOverlayId(id);
   });
   const addOverlay = useEditorCallback((kind: 'TEXT' | 'SHAPE') => {
     if (readOnly || busyRef.current) return;
@@ -554,6 +474,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     addBlankPage,
     importPages,
     deletePage,
+    movePage,
     placeMaterial: overlayCommands.placeMaterial,
     materialRevision,
     replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,

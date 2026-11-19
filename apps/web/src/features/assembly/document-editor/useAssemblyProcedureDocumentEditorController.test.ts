@@ -15,6 +15,7 @@ const apiMocks = vi.hoisted(() => ({
   addBlankPage: vi.fn(),
   importPages: vi.fn(),
   deletePage: vi.fn(),
+  movePage: vi.fn(),
   suggestLayout: vi.fn(),
   placeMaterial: vi.fn(),
   unplaceMaterial: vi.fn()
@@ -31,6 +32,7 @@ vi.mock('../../../api/client', () => ({
   addBlankAssemblyProcedurePage: apiMocks.addBlankPage,
   importAssemblyProcedurePages: apiMocks.importPages,
   deleteAssemblyProcedurePage: apiMocks.deletePage,
+  moveAssemblyProcedurePage: apiMocks.movePage,
   suggestAssemblyProcedureLayout: apiMocks.suggestLayout,
   placeProcedureMaterial: apiMocks.placeMaterial,
   unplaceProcedureMaterial: apiMocks.unplaceMaterial,
@@ -203,6 +205,68 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     }
     expect(hook.result.current.elements).toEqual([]);
     expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+  });
+
+  it.each([[0, 2], [1, 0]])('follows page %i to %i while rebasing inline edits, undo and recovery', async (selected, expectedSelection) => {
+    const saved = { ...createOverlayForRange('TEXT', 0, range), id: 'moved-inline', text: '保存済み' };
+    const document = makeDocument({ pages: [0, 1, 2].map(pageIndex => ({
+      pageIndex, imageRelativePath: `/${pageIndex}.png`, overlays: pageIndex === 0 ? [saved] : []
+    })) });
+    const next = { ...document, editVersion: 1, updatedAt: '2026-08-22T00:00:00.000Z', pages: [
+      { ...document.pages[1], pageIndex: 0 }, { ...document.pages[2], pageIndex: 1 },
+      { ...document.pages[0], pageIndex: 2, overlays: [{ ...saved, pageIndex: 2 }] }
+    ] };
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    const draft = { ...saved, kind: 'TEXT' as const, text: '編集中' };
+    act(() => {
+      hook.result.current.setSelectedPageIndex(selected);
+      hook.result.current.setSelectedOverlayId(saved.id);
+      hook.result.current.onInlineDraftChange(draft);
+    });
+    apiMocks.movePage.mockResolvedValue(next);
+    await act(async () => hook.result.current.movePage(0, 2));
+
+    expect(apiMocks.movePage).toHaveBeenCalledWith({
+      id: document.id, pageIndex: 0, toPageIndex: 2, accessPassword: '1234', expectedEditVersion: 0, holderToken: 'session-token'
+    });
+    expect(hook.result.current.selectedPageIndex).toBe(expectedSelection);
+    expect(hook.result.current.selectedOverlayId).toBeNull();
+    expect(hook.result.current.message).toBe('ページを並べ替えました。');
+    expect(hook.result.current.elements).toEqual([{ ...draft, pageIndex: 2 }]);
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)).toMatchObject({
+      editVersion: 1, baseUpdatedAt: next.updatedAt, elements: [{ ...draft, pageIndex: 2 }]
+    });
+    expect(hook.result.current.isDirty).toBe(true);
+    await act(async () => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([{ ...saved, pageIndex: 2 }]);
+    expect(hook.result.current.isDirty).toBe(false);
+  });
+
+  it('reorders pending recovery overlays without releasing materials', async () => {
+    const document = makeDocument({ pages: [0, 1].map(pageIndex => ({ pageIndex, imageRelativePath: `/${pageIndex}.png`, overlays: [] })) });
+    const image = { ...createOverlayForRange('IMAGE', 1, range), id: 'pending-image', assetId: 'asset' };
+    writeAssemblyDocumentEditorRecovery(window.localStorage, {
+      version: 1, documentId: document.id, baseUpdatedAt: document.updatedAt, editVersion: 0, savedAt: document.updatedAt,
+      elements: [image], materialPlacements: [{ elementId: image.id, materialId: 'material', assetId: 'asset' }]
+    });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.recoveryPending).not.toBeNull());
+    apiMocks.movePage.mockResolvedValue({ ...document, editVersion: 1, pages: [
+      { ...document.pages[1], pageIndex: 0 }, { ...document.pages[0], pageIndex: 1 }
+    ] });
+    await act(async () => hook.result.current.movePage(1, 0));
+
+    const expected = { editVersion: 1, elements: [{ ...image, pageIndex: 0 }], materialPlacements: [
+      { elementId: image.id, materialId: 'material', assetId: 'asset' }
+    ] };
+    expect(hook.result.current.recoveryPending).toMatchObject(expected);
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)).toMatchObject(expected);
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    act(() => hook.result.current.restoreRecovery());
+    expect(hook.result.current.elements).toEqual(expected.elements);
   });
 
   it.each([0, 1, 2])('deletes page %i while retaining drafts, baselines, history, assets and recovery for surviving pages', async pageIndex => {
