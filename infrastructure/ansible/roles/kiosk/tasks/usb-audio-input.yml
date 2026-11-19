@@ -16,6 +16,52 @@
     mode: '0644'
   register: kiosk_usb_audio_input_config
 
+- name: Keep the deploy account from owning ALSA devices when the kiosk runs as a separate account
+  when: (kiosk_gui_user | default(ansible_user)) != ansible_user
+  block:
+    - name: Look up the deploy account home directory
+      ansible.builtin.getent:
+        database: passwd
+        key: '{{ ansible_user }}'
+
+    - name: Create the deploy account WirePlumber drop-in directory
+      ansible.builtin.file:
+        path: "{{ ansible_facts.getent_passwd[ansible_user][4] }}/{{ item }}"
+        state: directory
+        owner: '{{ ansible_user }}'
+        group: '{{ ansible_user }}'
+        mode: '0755'
+      loop:
+        - .config
+        - .config/wireplumber
+        - .config/wireplumber/wireplumber.conf.d
+
+    - name: Disable the ALSA monitor for the deploy account
+      ansible.builtin.copy:
+        src: 90-kiosk-deploy-user-no-alsa.conf
+        dest: "{{ ansible_facts.getent_passwd[ansible_user][4] }}/.config/wireplumber/wireplumber.conf.d/90-kiosk-deploy-user-no-alsa.conf"
+        owner: '{{ ansible_user }}'
+        group: '{{ ansible_user }}'
+        mode: '0644'
+      register: kiosk_deploy_user_no_alsa_config
+
+    - name: Restart the deploy account WirePlumber so it releases ALSA devices
+      ansible.builtin.shell: |
+        set -eu
+        uid="$(id -u)"
+        export XDG_RUNTIME_DIR="/run/user/${uid}"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+        if test -S "${XDG_RUNTIME_DIR}/bus" && pgrep -u "${uid}" -x wireplumber >/dev/null; then
+          systemctl --user restart wireplumber
+          echo restarted
+        fi
+      become: true
+      become_user: '{{ ansible_user }}'
+      register: kiosk_deploy_user_no_alsa_restart
+      changed_when: kiosk_deploy_user_no_alsa_restart.stdout | default('') == 'restarted'
+      ignore_errors: true
+      when: kiosk_deploy_user_no_alsa_config.changed
+
 - name: Restart WirePlumber in the active kiosk GUI session after a configuration change
   ansible.builtin.shell: |
     set -eu
@@ -31,4 +77,6 @@
   register: kiosk_usb_audio_input_restart
   changed_when: kiosk_usb_audio_input_restart.stdout | default('') == 'restarted'
   ignore_errors: true
-  when: kiosk_usb_audio_input_config.changed
+  when: >-
+    kiosk_usb_audio_input_config.changed
+    or (kiosk_deploy_user_no_alsa_config.changed | default(false))

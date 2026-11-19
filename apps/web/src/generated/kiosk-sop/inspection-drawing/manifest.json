@@ -1,23 +1,23 @@
 {
   "artifacts": {
-    "manual.html": "14cf2d004ade0f017dfd5e6a09057acf757ce5b71dce2b7af8f7715ef7256d2c",
-    "screens/edit-advanced-point.png": "d5904d953bd64f213b95986081414365de9e40b313f34be265a843fab7e6bb1e",
-    "screens/edit-basics.png": "1878d090371064da78960a58ec2ce2d76a8b2e6432f960c8fe22652a3b3be239",
-    "screens/edit-group-history.png": "81381c79b5ea4197576d02423211fcc86f325c3a5d69a45d61d60fe3bf29e9b1",
-    "screens/edit-point-management.png": "1878d090371064da78960a58ec2ce2d76a8b2e6432f960c8fe22652a3b3be239",
-    "screens/edit-required-point.png": "1878d090371064da78960a58ec2ce2d76a8b2e6432f960c8fe22652a3b3be239",
-    "screens/edit-trial-report.png": "1878d090371064da78960a58ec2ce2d76a8b2e6432f960c8fe22652a3b3be239",
-    "screens/edit-visual-source.png": "498cfdfb6946b0e262699455eec45d12bab798c5bcfa670c2c70886644637478",
+    "manual.html": "f10775b582d61eb42d4786b6862334c6a2700a750e565f046f3f799b12c60f49",
+    "screens/edit-advanced-point.png": "69d86f808bfe0f8f8f39d009b86a57a849e29d52f32c65380004828ed21ace65",
+    "screens/edit-basics.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
+    "screens/edit-group-history.png": "0f6ce0a3716113d9da95f1c3231a3667e9d171a187e8a93288110a12df02f0de",
+    "screens/edit-point-management.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
+    "screens/edit-required-point.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
+    "screens/edit-trial-report.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
+    "screens/edit-visual-source.png": "508f8ebaa5eda7bf185096ac8094668ca49a9c8459d9a64c2845ddc67d465314",
     "screens/library-entry-search.png": "d4adc7eceb70e8b05030b9bb7701bb4762b3cb915cb1930aa09dcf58f2eafcdb",
     "screens/library-template-management.png": "d4adc7eceb70e8b05030b9bb7701bb4762b3cb915cb1930aa09dcf58f2eafcdb",
     "screens/library-visual-management.png": "6958815d3b2dc2ee4f0e1cc89aea1edaae514145e0a1a31ef5c0b6dc1519fac3",
-    "sheets/edit-advanced-point.png": "499e036f4b69108a55f4dbbd1e25ab1d84a37058e9bd3b0fde9a6f42b959c652",
-    "sheets/edit-basics.png": "eea57f46856a452b9ce236e3fe2cca385f1083d7e6c67c7b1778f8da74bf3f47",
-    "sheets/edit-group-history.png": "25976556d3d7745b04cf1e428aaf68f87cff1ad0520d6fb0cc238b287c0ca5a3",
-    "sheets/edit-point-management.png": "4dee589a4945845aa8094fbbcd26f284b42230d3c7b294279777b2e423fe2510",
-    "sheets/edit-required-point.png": "5d2a79e05f383d7bc011a070473c22c2c5e212ea2d17622d32ffb0dc802f0f06",
-    "sheets/edit-trial-report.png": "564d4deb3e120336de61499baa98a2e8e94d2f00b16948f0e784adf2df6968ce",
-    "sheets/edit-visual-source.png": "74e0c9d2169e600f2a2002a51066592d731ebc04d51cfabb3c7233443d0fa946",
+    "sheets/edit-advanced-point.png": "cb50603c3fbd7a7a3edd429a5cc6da68edc0a0aa7daa2285a62e1487f35cee85",
+    "sheets/edit-basics.png": "bf8d682e268266a437e0d372d529e1bcf499f3627411734ef26ba7e045d342f8",
+    "sheets/edit-group-history.png": "c9fa9c6235fe498f60a39898dc54c9908273089309251587826bdb78c6213962",
+    "sheets/edit-point-management.png": "932aeca35745fa96c9d7d7c5c5709d8e9e332d460e7439e1469817dd9ebe8577",
+    "sheets/edit-required-point.png": "00991b2f4b03a9dede50940297afb863ab68a25504d853f8144855e493329a29",
+    "sheets/edit-trial-report.png": "12b2edac72925df20acf1afa3a758fab368aefb0d71673860e5c51d00cf1d944",
+    "sheets/edit-visual-source.png": "6ae0a43542c0e0498de7fa633ae8152ba4e86fb29bcea95cd59866d069f51ee7",
     "sheets/library-entry-search.png": "0bc14a0e2043de54fc60b0a54a52c7364dc1f42061160baa1d9687cce7397b3c",
     "sheets/library-template-management.png": "e03b9c9225b3e1f2517fb7663311e6f66bc81600e9dfd26fa93e9c1edbbbdfb3",
     "sheets/library-visual-management.png": "2ad9375d1528361903d060c694f35c495b9bfd69247cc04ff9622be8d2d92fce"
@@ -663,7 +663,7 @@
       }
     ]
   },
-  "htmlSha256": "14cf2d004ade0f017dfd5e6a09057acf757ce5b71dce2b7af8f7715ef7256d2c",
+  "htmlSha256": "f10775b582d61eb42d4786b6862334c6a2700a750e565f046f3f799b12c60f49",
   "schemaVersion": 1,
-  "sourceSha256": "cd48ae45db850fb055887d743ddf23e182493d7931dda689167c996ab47f97b2"
+  "sourceSha256": "fc63ca0cc4440a566c3c8e59a3e8a8df6fc148d811af247c8e8ba4fea095ade5"
 }

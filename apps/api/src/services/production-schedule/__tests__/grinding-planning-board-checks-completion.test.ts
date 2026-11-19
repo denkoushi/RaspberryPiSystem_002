@@ -91,6 +91,26 @@ describe('board check persistence', () => {
     expect(mocks.state.uncheckedFseibans).toEqual(['B', 'NEW']);
     expect(mocks.update).toHaveBeenCalledTimes(1);
   });
+
+  it.each([{ unchecked: ['A', 'B'] }, { unchecked: null }])(
+    'rechecks A without reordering and preserves other unchecked seibans ($unchecked)', async ({ unchecked }) => {
+      mocks.state.uncheckedFseibans = unchecked;
+      mocks.minutes.mockResolvedValue([
+        { fseiban: 'A', assigneesKnown: true, assignees: ['資材課', '機械課'] },
+        { fseiban: 'B', assigneesKnown: true, assignees: ['資材課'] }
+      ]);
+      const input = { siteKey: 'site', sourceRevision: boardRevision(mocks.state),
+        fseibans: [...mocks.state.seibanOrder], recheckedFseibans: new Set(['A', 'ABSENT']) };
+      const saveProgress = vi.fn().mockResolvedValue(undefined);
+      const result = await updateGrindingPlanningBoardSeibanOrder(input, saveProgress);
+      expect(saveProgress).toHaveBeenCalledExactlyOnceWith(mocks.transaction.mock.calls[0][2]);
+      expect(result).toMatchObject({ seibanOrder: input.fseibans, uncheckedFseibans: ['B'] });
+      expect(result.sourceRevision).not.toBe(input.sourceRevision);
+      await expect(updateGrindingPlanningBoardSeibanOrder(input, saveProgress)).rejects.toMatchObject({ statusCode: 409 });
+      expect(saveProgress).toHaveBeenCalledTimes(1);
+      await expect(updateGrindingPlanningBoardSeibanOrder({ ...input, sourceRevision: result.sourceRevision })).resolves.toEqual(result);
+      expect(mocks.update).toHaveBeenCalledTimes(1);
+    });
 });
 
 function process(id: string, seiban: string, resource: string, manual: boolean, external = false, part = 'PART') {

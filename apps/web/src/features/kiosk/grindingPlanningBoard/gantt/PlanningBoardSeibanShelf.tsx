@@ -13,7 +13,7 @@ import { SHELF_COLUMN_STRIDE, usePlanningBoardShelfWindow } from './usePlanningB
 import type { ForwardDragPreview } from './PlanningBoardForwardGanttRow';
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { SeibanShelfColumn } from './planningBoardSeibanShelfData';
-import type { ShelfDropResolver, SeibanShelfHandle, ShelfPlacementActions } from './usePlanningBoardShelfInteraction';
+import type { ShelfDropResolver, SeibanShelfHandle, ShelfPlacementActions, ShelfSelection } from './usePlanningBoardShelfInteraction';
 import type { PointerEvent, RefObject } from 'react';
 
 const EMPTY_SELECTED: ReadonlySet<string> = new Set();
@@ -26,6 +26,7 @@ type Props = {
   actions?: ShelfPlacementActions;
   disabled?: boolean;
   writePending?: boolean;
+  onSelectionPreview?: (selection: ShelfSelection | null) => void;
   onDragPreview?: (preview: ForwardDragPreview | null) => void;
   seibanColors: ReadonlyMap<string, string>;
   focusedSeiban: string | null;
@@ -35,7 +36,7 @@ type Props = {
 };
 
 export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(function PlanningBoardSeibanShelf({
-  columns, seibanColors, focusedSeiban, highlightedItemId, onFocusedSeibanChange, onFocusSeiban, interactionRef, getDrop, resources, actions, disabled = false, writePending = false, onDragPreview
+  columns, seibanColors, focusedSeiban, highlightedItemId, onFocusedSeibanChange, onFocusSeiban, interactionRef, getDrop, resources, actions, disabled = false, writePending = false, onDragPreview, onSelectionPreview
 }, ref) {
   const { open, changeOpen } = usePersistedPlanningBoardShelf();
   const [remaining, setRemaining] = useState(false);
@@ -150,10 +151,18 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
     advance();
     return true;
   };
-  const allowedFor = (ids: readonly string[]) => new Set(resources?.filter(resource => ids.every(id => {
+  const allowedFor = useCallback((ids: readonly string[]) => new Set(resources?.filter(resource => ids.every(id => {
     const bar = bars.get(id);
     return bar && !bar.arrivalPending && !bar.item.isCompleted && bar.item.kind !== 'test' && (bar.resource === resource || actions?.canMove(bar.item, resource));
-  })));
+  }))), [resources, bars, actions]);
+  const selectionPreview = useMemo(() => {
+    if (!open || disabled || frozen || writePending || !activeSelected.size) return null;
+    const ids = [...activeSelected];
+    const bar = bars.get(ids[0]!)!;
+    return { bar, allowed: allowedFor(ids), moving: activeSelected };
+  }, [open, disabled, frozen, writePending, activeSelected, bars, allowedFor]);
+  useLayoutEffect(() => { onSelectionPreview?.(selectionPreview); }, [onSelectionPreview, selectionPreview]);
+  useLayoutEffect(() => () => onSelectionPreview?.(null), [onSelectionPreview]);
   useImperativeHandle(interactionRef, () => ({ placeAt: (x, y) => {
     if (!open || !activeSelected.size || !getDrop || disabled || writePending || pending.current) return false;
     const ids = [...activeSelected];

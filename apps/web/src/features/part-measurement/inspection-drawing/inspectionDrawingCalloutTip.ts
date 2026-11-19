@@ -4,7 +4,7 @@ import {
   setImageMarkerCalloutTip
 } from '../../kiosk/image-canvas';
 
-import type { InspectionDrawingPoint } from './types';
+import type { InspectionDrawingCalloutDim, InspectionDrawingPoint } from './types';
 
 /** 指差し先端が描画可能か（両 tip が有限かつ 0–1） */
 export function inspectionDrawingPointHasCalloutTip(
@@ -18,6 +18,13 @@ export function clearInspectionDrawingCalloutTip(): Pick<
   'calloutTipXRatio' | 'calloutTipYRatio' | 'calloutDims'
 > {
   return { ...clearImageMarkerCalloutTip(), calloutDims: [] };
+}
+
+export function removeInspectionDrawingCalloutDim(
+  dims: readonly InspectionDrawingCalloutDim[] | undefined,
+  dir: InspectionDrawingCalloutDim['dir']
+): InspectionDrawingCalloutDim[] {
+  return (dims ?? []).filter((dim) => dim.dir !== dir);
 }
 
 export function setInspectionDrawingCalloutTip(

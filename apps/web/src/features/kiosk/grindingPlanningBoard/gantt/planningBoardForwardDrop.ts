@@ -25,8 +25,14 @@ export function findForwardDrop(clientX: number, clientY: number, source: GanttB
   const targetLane = lanes.find((candidate) => candidate.resource === targetResource && (!candidate.rowKey || candidate.rowKey === rowKey));
   const targetTrack = lane.querySelector<HTMLElement>('[data-gantt-track]');
   if (!targetLane || !targetTrack) return null;
+  return forwardDropInLane((clientX - targetTrack.getBoundingClientRect().left) / pageZoom(), source, targetLane, lanes, start, dayWidth, moving);
+}
+
+export function forwardDropInLane(x: number, source: GanttBar, targetLane: ForwardDragLane,
+  lanes: readonly ForwardDragLane[], start: number, dayWidth: number, moving?: ReadonlySet<string>
+): ForwardDragPreview['drop'] {
+  const { resource: targetResource, rowKey } = targetLane;
   start = targetLane.start ?? start;
-  const x = (clientX - targetTrack.getBoundingClientRect().left) / pageZoom();
   const centre = (bar: GanttBar) => (bar.start! - start) * dayWidth +
     (bar.unknown && !rowKey ? 70 : Math.max(2, ((bar.segments?.[0]?.end ?? bar.end!) - bar.start!) * dayWidth - 2)) / 2;
   const others = targetLane.bars.filter((bar) => bar.item.itemId !== source.item.itemId && !moving?.has(bar.item.itemId)).sort((a, b) => centre(a) - centre(b));

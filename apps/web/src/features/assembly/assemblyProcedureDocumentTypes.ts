@@ -1,11 +1,7 @@
 import type { ProcedureVideoSummaryDto } from './procedure-manuals/procedure-video-types';
-import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+import type { AssemblyProcedureOverlayAssetMetadata, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
-export type AssemblyProcedureOverlayAssetDto = {
-  assetId: string;
-  storageKey: string;
-  contentType: string;
-  byteSize: number;
+export type AssemblyProcedureOverlayAssetDto = AssemblyProcedureOverlayAssetMetadata & {
   url?: string;
   relativeUrl?: string;
   sha256?: string;

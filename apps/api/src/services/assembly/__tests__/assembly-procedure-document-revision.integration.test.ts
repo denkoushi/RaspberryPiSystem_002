@@ -139,6 +139,56 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+  it('restores the original after saving a sharpened upload and collects the variant before the original', async () => {
+    const documentId = randomUUID();
+    const originalId = randomUUID();
+    const sharpenedId = randomUUID();
+    const originalKey = `original-${originalId}.png`;
+    const sharpenedKey = `sharpened-${sharpenedId}.png`;
+    const { AssemblyProcedureAssetGcService } = await import('../../assembly-procedure-assets/index.js');
+    const deleteBlob = vi.fn(async () => undefined);
+    const gc = new AssemblyProcedureAssetGcService({ storage: { delete: deleteBlob } });
+    const revisionService = new AssemblyProcedureDocumentRevisionService(accessService, gc);
+    const image = {
+      id: randomUUID(), kind: 'IMAGE' as const, pageIndex: 0, objectFit: 'contain' as const,
+      bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.4, heightRatio: 0.5 }, zIndex: 0, opacity: 1
+    };
+    const save = (assetId: string, expectedEditVersion: number) => revisionService.saveOverlays({
+      documentId, accessPassword: ACCESS_PASSWORD, expectedEditVersion, elements: [{ ...image, assetId }]
+    });
+    const candidates = { candidateAssetIds: [originalId, sharpenedId], minAgeMs: 0 };
+    try {
+      await prisma.assemblyProcedureDocument.create({ data: {
+        id: documentId, name: 'photo-sharpen-integration', status: 'DRAFT', imageRelativePath: '/page.png',
+        pages: { create: { pageIndex: 0, imageRelativePath: '/page.png' } },
+        revisionMetadata: { create: { revisionRootId: documentId, revisionNumber: 1, isRevisionHead: true, editVersion: 0 } }
+      } });
+      const uploadMetadata = { kind: 'OVERLAY_IMAGE' as const, contentType: 'image/png', byteSize: 1, sha256: 'a'.repeat(64), ownerDocumentId: documentId };
+      await prisma.assemblyProcedureAsset.create({ data: { ...uploadMetadata, id: originalId, storageKey: originalKey } });
+      await prisma.assemblyProcedureAsset.create({ data: { ...uploadMetadata, id: sharpenedId, storageKey: sharpenedKey, derivedFromAssetId: originalId } });
+
+      const sharpened = await save(sharpenedId, 0);
+      expect(sharpened.overlayElements[0].asset?.derivedFromAsset).toMatchObject({ id: originalId, ownerDocumentId: null });
+      await expect(gc.collect(candidates)).resolves.toMatchObject({ claimed: 0 });
+      const restored = await save(originalId, 1);
+      expect(restored.overlayElements[0].assetId).toBe(originalId);
+      expect(deleteBlob).not.toHaveBeenCalled();
+
+      await save(sharpenedId, 2);
+      await save(originalId, 3);
+      await prisma.assemblyProcedureOverlayElement.deleteMany({ where: { documentId } });
+      await expect(gc.collect(candidates)).resolves.toMatchObject({ claimed: 1 });
+      expect(deleteBlob).toHaveBeenCalledExactlyOnceWith({ storageKey: sharpenedKey });
+      await expect(gc.collect(candidates)).resolves.toMatchObject({ claimed: 1 });
+      expect(deleteBlob).toHaveBeenLastCalledWith({ storageKey: originalKey });
+    } finally {
+      await prisma.assemblyProcedureDocumentRevision.deleteMany({ where: { documentId } });
+      await prisma.assemblyProcedureDocument.deleteMany({ where: { id: documentId } });
+      await prisma.assemblyProcedureAsset.deleteMany({ where: { id: sharpenedId } });
+      await prisma.assemblyProcedureAsset.deleteMany({ where: { id: originalId } });
+    }
+  });
+
   it.each(['source', 'destination'] as const)('retains a shared background and overlay asset after deleting the %s document', async side => {
     const sourceId = randomUUID();
     const destinationId = randomUUID();

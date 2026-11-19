@@ -34,7 +34,8 @@ export type SeibanShelfColumn = {
 /** Keeps the projection's item identities: operation ranges share a physical piece, never a new saved state. */
 export function buildPlanningBoardSeibanShelf(
   items: readonly GrindingPlanningBoardItem[], bars: readonly GanttBar[],
-  resources: readonly string[], colors: ReadonlyMap<string, string>
+  resources: readonly string[], colors: ReadonlyMap<string, string>,
+  category?: 'grinding' | 'cutting' | 'all'
 ): SeibanShelfColumn[] {
   const pendingIds = new Set(bars.filter(bar => bar.arrivalPending).map(bar => bar.item.itemId));
   const lateIds = new Set(bars.filter(bar => bar.tone === 'late').map(bar => bar.item.itemId));
@@ -65,7 +66,9 @@ export function buildPlanningBoardSeibanShelf(
         if (itemDue && (!due || itemDue < due)) due = itemDue;
         if (!model) model = normalizeMachineName(item.machineName);
         const resource = resolveGrindingPlanningBoardResource(item, 'alternate');
-        const tile = { item, resource, placed: resource !== null && resources.includes(resource), late: lateIds.has(item.itemId), arrivalPending: pendingIds.has(item.itemId) };
+        const placedOnMachine = resource !== null && resources.includes(resource);
+        const tile = { item, resource, placed: category === 'grinding' ? item.arrived !== false : placedOnMachine,
+          late: lateIds.has(item.itemId), arrivalPending: pendingIds.has(item.itemId) };
         placed += Number(tile.placed); total++;
         late ||= tile.late;
         const unitKey = item.kind === 'piece' && item.opRange && item.pieceId ? item.pieceId : item.itemId;

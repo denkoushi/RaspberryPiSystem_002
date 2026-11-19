@@ -2,6 +2,9 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useMemo, useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
+import { PlanningBoardToolbar } from '../PlanningBoardToolbar';
+import { PIECE_LINKS_STORAGE_KEY } from '../usePersistedPlanningBoardPieceLinks';
+
 import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 
@@ -39,10 +42,19 @@ afterEach(() => {
 const testBar: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:shelf', itemRevision: 'r1', version: 1,
   sequence: 1, name: 'テスト1', resourceCd: '305', minutes: 30, alternateRank: 0, isCompleted: false, completedAt: null, deletedAt: null };
 
-function Board({ pair = false, disabled = false, outside = true, noop = false, refresh = false, withTest = false }:
-  { pair?: boolean; disabled?: boolean; outside?: boolean; noop?: boolean; refresh?: boolean; withTest?: boolean }) {
+function Board({ pair = false, disabled = false, outside = true, noop = false, refresh = false, withTest = false,
+  all = false, category = 'cutting', extraPieces = false, toolbar = false }:
+  { pair?: boolean; disabled?: boolean; outside?: boolean; noop?: boolean; refresh?: boolean; withTest?: boolean;
+    all?: boolean; category?: 'grinding' | 'cutting'; extraPieces?: boolean; toolbar?: boolean }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [items, setItems] = useState(() => [source('a', outside ? '503' : '305', 1), source('b', outside ? '503' : '305', 2), source('anchor', pair ? '306' : '305', 3)]);
+  const [items, setItems] = useState(() => [
+    { ...source('a', outside ? '503' : '305', 1), arrived: category !== 'grinding' },
+    source('b', outside ? '503' : '305', 2), source('anchor', pair ? '306' : '305', 3),
+    ...(extraPieces ? [
+      { ...source('c', '305', 4), fhincd: 'P2' }, { ...source('d', '305', 5), fhincd: 'P2' },
+      { ...source('single', '305', 6), fseiban: 'S2' }, { ...source('other-part', '305', 7), fhincd: 'P3' }
+    ] : [])
+  ]);
   const layout = useMemo(() => buildPlanningBoardGanttLayout({ items, testBars: withTest ? [testBar] : [], resources: ['305', '306', '503'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: ['S1'], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' }), [items, withTest]);
   const update = (id: string, resource: string, target: string | null, placement: 'before' | 'after') => setItems(current => {
@@ -54,14 +66,18 @@ function Board({ pair = false, disabled = false, outside = true, noop = false, r
       version: item.version + 1 } : item);
   });
   const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
-  return <PlanningBoardGanttDisplay layout={layout} minutes={{ resourceMinutesItems: refresh ? items.map(item => ({ ...item })) : items }} scale={2} capacity={capacity} resourceNameMap={{}}
+  return <>
+    {toolbar && <PlanningBoardToolbar category={category} view="resource" status="incomplete" allocation="alternate"
+      ganttEnabled ganttMode="forward" selectedCount={0} registeredCount={2} onOpenDrawer={vi.fn()} onCategoryChange={vi.fn()}
+      onViewChange={vi.fn()} onStatusChange={vi.fn()} onAllocationChange={vi.fn()} onOpenDueEditor={vi.fn()} />}
+    <PlanningBoardGanttDisplay category={category} layout={layout} minutes={{ resourceMinutesItems: refresh ? items.map(item => ({ ...item })) : items }} scale={2} capacity={capacity} resourceNameMap={{}}
     onToggleItem={(item, checked) => setSelected(current => { const next = new Set(current); if (checked) next.add(item.itemId); else next.delete(item.itemId); return next; })} onDueDrop={vi.fn()}
     disabled={disabled} dragDisabled={false} selectedItemIds={selected} onClearSelection={clear} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
-    colorBySeiban resourceMove={{ canMoveResource: () => true,
+    colorBySeiban resourceMove={{ canMoveResource: (_item, resource) => resource !== '306' || pair,
       onResourceMove: (item, resource, target, placement) => { moves(item.itemId, resource, target?.itemId, placement); if (!noop) update(item.itemId, resource, target?.itemId ?? null, placement); },
       onResourceReorder: (item, target, placement) => { reorders(item.itemId, target.itemId, placement); if (!noop) update(item.itemId, target.kind === 'test' ? target.resourceCd : target.effectiveResourceCd ?? target.originalResourceCd!, target.itemId, placement); } }}
-    singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306', '503']}
-    unitSplitEnabledByResource={{ '305': true, '306': true, '503': true }} />;
+    singleResourceCd={all ? null : pair ? '305+306' : '305'} resourceLanes={['305', '306', '503']}
+    unitSplitEnabledByResource={{ '305': true, '306': true, '503': true }} /></>;
 }
 
 function blank(pair: boolean, x = 0) {
@@ -176,8 +192,10 @@ it.each([{ pair: false, pointerType: 'mouse' }, { pair: true, pointerType: 'touc
   hit = [target.querySelector('[data-gantt-track]')!, target];
   const tile = screen.getByTestId('planning-shelf-tile-a');
   fireEvent.pointerDown(tile, { button: 0, pointerType, clientX: 100, clientY: 400 });
+  const selectionMarker = screen.getByTestId('planning-gantt-insertion');
   fireEvent.pointerMove(tile, { pointerType, clientX: 102, clientY: 402 });
-  expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
+  expect(screen.getByTestId('planning-gantt-insertion')).toBe(selectionMarker);
+  expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
   fireEvent.pointerMove(tile, { pointerType, clientX: 0, clientY: 10 });
   expect(target).toContainElement(screen.getByTestId('planning-gantt-insertion'));
   expect(screen.getAllByTestId('planning-gantt-drag-ghost')).toHaveLength(1);
@@ -205,7 +223,7 @@ it.each(['cancel', 'outside', 'blur'] as const)('cancels a shelf drag without wr
   else { hit = []; fireEvent.pointerUp(tile, { button: 0, clientX: 0, clientY: 10 }); }
   expect(moves).not.toHaveBeenCalled();
   expect(screen.getByText('1件')).toBeInTheDocument();
-  expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
+  expect(screen.getByTestId('planning-gantt-insertion')).toBeInTheDocument();
   expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
 });
 
@@ -217,4 +235,79 @@ it.each([false, true])('highlights the matching shelf tile when the existing bar
   expect(screen.queryByText('1件')).not.toBeInTheDocument();
   fireEvent.click(screen.getByTestId('planning-gantt-bar-anchor'));
   expect(screen.getByTestId('planning-shelf-tile-anchor')).not.toHaveAttribute('data-highlighted');
+});
+
+
+it('shows arrival status on the grinding all-machine shelf and accepts a shelf drag', () => {
+  render(<Board all category="grinding" />);
+  const shelf = screen.getByRole('group', { name: '製番の棚' });
+  const pending = within(shelf).getByTestId('planning-shelf-tile-a');
+  expect(pending).toHaveClass('border-dashed');
+  expect(within(shelf).getByTestId('planning-shelf-tile-b')).not.toHaveClass('border-dashed');
+  fireEvent.click(screen.getByRole('button', { name: '残り' }));
+  expect(pending).toBeVisible();
+  expect(within(shelf).queryByTestId('planning-shelf-tile-b')).not.toBeInTheDocument();
+  const target = screen.getByTestId('planning-gantt-bar-anchor').closest('[data-gantt-lane]')!;
+  hit = [target.querySelector('[data-gantt-track]')!, target];
+  fireEvent.pointerDown(pending, { button: 0, clientX: 100, clientY: 400 });
+  fireEvent.pointerMove(pending, { clientX: 0, clientY: 10 });
+  expect(target).toContainElement(screen.getByTestId('planning-gantt-insertion'));
+  fireEvent.pointerUp(pending, { clientX: 0, clientY: 10 });
+  expect(moves).toHaveBeenCalledWith('a', '305', 'anchor', 'before');
+  fireEvent.click(screen.getByRole('button', { name: '製番の棚を畳む' }));
+  expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
+});
+
+it.each(['grinding', 'cutting'] as const)('reuses drag feedback on tile selection and clears it (%s)', category => {
+  render(<Board all category={category} />);
+  const tile = screen.getByTestId('planning-shelf-tile-a');
+  const sourceLane = screen.getByTestId('planning-gantt-bar-a').closest<HTMLElement>('[data-gantt-lane]')!;
+  const otherLane = screen.getByTestId('planning-gantt-bar-anchor').closest<HTMLElement>('[data-gantt-lane]')!;
+  const otherTile = screen.getByTestId('planning-shelf-tile-b');
+  fireEvent.click(tile);
+  fireEvent.click(otherTile);
+  expect(otherLane).toContainElement(screen.getByTestId('planning-gantt-insertion'));
+  expect(otherLane).toHaveStyle({ outline: '3px solid rgb(110 231 183)' });
+  expect(sourceLane.style.outline).toBe('');
+
+  fireEvent.click(otherTile);
+  const marker = screen.getByTestId('planning-gantt-insertion');
+  expect(sourceLane).toContainElement(marker);
+  expect(sourceLane.style.outline).toBe('');
+  expect(otherLane.style.outline).toBe('');
+  const blockedLane = document.querySelector('[data-gantt-lane-resource="306"]');
+  expect(blockedLane).toHaveStyle({ opacity: '0.3' });
+  expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
+  expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
+  hit = [sourceLane.querySelector('[data-gantt-track]')!, sourceLane];
+  fireEvent.pointerDown(tile, { button: 0, clientX: 100, clientY: 400 });
+  fireEvent.pointerMove(tile, { clientX: 0, clientY: 10 });
+  expect(screen.getByTestId('planning-gantt-insertion')).toBe(marker);
+  expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
+  fireEvent.pointerCancel(tile);
+  fireEvent.click(screen.getByRole('button', { name: '選択を外す' }));
+  expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('planning-gantt-drag-arrow')).not.toBeInTheDocument();
+  expect(blockedLane).toHaveStyle({ opacity: '' });
+});
+
+it.each(['grinding', 'cutting'] as const)('draws only repeated parts in distinct colors and persists the toolbar toggle (%s)', category => {
+  const first = render(<Board all category={category} extraPieces toolbar />);
+  const button = screen.getByRole('button', { name: '同じ部品の片を線でつなぐ' });
+  expect(button).toHaveAttribute('aria-pressed', 'true');
+  const paths = screen.getAllByTestId('planning-gantt-normal-piece-link');
+  expect(paths.map(path => path.getAttribute('data-from-to'))).toEqual(['anchor->a', 'a->b', 'c->d']);
+  expect(paths[0]).toHaveAttribute('stroke', paths[1]!.getAttribute('stroke'));
+  expect(paths[0]!.getAttribute('stroke')).not.toBe(paths[2]!.getAttribute('stroke'));
+  fireEvent.click(button);
+  expect(button).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.queryByTestId('planning-gantt-normal-piece-link')).not.toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem(PIECE_LINKS_STORAGE_KEY)!)).toEqual({ schemaVersion: 1, enabled: false });
+  first.unmount();
+  render(<Board all category={category} extraPieces toolbar />);
+  const restored = screen.getByRole('button', { name: '同じ部品の片を線でつなぐ' });
+  expect(restored).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.queryByTestId('planning-gantt-normal-piece-link')).not.toBeInTheDocument();
+  fireEvent.click(restored);
+  expect(screen.getAllByTestId('planning-gantt-normal-piece-link')).toHaveLength(3);
 });

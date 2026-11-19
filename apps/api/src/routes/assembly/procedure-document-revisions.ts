@@ -294,6 +294,38 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
   );
 
   app.post(
+    '/assembly/procedure-documents/:id/assets/:assetId/rotate',
+    { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
+    async (request) => {
+      const { id, assetId } = idParamsSchema.extend({ assetId: z.string().trim().min(1).max(120) }).parse(request.params);
+      const body = z.object({ accessPassword: accessPasswordSchema, direction: z.enum(['left', 'right']) }).parse(request.body ?? {});
+      const asset = await assetsService.rotateOverlayImage({
+        documentId: id,
+        assetId,
+        ...await resolveAssemblyProcedureEditWriter(request),
+        ...body
+      });
+      return { asset };
+    }
+  );
+
+  app.post(
+    '/assembly/procedure-documents/:id/assets/:assetId/sharpen',
+    { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
+    async (request) => {
+      const { id, assetId } = idParamsSchema.extend({ assetId: z.string().guid() }).parse(request.params);
+      const { accessPassword } = createRevisionBodySchema.parse(request.body ?? {});
+      const asset = await assetsService.sharpenOverlayImage({
+        documentId: id,
+        assetId,
+        accessPassword,
+        ...await resolveAssemblyProcedureEditWriter(request)
+      });
+      return { asset };
+    }
+  );
+
+  app.post(
     '/assembly/procedure-documents/:id/regions/image',
     { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] },
     async (request) => {

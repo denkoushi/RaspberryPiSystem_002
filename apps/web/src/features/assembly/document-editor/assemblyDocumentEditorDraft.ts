@@ -8,6 +8,8 @@ import type {
 } from '@raspi-system/shared-types';
 
 
+export type ImageRotationDirection = 'left' | 'right';
+
 export type OverlayDraftAction =
   | { type: 'replace'; elements: AssemblyProcedureOverlayElement[]; preserveHistory?: boolean }
   | { type: 'applyLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[] }
@@ -15,6 +17,7 @@ export type OverlayDraftAction =
   | { type: 'addPair'; elements: [AssemblyProcedureOverlayElement, AssemblyProcedureOverlayElement] }
   | { type: 'add'; element: AssemblyProcedureOverlayElement }
   | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number; attachedIds: ReadonlyMap<string, string> }
+  | { type: 'rotateImage'; id: string; direction: ImageRotationDirection; newAssetIds: ReadonlyMap<string, string>; pageAspect: number }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
   | { type: 'remove'; id: string }
   | { type: 'bringForward'; id: string }
@@ -28,7 +31,7 @@ function isErasePatch(element: AssemblyProcedureOverlayElement): boolean {
   return element.kind === 'IMAGE' && element.id.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX);
 }
 
-function isPhoto(element: AssemblyProcedureOverlayElement): boolean {
+export function isPhoto(element: AssemblyProcedureOverlayElement): element is Extract<AssemblyProcedureOverlayElement, { kind: 'IMAGE' }> {
   return element.kind === 'IMAGE' && !isErasePatch(element);
 }
 
@@ -39,8 +42,13 @@ function containsCenter(bbox: AssemblyProcedureOverlayBBox, inner: AssemblyProce
 }
 
 export function findAttachedOverlayIds(elements: AssemblyProcedureOverlayElement[], parentId: string): string[] {
+  return [...findAttachedOverlayPatches(elements, parentId).keys()];
+}
+
+function findAttachedOverlayPatches(elements: AssemblyProcedureOverlayElement[], parentId: string) {
+  const attachments = new Map<string, AssemblyProcedureOverlayElement>();
   const parent = elements.find(element => element.id === parentId);
-  if (!parent || !isPhoto(parent)) return [];
+  if (!parent || !isPhoto(parent)) return attachments;
 
   // Match the stable back-to-front sort used by OverlayLayer.
   const page = pageOverlayElements(elements, parent.pageIndex).sort((a, b) => a.zIndex - b.zIndex);
@@ -48,18 +56,90 @@ export function findAttachedOverlayIds(elements: AssemblyProcedureOverlayElement
   const isBelow = (a: AssemblyProcedureOverlayElement, b: AssemblyProcedureOverlayElement) =>
     positions.get(a)! < positions.get(b)!;
   const patches = page.filter(isErasePatch).reverse();
-  if (!patches.length) return [];
+  if (!patches.length) return attachments;
   const photos = page.filter(isPhoto).reverse();
   const attachedPatches = new Set(patches.filter(patch => isBelow(parent, patch)
     && photos.find(photo => isBelow(photo, patch) && containsCenter(photo.bbox, patch.bbox)) === parent));
-  if (!attachedPatches.size) return [];
+  if (!attachedPatches.size) return attachments;
 
-  return page.filter(element => {
-    if (attachedPatches.has(element)) return true;
-    if (element.kind !== 'TEXT' || !isBelow(parent, element)) return false;
-    const patch = patches.find(candidate => isBelow(candidate, element) && containsCenter(candidate.bbox, element.bbox));
-    return patch !== undefined && attachedPatches.has(patch);
-  }).map(element => element.id);
+  for (const element of page) {
+    if (attachedPatches.has(element)) {
+      attachments.set(element.id, element);
+    } else if (element.kind === 'TEXT' && isBelow(parent, element)) {
+      const patch = patches.find(candidate => isBelow(candidate, element) && containsCenter(candidate.bbox, element.bbox));
+      if (patch && attachedPatches.has(patch)) attachments.set(element.id, patch);
+    }
+  }
+  return attachments;
+}
+
+function fitCenteredBox(
+  center: ReturnType<typeof assemblyProcedureOverlayBBoxCenter>,
+  widthRatio: number,
+  heightRatio: number
+) {
+  const scale = 1 / Math.max(1, widthRatio, heightRatio);
+  const width = widthRatio * scale;
+  const height = heightRatio * scale;
+  return normalizeOverlayBBox({
+    xRatio: center.xRatio - width / 2,
+    yRatio: center.yRatio - height / 2,
+    widthRatio: width,
+    heightRatio: height
+  }, 0);
+}
+
+export function rotateImageOverlay(
+  elements: AssemblyProcedureOverlayElement[],
+  id: string,
+  direction: ImageRotationDirection,
+  newAssetIds: ReadonlyMap<string, string>,
+  pageAspect: number
+): AssemblyProcedureOverlayElement[] {
+  const photo = elements.find(element => element.id === id);
+  if (!photo || !isPhoto(photo) || !(pageAspect > 0 && Number.isFinite(pageAspect))) return elements;
+  const attachments = findAttachedOverlayPatches(elements, id);
+  const images = elements.filter(element => element.kind === 'IMAGE' && (element === photo || attachments.has(element.id)));
+  if (images.some(element => !newAssetIds.get(element.id))) return elements;
+
+  const center = assemblyProcedureOverlayBBoxCenter(photo.bbox);
+  const width = photo.bbox.heightRatio / pageAspect;
+  const height = photo.bbox.widthRatio * pageAspect;
+  const photoBox = fitCenteredBox(center, width, height);
+  const scale = photoBox.widthRatio / width;
+  const rotatedCenter = assemblyProcedureOverlayBBoxCenter(photoBox);
+  const sign = direction === 'right' ? 1 : -1;
+  const rotateCenter = (bbox: AssemblyProcedureOverlayBBox) => {
+    const point = assemblyProcedureOverlayBBoxCenter(bbox);
+    return {
+      xRatio: rotatedCenter.xRatio - sign * (point.yRatio - center.yRatio) / pageAspect * scale,
+      yRatio: rotatedCenter.yRatio + sign * (point.xRatio - center.xRatio) * pageAspect * scale
+    };
+  };
+  const imageBoxes = new Map(images.map(element => [
+    element.id,
+    element === photo ? photoBox : fitCenteredBox(rotateCenter(element.bbox),
+      element.bbox.heightRatio / pageAspect * scale, element.bbox.widthRatio * pageAspect * scale)
+  ]));
+
+  return elements.map(element => {
+    if (element.kind === 'IMAGE' && imageBoxes.has(element.id)) {
+      return { ...element, assetId: newAssetIds.get(element.id)!, bbox: imageBoxes.get(element.id)! };
+    }
+    if (element.kind === 'TEXT' && attachments.has(element.id)) {
+      const patch = attachments.get(element.id);
+      const patchBox = patch && imageBoxes.get(patch.id);
+      const { widthRatio, heightRatio } = element.bbox;
+      if (!patchBox) return { ...element, bbox: fitCenteredBox(rotateCenter(element.bbox), widthRatio, heightRatio) };
+      const textCenter = assemblyProcedureOverlayBBoxCenter(patchBox);
+      return { ...element, bbox: fitCenteredBox(
+        textCenter,
+        Math.min(widthRatio, 2 * Math.min(textCenter.xRatio, 1 - textCenter.xRatio)),
+        Math.min(heightRatio, 2 * Math.min(textCenter.yRatio, 1 - textCenter.yRatio))
+      ) };
+    }
+    return element;
+  });
 }
 
 function carryAttachedOverlays(
@@ -210,6 +290,8 @@ export function overlayDraftReducer(
         zIndex: zIndex + index
       }))];
     }
+    case 'rotateImage':
+      return rotateImageOverlay(state, action.id, action.direction, action.newAssetIds, action.pageAspect);
     case 'update': {
       const updated = state.map((element) => (element.id === action.element.id ? action.element : element));
       return isPhoto(action.element) ? carryAttachedOverlays(state, updated, undefined, attachmentElements) : updated;

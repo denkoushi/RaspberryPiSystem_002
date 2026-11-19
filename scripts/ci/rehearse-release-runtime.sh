@@ -139,10 +139,10 @@ docker run -d --platform "$PLATFORM" --name "$DB_CONTAINER" --network "$NETWORK"
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=borrow_return \
   pgvector/pgvector:pg18 >/dev/null
 for _ in $(seq 1 60); do
-  docker exec "$DB_CONTAINER" pg_isready -U postgres -d borrow_return >/dev/null 2>&1 && break
+  docker exec "$DB_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -d borrow_return >/dev/null 2>&1 && break
   sleep 1
 done
-docker exec "$DB_CONTAINER" pg_isready -U postgres -d borrow_return >/dev/null
+docker exec "$DB_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -d borrow_return >/dev/null
 
 FAILURE_STAGE='hermes-sealed-index-runtime'
 docker run --rm --platform "$PLATFORM" --network none --read-only --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=64m \

@@ -62,3 +62,11 @@
 ## 別件
 
 - Pi4 を 20〜50台、今のルーター1台と中継機1台でつなぐと通信が詰まりやすい。台数が増える前に、現場の Wi-Fi 自体を見直す必要がある。
+
+## 挿したのにマイクが出ない（2026-11-19）
+
+- 事象: `raspi4-kensaku-stonebase01` に Jabra SPEAK 510（`0b0e:0420`）を USB で挿したところ、画面ユーザー（`kiosk-display`）の WirePlumber ではスピーカーだけが出て、Sources が0件だった。`arecord -D hw:3,0` では録音でき、機器は正常だった。
+- 原因: Pi4 では tty1 に自動ログインした管理用ユーザー（`ansible_user`）の PipeWire / WirePlumber も動いている。このユーザーは `audio` グループに入っているので、挿した瞬間に同じカードを調べ、録音側を先につかんだ。画面ユーザーの側では録音側を調べられず、入力の無いプロファイルだけになった。2026-11-19 時点で、画面専用ユーザーを使う Pi4 の全7台が同じ構成だった。
+- 対処: 画面専用ユーザーを使う端末では、管理用ユーザーに `~/.config/wireplumber/wireplumber.conf.d/90-kiosk-deploy-user-no-alsa.conf`（`monitor.alsa = disabled`）を置き、その WirePlumber を再起動する。続けて画面ユーザーの WirePlumber も再起動し、カードを調べ直させる（`roles/kiosk/tasks/usb-audio-input.yml`）。
+- 確認: 管理用ユーザーの `wpctl status` で Devices が空になり、画面ユーザーの `wpctl status` の Sources に USB 機器が出ること。
+- Bluetooth でつなぐ場合: トルクレンチ用の外付け Bluetooth 受信機は、レンチを使っている間しか電源が入らない。また本体の Bluetooth は Wi-Fi と部品を共有している。そのため、音声機器は USB でつなぐ。
