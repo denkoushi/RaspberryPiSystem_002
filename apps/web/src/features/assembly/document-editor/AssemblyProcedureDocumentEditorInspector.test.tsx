@@ -335,6 +335,10 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(left.parentElement).toBe(right.parentElement);
     expect(left).toHaveClass('min-h-11');
     expect(right).toHaveClass('min-h-11');
+    expect(left).toHaveAttribute('title', '左に回す');
+    expect(right).toHaveAttribute('title', '右に回す');
+    expect(left.textContent).toBe('');
+    expect(right.textContent).toBe('');
     fireEvent.click(left);
     fireEvent.click(right);
     expect(onRotateImage.mock.calls).toEqual([['left'], ['right']]);
@@ -348,6 +352,16 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     render(<AssemblyProcedureDocumentEditorInspector {...commonProps(vi.fn())} {...state} element={{ ...base, kind: 'IMAGE', assetId: 'photo' }} />);
     expect(screen.getByRole('button', { name: '左に回す' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '右に回す' })).toBeDisabled();
+  });
+
+  it('keeps only rotation available among the image actions while a rotation is running', () => {
+    const onRotateImage = vi.fn();
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(vi.fn())} busy canQueueRotation onRotateImage={onRotateImage}
+      element={{ ...base, kind: 'IMAGE', assetId: 'photo' }} />);
+    expect(screen.getByRole('button', { name: '素材から差し替え' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '左に回す' }));
+    fireEvent.click(screen.getByRole('button', { name: '右に回す' }));
+    expect(onRotateImage.mock.calls).toEqual([['left'], ['right']]);
   });
 
   it.each([{ busy: true }, { readOnly: true }])('disables image replacement with %o', (state) => {
