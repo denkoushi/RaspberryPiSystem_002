@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { ImportScheduleAdminService } from '../../services/imports/import-schedule-admin.service.js';
+import { getDScheduleMinutesGmailIngestionService } from '../../services/production-schedule/d-schedule-minutes/d-schedule-minutes-gmail-ingestion.service.js';
 import {
   extractIntervalMinutes,
   MIN_CSV_IMPORT_INTERVAL_MINUTES,
@@ -199,6 +200,16 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   // スケジュール一覧取得
   app.get('/imports/schedule', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async () => {
     return await scheduleAdminService.listSchedules();
+  });
+
+  app.get('/imports/d-schedule-minutes/runs', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async () => {
+    const runs = await getDScheduleMinutesGmailIngestionService().listRecentRuns();
+    return { runs };
+  });
+
+  app.post('/imports/d-schedule-minutes/runs/:id/reimport', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    return await getDScheduleMinutesGmailIngestionService().reimportOriginal(id);
   });
 
   // スケジュール追加
