@@ -43,7 +43,20 @@ const requestedManualId = process.argv.includes('--manual')
   : null;
 const allManuals = process.argv.includes('--all') || requestedManualId == null;
 const outputRoot = outputArgIndex >= 0 ? resolve(process.argv[outputArgIndex + 1]) : resolve(repoRoot, 'apps/web/src/generated/kiosk-sop');
-async function waitForServer(url, timeoutMs = 60000) {
+const serverTimeoutMs = readTimeout('KIOSK_SOP_SERVER_TIMEOUT_MS', 60000);
+const gotoTimeoutMs = readTimeout('KIOSK_SOP_GOTO_TIMEOUT_MS', 30000);
+
+function readTimeout(name, defaultMs) {
+  const value = process.env[name];
+  if (value === undefined) return defaultMs;
+  const ms = Number(value);
+  if (/\D/.test(value) || !Number.isSafeInteger(ms) || ms <= 0) {
+    throw new Error(`${name} must be a positive integer in milliseconds.`);
+  }
+  return ms;
+}
+
+async function waitForServer(url, timeoutMs) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     try { if ((await fetch(url)).ok) return; } catch { /* server is starting */ }
@@ -58,7 +71,7 @@ async function captureScreens(definition, targetRoot, resolveAdapter) {
   server.stdout.on('data', (chunk) => { serverLog += chunk; });
   server.stderr.on('data', (chunk) => { serverLog += chunk; });
   try {
-    await waitForServer('http://127.0.0.1:4173/');
+    await waitForServer('http://127.0.0.1:4173/', serverTimeoutMs);
     const browser = await chromium.launch(chromiumLaunchOptions);
     try {
       await mkdir(join(targetRoot, 'screens'), { recursive: true });
@@ -101,7 +114,7 @@ async function captureScreens(definition, targetRoot, resolveAdapter) {
             await adapter.installApiFixtures(page, sheet.id, unexpected);
             const pageErrors = [];
             page.on('pageerror', (error) => pageErrors.push(error.message));
-            await page.goto(`http://127.0.0.1:4173${scenario.productionRoute}`, { waitUntil: 'networkidle' });
+            await page.goto(`http://127.0.0.1:4173${scenario.productionRoute}`, { waitUntil: 'networkidle', timeout: gotoTimeoutMs });
             await page.addStyleTag({
               content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;border-radius:0!important}'
             });
@@ -269,12 +282,13 @@ async function generateManual(manual, targetRoot) {
 }
 
 async function compareTrees(expected, actual) {
+  const updateHint = 'Import the CI candidate with pnpm kiosk-sop:from-ci <run-id>, or run pnpm kiosk-sop:generate --all when your Mac is idle.';
   const expectedFiles = (await listFiles(expected)).sort();
   const actualFiles = (await listFiles(actual)).sort();
-  if (stableJson(expectedFiles) !== stableJson(actualFiles)) throw new Error('Generated file list is stale. Run pnpm kiosk-sop:generate --all.');
+  if (stableJson(expectedFiles) !== stableJson(actualFiles)) throw new Error(`Generated file list is stale. ${updateHint}`);
   const changed = [];
   for (const file of expectedFiles) if (sha256(await readFile(join(expected, file))) !== sha256(await readFile(join(actual, file)))) changed.push(file);
-  if (changed.length) throw new Error(`Generated kiosk SOP is stale: ${changed.join(', ')}. Run pnpm kiosk-sop:generate --all.`);
+  if (changed.length) throw new Error(`Generated kiosk SOP is stale: ${changed.join(', ')}. ${updateHint}`);
 }
 
 const selectedManualIds = allManuals ? Object.keys(manualDescriptors) : [requestedManualId];

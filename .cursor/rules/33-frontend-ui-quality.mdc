@@ -45,7 +45,10 @@ alwaysApply: false
 ## キオスク取説（kiosk-sop）の鮮度
 
 - キオスク画面や共通UI（`apps/web/src/features/assembly/**`、`features/part-measurement/inspection-drawing/**`、`components/ui/**` など）を変えたら、push前に `pnpm kiosk-sop:source-check` を実行する（約1秒、Docker不要）
-- staleと出たら、取説の画面が変わっていなければ `pnpm kiosk-sop:source-refresh`、変わっていれば `pnpm kiosk-sop:generate` を実行し、結果をコミットする
+- コミット前検査（`.husky/pre-commit`）でも同じダイジェストを確認する
+- staleと出たら、取説の画面が変わったか分からなくても、まず `pnpm kiosk-sop:source-refresh` の結果をコミットしてpushし、判定はCIの `kiosk-sop` ジョブに任せる。CIでは生成前にダイジェストを検査するため、refresh前にpushしても候補は生成されない
+- CIの `kiosk-sop` ジョブが落ちたら、ブランチのHEADがそのrunのコミットと一致する状態で `pnpm kiosk-sop:from-ci <run-id>` を実行し、成果物 `kiosk-sop-diagnostics-<sha>-<attempt>` の `candidate/` を取り込んでコミットする。CIのダイジェスト検査で落ちたり取り込み後にstaleと出たりするときは、mainを取り込んでからやり直す（CIはmainとのマージ結果で生成する）
+- 手元の `pnpm kiosk-sop:generate` はMacが空いているときだけ使う。負荷で `page.goto` が落ちるときは `KIOSK_SOP_GOTO_TIMEOUT_MS` / `KIOSK_SOP_SERVER_TIMEOUT_MS` で待ち時間を延ばせる
 
 ## Tailwindを使っている場合（導入済み前提）
 
