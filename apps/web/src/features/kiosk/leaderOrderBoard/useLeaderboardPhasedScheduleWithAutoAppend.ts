@@ -15,19 +15,11 @@ import {
 import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 
 import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from './constants';
+import { invalidateLeaderboardDecorationsQueries } from './invalidateLeaderboardDecorationsQueries';
 import { buildLeaderboardPartKeyFromScheduleRow } from './leaderboardDecorationStalePolicy';
 
 import type { LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
 import type { SelfInspectionStatus } from '../../part-measurement/types';
-
-function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  return queryClient.invalidateQueries({
-    predicate: (q) =>
-      Array.isArray(q.queryKey) &&
-      q.queryKey[0] === productionScheduleQueryKeys.scheduleAll[0] &&
-      q.queryKey[1] === 'leaderboard-decorations'
-  });
-}
 
 function phasedParamsToExcludeBody(base: KioskProductionScheduleLeaderboardPhasedQueryParams): Omit<
   KioskProductionScheduleLeaderboardPhasedQueryParams,

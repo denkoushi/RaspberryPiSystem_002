@@ -25,6 +25,7 @@ import {
   isLeaderboardBoardDataSyncing,
   isLeaderboardDecorationSyncing
 } from './cache/leaderboardBoardInteractionLockPolicy';
+import { invalidateLeaderboardDecorationsQueries } from './invalidateLeaderboardDecorationsQueries';
 import {
   pickLeaderboardAppendOverrideForDisplay,
   resolveScopedLeaderboardAppendOverride
@@ -109,15 +110,6 @@ function normalizeLaborMetadataResourceCds(resourceCds: readonly string[]): stri
 
 function normalizeLaborMetadataMinutes(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
-}
-
-function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  return queryClient.invalidateQueries({
-    predicate: (q) =>
-      Array.isArray(q.queryKey) &&
-      q.queryKey[0] === productionScheduleQueryKeys.scheduleAll[0] &&
-      q.queryKey[1] === 'leaderboard-decorations'
-  });
 }
 
 /**
