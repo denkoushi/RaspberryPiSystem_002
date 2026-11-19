@@ -246,6 +246,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onAddBlankPage={addBlankPage}
           onImportPages={openPageImport}
           onDeletePage={setDeletePageIndex}
+          onMovePage={controller.movePage}
           locked={controller.layoutSuggestions.locked}
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />

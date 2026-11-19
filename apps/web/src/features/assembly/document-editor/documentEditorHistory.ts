@@ -1,4 +1,4 @@
-import { overlayDraftReducer, overlayDraftSnapshot, removeOverlayPage, shiftOverlayPages, type OverlayDraftAction } from './assemblyDocumentEditorDraft';
+import { moveOverlayPage, overlayDraftReducer, overlayDraftSnapshot, removeOverlayPage, shiftOverlayPages, type OverlayDraftAction } from './assemblyDocumentEditorDraft';
 import { matchesMaterialPlacement, removeMaterialPlacements, type PendingMaterialPlacement } from './documentEditorMaterialPlacements';
 
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
@@ -8,6 +8,7 @@ export type OverlayHistoryAction = OverlayDraftAction
   | { type: 'releaseMaterials'; placements: PendingMaterialPlacement[]; replacement?: AssemblyProcedureOverlayElement; preserveHistory?: boolean }
   | { type: 'shiftPages'; afterPageIndex: number; pageCount?: number; importedElements?: AssemblyProcedureOverlayElement[] }
   | { type: 'deletePage'; pageIndex: number }
+  | { type: 'movePage'; from: number; to: number }
   | { type: 'undo'; restoredMaterials?: MaterialHistoryUpdate[]; failedMaterials?: PendingMaterialPlacement[] }
   | { type: 'redo'; restoredMaterials?: MaterialHistoryUpdate[]; failedMaterials?: PendingMaterialPlacement[] }
   | { type: 'beginDrag' }
@@ -39,6 +40,10 @@ export function historyReducer(state: OverlayHistory, action: OverlayHistoryActi
     const present = remove(state.present);
     const compact = (items: AssemblyProcedureOverlayElement[][]) => items.filter((item, index) => overlayDraftSnapshot(item) !== overlayDraftSnapshot(index ? items[index - 1] : present));
     return { past: compact(state.past.map(remove).reverse()).reverse(), present, future: compact(state.future.map(remove)), dragStart: state.dragStart ? remove(state.dragStart) : null };
+  }
+  if (action.type === 'movePage') {
+    const move = (elements: AssemblyProcedureOverlayElement[]) => moveOverlayPage(elements, action.from, action.to);
+    return { past: state.past.map(move), present: move(state.present), future: state.future.map(move), dragStart: state.dragStart ? move(state.dragStart) : null };
   }
   if (action.type === 'shiftPages') {
     const shift = (elements: AssemblyProcedureOverlayElement[]) => [

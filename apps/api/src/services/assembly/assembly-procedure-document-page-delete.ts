@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
+import { hasProcedurePageTemplateReferences } from './assembly-procedure-document-page-references.js';
 import { resolveProcedureCaptionFeedback } from './procedure-caption-feedback.js';
 import { resolveProcedureTextFeedback } from './procedure-text-feedback.js';
 
@@ -9,22 +10,9 @@ export async function deleteProcedurePageRows(tx: Prisma.TransactionClient, docu
   const pages = await tx.assemblyProcedureDocumentPage.findMany({ where: { documentId }, orderBy: { pageIndex: 'asc' } });
   if (!pages.some(page => page.pageIndex === pageIndex)) throw new ApiError(400, '削除するページが存在しません');
   if (pages.length <= 1) throw new ApiError(409, '最後の1ページは削除できません');
-  const referencesWhere = { assemblyProcedureDocumentId: documentId, pageIndex: { gte: pageIndex } };
-  const references = await Promise.all([
-    tx.assemblyTemplateProcedureStep.count({ where: referencesWhere }),
-    tx.assemblyTemplateBolt.count({ where: { OR: [
-      referencesWhere,
-      ...(pageIndex === 0 ? [
-        { assemblyProcedureDocumentId: documentId, pageIndex: null },
-        { assemblyProcedureDocumentId: null, kioskDocumentId: null, area: { template: { procedureDocumentId: documentId } } }
-      ] : [])
-    ] } }),
-    tx.assemblyTemplateCheckItem.count({ where: { OR: [
-      referencesWhere,
-      ...(pageIndex === 0 ? [{ assemblyProcedureDocumentId: null, kioskDocumentId: null, template: { procedureDocumentId: documentId } }] : [])
-    ] } })
-  ]);
-  if (references.some(count => count > 0)) throw new ApiError(409, 'このページまたは後ろのページがテンプレートで使われているため、削除できません');
+  if (await hasProcedurePageTemplateReferences(tx, documentId, { gte: pageIndex })) {
+    throw new ApiError(409, 'このページまたは後ろのページがテンプレートで使われているため、削除できません');
+  }
   const where = { documentId, pageIndex: pageIndex };
   const previousImageElements = await tx.assemblyProcedureOverlayElement.findMany({
     where: { ...where, kind: 'IMAGE' }, select: { assetId: true }
