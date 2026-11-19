@@ -92,6 +92,21 @@ describe('GmailApiClient', () => {
     expect(mockGmailMessages.send).not.toHaveBeenCalled();
   });
 
+  it('uses the MIME upload timeout override and blocks late uploads after cancellation', async () => {
+    const controller = new AbortController();
+    const options = { timeoutMs: 60_000, signal: controller.signal };
+    mockGmailMessages.send.mockResolvedValueOnce({ data: { id: 'sent-id' } });
+    await expect(gmailClient.sendMessageFromMimeUpload('mime', undefined, options)).resolves.toEqual({ id: 'sent-id' });
+    expect(mockGmailMessages.send).toHaveBeenCalledWith(expect.anything(), {
+      timeout: 60_000, retry: false, signal: controller.signal,
+    });
+
+    const cancelled = new ApiError(504, 'Send deadline passed');
+    const beforeSend = vi.fn(async () => { controller.abort(cancelled); });
+    await expect(gmailClient.sendMessageFromMimeUpload('mime', beforeSend, options)).rejects.toBe(cancelled);
+    expect(mockGmailMessages.send).toHaveBeenCalledTimes(1);
+  });
+
   describe('searchMessages', () => {
     it('should search messages and return message IDs', async () => {
       const mockQuery = 'subject:CSV Import';

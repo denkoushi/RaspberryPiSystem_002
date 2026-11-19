@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 
-import type { Prisma } from '@prisma/client';
 import type { ProcedureManualPrintPage, ProcedureManualPrintPayload } from '@raspi-system/shared-types';
 
 import { env } from '../../config/env.js';
@@ -9,12 +8,15 @@ import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { PdfStorageRenderAdapter } from '../kiosk-documents/adapters/pdf-storage-render.adapter.js';
 import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
-import { assemblyProcedureSequenceAssemblyDocumentSelect, mapAssemblyProcedureSequenceItem } from './assembly-procedure-sequence-item.js';
+import { mapAssemblyProcedureSequenceItem } from './assembly-procedure-sequence-item.js';
 import { buildProcedureSteps, toSequenceDocument } from './assembly-procedure-sequence.service.js';
 import { procedureManualGmailSender, type ProcedureManualMailSender } from './procedure-manual-gmail-send.js';
 import { isProcedureManualMailLocalPart } from './procedure-manual-mail-address.js';
 import { procedureManualPdfRenderer, type PdfProfile, type ProcedureManualPdfRenderer } from './procedure-manual-pdf.js';
+import { resolvePublished } from './procedure-manual.service.js';
 
+const maxPdfPages = 25;
+const renderTimeoutMs = 75_000;
 const targetPdfBytes = 12_000_000;
 const maxPdfBytes = 14_000_000;
 const pdfProfiles: PdfProfile[] = [
@@ -23,13 +25,6 @@ const pdfProfiles: PdfProfile[] = [
   { quality: 60, scale: 1.5 },
   { quality: 45, scale: 1.25 },
 ];
-
-const manualSelect = {
-  ...assemblyProcedureSequenceAssemblyDocumentSelect,
-  createdAt: true,
-  publishedAt: true,
-  revisionMetadata: { select: { revisionRootId: true, revisionNumber: true, isRevisionHead: true } },
-} satisfies Prisma.AssemblyProcedureDocumentSelect;
 
 const tokyoDateTime = new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Tokyo',
@@ -51,6 +46,7 @@ type SendInput = {
 type Client = { id: string; name: string };
 
 let sending = false;
+let activeRender: Promise<Buffer> | undefined;
 
 export class ProcedureManualMailService {
   private readonly renderAdapter = new PdfStorageRenderAdapter();
@@ -58,7 +54,7 @@ export class ProcedureManualMailService {
   constructor(
     private readonly renderer: ProcedureManualPdfRenderer = procedureManualPdfRenderer,
     private readonly sender: ProcedureManualMailSender = procedureManualGmailSender,
-    private readonly db: Pick<typeof prisma, 'assemblyProcedureDocument' | 'assemblyProcedureOverlayElement' | 'employee' | 'procedureManualMailDelivery'> = prisma,
+    private readonly db: Pick<typeof prisma, 'assemblyProcedureDocument' | 'assemblyProcedureDocumentRevision' | 'employee' | 'procedureManualMailDelivery'> = prisma,
     private readonly getDomain = () => env.ASSEMBLY_PROCEDURE_MAIL_DOMAIN,
     private readonly now = () => new Date(),
   ) {}
@@ -71,7 +67,7 @@ export class ProcedureManualMailService {
     if (!isProcedureManualMailLocalPart(input.localPart)) {
       throw new ApiError(400, 'メールアドレスの @ より前を正しく入力してください', undefined, 'PROCEDURE_MAIL_INVALID_LOCAL_PART');
     }
-    if (sending) {
+    if (sending || activeRender) {
       throw new ApiError(409, '要領書を送信中です。少し待ってからもう一度お試しください', undefined, 'PROCEDURE_MAIL_BUSY');
     }
 
@@ -83,33 +79,25 @@ export class ProcedureManualMailService {
     }
   }
 
-  private async requirePublishedHead({ documentId, revisionId }: SendInput) {
-    const document = await this.db.assemblyProcedureDocument.findUnique({
-      where: { id: revisionId },
-      select: manualSelect,
-    });
-    const revision = document?.revisionMetadata;
-    // Legacy documents are their own first revision, as in the document DTO.
-    if (!document || document.status !== 'PUBLISHED' || !document.isActive
-      || revision?.isRevisionHead === false || (revision?.revisionRootId ?? document.id) !== documentId) {
+  private async requireCurrentPublished({ documentId, revisionId }: SendInput) {
+    const document = await resolvePublished(documentId, this.db);
+    if (document?.id !== revisionId) {
       throw new ApiError(409, '公開済みの最新版だけ送信できます。要領書を開き直してください', undefined, 'PROCEDURE_MAIL_REVISION_NOT_CURRENT');
     }
     return document;
   }
 
-  private async getPages(document: Awaited<ReturnType<ProcedureManualMailService['requirePublishedHead']>>): Promise<ProcedureManualPrintPage[]> {
-    const overlays = await this.db.assemblyProcedureOverlayElement.findMany({
-      where: { documentId: document.id },
-      orderBy: [{ pageIndex: 'asc' }, { zIndex: 'asc' }, { createdAt: 'asc' }],
-      include: { asset: true },
-    });
+  private async getPages(document: Awaited<ReturnType<ProcedureManualMailService['requireCurrentPublished']>>): Promise<ProcedureManualPrintPage[]> {
+    if (document.pages.length > maxPdfPages) {
+      throw new ApiError(413, `要領書が ${maxPdfPages} ページを超えています`, undefined, 'PROCEDURE_MAIL_TOO_MANY_PAGES');
+    }
     const item = mapAssemblyProcedureSequenceItem({
       id: document.id, sortOrder: 0, label: null,
       assemblyProcedureDocumentId: document.id, assemblyProcedureDocument: document,
       kioskDocumentId: null, kioskDocument: null,
     });
     const sequenceDocument = await toSequenceDocument(
-      item, this.renderAdapter, new Map([[document.id, document.pages]]), new Map([[document.id, overlays]])
+      item, this.renderAdapter, new Map([[document.id, document.pages]]), new Map([[document.id, document.overlayElements]])
     );
     if (!sequenceDocument?.pages.length) {
       throw new ApiError(422, '画像のある要領書だけ送信できます', undefined, 'PROCEDURE_MAIL_NO_PAGES');
@@ -131,7 +119,7 @@ export class ProcedureManualMailService {
   }
 
   private async sendExclusively(input: SendInput, client: Client, recipient: string) {
-    const document = await this.requirePublishedHead(input);
+    const document = await this.requireCurrentPublished(input);
     const employee = await resolveActiveAssemblyOperatorNfcUid(this.db, input.nfcUid).catch((error: unknown) => {
       if (error instanceof ApiError && error.statusCode === 404) {
         throw new ApiError(404, error.message, undefined, 'PROCEDURE_MAIL_NFC_NOT_FOUND');
@@ -142,6 +130,7 @@ export class ProcedureManualMailService {
       throw error;
     });
     const pages = await this.getPages(document);
+    await this.sender.assertAvailable();
     const outputTime = formatProcedureManualMailTime(this.now());
     const revisionNumber = document.revisionMetadata?.revisionNumber ?? 1;
     const revisionDate = formatProcedureManualMailTime(document.publishedAt ?? document.createdAt).slice(0, 10);
@@ -164,8 +153,8 @@ export class ProcedureManualMailService {
       pdf,
     }, async () => {
       // Check after rendering and any wait for the shared Gmail send slot.
-      const head = await this.requirePublishedHead(input);
-      if (head.updatedAt.getTime() !== document.updatedAt.getTime()) {
+      const current = await this.requireCurrentPublished(input);
+      if (current.updatedAt.getTime() !== document.updatedAt.getTime()) {
         throw new ApiError(409, '要領書が更新されました。要領書を開き直してください', undefined, 'PROCEDURE_MAIL_REVISION_NOT_CURRENT');
       }
     });
@@ -202,18 +191,42 @@ export class ProcedureManualMailService {
   }
 
   private async renderPdf(pages: ProcedureManualPrintPayload[]): Promise<Buffer> {
+    const timeoutError = new ApiError(504, 'PDF の作成が時間切れになりました', undefined, 'PROCEDURE_MAIL_RENDER_TIMEOUT');
+    const deadline = performance.now() + renderTimeoutMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(timeoutError);
+      }, renderTimeoutMs);
+    });
+
     let acceptable: Buffer | undefined;
+    let profileIndex = 0;
     try {
-      for (const profile of pdfProfiles) {
-        const pdf = await this.renderer.render(pages, profile);
+      while (profileIndex < pdfProfiles.length) {
+        const profile = pdfProfiles[profileIndex]!;
+        // Keep the render slot occupied if the deadline elapses during a capture.
+        activeRender = this.renderer.render(pages, profile).finally(() => { activeRender = undefined; });
+        const pdf = await Promise.race([activeRender, timeout]);
+        if (performance.now() >= deadline) throw timeoutError;
         if (pdf.length <= targetPdfBytes) return pdf;
         if (pdf.length <= maxPdfBytes) acceptable ??= pdf;
+
+        // Use pixel area and JPEG quality as a rough guide, then check the actual PDF size.
+        const estimatedIndex = pdfProfiles.findIndex((next, index) =>
+          index > profileIndex && pdf.length * (next.scale / profile.scale) ** 2 * next.quality / profile.quality <= targetPdfBytes
+        );
+        if (profileIndex === pdfProfiles.length - 1) break;
+        profileIndex = estimatedIndex === -1 ? pdfProfiles.length - 1 : estimatedIndex;
       }
     } catch (error) {
+      if (error === timeoutError || performance.now() >= deadline) throw timeoutError;
       logger?.error({ err: error }, 'Failed to render a procedure manual PDF');
       if (!acceptable) {
         throw new ApiError(503, '要領書の PDF を作成できませんでした', undefined, 'PROCEDURE_MAIL_RENDER_FAILED');
       }
+    } finally {
+      clearTimeout(timer);
     }
     if (acceptable) return acceptable;
     throw new ApiError(413, '要領書の PDF が添付上限の 14 MB を超えています', undefined, 'PROCEDURE_MAIL_PDF_TOO_LARGE');

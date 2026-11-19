@@ -138,10 +138,9 @@ describe('procedure-manuals', () => {
     expect(mocks.revision).toHaveBeenCalledWith('v3');
   });
 
-  it('hides the mail action for an older published revision', async () => {
-    const { queryClient } = renderMailBrowser({ isRevisionHead: false });
-    await waitFor(() => expect(queryClient.getQueryState(['assembly-procedure-mail-revision', 'v3'])?.status).toBe('success'));
-    expect(screen.queryByRole('button', { name: 'メールで送る' })).not.toBeInTheDocument();
+  it('offers mail for the publication shown by the viewer even when a draft is the revision head', async () => {
+    renderMailBrowser({ isRevisionHead: false });
+    expect(await screen.findByRole('button', { name: 'メールで送る' })).toBeVisible();
   });
 
   it('hides the mail action and skips revision lookup when mail is off', async () => {
@@ -182,7 +181,7 @@ describe('procedure-manuals', () => {
     fireEvent.click(screen.getByRole('button', { name: '送る', exact: true }));
     expect(screen.getByText('送っています')).toBeVisible();
     expect(post).toHaveBeenCalledExactlyOnceWith('/assembly/procedure-manuals/mail',
-      { documentId: 'root', revisionId: 'v3', nfcUid: 'TAG-1', localPart: 'a' });
+      { documentId: 'root', revisionId: 'v3', nfcUid: 'TAG-1', localPart: 'a' }, { timeout: 180_000 });
     await act(async () => complete());
     const done = screen.getByRole('dialog');
     expect(within(done).getByText('送りました')).toBeVisible();
@@ -224,9 +223,17 @@ describe('procedure-manuals', () => {
 
   it.each([
     ['GMAIL_SCOPE_INSUFFICIENT', 'Gmail の送信権限がありません'],
-    ['PROCEDURE_MAIL_RECORD_FAILED', 'メールは送信済みですが記録できませんでした']
+    ['PROCEDURE_MAIL_RECORD_FAILED', 'メールは送信済みですが記録できませんでした'],
+    ['PROCEDURE_MAIL_REVISION_NOT_CURRENT', '要領書を開き直してください'],
+    ['PROCEDURE_MAIL_GMAIL_DEFERRED', 'Gmail は送信待機中です'],
+    ['PROCEDURE_MAIL_TOO_MANY_PAGES', '要領書のページ数が送信上限を超えています'],
+    ['PROCEDURE_MAIL_RENDER_TIMEOUT', 'PDF の作成が時間切れになりました'],
+    ['PROCEDURE_MAIL_RESULT_UNKNOWN', '送信結果を確認できませんでした。メールが届いたか確認してください'],
+    ['ECONNABORTED', '送信結果を確認できませんでした。メールが届いたか確認してください']
   ])('shows the error for %s with only a close action', async (code, message) => {
-    const failure = Object.assign(new AxiosError(), { response: { data: { errorCode: code } } });
+    const failure = code === 'ECONNABORTED'
+      ? new AxiosError('Timed out', code)
+      : Object.assign(new AxiosError(), { response: { data: { errorCode: code } } });
     const post = vi.spyOn(api, 'post').mockRejectedValueOnce(failure);
     const browser = renderMailBrowser();
     fireEvent.click(await screen.findByRole('button', { name: 'メールで送る' }));

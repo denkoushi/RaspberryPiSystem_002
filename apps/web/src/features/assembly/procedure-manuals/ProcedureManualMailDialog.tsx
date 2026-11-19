@@ -32,12 +32,18 @@ const tokyoTime = new Intl.DateTimeFormat('sv-SE', {
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
 });
 
+const resultUnknown = '送信結果を確認できませんでした。メールが届いたか確認してください';
+
 const errorMessages: Readonly<Partial<Record<string, string>>> = {
   PROCEDURE_MAIL_INVALID_LOCAL_PART: 'メールアドレスを確認してください',
   PROCEDURE_MAIL_NFC_INACTIVE: '有効な社員タグをかざしてください',
   PROCEDURE_MAIL_NFC_NOT_FOUND: '社員タグが見つかりません',
   PROCEDURE_MAIL_REVISION_NOT_CURRENT: '要領書を開き直してください',
   PROCEDURE_MAIL_BUSY: '別の要領書を送信中です',
+  PROCEDURE_MAIL_TOO_MANY_PAGES: '要領書のページ数が送信上限を超えています',
+  PROCEDURE_MAIL_RENDER_TIMEOUT: 'PDF の作成が時間切れになりました',
+  PROCEDURE_MAIL_RESULT_UNKNOWN: resultUnknown,
+  PROCEDURE_MAIL_GMAIL_DEFERRED: 'Gmail は送信待機中です',
   PROCEDURE_MAIL_PDF_TOO_LARGE: 'PDF が添付上限を超えています',
   PROCEDURE_MAIL_NO_PAGES: '送信できるページがありません',
   PROCEDURE_MAIL_DISABLED: 'メール送信は設定されていません',
@@ -97,7 +103,7 @@ export function ProcedureManualMailDialog({ documentId, revision, firstPage, pag
     } catch (failure) {
       const data = isAxiosError<{ errorCode?: string; code?: string }>(failure) ? failure.response?.data : undefined;
       const code = data?.errorCode ?? data?.code ?? '';
-      setError(Object.hasOwn(errorMessages, code) ? errorMessages[code]! : '送信結果を確認できませんでした');
+      setError(Object.hasOwn(errorMessages, code) ? errorMessages[code]! : resultUnknown);
       setStep('error');
     }
   };

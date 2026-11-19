@@ -23,7 +23,7 @@ export function ProcedureManualMailButton({ documentId, revisionId, document, do
     retry: false
   });
   if (!revision || revision.id !== revisionId || revision.status !== 'published' || !revision.isActive
-    || revision.isRevisionHead === false || (revision.revisionRootId ?? revision.id) !== documentId) return null;
+    || (revision.revisionRootId ?? revision.id) !== documentId) return null;
 
   return <>
     <button ref={trigger} type="button" aria-label="メールで送る" title="メールで送る" onClick={() => setOpen(true)}

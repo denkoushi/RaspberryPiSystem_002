@@ -14,6 +14,7 @@ A worker will be able to email a copy of the assembly manual they are viewing in
 - [ ] Run the two opt-in Chromium checks in a browser-capable environment.
 - [ ] Confirm the production company mail domain, permission to send from the existing Gmail account, and whether the production Gmail grant includes a send scope.
 - [ ] Phase 2 kiosk controls and integration are pending.
+- [x] (2026-11-19) Address the mail review findings in the API, Gmail upload, and kiosk result dialog.
 
 ## Surprises & Discoveries
 
@@ -25,10 +26,14 @@ The local sandbox denied the Vite loopback listener with `EPERM` and rejected th
 
 - On 2026-11-19, Codex chose Chromium to assemble the captured JPEGs in a second, JavaScript-disabled context. Inline images and fixed A4 page styles keep the inputs limited to pixels, use the existing dependency, and let the server measure the actual attachment before sending.
 - On 2026-11-19, Codex chose one send at a time per API process, with a busy response to overlapping requests. The delivery table records confirmed sends, following the loan report's success-only logging. The server returns a distinct result if the Gmail send succeeds and the database record fails.
+- On 2026-11-19, the mail flow adopted the viewer's latest active publication rule and a 25-page cap. The [page-boundary evaluation](procedure-page-boundary-jev-eval/results/dataset-80.json) contains up to seven pages per sampled manual. The existing material PDF intake accepts 25 pages.
+- Rendering has 75 seconds across all capture attempts. On expiry the service discards the result and keeps the render slot until the current Chromium capture finishes. The Gmail upload allows 60 seconds within an 80-second phase that includes the shared queue. The kiosk allows 180 seconds for the request and asks workers to check for delivery when the result is unknown.
 
 ## Outcomes & Retrospective
 
 Phase 1 introduces a client-key-only send endpoint and a feature flag in kiosk config. API and Web TypeScript checks, Prisma validate, and SQL generation passed. Individual Vitest runs across five files passed 82 tests. Two opt-in tests cover real PDF output and the print page capture. Both require a browser-capable environment. A second model reviewed the final implementation and found no outstanding major or medium issues.
+
+The review follow-up passed 159 focused tests across the mail service, Gmail sender, Gmail client, and kiosk viewer.
 
 Production integration is pending confirmation of the domain, sender account, and Gmail authorization. No database migration was applied and no live mail was sent.
 
@@ -38,7 +43,7 @@ Production integration is pending confirmation of the domain, sender account, an
 
 ## Plan of Work
 
-Validate an active, published revision that is the head of its family when sending, including a second check after rendering and after the Gmail client acquires its shared request slot. The submitted recipient prefix must match `^[A-Za-z0-9._-]{1,64}$`, with no leading dot, trailing dot, or consecutive dots. Append the configured domain on the server. With an empty domain, disable sending and hide availability in kiosk config.
+Validate that the requested revision is the latest active publication in its family, with a second check after rendering when the Gmail client acquires its shared request slot. The submitted recipient prefix must match `^[A-Za-z0-9._-]{1,64}$`, with no leading dot, trailing dot, or consecutive dots. Append the configured domain on the server. With an empty domain, disable sending and hide availability in kiosk config.
 
 Draw each page as A4 portrait or landscape using the original image dimensions. Draw the 8 pt single-line document name, revision/date, and page count on a dark top band. Draw the information timestamp and the output timestamp with employee number, terminal name, and employee name on a light bottom band. Draw the pale diagonal 控え watermark with date and employee number over the content. Use Asia/Tokyo explicitly for the printed timestamps. Chromium captures the bands and watermark in each JPEG. Try smaller JPEG quality and then lower resolution when the assembled PDF exceeds the 12 MB target. Refuse anything over 14,000,000 bytes. The final PDF contains the page images, with no fonts, annotations, links, forms, JavaScript, or embedded files.
 

@@ -36,6 +36,24 @@ const assemblyDocumentInclude = {
   }
 } satisfies Prisma.AssemblyProcedureDocumentInclude;
 
+export async function resolvePublished(
+  rootId: string,
+  db: Pick<Prisma.TransactionClient, 'assemblyProcedureDocument' | 'assemblyProcedureDocumentRevision'> = prisma
+) {
+  const include = { ...assemblyDocumentInclude, revisionMetadata: true } as const;
+  const revision = await db.assemblyProcedureDocumentRevision.findFirst({
+    where: { revisionRootId: rootId, document: { status: 'PUBLISHED', isActive: true } },
+    orderBy: { revisionNumber: 'desc' },
+    include: { document: { include } }
+  });
+  if (revision) return revision.document;
+  // Legacy documents without a revision sidecar are their own root.
+  return db.assemblyProcedureDocument.findFirst({
+    where: { id: rootId, status: 'PUBLISHED', isActive: true, revisionMetadata: { is: null } },
+    include
+  });
+}
+
 function modelKey(modelCode: string, kind: ProcedureManualSubjectKind = 'MODEL'): string {
   const key = kind === 'COMMON' ? procedureManualCommonKey(modelCode) : kind === 'PART' ? normalizeWorkInstructionPartNumber(modelCode) : normalizeMachineNameForCompare(modelCode).trim();
   if (!key) throw new ApiError(400, kind === 'PART' ? '品番が必要です' : '型番が必要です');
@@ -85,20 +103,6 @@ export class ProcedureManualService {
       select: { modelCode: true, modelCodeKey: true }, orderBy: [{ modelCodeKey: 'asc' }, { updatedAt: 'desc' }]
     });
     return rows.map(row => ({ partNumber: row.modelCode, partNumberKey: row.modelCodeKey }));
-  }
-
-  private async resolvePublished(rootId: string, db: Prisma.TransactionClient = prisma) {
-    const revision = await db.assemblyProcedureDocumentRevision.findFirst({
-      where: { revisionRootId: rootId, document: { status: 'PUBLISHED', isActive: true } },
-      orderBy: { revisionNumber: 'desc' },
-      include: { document: { include: assemblyDocumentInclude } }
-    });
-    if (revision) return revision.document;
-    // Legacy documents without a revision sidecar are their own root.
-    return db.assemblyProcedureDocument.findFirst({
-      where: { id: rootId, status: 'PUBLISHED', isActive: true, revisionMetadata: { is: null } },
-      include: assemblyDocumentInclude
-    });
   }
 
   async getModelOverview(modelCode: string) {
@@ -215,7 +219,7 @@ export class ProcedureManualService {
     });
     const resolved = await Promise.all(rows.map(async (row) => {
       const assemblyDocument = row.assemblyProcedureDocumentId
-        ? await this.resolvePublished(row.assemblyProcedureDocumentId)
+        ? await resolvePublished(row.assemblyProcedureDocumentId)
         : null;
       const available = row.kioskDocumentId ? Boolean(row.kioskDocument?.enabled) : Boolean(assemblyDocument);
       const assignment = {
@@ -320,7 +324,7 @@ export class ProcedureManualService {
           });
           if (!document) throw new ApiError(400, '手順書が見つかりません');
           rootId = document.revisionMetadata?.revisionRootId ?? document.id;
-          if (!existingRoots.has(rootId) && !await this.resolvePublished(rootId, tx)) {
+          if (!existingRoots.has(rootId) && !await resolvePublished(rootId, tx)) {
             const initialSubjectDraft = (process.subjectKind === 'PART' || process.subjectKind === 'COMMON') && document.isActive && document.status === 'DRAFT'
               && document.id === rootId && !document.publishedAt
               && (!document.revisionMetadata || (document.revisionMetadata.revisionNumber === 1 && !document.revisionMetadata.supersedesDocumentId));

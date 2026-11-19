@@ -704,16 +704,22 @@ export class GmailApiClient {
   }
 
   /** Send RFC 822 media in a multipart upload without a base64url JSON envelope. */
-  async sendMessageFromMimeUpload(rawMime: string, beforeSend?: () => Promise<void>): Promise<{ id: string }> {
+  async sendMessageFromMimeUpload(
+    rawMime: string,
+    beforeSend?: () => Promise<void>,
+    options?: { timeoutMs: number; signal: AbortSignal }
+  ): Promise<{ id: string }> {
     try {
       const response = await this.gateExecute('gmail.users.messages.send', async () => {
+        options?.signal.throwIfAborted();
         await beforeSend?.();
+        options?.signal.throwIfAborted();
         return this.gmail.users.messages.send({
           userId: 'me',
           // googleapis selects uploadType=multipart when media and metadata are both supplied.
           requestBody: {},
           media: { mimeType: 'message/rfc822', body: rawMime },
-        }, this.requestOptions());
+        }, options ? { retry: false, timeout: options.timeoutMs, signal: options.signal } : this.requestOptions());
       });
       const id = response.data.id;
       if (!id) throw new Error('Message id missing from Gmail API send response');

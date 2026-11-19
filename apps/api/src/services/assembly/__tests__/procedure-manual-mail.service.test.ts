@@ -3,6 +3,7 @@ import * as fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProcedureManualMailService, formatProcedureManualMailTime } from '../procedure-manual-mail.service.js';
+import { ApiError } from '../../../lib/errors.js';
 import { isProcedureManualMailLocalPart, procedureManualMailDomainSchema } from '../procedure-manual-mail-address.js';
 
 const documentId = 'c6d95b85-7035-4a35-900a-f15061444366';
@@ -23,6 +24,7 @@ const document = {
   updatedAt: new Date('2026-11-13T15:01:00Z'),
   pages: [{ pageIndex: 0, imageRelativePath: path1 }, { pageIndex: 1, imageRelativePath: path2 }],
   imageRelativePath: path1,
+  overlayElements: [],
 };
 const employee = {
   id: 'employee-1', employeeCode: '00042', displayName: '山田 花子', nfcTagUid: 'employee-tag', status: 'ACTIVE',
@@ -31,10 +33,11 @@ const pdf = Buffer.from('%PDF-test');
 
 function setup() {
   const render = vi.fn().mockResolvedValue(pdf);
+  const assertAvailable = vi.fn(async () => undefined);
   const send = vi.fn().mockResolvedValue({ id: 'gmail-message-1' });
   const db = {
-    assemblyProcedureDocument: { findUnique: vi.fn().mockResolvedValue(document) },
-    assemblyProcedureOverlayElement: { findMany: vi.fn().mockResolvedValue([]) },
+    assemblyProcedureDocument: { findFirst: vi.fn().mockResolvedValue(null) },
+    assemblyProcedureDocumentRevision: { findFirst: vi.fn().mockResolvedValue({ document }) },
     employee: { findFirst: vi.fn().mockResolvedValue(employee) },
     procedureManualMailDelivery: {
       create: vi.fn().mockImplementation(async ({ data }) => ({ id: 'delivery-1', ...data })),
@@ -42,11 +45,11 @@ function setup() {
   };
   const getDomain = vi.fn<() => string | undefined>(() => 'example.com');
   const service = new ProcedureManualMailService(
-    { render }, { send: async (mail, beforeSend) => { await beforeSend(); return send(mail); } },
+    { render }, { assertAvailable, send: async (mail, beforeSend) => { await beforeSend(); return send(mail); } },
     db as unknown as ConstructorParameters<typeof ProcedureManualMailService>[2],
     getDomain, () => now,
   );
-  return { service, db, getDomain, render, send };
+  return { service, db, getDomain, render, send, assertAvailable };
 }
 
 describe('procedure manual mail address', () => {
@@ -75,7 +78,7 @@ describe('ProcedureManualMailService', () => {
     const { service, getDomain, db, render, send } = setup();
     getDomain.mockReturnValue(undefined);
     await expect(service.send(request, client)).rejects.toMatchObject({ code: 'PROCEDURE_MAIL_DISABLED' });
-    expect(db.assemblyProcedureDocument.findUnique).not.toHaveBeenCalled();
+    expect(db.assemblyProcedureDocumentRevision.findFirst).not.toHaveBeenCalled();
     expect(render).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
@@ -84,21 +87,36 @@ describe('ProcedureManualMailService', () => {
     const { service, db } = setup();
     await expect(service.send({ ...request, localPart: 'worker@example.net' }, client))
       .rejects.toMatchObject({ code: 'PROCEDURE_MAIL_INVALID_LOCAL_PART' });
-    expect(db.assemblyProcedureDocument.findUnique).not.toHaveBeenCalled();
+    expect(db.assemblyProcedureDocumentRevision.findFirst).not.toHaveBeenCalled();
   });
 
-  it.each([
-    null,
-    { ...document, status: 'DRAFT' },
-    { ...document, isActive: false },
-    { ...document, revisionMetadata: { ...document.revisionMetadata, isRevisionHead: false } },
-    { ...document, revisionMetadata: { ...document.revisionMetadata, revisionRootId: 'other-document' } },
-  ])('rejects an unavailable or mismatched revision %#', async (revision) => {
-    const { service, db, render, send } = setup();
-    db.assemblyProcedureDocument.findUnique.mockResolvedValue(revision);
-    await expect(service.send(request, client)).rejects.toMatchObject({ code: 'PROCEDURE_MAIL_REVISION_NOT_CURRENT' });
-    expect(render).not.toHaveBeenCalled();
-    expect(send).not.toHaveBeenCalled();
+  it.each([null, { document: { ...document, id: 'newer-revision' } }])(
+    'rejects a missing or superseded published revision %#', async (resolved) => {
+      const { service, db, render, send } = setup();
+      db.assemblyProcedureDocumentRevision.findFirst.mockResolvedValue(resolved);
+      await expect(service.send(request, client)).rejects.toMatchObject({
+        code: 'PROCEDURE_MAIL_REVISION_NOT_CURRENT', statusCode: 409,
+      });
+      expect(render).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
+  it('sends the latest active publication even when a newer draft is the revision head', async () => {
+    const { service, db, send } = setup();
+    const revisions = [
+      { document: { ...document, id: 'draft', status: 'DRAFT', revisionMetadata: { ...document.revisionMetadata, revisionNumber: 3 } } },
+      { document: { ...document, revisionMetadata: { ...document.revisionMetadata, isRevisionHead: false } } },
+    ];
+    db.assemblyProcedureDocumentRevision.findFirst.mockImplementation(async ({ where }) => revisions.find(({ document: candidate }) =>
+      candidate.status === where.document.status && candidate.isActive === where.document.isActive
+      && candidate.revisionMetadata.revisionRootId === where.revisionRootId
+    ));
+    await expect(service.send(request, client)).resolves.toMatchObject({ deliveryId: 'delivery-1' });
+    expect(db.assemblyProcedureDocumentRevision.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: { revisionNumber: 'desc' },
+    }));
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -145,7 +163,8 @@ describe('ProcedureManualMailService', () => {
 
   it('accepts a legacy published first revision and uses its first image fallback', async () => {
     const { service, db, render } = setup();
-    db.assemblyProcedureDocument.findUnique.mockResolvedValue({ ...document, id: documentId, revisionMetadata: null, pages: [] });
+    db.assemblyProcedureDocumentRevision.findFirst.mockResolvedValue(null);
+    db.assemblyProcedureDocument.findFirst.mockResolvedValue({ ...document, id: documentId, revisionMetadata: null, pages: [] });
     await service.send({ ...request, revisionId: documentId }, client);
     expect(render).toHaveBeenCalledWith([
       expect.objectContaining({ pageUrl: path1, pageLabel: '1 / 1', revisionLabel: '第1版(改版 2026-11-14)' }),
@@ -154,16 +173,65 @@ describe('ProcedureManualMailService', () => {
 
   it.each([null, { ...document, updatedAt: now }])('rechecks the published snapshot after rendering %#', async (head) => {
     const { service, db, send } = setup();
-    db.assemblyProcedureDocument.findUnique.mockResolvedValueOnce(document).mockResolvedValueOnce(head);
+    db.assemblyProcedureDocumentRevision.findFirst.mockResolvedValueOnce({ document }).mockResolvedValueOnce(head && { document: head });
     await expect(service.send(request, client)).rejects.toMatchObject({ code: 'PROCEDURE_MAIL_REVISION_NOT_CURRENT' });
     expect(send).not.toHaveBeenCalled();
   });
 
   it('rejects a published manual with no page image', async () => {
     const { service, db, render } = setup();
-    db.assemblyProcedureDocument.findUnique.mockResolvedValue({ ...document, pages: [], imageRelativePath: '' });
+    db.assemblyProcedureDocumentRevision.findFirst.mockResolvedValue({ document: { ...document, pages: [], imageRelativePath: '' } });
     await expect(service.send(request, client)).rejects.toMatchObject({ code: 'PROCEDURE_MAIL_NO_PAGES' });
     expect(render).not.toHaveBeenCalled();
+  });
+
+  it.each([25, 26])('enforces the page limit before rendering (%i pages)', async (pageCount) => {
+    const { service, db, render, send } = setup();
+    const pages = Array.from({ length: pageCount }, (_, pageIndex) => ({ pageIndex, imageRelativePath: path1 }));
+    db.assemblyProcedureDocumentRevision.findFirst.mockResolvedValue({ document: { ...document, pages } });
+    const delivery = service.send(request, client);
+    if (pageCount === 25) {
+      await expect(delivery).resolves.toMatchObject({ pageCount });
+      expect(render).toHaveBeenCalledOnce();
+      expect(send).toHaveBeenCalledOnce();
+    } else {
+      await expect(delivery).rejects.toMatchObject({ code: 'PROCEDURE_MAIL_TOO_MANY_PAGES', statusCode: 413 });
+      expect(render).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rejects a known Gmail cooldown before starting Chromium', async () => {
+    const { service, assertAvailable, render, send } = setup();
+    const deferred = new ApiError(503, 'Cooldown', undefined, 'PROCEDURE_MAIL_GMAIL_DEFERRED');
+    assertAvailable.mockRejectedValueOnce(deferred);
+    await expect(service.send(request, client)).rejects.toBe(deferred);
+    expect(render).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('shares the deadline across render attempts and does not send an earlier acceptable PDF', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, render, send, db } = setup();
+      let finishRender!: (pdf: Buffer) => void;
+      render.mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve(Buffer.alloc(13_000_000)), 50_000)))
+        .mockImplementationOnce(() => new Promise<Buffer>(resolve => { finishRender = resolve; }));
+      const result = expect(service.send(request, client)).rejects.toMatchObject({
+        code: 'PROCEDURE_MAIL_RENDER_TIMEOUT', statusCode: 504,
+      });
+      await vi.advanceTimersByTimeAsync(74_999);
+      expect(render).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      await result;
+      await expect(service.send(request, client)).rejects.toMatchObject({ code: 'PROCEDURE_MAIL_BUSY' });
+      finishRender(pdf);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(send).not.toHaveBeenCalled();
+      expect(db.procedureManualMailDelivery.create).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('lowers JPEG quality to reach the target using the final PDF byte count', async () => {
@@ -185,10 +253,10 @@ describe('ProcedureManualMailService', () => {
 
   it('reduces resolution and rejects a PDF that remains too large', async () => {
     const { service, db, render, send } = setup();
-    render.mockResolvedValue(Buffer.alloc(14_000_001));
+    render.mockResolvedValue(Buffer.alloc(30_000_000));
     await expect(service.send(request, client)).rejects.toMatchObject({ code: 'PROCEDURE_MAIL_PDF_TOO_LARGE', statusCode: 413 });
     expect(render.mock.calls.map(([, profile]) => profile)).toEqual([
-      { quality: 90, scale: 2 }, { quality: 75, scale: 2 }, { quality: 60, scale: 1.5 }, { quality: 45, scale: 1.25 },
+      { quality: 90, scale: 2 }, { quality: 60, scale: 1.5 }, { quality: 45, scale: 1.25 },
     ]);
     expect(send).not.toHaveBeenCalled();
     expect(db.procedureManualMailDelivery.create).not.toHaveBeenCalled();
