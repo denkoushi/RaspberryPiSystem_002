@@ -96,6 +96,9 @@
 - Decision: 専用Pi5/Pi4の新規調達を受入条件にせず、Mac/Dockerを正式な一次受入とし、実機固有の性能確認は通常導入時のread-only-first canaryへ繰り越す。
   Rationale: 専用空き端末は現実の運用前提ではなく、未確認なのはPi固有のCPU、memory、温度、ROI/OCR処理時間だけである。機能、互換性、DB、API、Web、実文書フローの検証完了と分離して扱う。
   Date/Author: 2026-08-22 / Codex orchestration team.
+- Decision: 写真の「くっきり」(`POST /assembly/procedure-documents/:id/assets/:assetId/sharpen`)は元blobを上書きせず、sharp の `sharpen({sigma:1.2,m1:1,m2:2.5})` で同形式の新しいOVERLAY_IMAGE assetを作り、`derivedFromAssetId`(自己FK、Restrict)で元を指す。下書きの重ね要素のassetIdだけを差し替え、「元の写真に戻す」はAPIを呼ばず元のassetIdへ戻す。GCは派生元として参照されるassetを消さない。
+  Rationale: assetは改版・ページ取り込みで公開版や他の要領書と共有され、配信もimmutableなので上書きできない。保存後も元へ戻せるよう元assetを残す。処理はPi5で1秒未満(Mac実測約0.5秒)。
+  Date/Author: 2026-11-19 / Claude orchestration.
 
 ## Outcomes & Retrospective
 

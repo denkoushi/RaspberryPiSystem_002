@@ -11,6 +11,7 @@ type FakeAsset = AssemblyProcedureAssetGcCandidate & {
   ownerIsActiveDraft: boolean;
   overlayReferenceCount: number;
   sourceReferenceCount: number;
+  derivedFromAssetId?: string;
 };
 
 class FakeGcRepository implements AssemblyProcedureAssetGcRepository {
@@ -35,7 +36,8 @@ class FakeGcRepository implements AssemblyProcedureAssetGcRepository {
         (allowedIds === null || allowedIds.has(asset.id)) &&
         !asset.ownerIsActiveDraft &&
         asset.overlayReferenceCount === 0 &&
-        asset.sourceReferenceCount === 0
+        asset.sourceReferenceCount === 0 &&
+        !this.assets.some((derivative) => derivative.derivedFromAssetId === asset.id)
       )
       .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
       .slice(0, input.limit);
@@ -87,6 +89,17 @@ describe('AssemblyProcedureAssetGcService', () => {
       'source-shared',
       'fresh'
     ]);
+  });
+
+  it('collects an original only after its derivative is collected', async () => {
+    const repository = new FakeGcRepository([asset('original'), asset('sharpened', { derivedFromAssetId: 'original' })]);
+    const storage = { delete: vi.fn(async () => undefined) };
+    const service = new AssemblyProcedureAssetGcService({ repository, storage });
+
+    await expect(service.collect({ now })).resolves.toMatchObject({ claimed: 1 });
+    expect(storage.delete).toHaveBeenCalledExactlyOnceWith({ storageKey: 'assembly-procedure-assets/sharpened.jpg' });
+    await expect(service.collect({ now })).resolves.toMatchObject({ claimed: 1 });
+    expect(storage.delete).toHaveBeenLastCalledWith({ storageKey: 'assembly-procedure-assets/original.jpg' });
   });
 
   it('uses a bounded candidate set so unrelated assets remain pending', async () => {

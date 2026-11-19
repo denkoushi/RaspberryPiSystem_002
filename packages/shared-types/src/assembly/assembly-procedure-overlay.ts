@@ -33,6 +33,14 @@ import type { OverlayCropRect, OverlayPoint } from '../overlay/overlay-geometry.
  * logic are now domain-neutral; these names remain for existing API/Web
  * consumers and old payloads.
  */
+export type AssemblyProcedureOverlayAssetMetadata = {
+  assetId: string;
+  storageKey: string;
+  contentType: string;
+  byteSize: number;
+  derivedFromAssetId?: string;
+};
+
 export type AssemblyProcedureOverlayBBox = OverlayBBox;
 export type AssemblyProcedureOverlayTextStyle = OverlayTextStyle;
 export type AssemblyProcedureOverlayMask = OverlayMask;
