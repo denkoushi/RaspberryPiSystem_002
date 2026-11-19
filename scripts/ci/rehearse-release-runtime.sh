@@ -220,6 +220,7 @@ required = {
     '/app/storage/reports',
     '/app/storage/hermes-search',
     '/app/storage/security-review',
+    '/app/storage/procedure-meeting-spool',
     '/app/storage/.integrity',
 }
 if set(targets) != required:

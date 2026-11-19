@@ -6,6 +6,7 @@ import type { Prisma } from '@prisma/client';
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
+import { runAssemblyTransaction } from './assembly-transaction.js';
 import { MeetingTranscriptionError, transcribeProcedureMeeting } from '../inference/adapters/http-meeting-transcription.adapter.js';
 
 export const PROCEDURE_MEETING_MAX_BYTES = 64 * 1024 * 1024;
@@ -77,7 +78,7 @@ export class ProcedureMeetingTranscriptionWorker {
     const cutoff = new Date(Date.now() - PROCEDURE_MEETING_RETENTION_MS);
     const jobs = prisma.procedureMeetingTranscriptionJob;
 
-    const job = await prisma.$transaction(async tx => {
+    const job = await runAssemblyTransaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('procedure-meeting-transcription-worker'))`;
       const queue = tx.procedureMeetingTranscriptionJob;
       const claimTime = new Date();
