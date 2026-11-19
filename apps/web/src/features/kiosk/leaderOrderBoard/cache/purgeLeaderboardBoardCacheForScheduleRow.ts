@@ -2,7 +2,8 @@ import { openDB } from 'idb';
 
 import {
   LEADERBOARD_BOARD_CACHE_IDB_NAME,
-  LEADERBOARD_BOARD_CACHE_IDB_STORE
+  LEADERBOARD_BOARD_CACHE_IDB_STORE,
+  LEADERBOARD_BOARD_CACHE_IDB_VERSION
 } from './leaderboardBoardCacheConstants';
 import { parseLeaderboardBoardCacheRecord } from './leaderboardBoardCacheRecord';
 
@@ -15,7 +16,7 @@ export async function purgeLeaderboardBoardCacheForScheduleRow(scheduleRowId: st
   if (!rowId || typeof indexedDB === 'undefined') return 0;
 
   try {
-    const db = await openDB(LEADERBOARD_BOARD_CACHE_IDB_NAME, 1);
+    const db = await openDB(LEADERBOARD_BOARD_CACHE_IDB_NAME, LEADERBOARD_BOARD_CACHE_IDB_VERSION);
     const all = await db.getAll(LEADERBOARD_BOARD_CACHE_IDB_STORE);
     let removed = 0;
     for (const raw of all) {
