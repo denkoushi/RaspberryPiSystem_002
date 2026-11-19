@@ -358,15 +358,19 @@ export class AssemblyProcedureDocumentAssetsService {
         const [source] = await readableOverlayAssets(
           params.documentId, editable.revisionMetadata!.revisionRootId, [params.assetId], db
         );
-        const rotateAsset = async (input: { storageKey: string }, derivedFromAssetId?: string) => {
-          const saved = await this.rotateOverlayBlob(input, params.direction);
+        const [original, rotatedBlob] = await Promise.all([
+          source.derivedFromAsset && this.rotateOverlayBlob(source.derivedFromAsset, params.direction),
+          this.rotateOverlayBlob(source, params.direction)
+        ]);
+        const saveAsset = async ({ bytes, contentType }: Awaited<ReturnType<typeof this.rotateOverlayBlob>>, derivedFromAssetId?: string) => {
+          const saved = await this.saveOverlayBlob(bytes, contentType);
           savedBlobs.push(saved);
           await this.createOwnedOverlayAsset(saved, params.documentId, db, { derivedFromAssetId });
           return mapAsset(saved);
         };
         // Restore must keep the new orientation even when sharpening is turned off.
-        const originalAsset = source.derivedFromAsset ? await rotateAsset(source.derivedFromAsset) : undefined;
-        const rotated = await rotateAsset(source, originalAsset?.assetId);
+        const originalAsset = original ? await saveAsset(original) : undefined;
+        const rotated = await saveAsset(rotatedBlob, originalAsset?.assetId);
         return originalAsset ? { ...rotated, derivedFromAssetId: originalAsset.assetId, originalAsset } : rotated;
       });
     } catch (error) {
@@ -378,8 +382,7 @@ export class AssemblyProcedureDocumentAssetsService {
   private async rotateOverlayBlob(source: { storageKey: string }, direction: 'left' | 'right') {
     const original = await this.storage.read(source);
     assertBytes(original);
-    const { bytes, contentType } = await rotateOverlayImageBytes(original, direction);
-    return this.saveOverlayBlob(bytes, contentType);
+    return rotateOverlayImageBytes(original, direction);
   }
 
   private async regionAssets(

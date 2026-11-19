@@ -294,7 +294,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     materialScope, setBusy
   ]);
   const overlayCommands = useAssemblyProcedureDocumentOverlayCommands(overlaySession);
-  const rotateSelectedImage = useDocumentEditorImageRotation({ ...overlaySession, get busy() { return busyRef.current; }, materials });
+  const imageRotation = useDocumentEditorImageRotation({ ...overlaySession, get busy() { return busyRef.current; }, materials });
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -521,7 +521,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     placeMaterial: overlayCommands.placeMaterial,
     materialRevision,
     replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,
-    rotateSelectedImage,
+    ...imageRotation,
     document,
     pages: selectDocumentPages(document),
     loading,

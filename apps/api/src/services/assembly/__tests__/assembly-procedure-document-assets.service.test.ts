@@ -136,6 +136,32 @@ describe('rotate overlay image', () => {
     await expect(service().sharpenOverlayImage({ documentId: 'draft', assetId: rotated.id })).rejects.toMatchObject({ statusCode: 409 });
     expect(storage.save).toHaveBeenCalledTimes(2);
   });
+
+  it('rotates both blobs before registering them and deletes both if registration fails', async () => {
+    const original = { storageKey: 'original.png' };
+    mocks.db.assemblyProcedureAsset.findMany.mockResolvedValue([{
+      id: 'material', ownerDocumentId: 'draft', storageKey: 'material.png', contentType: 'image/png', derivedFromAsset: original
+    }]);
+    const bytes = await image('red', 40, 20);
+    let finishOriginal!: (blob: Buffer) => void;
+    const originalRead = new Promise<Buffer>(resolve => { finishOriginal = resolve; });
+    storage.read.mockImplementation(({ storageKey }) => storageKey === original.storageKey ? originalRead : Promise.resolve(bytes));
+    const rotated = { assetId: 'rotated', storageKey: 'rotated.png', relativeUrl: '/rotated.png', contentType: 'image/png', size: 100, sha256: 'hash' };
+    const rotatedOriginal = { ...rotated, assetId: 'rotated-original', storageKey: 'rotated-original.png' };
+    storage.save.mockResolvedValueOnce(rotatedOriginal).mockResolvedValueOnce(rotated);
+    const registrationError = new Error('asset registration failed');
+    mocks.db.assemblyProcedureAsset.create.mockResolvedValueOnce({}).mockRejectedValueOnce(registrationError);
+
+    const result = service().rotateOverlayImage({ documentId: 'draft', assetId: 'material', direction: 'right' }).catch(error => error);
+    try {
+      await vi.waitFor(() => expect(storage.read).toHaveBeenCalledTimes(2));
+      expect(storage.save).not.toHaveBeenCalled();
+    } finally {
+      finishOriginal(bytes);
+    }
+    expect(await result).toBe(registrationError);
+    expect(storage.delete.mock.calls).toEqual([[rotatedOriginal], [rotated]]);
+  });
 });
 
 describe('sharpenOverlayImage', () => {
