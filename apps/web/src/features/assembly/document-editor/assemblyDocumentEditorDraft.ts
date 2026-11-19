@@ -41,6 +41,14 @@ function containsCenter(bbox: AssemblyProcedureOverlayBBox, inner: AssemblyProce
     && yRatio >= bbox.yRatio && yRatio <= bbox.yRatio + bbox.heightRatio;
 }
 
+// A rewritten text grows downward from the erased line, so its center can leave the patch.
+function anchorsRewriteText(patch: AssemblyProcedureOverlayBBox, text: AssemblyProcedureOverlayBBox): boolean {
+  if (containsCenter(patch, text)) return true;
+  const centerX = text.xRatio + text.widthRatio / 2;
+  return centerX >= patch.xRatio && centerX <= patch.xRatio + patch.widthRatio
+    && text.yRatio >= patch.yRatio && text.yRatio < patch.yRatio + patch.heightRatio;
+}
+
 export function findAttachedOverlayIds(elements: AssemblyProcedureOverlayElement[], parentId: string): string[] {
   return [...findAttachedOverlayPatches(elements, parentId).keys()];
 }
@@ -66,7 +74,7 @@ function findAttachedOverlayPatches(elements: AssemblyProcedureOverlayElement[],
     if (attachedPatches.has(element)) {
       attachments.set(element.id, element);
     } else if (element.kind === 'TEXT' && isBelow(parent, element)) {
-      const patch = patches.find(candidate => isBelow(candidate, element) && containsCenter(candidate.bbox, element.bbox));
+      const patch = patches.find(candidate => isBelow(candidate, element) && anchorsRewriteText(candidate.bbox, element.bbox));
       if (patch && attachedPatches.has(patch)) attachments.set(element.id, patch);
     }
   }
