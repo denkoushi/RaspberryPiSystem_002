@@ -7,6 +7,7 @@ export type DScheduleMinutesMetrics = {
   unchanged: number;
   registeredSeibans: string[];
   unregisteredSeibans: string[];
+  machineSectionAssignedFseibans?: string[];
 };
 
 export type DScheduleMinutesSummary = {
