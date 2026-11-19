@@ -804,6 +804,6 @@ UX 改善(2 回目)の変更・追加ファイル一覧(34ファイル。各migr
 ### アプリからの素材 (2026-10-19)
 
 - 件名 `ProcedureMaterial`（完全一致または直後が空白・タブ）を予約し、受信箱の未読を既存の5分スケジュール／「今すぐ取り込む」で取得する。旧トークンのみの設定でも検索対象に含む。
-- JSON manifestは1つ必須。`schema_version: 1`、`source.system: sharepoint`、`source.list: ProcedureMaterialList` と写真の添付名を検証し、欠落・不正時は保存せず未読で残す。写真は既存の縮小・サイズ制限とmessage単位dedupeでPHOTO／origin APP／appRefへ保存し、本文は素材化しない。動画は既存ProcedureVideoへ渡す。
+- JSON manifestは1つ必須。`photos` は必須の配列で、空配列（写真0枚）も受け付ける。`schema_version: 1`、`source.system: sharepoint`、`source.list: ProcedureMaterialList` と写真の添付名を検証し、欠落・不正時は保存せず未読で残す。写真は既存の縮小・サイズ制限とmessage単位dedupeでPHOTO／origin APP／appRefへ保存し、本文は素材化しない。動画は既存ProcedureVideoへ渡す。写真0枚でも空白以外のメモと数字に正規化できる社員番号があれば、社員タグの一覧で使うTEXT素材としてメモを保存する。
 - 許可ドメインは両件名に適用し、`fromEmail` 一致は旧 `[Procedure-material]` のみ。成功時は既存のラベル付きごみ箱処理を使う。
 - 「未配置」の右隣に「アプリから」を置き、APPの未配置をメール単位で表示する。見出しはcategory・note、補足はlocationと社員名（未登録ならname_id）。配置・破棄は既存操作と共通。「未配置」のAPP除外は通常一覧のstate=unplacedかつorigin未指定だけで、配置済み・捨てた素材・semantic-searchは従来の状態条件を保つ。

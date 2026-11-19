@@ -107,6 +107,27 @@ describe('employee material list', () => {
     expect(mocks.tx.procedureMaterial.createMany).not.toHaveBeenCalled();
   });
 
+  it('keeps a photo-free memo at its received position, including at the list limit', async () => {
+    const newer = { ...material, gmailMessageId: 'newer', receivedAt: new Date('2026-11-19T06:00:00Z') };
+    const older = { ...material, gmailMessageId: 'older', receivedAt: new Date('2026-11-19T04:00:00Z') };
+    const memoOnly = {
+      ...material, id: 'memo-only', gmailMessageId: 'no-photos', receivedAt: new Date('2026-11-19T05:00:00Z'),
+      appRef: { ...material.appRef, hasPhotos: false, photoIndex: 0 },
+    };
+    mocks.tx.procedureMaterial.findMany.mockResolvedValue([
+      { ...newer, id: 'newer-note' }, { ...newer, id: 'newer-photo', kind: 'PHOTO' },
+      memoOnly,
+      { ...older, id: 'older-photo', kind: 'PHOTO' }, { ...older, id: 'older-note' },
+    ]);
+
+    expect((await shelf().listByEmployeeTag('mine')).materials.map(row => row.id))
+      .toEqual(['newer-note', 'newer-photo', 'memo-only', 'older-note', 'older-photo']);
+    expect((await shelf().listByEmployeeTag('mine', 3)).materials.map(row => row.id))
+      .toEqual(['newer-note', 'newer-photo', 'memo-only']);
+    expect((await shelf().listByEmployeeTag('mine', 4)).materials.map(row => row.id))
+      .toEqual(['newer-note', 'newer-photo', 'memo-only', 'older-photo']);
+  });
+
   it('hides a memo after all photos are discarded and keeps a memo after all photos are placed', async () => {
     const placed = { ...material, id: 'placed-note', gmailMessageId: 'placed-submission' };
     const discarded = { ...material, id: 'discarded-note', gmailMessageId: 'discarded-submission' };

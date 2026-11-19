@@ -87,10 +87,14 @@ export class ProcedureMaterialService {
     const owned = candidates.filter(belongsToEmployee);
     const notesByMessage = new Map<string, ProcedureMaterial>();
     const unplacedPhotoMessages = new Set<string>();
+    const photoFreeMessages = new Set<string>();
     for (const material of owned) {
       if (material.gmailMessageId === null) continue;
-      if (material.kind === 'TEXT') notesByMessage.set(material.gmailMessageId, material);
-      else unplacedPhotoMessages.add(material.gmailMessageId);
+      if (material.kind === 'TEXT') {
+        notesByMessage.set(material.gmailMessageId, material);
+        const ref = material.appRef;
+        if (ref && typeof ref === 'object' && !Array.isArray(ref) && ref.hasPhotos === false) photoFreeMessages.add(material.gmailMessageId);
+      } else unplacedPhotoMessages.add(material.gmailMessageId);
     }
     const missingNotes = new Map<string, NonNullable<ReturnType<typeof buildProcedureMaterialAppNote>>>();
     for (const photo of owned) {
@@ -123,7 +127,7 @@ export class ProcedureMaterialService {
       }
     }
     // Only check messages whose photos were absent from the unplaced list.
-    const messagesWithoutUnplacedPhotos = [...notesByMessage.keys()].filter(id => !unplacedPhotoMessages.has(id));
+    const messagesWithoutUnplacedPhotos = [...notesByMessage.keys()].filter(id => !unplacedPhotoMessages.has(id) && !photoFreeMessages.has(id));
     const placedPhotos = messagesWithoutUnplacedPhotos.length ? await this.db.procedureMaterial.findMany({
       where: { origin: 'APP', kind: 'PHOTO', discardedAt: null, gmailMessageId: { in: messagesWithoutUnplacedPhotos } },
       select: { gmailMessageId: true }, distinct: ['gmailMessageId'],
@@ -132,7 +136,7 @@ export class ProcedureMaterialService {
     const materials = owned.flatMap(material => {
       const messageId = material.gmailMessageId;
       if (messageId === null) return material.kind === 'TEXT' ? [] : [material];
-      if (material.kind === 'TEXT') return placedPhotoMessages.has(messageId) ? [material] : [];
+      if (material.kind === 'TEXT') return (photoFreeMessages.has(messageId) || placedPhotoMessages.has(messageId)) && !unplacedPhotoMessages.has(messageId) ? [material] : [];
       const note = notesByMessage.get(messageId);
       if (note) {
         notesByMessage.delete(messageId);
