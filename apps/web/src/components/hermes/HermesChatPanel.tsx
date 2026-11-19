@@ -3,6 +3,7 @@ import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { renderSignageCanvasPreview } from '../../api/domains/signage';
+import { useNearViewportOnce } from '../../hooks/useNearViewportOnce';
 import { ProtectedImage } from '../ProtectedImage';
 
 import { HermesA2uiPreview } from './HermesA2uiPreview';
@@ -180,28 +181,7 @@ function renderMessageContent(content: string) {
 }
 
 function LazyProtectedImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
-  const [isVisible, setIsVisible] = useState(false);
-  const placeholderRef = useRef<HTMLSpanElement | null>(null);
-
-  useEffect(() => {
-    const node = placeholderRef.current;
-    if (!node || isVisible) return;
-    if (typeof IntersectionObserver === 'undefined') {
-      setIsVisible(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setIsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '160px' }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [isVisible]);
+  const { ref: placeholderRef, isNear: isVisible } = useNearViewportOnce<HTMLSpanElement>({ rootMargin: '160px' });
 
   if (!isVisible) {
     return (

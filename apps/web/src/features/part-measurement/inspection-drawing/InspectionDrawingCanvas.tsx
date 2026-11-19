@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 import { clampImageMarkerRatio, ImageMarkerCalloutOverlay } from '../../kiosk/image-canvas';
 
-import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
+import { inspectionDrawingPointHasCalloutTip, removeInspectionDrawingCalloutDim } from './inspectionDrawingCalloutTip';
 import {
   computeScrollToCenterMarker,
   pointerClientToImageRatios,
@@ -420,7 +420,7 @@ export function InspectionDrawingCanvas({
       const offsetRatio = dir === 'x'
         ? Math.min(ratios.yRatio, point.calloutTipYRatio!) - 45 / 640
         : Math.max(ratios.xRatio, point.calloutTipXRatio!) + 45 / 1000;
-      onCalloutDimsChange?.(point.id, [...(point.calloutDims ?? []).filter((dim) => dim.dir !== dir), {
+      onCalloutDimsChange?.(point.id, [...removeInspectionDrawingCalloutDim(point.calloutDims, dir), {
         dir, baseXRatio: ratios.xRatio, baseYRatio: ratios.yRatio,
         offsetRatio: clampImageMarkerRatio(offsetRatio)
       }]);

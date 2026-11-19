@@ -1,6 +1,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useNearViewportOnce } from '../../hooks/useNearViewportOnce';
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
 import { boardPath } from './procedureBoardApi';
@@ -73,14 +74,7 @@ function PageTools({ page, total, disabled, duplicateEnabled, addText, duplicate
 }
 
 const Photo = memo(function Photo({ path }: { path: string }) {
-  const holder = useRef<HTMLSpanElement>(null); const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const node = holder.current; if (!node) return;
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect(); }
-    });
-    observer.observe(node); return () => observer.disconnect();
-  }, []);
+  const { ref: holder, isNear: visible } = useNearViewportOnce<HTMLSpanElement>({ rootMargin: '0px' });
   return <span className="pb-photo" ref={holder}>{visible && <ProtectedPhoto path={path} />}</span>;
 });
 function ProtectedPhoto({ path }: { path: string }) {

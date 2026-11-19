@@ -19,6 +19,8 @@ all:
           pi5_tailscale_https_hostname: raspberrypi.tail7312a3.ts.net
           pi5_tailscale_serve_https_port: 8443
           pi5_tailscale_serve_target: https+insecure://127.0.0.1:443
+          # 組立の要領書をメールで送るときの宛先ドメイン(空なら機能オフ)
+          assembly_procedure_mail_domain: "thkintechs.co.jp"
           # 毎晩の DR。false にすると次の playbook 実行でタイマーが止まる
           google_drive_dr_timer_enabled: true
           # キオスクお問い合わせ（Slack通知）

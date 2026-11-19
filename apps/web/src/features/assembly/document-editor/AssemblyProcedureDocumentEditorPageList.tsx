@@ -1,6 +1,7 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useNearViewportOnce } from '../../../hooks/useNearViewportOnce';
 import { AssemblyProcedureOverlayLayer } from '../AssemblyProcedureOverlayLayer';
 import { KioskDocumentPageImage } from '../KioskDocumentPageImage';
 
@@ -115,19 +116,10 @@ export const AssemblyProcedureDocumentEditorPagePreview = memo(function Assembly
   assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
   lazy?: boolean;
 }) {
-  const previewRef = useRef<HTMLDivElement>(null);
-  const [hasIntersected, setHasIntersected] = useState(false);
-  const showContent = !lazy || hasIntersected || typeof IntersectionObserver === 'undefined';
-
-  useEffect(() => {
-    const preview = previewRef.current;
-    if (showContent || !preview) return;
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) setHasIntersected(true);
-    }, { rootMargin: '300px' });
-    observer.observe(preview);
-    return () => observer.disconnect();
-  }, [showContent]);
+  const { ref: previewRef, isNear: showContent } = useNearViewportOnce<HTMLDivElement>({
+    rootMargin: '300px',
+    enabled: lazy
+  });
 
   return <div ref={previewRef} className="relative aspect-[1/1.414] overflow-hidden rounded bg-white">
     {showContent ? <>
