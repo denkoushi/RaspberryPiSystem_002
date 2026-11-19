@@ -3,7 +3,7 @@ import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-res
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
-import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+import { OVERLAY_DEFAULT_FONT_SIZE_RATIO, type AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
@@ -82,7 +82,7 @@ export class ProcedureMaterialPlacementService {
           asset = await this.assets.uploadOverlayImage({ documentId: params.documentId, accessPassword: params.accessPassword, bytes, contentType: material.contentType, originalFileName: material.originalFileName, holderKey: params.holderKey, holderToken: params.holderToken }, tx);
           element = { ...base, kind: 'IMAGE', assetId: asset.assetId, objectFit: 'contain', bbox: { xRatio: (1 - widthRatio) / 2, yRatio: (1 - heightRatio) / 2, widthRatio, heightRatio } };
         } else {
-          element = { ...base, kind: 'TEXT', text: material.text ?? '', bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.8, heightRatio: 0.2 }, style: { fontSizeRatio: 0.025, fontWeight: 'bold', color: '#0f172a', align: 'start' } };
+          element = { ...base, kind: 'TEXT', text: material.text ?? '', bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.8, heightRatio: 0.2 }, style: { fontSizeRatio: OVERLAY_DEFAULT_FONT_SIZE_RATIO, fontWeight: 'bold', color: '#0f172a', align: 'start' } };
         }
         // Validate the existing persistence contract before recording placement.
         normalizeElement(element, 0);

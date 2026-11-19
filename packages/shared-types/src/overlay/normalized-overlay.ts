@@ -9,6 +9,9 @@ export type OverlayBBox = {
   heightRatio: number;
 };
 
+/** 文字の大きさ(画像の幅に対する比)が未指定のときの既定値 */
+export const OVERLAY_DEFAULT_FONT_SIZE_RATIO = 0.025;
+
 export type OverlayTextStyle = {
   fontFamily?: string;
   fontSizeRatio?: number;

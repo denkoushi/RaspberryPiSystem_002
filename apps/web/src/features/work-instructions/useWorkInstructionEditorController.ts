@@ -1,3 +1,4 @@
+import { OVERLAY_DEFAULT_FONT_SIZE_RATIO, type OverlayBBox } from '@raspi-system/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -50,7 +51,6 @@ import {
 
 import type { WorkInstructionEditorRecoveryRecord } from './workInstructionEditorRecovery';
 import type { WorkInstructionOverlayAsset, WorkInstructionOverlayElement } from '../../api/domains/work-instructions';
-import type { OverlayBBox } from '@raspi-system/shared-types';
 
 type ConflictState = { revisionId: string; currentEditVersion: number | null };
 
@@ -762,7 +762,7 @@ export function useWorkInstructionEditorController({
     if (!activeRevisionId || !activeStep || busy || !accessGranted) return;
     const element = createWorkInstructionOverlayForRange(kind, activeSteps.indexOf(activeStep), stepKeyFor(activeStep), { xRatio: 0.38, yRatio: 0.23, widthRatio: 0.28, heightRatio: 0.14 });
     addElement(element.kind === 'TEXT'
-      ? { ...element, style: { ...element.style, fontSizeRatio: 0.025, color: '#161c22' } }
+      ? { ...element, style: { ...element.style, fontSizeRatio: OVERLAY_DEFAULT_FONT_SIZE_RATIO, color: '#161c22' } }
       : { ...element, strokeWidthRatio: 0.008, strokeColor: '#e5484d' } as WorkInstructionOverlayElement);
     setSelectionMode(false);
     setPendingRange(null);
