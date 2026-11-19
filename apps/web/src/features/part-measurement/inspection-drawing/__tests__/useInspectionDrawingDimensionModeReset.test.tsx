@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { clearInspectionDrawingCalloutTip } from '../inspectionDrawingCalloutTip';
 import {
   createInspectionDrawingCalloutDimsChangeHandler,
   useInspectionDrawingDimensionModeReset
@@ -37,10 +38,10 @@ describe('useInspectionDrawingDimensionModeReset', () => {
     expect(result.current.mode).toBe('place');
   });
 
-  it('returns to place when the selected point loses its callout tip', () => {
-    const { result, rerender } = setup('dimX', withTip);
-    expect(result.current.mode).toBe('dimX');
-    rerender({ point: withoutTip });
+  it.each(['dimX', 'dimY'] as const)('returns from %s to place when the callout is cleared', (mode) => {
+    const { result, rerender } = setup(mode, withTip);
+    expect(result.current.mode).toBe(mode);
+    rerender({ point: clearInspectionDrawingCalloutTip() });
     expect(result.current.mode).toBe('place');
   });
 

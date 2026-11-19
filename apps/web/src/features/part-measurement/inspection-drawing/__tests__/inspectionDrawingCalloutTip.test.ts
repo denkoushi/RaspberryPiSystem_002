@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clearInspectionDrawingCalloutTip,
   inspectionDrawingPointHasCalloutTip,
+  removeInspectionDrawingCalloutDim,
   setInspectionDrawingCalloutTip
 } from '../inspectionDrawingCalloutTip';
 import { createInspectionDrawingPoint, drawingPointToTemplateItemInput, templateItemToDrawingPoint } from '../markerNumbering';
@@ -26,6 +27,16 @@ describe('inspectionDrawingCalloutTip', () => {
       calloutTipYRatio: null,
       calloutDims: []
     });
+  });
+
+  it('removes only the requested direction without mutating the dimensions', () => {
+    const x = { dir: 'x' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.3 };
+    const y = { ...x, dir: 'y' as const };
+    const dims = [x, y];
+    expect(removeInspectionDrawingCalloutDim(dims, 'x')).toEqual([y]);
+    expect(removeInspectionDrawingCalloutDim(dims, 'y')).toEqual([x]);
+    expect(dims).toEqual([x, y]);
+    expect(removeInspectionDrawingCalloutDim(undefined, 'x')).toEqual([]);
   });
 });
 

@@ -10,6 +10,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { defaultBackupConfig } from '../../backup/backup-config.js';
 import { DScheduleMinutesGmailIngestionService } from './d-schedule-minutes-gmail-ingestion.service.js';
 import { applyDScheduleMinutes, DScheduleMinutesComparisonError } from './apply-d-schedule-minutes.service.js';
+import { autoRegisterDScheduleMinutes } from './auto-register-d-schedule-minutes.service.js';
 import type { DScheduleMinutesKind } from './minutes-kind.js';
 import { summarizeMinutes } from './import-summary.js';
 import type { DScheduleMinutesBlock } from './parse-d-schedule-minutes.js';
@@ -534,6 +535,41 @@ describe('apply shared seibans from both minutes kinds', () => {
     await execute('D_COMPANY', '2026-11-08', { ...d, partsCompleteDate: '2026-11-18', memo: 'new D metadata' });
     expect(latest()).toMatchObject({ partsCompleteDate: before.partsCompleteDate, rawPartsCompleteText: before.rawPartsCompleteText,
       sourceRunId: internal.id, excelChangedAt: before.excelChangedAt, memo: 'new D metadata' });
+  });
+
+  it('persists the D-only assignee transition and reuses it on an APPLIED retry', async () => {
+    const main = block({ assignees: ['資材課'] });
+    const { execute, latest, tx } = harness(main);
+    await execute('D_COMPANY', '2026-11-06');
+    const incoming = { ...main, assignees: ['資材課', '機械課'] };
+    const promoted = await execute('D_COMPANY', '2026-11-07', incoming);
+    expect(latest()).toMatchObject({ assignees: incoming.assignees, assigneesKnown: true });
+    expect(promoted.autoRegisteredSeibans).toMatchObject({ metrics: { machineSectionAssignedFseibans: [main.seiban] } });
+
+    tx.productionScheduleDScheduleMinutesImportRun.findUnique.mockResolvedValueOnce(promoted);
+    const retried = await execute('D_COMPANY', '2026-11-07', incoming);
+    expect(retried).toBe(promoted);
+    expect(tx.productionScheduleDScheduleMinutes.upsert).toHaveBeenCalledTimes(2);
+    expect(autoRegisterDScheduleMinutes).toHaveBeenLastCalledWith({ runId: promoted.id, blocks: [incoming] });
+    const next = await execute('D_COMPANY', '2026-11-08', incoming);
+    expect(next.autoRegisteredSeibans).not.toHaveProperty('metrics.machineSectionAssignedFseibans');
+  });
+
+  it.each([
+    { previousKind: null, previous: [], incomingKind: 'D_COMPANY', incoming: ['機械課'], date: '2026-11-07' },
+    { previousKind: 'INTERNAL', previous: [], incomingKind: 'D_COMPANY', incoming: ['機械課'], date: '2026-11-07' },
+    { previousKind: 'D_COMPANY', previous: ['資材課'], incomingKind: 'INTERNAL', incoming: [], date: '2026-11-07' },
+    { previousKind: 'D_COMPANY', previous: ['資材課'], incomingKind: 'D_COMPANY', incoming: ['資材課'], date: '2026-11-07' },
+    { previousKind: 'D_COMPANY', previous: ['機械課'], incomingKind: 'D_COMPANY', incoming: ['資材課'], date: '2026-11-07' },
+    { previousKind: 'D_COMPANY', previous: ['資材課'], incomingKind: 'D_COMPANY', incoming: ['機械課'], date: '2026-11-05' }
+  ] as const)('omits the transition for $previousKind $previous → $incomingKind $incoming on $date', async ({
+    previousKind, previous, incomingKind, incoming, date
+  }) => {
+    const main = block({ assignees: [...previous] });
+    const { execute } = harness(main);
+    if (previousKind) await execute(previousKind, '2026-11-06');
+    const run = await execute(incomingKind, date, { ...main, assignees: [...incoming] });
+    expect(run.autoRegisteredSeibans).not.toHaveProperty('metrics.machineSectionAssignedFseibans');
   });
 
   it('uses the D membership before its upsert when a newer D-only update precedes an older D file', async () => {

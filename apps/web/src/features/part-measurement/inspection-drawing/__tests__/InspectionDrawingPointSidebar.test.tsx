@@ -1,8 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { InspectionDrawingPointSidebar } from '../InspectionDrawingPointSidebar';
+import { useInspectionDrawingDimensionModeReset } from '../useInspectionDrawingDimensionModeReset';
 
+import type { InspectionDrawingToolbarMode } from '../InspectionDrawingCreateToolbar';
 import type { InspectionDrawingPoint } from '../types';
 
 const point: InspectionDrawingPoint = {
@@ -64,17 +67,36 @@ describe('InspectionDrawingPointSidebar', () => {
     expect(screen.queryByRole('group', { name: '測定点の位置調整' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '丸数字' })).not.toBeInTheDocument();
   });
-  it('shows a dimension badge and clears dimensions together with the callout', () => {
+  it('keeps the tip, Y dimension and mode after removing X, then clears all and resets when removing the tip', () => {
+    const y = { dir: 'y' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.9 };
+    const x = { ...y, dir: 'x' as const, offsetRatio: 0.05 };
     const onPointChange = vi.fn();
-    const selectedPoint = { ...point, calloutTipXRatio: 0.8, calloutTipYRatio: 0.7,
-      calloutDims: [{ dir: 'y' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.9 },
-        { dir: 'x' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 }] };
-    render(<InspectionDrawingPointSidebar {...baseProps} points={[selectedPoint]} selectedPoint={selectedPoint}
-      mode="place" onPointChange={onPointChange} />);
+    function Sidebar() {
+      const [mode, setMode] = useState<InspectionDrawingToolbarMode>('dimY');
+      const [selectedPoint, setSelectedPoint] = useState<InspectionDrawingPoint>({
+        ...point, calloutTipXRatio: 0.8, calloutTipYRatio: 0.7, calloutDims: [y, x]
+      });
+      useInspectionDrawingDimensionModeReset(mode, setMode, selectedPoint);
+      return <InspectionDrawingPointSidebar {...baseProps} points={[selectedPoint]} selectedPoint={selectedPoint}
+        mode={mode} onModeChange={setMode} onPointChange={(patch) => {
+          onPointChange(patch);
+          setSelectedPoint((previous) => ({ ...previous, ...patch }));
+        }} />;
+    }
+
+    render(<Sidebar />);
     expect(screen.getByText('寸XY')).toBeInTheDocument();
-    expect(screen.getByText('矢視・寸法XY')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '削除' }));
-    expect(onPointChange).toHaveBeenCalledWith({ calloutTipXRatio: null, calloutTipYRatio: null, calloutDims: [] });
+    fireEvent.click(screen.getByRole('button', { name: '寸法Xを削除' }));
+    expect(onPointChange).toHaveBeenLastCalledWith({ calloutDims: [y] });
+    expect(screen.queryByRole('button', { name: '寸法Xを削除' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '寸法Yを削除' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Y' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: '矢視を削除' }));
+    expect(onPointChange).toHaveBeenLastCalledWith({ calloutTipXRatio: null, calloutTipYRatio: null, calloutDims: [] });
+    expect(screen.getByText('矢視 なし')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '寸法Yを削除' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '丸数字' })).toHaveAttribute('aria-pressed', 'true');
   });
 
 });

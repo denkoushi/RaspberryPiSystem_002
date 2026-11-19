@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import type { updateGrindingPlanningBoardSeibanOrder } from '../grinding-planning-board/write.js';
 import { applyDScheduleMinutes } from './apply-d-schedule-minutes.service.js';
 import { autoRegisterDScheduleMinutes } from './auto-register-d-schedule-minutes.service.js';
 import type { DScheduleMinutesMetrics } from './import-summary.js';
@@ -56,7 +57,8 @@ vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByFseiban
 vi.mock('../grinding-planning-board/state.js', () => ({
   getOrCreateState: (...args: unknown[]) => mocks.readBoard(...args),
   boardRevision: (state: { version: number }) => String(state.version),
-  stateOrder: (state: { seibanOrder: string[] }) => state.seibanOrder
+  stateOrder: (state: { seibanOrder: string[] }) => state.seibanOrder,
+  stateUncheckedFseibans: (state: { uncheckedFseibans?: string[] }) => state.uncheckedFseibans ?? []
 }));
 vi.mock('../grinding-planning-board/write.js', () => ({ updateGrindingPlanningBoardSeibanOrder: (...args: unknown[]) => mocks.writeBoard(...args) }));
 vi.mock('../production-schedule-search-state.service.js', () => ({
@@ -77,10 +79,15 @@ beforeEach(() => {
   mocks.history = ['MANUAL-H']; mocks.historyVersion = 1; mocks.sites = ['A', 'B'];
   mocks.readBoard.mockImplementation((key: string) => mocks.boards[key]);
   mocks.readHistory.mockImplementation(() => ({ state: { history: mocks.history }, etag: String(mocks.historyVersion) }));
-  mocks.writeBoard.mockImplementation(({ siteKey, fseibans, newUncheckedFseibans = [] }: { siteKey: string; fseibans: string[]; newUncheckedFseibans?: string[] }) => {
+  mocks.writeBoard.mockImplementation(async (...args: Parameters<typeof updateGrindingPlanningBoardSeibanOrder>) => {
+    const [{ siteKey, fseibans, newUncheckedFseibans = [], recheckedFseibans }, saveProgress] = args;
     const board = mocks.boards[siteKey];
-    board.uncheckedFseibans = [...board.uncheckedFseibans ?? [], ...newUncheckedFseibans.filter((fseiban) => !board.seibanOrder.includes(fseiban))];
+    board.uncheckedFseibans = [
+      ...(board.uncheckedFseibans ?? []).filter((fseiban) => !recheckedFseibans?.has(fseiban)),
+      ...newUncheckedFseibans.filter((fseiban) => !board.seibanOrder.includes(fseiban))
+    ];
     mocks.boards[siteKey].seibanOrder = fseibans; mocks.boards[siteKey].version++;
+    await saveProgress?.(prisma);
   });
   mocks.writeHistory.mockImplementation(({ incomingHistory }: { incomingHistory: string[] }) => { mocks.history = incomingHistory; mocks.historyVersion++; });
 });
@@ -271,6 +278,56 @@ describe('D schedule automatic registration', () => {
     await register(mocks.minutes.map((row) => block(row.fseiban)));
     expect(mocks.boards.A.uncheckedFseibans).toEqual(['UNCHECKED', 'NEW-NON-MACHINE']);
     expect(mocks.boards.B.uncheckedFseibans).toEqual(['CHECKED', 'NEW-NON-MACHINE']);
+  });
+
+  it('rechecks the saved transition on every existing board without changing order, including on an APPLIED retry', async () => {
+    mocks.run.autoRegisteredSeibans.metrics = {
+      seibansRead: 1, dateChanged: 0, unchanged: 1, registeredSeibans: [], unregisteredSeibans: [],
+      machineSectionAssignedFseibans: ['PROMOTED']
+    };
+    // B has existing board state but is absent from the Sites list.
+    mocks.sites = ['A'];
+    for (const board of Object.values(mocks.boards)) {
+      board.seibanOrder.push('PROMOTED', 'MANUALLY-UNCHECKED');
+      board.uncheckedFseibans = ['PROMOTED', 'MANUALLY-UNCHECKED'];
+    }
+    mocks.history.push('PROMOTED');
+    const orders = Object.values(mocks.boards).map((board) => [...board.seibanOrder]);
+    const writeBoard = mocks.writeBoard.getMockImplementation()!;
+    mocks.writeBoard.mockImplementationOnce(writeBoard).mockRejectedValueOnce(new Error('destination unavailable'));
+    await expect(register([block('PROMOTED')])).rejects.toThrow('destination unavailable');
+    expect(mocks.run.status).toBe('APPLIED');
+    expect(mocks.boards.A.uncheckedFseibans).toEqual(['MANUALLY-UNCHECKED']);
+    expect(mocks.boards.B.uncheckedFseibans).toEqual(['PROMOTED', 'MANUALLY-UNCHECKED']);
+
+    mocks.boards.A.uncheckedFseibans.unshift('PROMOTED');
+    await register([block('PROMOTED')]);
+    expect(mocks.run.status).toBe('SUCCESS');
+    expect(mocks.boards.A.uncheckedFseibans).toEqual(['PROMOTED', 'MANUALLY-UNCHECKED']);
+    expect(mocks.boards.B.uncheckedFseibans).toEqual(['MANUALLY-UNCHECKED']);
+    expect(Object.values(mocks.boards).map((board) => board.seibanOrder)).toEqual(orders);
+    expect(mocks.writeBoard.mock.calls.map(([params]) => params.siteKey)).toEqual(['A', 'B', 'B']);
+    expect(mocks.writeHistory).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { kind: 'INTERNAL', newer: false, warnings: [] },
+    { kind: 'D_COMPANY', newer: true, warnings: [] },
+    { kind: 'D_COMPANY', newer: false, warnings: [{ code: 'STALE_FILE', seiban: 'PROMOTED' }] }
+  ])('ignores stored rechecks for $kind with newer=$newer and warnings=$warnings', async ({ kind, newer, warnings }) => {
+    Object.assign(mocks.run, { kind, warnings });
+    mocks.newer = newer;
+    mocks.run.autoRegisteredSeibans.metrics = {
+      seibansRead: 1, dateChanged: 0, unchanged: 1, registeredSeibans: [], unregisteredSeibans: [],
+      machineSectionAssignedFseibans: ['PROMOTED']
+    };
+    for (const board of Object.values(mocks.boards)) {
+      board.seibanOrder.push('PROMOTED');
+      board.uncheckedFseibans = ['PROMOTED'];
+    }
+    mocks.history.push('PROMOTED');
+    await register([block('PROMOTED')]);
+    expect(mocks.writeBoard).not.toHaveBeenCalled();
   });
 
   it('skips registration for an older file, records why, and retains successful ownership', async () => {
