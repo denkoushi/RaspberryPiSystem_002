@@ -1,9 +1,12 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { AxiosError } from 'axios';
 import { useEffect, type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAssemblyProcedureSpeechToTextAvailability, transcribeAssemblyProcedureDictation } from '../../../api/domains/assembly';
+import { api, getResolvedClientKey } from '../../../api/http';
 import { mockVoiceRecording } from '../../voice/voiceRecording.test-support';
 
 import { clearManualLists } from './procedure-manual-list-cache';
@@ -13,11 +16,14 @@ import { ProcedureManualBrowser } from './ProcedureManualBrowser';
 import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
 import { ProcedureManualPageRail } from './ProcedureManualPageRail';
 
-import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
+import type { AssemblyProcedureDocumentDto, AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, ProcedureManualOverviewItemDto, ProcedureManualProcessDto } from '../types';
 
 const mocks = vi.hoisted(() => ({
-  overview: vi.fn(), allOverview: vi.fn(), models: vi.fn(), processes: vi.fn(), detail: vi.fn(), documents: vi.fn(), pdfs: vi.fn(), save: vi.fn(), history: vi.fn(), blank: vi.fn(), partCandidates: vi.fn(), machineCandidates: vi.fn()
+  overview: vi.fn(), allOverview: vi.fn(), models: vi.fn(), processes: vi.fn(), detail: vi.fn(), documents: vi.fn(), pdfs: vi.fn(), save: vi.fn(), history: vi.fn(), blank: vi.fn(), partCandidates: vi.fn(), machineCandidates: vi.fn(),
+  config: vi.fn(), revision: vi.fn(), nfc: vi.fn(), operator: vi.fn()
 }));
+vi.mock('../../../api/hooks/kiosk', () => ({ useKioskConfig: mocks.config }));
+vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: mocks.nfc }));
 vi.mock('../../../api/domains/assembly', () => ({ getAssemblyProcedureSpeechToTextAvailability: vi.fn(), transcribeAssemblyProcedureDictation: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   createBlankAssemblyProcedureDocument: mocks.blank,
@@ -28,11 +34,12 @@ vi.mock('../../../api/client', () => ({
   listProcedureManualModels: mocks.models, listProcedureManualProcesses: mocks.processes,
   getProcedureManualModelOverview: mocks.overview, getProcedureManualOverview: mocks.allOverview,
   getProcedureManualAssignments: mocks.detail, listAssemblyProcedureDocumentSummaries: mocks.documents,
+  getAssemblyProcedureDocument: mocks.revision, resolveAssemblyOperatorNfc: mocks.operator,
   getAssemblyProcedureDocumentRevisions: mocks.history, getKioskDocuments: mocks.pdfs, replaceProcedureManualAssignments: mocks.save
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({
   AssemblyProcedureSequenceViewer: ({ sequence, initialDocumentId, showCurrentMarkerButton, onCurrentPageChange, onCurrentStepChange, layout, listOpen, onToggleList, twoPages, onToggleTwoPages, railNav }: { railNav?: ReactNode; initialDocumentId?: string; listOpen?: boolean; onToggleList?: () => void; twoPages?: boolean; onToggleTwoPages?: () => void; layout?: string; onCurrentStepChange?: (step: null, index: number, total: number) => void; sequence: ProcedureManualDetailDto['sequence']; showCurrentMarkerButton?: boolean; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
-    useEffect(() => { onCurrentPageChange?.({ documentId: sequence.documents[0]?.assemblyProcedureDocumentId } as AssemblyProcedureSequencePageDto); onCurrentStepChange?.(null, 0, 2); }, [sequence, onCurrentPageChange, onCurrentStepChange]);
+    useEffect(() => { onCurrentPageChange?.(sequence.documents[0]?.pages?.[0] ?? { documentId: sequence.documents[0]?.assemblyProcedureDocumentId } as AssemblyProcedureSequencePageDto); onCurrentStepChange?.(null, 0, 2); }, [sequence, onCurrentPageChange, onCurrentStepChange]);
     return <div data-testid="sequence-viewer" data-layout={layout} data-initial-document-id={initialDocumentId}><ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} twoPages={twoPages} onToggleTwoPages={onToggleTwoPages} total={2} nav={railNav} />{sequence.documents.map((d) => <span key={d.orderItemId}>{d.title}</span>)}{showCurrentMarkerButton !== false ? <button>現在の丸数字へ</button> : null}</div>;
   }
 }));
@@ -58,10 +65,52 @@ const emptyDetail: ProcedureManualDetailDto = {
   }
 };
 
+const mailRevision: AssemblyProcedureDocumentDto = {
+  id: 'v3', revisionRootId: 'root', revisionNumber: 3, isRevisionHead: true,
+  name: '主軸ユニット組付け', status: 'published', isActive: true,
+  imageRelativePath: '', pages: [], publishedAt: '2026-10-27T16:00:00Z',
+  createdAt: '2026-10-26T00:00:00Z', updatedAt: '2026-10-27T16:00:00Z'
+};
+
+function renderMailBrowser({ enabled = true, isRevisionHead = true } = {}) {
+  const firstPage: AssemblyProcedureSequencePageDto = {
+    source: 'assembly_procedure_document', documentId: 'v3', pageIndex: 0, pageUrl: '/test/page-first.png'
+  };
+  mocks.config.mockReturnValue({ data: { assemblyProcedureMail: { enabled, domain: 'example-co.co.jp' } } });
+  mocks.revision.mockResolvedValue({ ...mailRevision, isRevisionHead });
+  mocks.operator.mockResolvedValue({ employeeId: 'employee-id', displayName: '山田 花子', employeeCode: '12345' });
+  mocks.detail.mockResolvedValue({
+    assignments: [{ id: 'assignment', assemblyProcedureDocumentId: 'root', resolvedDocumentId: 'v3' }],
+    sequence: {
+      ...emptyDetail.sequence,
+      documents: [{
+        orderItemId: 'assignment', assemblyProcedureDocumentId: 'v3', title: mailRevision.name,
+        pages: [firstPage, { ...firstPage, pageIndex: 1, pageUrl: '/test/page-second.png' }]
+      }]
+    }
+  });
+  const queryClient = new QueryClient();
+  const ui = () => <QueryClientProvider client={queryClient}>
+    <MemoryRouter initialEntries={['/?model=DFD1&process=assembly']}><ProcedureManualBrowser /></MemoryRouter>
+  </QueryClientProvider>;
+  const view = render(ui());
+  return {
+    queryClient,
+    readTag() {
+      mocks.nfc.mockImplementation((armed: boolean) => armed ? { uid: 'TAG-1' } : null);
+      view.rerender(ui());
+    },
+    clearTag() {
+      mocks.nfc.mockReturnValue(null);
+    }
+  };
+}
+
 describe('procedure-manuals', () => {
   beforeEach(() => {
   clearManualLists();
     vi.resetAllMocks();
+    mocks.config.mockReturnValue({});
     localStorage.setItem('procedure-manuals-list-open', 'true');
     mocks.models.mockResolvedValue([{ modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1' }, { modelCode: 'DFD2', modelCodeKey: 'DFD2' }]);
     mocks.processes.mockResolvedValue(processes);
@@ -80,6 +129,117 @@ describe('procedure-manuals', () => {
     mocks.machineCandidates.mockResolvedValue({ candidates: ['ｄｆｄ９'], hasMore: false });
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it('places the mail action at the end of the rail for the current published revision', async () => {
+    renderMailBrowser();
+    const mail = await screen.findByRole('button', { name: 'メールで送る' });
+    expect(mail.closest('[role="toolbar"]')).toBeInTheDocument();
+    expect(mail).toHaveClass('order-last', 'mt-auto');
+    expect(mocks.revision).toHaveBeenCalledWith('v3');
+  });
+
+  it('hides the mail action for an older published revision', async () => {
+    const { queryClient } = renderMailBrowser({ isRevisionHead: false });
+    await waitFor(() => expect(queryClient.getQueryState(['assembly-procedure-mail-revision', 'v3'])?.status).toBe('success'));
+    expect(screen.queryByRole('button', { name: 'メールで送る' })).not.toBeInTheDocument();
+  });
+
+  it('hides the mail action and skips revision lookup when mail is off', async () => {
+    renderMailBrowser({ enabled: false });
+    await screen.findByTestId('sequence-viewer');
+    expect(screen.queryByRole('button', { name: 'メールで送る' })).not.toBeInTheDocument();
+    expect(mocks.revision).not.toHaveBeenCalled();
+  });
+
+  it('reads an employee tag, previews the first page and sends exactly the mail request fields', async () => {
+    let complete!: () => void;
+    const post = vi.spyOn(api, 'post').mockImplementationOnce(() => new Promise(resolve => {
+      complete = () => resolve({ data: { deliveryId: 'delivery-id', pageCount: 2 } });
+    }));
+    const browser = renderMailBrowser();
+    fireEvent.click(await screen.findByRole('button', { name: 'メールで送る' }));
+    expect(screen.getByText('社員タグをかざしてください')).toBeVisible();
+    expect(mocks.nfc).toHaveBeenLastCalledWith(true);
+    browser.readTag();
+    const address = await screen.findByRole('dialog', { name: '宛先' });
+    expect(mocks.operator).toHaveBeenCalledWith('TAG-1');
+    expect(mocks.nfc).toHaveBeenLastCalledWith(false);
+    fireEvent.click(within(address).getByRole('button', { name: 'a', exact: true }));
+    fireEvent.click(within(address).getByRole('button', { name: '次へ' }));
+    const confirm = screen.getByRole('dialog', { name: 'この宛先に送ります' });
+    expect(within(confirm).getByText('a@example-co.co.jp')).toBeVisible();
+    expect(within(confirm).getByText('社員番号 12345 山田 花子')).toBeVisible();
+    expect(within(confirm).getByText('第3版(改版 2026-10-28)')).toBeVisible();
+    expect(within(confirm).getByText('2 ページ')).toBeVisible();
+    const thumb = within(confirm).getByRole('button', { name: 'PDF の見本を大きく見る' });
+    expect(thumb.querySelector('img')).toHaveAttribute('src', expect.stringContaining('page-first.png'));
+    fireEvent.click(thumb);
+    expect(screen.getByRole('dialog', { name: 'PDF の見本を大きく見る' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: '宛先を直す' }));
+    expect(within(screen.getByRole('dialog', { name: '宛先' })).getByText('a', { selector: 'span' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    fireEvent.click(screen.getByRole('button', { name: '送る', exact: true }));
+    expect(screen.getByText('送っています')).toBeVisible();
+    expect(post).toHaveBeenCalledExactlyOnceWith('/assembly/procedure-manuals/mail',
+      { documentId: 'root', revisionId: 'v3', nfcUid: 'TAG-1', localPart: 'a' },
+      { headers: { 'x-client-key': getResolvedClientKey() } });
+    await act(async () => complete());
+    const done = screen.getByRole('dialog');
+    expect(within(done).getByText('送りました')).toBeVisible();
+    expect(within(done).getByText('a@example-co.co.jp')).toBeVisible();
+    fireEvent.click(within(done).getByRole('button', { name: '閉じる' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('accepts only the mock keyboard keys and clears the address when closed', async () => {
+    const browser = renderMailBrowser();
+    const mail = await screen.findByRole('button', { name: 'メールで送る' });
+    fireEvent.click(mail);
+    browser.readTag();
+    const address = within(await screen.findByRole('dialog', { name: '宛先' }));
+    const next = address.getByRole('button', { name: '次へ' });
+    expect(address.getAllByRole('button').slice(0, 39).map(key => key.textContent).join('')).toBe('abcdefghijklmnopqrstuvwxyz0123456789.-_');
+    expect(address.getByText('@example-co.co.jp')).toBeVisible();
+    expect(next).toBeDisabled();
+    for (const name of ['a', '.', '.', '9']) fireEvent.click(address.getByRole('button', { name, exact: true }));
+    expect(address.getByText('a..9')).toBeVisible();
+    expect(next).toBeDisabled();
+    fireEvent.click(address.getByRole('button', { name: '1文字消す' }));
+    expect(address.getByText('a..')).toBeVisible();
+    fireEvent.click(address.getByRole('button', { name: '全部消す' }));
+    expect(address.queryByText('a..')).not.toBeInTheDocument();
+    fireEvent.keyDown(next, { key: '+' });
+    expect(next).toBeDisabled();
+    fireEvent.click(address.getByRole('button', { name: 'z', exact: true }));
+    expect(address.getByText('z', { selector: 'span' })).toBeVisible();
+    expect(next).toBeEnabled();
+    browser.clearTag();
+    fireEvent.click(address.getByRole('button', { name: 'やめる' }));
+    fireEvent.click(mail);
+    browser.readTag();
+    const reopened = within(await screen.findByRole('dialog', { name: '宛先' }));
+    expect(reopened.getByRole('button', { name: '次へ' })).toBeDisabled();
+    expect(reopened.queryByText('z', { selector: 'span' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['GMAIL_SCOPE_INSUFFICIENT', 'Gmail の送信権限がありません'],
+    ['PROCEDURE_MAIL_RECORD_FAILED', 'メールは送信済みですが記録できませんでした']
+  ])('shows the error for %s with only a close action', async (code, message) => {
+    const failure = Object.assign(new AxiosError(), { response: { data: { errorCode: code } } });
+    const post = vi.spyOn(api, 'post').mockRejectedValueOnce(failure);
+    const browser = renderMailBrowser();
+    fireEvent.click(await screen.findByRole('button', { name: 'メールで送る' }));
+    browser.readTag();
+    const address = within(await screen.findByRole('dialog', { name: '宛先' }));
+    fireEvent.click(address.getByRole('button', { name: 'a', exact: true }));
+    fireEvent.click(address.getByRole('button', { name: '次へ' }));
+    fireEvent.click(screen.getByRole('button', { name: '送る', exact: true }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(within(screen.getByRole('dialog')).getAllByRole('button').map(button => button.textContent)).toEqual(['閉じる']);
+    expect(post).toHaveBeenCalledOnce();
+  });
 
   it('shows five visible name columns, full names and legacy process fallbacks', async () => {
     const names = ['主軸_P-123_加工_研削_仕上げ_確認', '軸受_P-456_組立_圧入', '旧名称', '親工程の旧名称'];

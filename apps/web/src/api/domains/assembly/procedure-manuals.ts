@@ -1,4 +1,13 @@
-import { api } from '../../http';
+import { api, getResolvedClientKey } from '../../http';
+
+export async function sendProcedureManualMail(input: { documentId: string; revisionId: string; nfcUid: string; localPart: string }) {
+  const { data } = await api.post<{
+    deliveryId: string; sentAt: string; gmailMessageId: string; pageCount: number; pdfByteSize: number;
+  }>('/assembly/procedure-manuals/mail', input, {
+    headers: { 'x-client-key': getResolvedClientKey() }
+  });
+  return data;
+}
 
 export async function listProcedureManualProcesses() {
   const { data } = await api.get<{ processes: import('../../../features/assembly/types').ProcedureManualProcessDto[] }>('/assembly/procedure-manuals/processes');

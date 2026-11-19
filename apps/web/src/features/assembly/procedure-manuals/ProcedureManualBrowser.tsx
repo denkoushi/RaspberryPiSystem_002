@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { getProcedureManualAssignments, getProcedureManualOverview, listProcedureManualCommon, listProcedureManualModels, listProcedureManualParts, listProcedureManualProcesses } from '../../../api/client';
+import { useKioskConfig } from '../../../api/hooks/kiosk';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
 import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceViewer';
 import { kioskAssemblyManualsWorkshopPath } from '../assemblyRoutes';
@@ -15,6 +16,7 @@ import { extractProcedureManualPartFacets } from './procedure-manual-part-facets
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualCommonList, filterProcedureManualCommonItems } from './ProcedureManualCommonList';
 import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
+import { ProcedureManualMailButton } from './ProcedureManualMailButton';
 import { ProcedureManualPageRail } from './ProcedureManualPageRail';
 import { ProcedurePageVideoStrip } from './ProcedurePageVideoStrip';
 
@@ -24,6 +26,7 @@ const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace
 
 export function ProcedureManualBrowser() {
   const [params, setParams] = useSearchParams();
+  const mailConfig = useKioskConfig().data?.assemblyProcedureMail;
   const [listOpen, setListOpen] = useState(() => {
     // 対象と工程が決まっていないと右側に何も出ないので、一覧を開いて始める
     if (params.has('common') || !(params.get('model') || params.get('part')) || !params.get('process')) return true;
@@ -57,7 +60,12 @@ export function ProcedureManualBrowser() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<AssemblyProcedureSequencePageDto | null>(null);
   const onPageChange = useCallback((page: AssemblyProcedureSequencePageDto | null) => setCurrentPage(page), []);
-  const approval = detail?.sequence.documents.find(document => (document.assemblyProcedureDocumentId ?? document.kioskDocumentId) === currentPage?.documentId)?.lastApproval;
+  const currentDocument = detail?.sequence.documents.find(document => (document.assemblyProcedureDocumentId ?? document.kioskDocumentId) === currentPage?.documentId);
+  const approval = currentDocument?.lastApproval;
+  const mailAssignment = currentDocument?.assemblyProcedureDocumentId
+    ? detail?.assignments.find(assignment => assignment.id === currentDocument.orderItemId
+      && assignment.resolvedDocumentId === currentDocument.assemblyProcedureDocumentId)
+    : undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +130,15 @@ export function ProcedureManualBrowser() {
   const railNav = <>
     <Link to="/kiosk/assembly" aria-label="組立へ戻る" title="組立へ戻る" className={railLinkClass}><svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M3 11l9-7 9 7M5 10v10h14V10" /></svg></Link>
     <Link to={subjectKind === 'COMMON' ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId })} aria-label="作る・直す" title="作る・直す" className={railLinkClass}><svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13 7l4 4" /></svg></Link>
+    {!showOverview && mailConfig?.enabled && mailConfig.domain && mailAssignment?.assemblyProcedureDocumentId && mailAssignment.resolvedDocumentId && currentDocument?.pages.length ? (
+      <ProcedureManualMailButton
+        key={mailAssignment.resolvedDocumentId}
+        documentId={mailAssignment.assemblyProcedureDocumentId}
+        revisionId={mailAssignment.resolvedDocumentId}
+        document={currentDocument}
+        domain={mailConfig.domain}
+      />
+    ) : null}
   </>;
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0b0f13] text-[#eef3f6]">

@@ -111,7 +111,7 @@ async function capturePages(
         if (!print.pageUrl.startsWith(imagePrefix)) throw new Error('Invalid procedure page image URL');
         const image = await AssemblyProcedureImageStorage.readImage(print.pageUrl);
         const { width, height } = (await sharp(image.buffer).metadata()).autoOrient;
-        const landscape = width > height;
+        const landscape = width * (print.crop?.widthRatio ?? 1) > height * (print.crop?.heightRatio ?? 1);
         await page.setViewportSize(landscape ? landscapeViewport : portraitViewport);
         sources = new Map([[print.pageUrl, async () => image]]);
         const visibleImageIds: string[] = [];
