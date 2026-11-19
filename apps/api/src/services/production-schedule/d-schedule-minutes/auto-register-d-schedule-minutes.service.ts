@@ -4,7 +4,7 @@ import { isMachineSectionAssigned } from './machine-section-assignee.js';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { boardRevision, getOrCreateState, stateOrder } from '../grinding-planning-board/state.js';
+import { boardRevision, getOrCreateState, stateOrder, stateUncheckedFseibans } from '../grinding-planning-board/state.js';
 import { updateGrindingPlanningBoardSeibanOrder } from '../grinding-planning-board/write.js';
 import { getProductionScheduleSearchState, updateProductionScheduleSearchState } from '../production-schedule-search-state.service.js';
 import type { DScheduleMinutesBlock, DScheduleMinutesWarning } from './parse-d-schedule-minutes.js';
@@ -24,7 +24,7 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       where: { kind: run.kind, status: 'SUCCESS', id: { not: run.id } }, orderBy: [{ meetingDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
     });
     const previousOwnership = (previous?.autoRegisteredSeibans ?? { planningBoards: {}, searchHistory: [] }) as RegistrationOwnership;
-    const ownership = run.autoRegisteredSeibans as RegistrationOwnership;
+    let ownership = run.autoRegisteredSeibans as RegistrationOwnership;
     const newerRun = await prisma.productionScheduleDScheduleMinutesImportRun.findFirst({
       where: { kind: run.kind, status: { in: ['SUCCESS', 'APPLIED'] }, meetingDate: { gt: run.meetingDate } },
       orderBy: [{ meetingDate: 'desc' }, { createdAt: 'desc' }]
@@ -48,6 +48,10 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       select: { fseiban: true }
     })).map((row) => row.fseiban) : []);
     const warnings = run.warnings as DScheduleMinutesWarning[];
+    const stale = new Set(warnings.filter((warning) => warning.code === 'STALE_FILE').map((warning) => warning.seiban));
+    const rechecked = new Set(run.kind === 'D_COMPANY'
+      ? ownership.metrics?.machineSectionAssignedFseibans?.filter((fseiban) => !stale.has(fseiban))
+      : []);
     const unavailable = new Set(warnings.filter((warning) => warning.code === 'NOT_IN_SCHEDULE').map((warning) => warning.seiban));
     const all = new Set(input.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]));
     // A skipped block still proves presence, but only readable blocks can be added below.
@@ -78,9 +82,9 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       previousAuto: string[],
       savedAuto: string[],
       otherAuto: string[],
-      read: () => Promise<{ entries: string[]; revision: string }>,
-      write: (entries: string[], revision: string) => Promise<unknown>,
-      saveOwnership: (owned: string[]) => void
+      read: () => Promise<{ entries: string[]; revision: string; needsWrite?: boolean }>,
+      write: (entries: string[], revision: string, saveProgress: (client: Prisma.TransactionClient) => Promise<void>) => Promise<void>,
+      ownershipUpdate: (owned: string[]) => Partial<RegistrationOwnership>
     ) => {
       for (let attempt = 0; attempt < 2; attempt++) {
         const current = await read();
@@ -104,14 +108,23 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
           owned.push(seiban);
         }
         try {
-          if (JSON.stringify(entries) !== JSON.stringify(current.entries)) await write(entries, current.revision);
+          const nextOwnership = { ...ownership, ...ownershipUpdate(owned) };
           if (ownership.metrics) {
-            ownership.metrics.registeredSeibans = [...new Set([...ownership.metrics.registeredSeibans, ...entries.filter((seiban) => !current.entries.includes(seiban))])];
-            ownership.metrics.unregisteredSeibans = [...new Set([...ownership.metrics.unregisteredSeibans, ...current.entries.filter((seiban) => !entries.includes(seiban))])];
+            nextOwnership.metrics = {
+              ...ownership.metrics,
+              registeredSeibans: [...new Set([...ownership.metrics.registeredSeibans, ...entries.filter((seiban) => !current.entries.includes(seiban))])],
+              unregisteredSeibans: [...new Set([...ownership.metrics.unregisteredSeibans, ...current.entries.filter((seiban) => !entries.includes(seiban))])]
+            };
           }
-          saveOwnership(owned);
-          // Persist progress per destination so a retry after partial success keeps ownership.
-          await prisma.productionScheduleDScheduleMinutesImportRun.update({ where: { id: run.id }, data: { autoRegisteredSeibans: ownership } });
+          const saveProgress = async (client: Prisma.TransactionClient) => {
+            await client.productionScheduleDScheduleMinutesImportRun.update({ where: { id: run.id }, data: { autoRegisteredSeibans: nextOwnership } });
+          };
+          if (current.needsWrite || JSON.stringify(entries) !== JSON.stringify(current.entries)) {
+            await write(entries, current.revision, saveProgress);
+          } else {
+            await saveProgress(prisma);
+          }
+          ownership = nextOwnership;
           return;
         } catch (error) {
           if (!(error instanceof ApiError) || error.statusCode !== 409 || attempt === 1) throw error;
@@ -124,18 +137,30 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       // A new board is seeded from shared history by the existing state service.
       const inherited = existingBoardKeys.has(siteKey) ? [] : previousOwnership.searchHistory;
       const otherInherited = existingBoardKeys.has(siteKey) ? [] : otherOwnership.searchHistory;
+      // The ownership checkpoint also marks boards already reconciled by this run.
+      const recheckBoard = rechecked.size > 0 && existingBoardKeys.has(siteKey) && !Object.hasOwn(ownership.planningBoards, siteKey);
       await reconcile(previousOwnership.planningBoards[siteKey] ?? inherited, ownership.planningBoards[siteKey] ?? [],
       otherOwnership.planningBoards[siteKey] ?? otherInherited, async () => {
         const state = await getOrCreateState(siteKey, []);
-        return { entries: stateOrder(state), revision: boardRevision(state) };
-      }, (fseibans, sourceRevision) => updateGrindingPlanningBoardSeibanOrder({ siteKey, fseibans, sourceRevision, newUncheckedFseibans }),
-      (owned) => { ownership.planningBoards[siteKey] = owned; });
+        const entries = stateOrder(state);
+        const needsWrite = recheckBoard && (state.uncheckedFseibans == null ? entries : stateUncheckedFseibans(state))
+          .some((fseiban) => rechecked.has(fseiban));
+        return { entries, revision: boardRevision(state), needsWrite };
+      }, async (fseibans, sourceRevision, saveProgress) => {
+        await updateGrindingPlanningBoardSeibanOrder({
+          siteKey, fseibans, sourceRevision, newUncheckedFseibans,
+          ...(recheckBoard ? { recheckedFseibans: rechecked } : {})
+        }, recheckBoard ? saveProgress : undefined);
+        if (!recheckBoard) await saveProgress(prisma);
+      }, (owned) => ({ planningBoards: { ...ownership.planningBoards, [siteKey]: owned } }));
     }
     await reconcile(previousOwnership.searchHistory, ownership.searchHistory, otherOwnership.searchHistory, async () => {
       const state = await getProductionScheduleSearchState('shared');
       return { entries: state.state.history, revision: state.etag };
-    }, (incomingHistory, ifMatchHeader) => updateProductionScheduleSearchState({ locationKey: 'shared', incomingHistory, ifMatchHeader }),
-    (owned) => { ownership.searchHistory = owned; });
+    }, async (incomingHistory, ifMatchHeader, saveProgress) => {
+      await updateProductionScheduleSearchState({ locationKey: 'shared', incomingHistory, ifMatchHeader });
+      await saveProgress(prisma);
+    }, (owned) => ({ searchHistory: owned }));
     const nextWarnings = warnings.filter((warning) => warning.code !== 'REGISTRATION_LIMIT');
     await prisma.productionScheduleDScheduleMinutesImportRun.update({
       where: { id: run.id }, data: { status: 'SUCCESS', autoRegisteredSeibans: ownership, warnings: nextWarnings as Prisma.InputJsonValue[] }
