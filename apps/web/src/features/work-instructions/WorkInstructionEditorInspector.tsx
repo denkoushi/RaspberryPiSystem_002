@@ -114,7 +114,7 @@ export function WorkInstructionEditorInspector({
                 step={0.5}
                 value={ratioToPercent(element.style?.fontSizeRatio ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO)}
                 className={WORK_INSTRUCTION_EDITOR_INPUT_CLASS_NAME}
-                onChange={(event) => patchTextStyle({ fontSizeRatio: clamp(percentToRatio(numberValue(event.target.value, (element.style?.fontSizeRatio ?? 0.025) * 100)), 0.005, 0.2) })}
+                onChange={(event) => patchTextStyle({ fontSizeRatio: clamp(percentToRatio(numberValue(event.target.value, (element.style?.fontSizeRatio ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO) * 100)), 0.005, 0.2) })}
               />
             </label>
             <label className="grid gap-0.5 text-sm font-semibold">
