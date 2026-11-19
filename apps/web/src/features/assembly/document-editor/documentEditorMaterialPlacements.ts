@@ -5,13 +5,16 @@ export type PendingMaterialPlacement = {
   materialId: string;
   employeeTagUid?: string;
   assetId?: string;
+  sharpenedAssetIds?: string[];
   fallbackAssetId?: string;
   rotatedAssetIds?: string[];
 };
 
 export function matchesMaterialPlacement(element: AssemblyProcedureOverlayElement, placement: PendingMaterialPlacement) {
-  return element.id === placement.elementId && (placement.assetId === undefined || (element.kind === 'IMAGE' &&
-    (element.assetId === placement.assetId || placement.rotatedAssetIds?.includes(element.assetId) === true)));
+  return element.id === placement.elementId && (placement.assetId === undefined ||
+    (element.kind === 'IMAGE' && (element.assetId === placement.assetId ||
+      placement.rotatedAssetIds?.includes(element.assetId) === true ||
+      placement.sharpenedAssetIds?.includes(element.assetId) === true)));
 }
 
 // Remove unplaced references from a draft or recovery record.

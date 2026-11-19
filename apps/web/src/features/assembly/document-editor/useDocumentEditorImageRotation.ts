@@ -71,12 +71,17 @@ export function useDocumentEditorImageRotation(session: Session) {
       for (const image of images) {
         const placement = pending.get(image.id);
         if (placement && matchesMaterialPlacement(image, placement)) {
-          pending.set(image.id, { ...placement, rotatedAssetIds: [...(placement.rotatedAssetIds ?? []), newAssetIds.get(image.id)!] });
+          const rotated = assets.get(image.assetId)!;
+          const rotatedAssetIds = [...(placement.rotatedAssetIds ?? []), rotated.assetId];
+          if (rotated.originalAsset) rotatedAssetIds.push(rotated.originalAsset.assetId);
+          pending.set(image.id, { ...placement, rotatedAssetIds });
         }
       }
+      const rotatedAssets = [...assets.values()].flatMap(({ originalAsset, ...asset }) =>
+        originalAsset ? [asset, originalAsset] : [asset]);
       current.setDocument(value => value ? {
         ...value,
-        assets: { ...value.assets, ...Object.fromEntries([...assets.values()].map(asset => [asset.assetId, asset])) }
+        assets: { ...value.assets, ...Object.fromEntries(rotatedAssets.map(asset => [asset.assetId, asset])) }
       } : value);
       current.dispatch({ type: 'rotateImage', id: photo.id, direction, newAssetIds, pageAspect });
     } catch (error) {

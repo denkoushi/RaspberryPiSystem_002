@@ -49,10 +49,10 @@ const revisionDocumentInclude = {
       { createdAt: 'asc' as const }
     ],
     include: {
-      asset: true
+      asset: { include: { derivedFromAsset: true } }
     }
   },
-  ownedAssets: true,
+  ownedAssets: { include: { derivedFromAsset: true } },
   procedureVideoLinks: procedureVideoLinksInclude,
   procedureManualApprovals: procedureManualApprovalInclude,
   revisionMetadata: true
@@ -426,11 +426,13 @@ export class AssemblyProcedureDocumentRevisionService {
       const imageAssetIds = normalized
         .filter((element): element is Extract<typeof element, { kind: 'IMAGE' }> => element.kind === 'IMAGE')
         .map((element) => element.assetId);
+      const originalAssetIds: string[] = [];
       if (imageAssetIds.length > 0) {
         const assets = await tx.assemblyProcedureAsset.findMany({
           where: { id: { in: [...new Set(imageAssetIds)] }, kind: 'OVERLAY_IMAGE' },
           select: {
             id: true,
+            derivedFromAssetId: true,
             ownerDocumentId: true,
             ownerDocument: {
               select: { id: true, status: true, isActive: true }
@@ -439,6 +441,9 @@ export class AssemblyProcedureDocumentRevisionService {
         });
         if (assets.length !== new Set(imageAssetIds).size) {
           throw new ApiError(400, 'overlay画像assetが存在しません');
+        }
+        for (const { derivedFromAssetId } of assets) {
+          if (derivedFromAssetId) originalAssetIds.push(derivedFromAssetId);
         }
         const conflictingLease = findConflictingAssemblyProcedureAssetLease(
           doc.id,
@@ -455,10 +460,12 @@ export class AssemblyProcedureDocumentRevisionService {
       }
       const previousImageElements = await tx.assemblyProcedureOverlayElement.findMany({
         where: { documentId: doc.id, kind: 'IMAGE' },
-        select: { assetId: true }
+        select: { assetId: true, asset: { select: { derivedFromAssetId: true } } }
       });
       replacedAssetIds = [...new Set(
         previousImageElements
+          // Leave the detached variant to scheduled GC so it remains available to editor history.
+          .filter(({ asset }) => !asset?.derivedFromAssetId || !imageAssetIds.includes(asset.derivedFromAssetId))
           .map((element) => element.assetId)
           .filter((assetId): assetId is string => assetId != null)
       )];
@@ -471,6 +478,13 @@ export class AssemblyProcedureDocumentRevisionService {
       if (imageAssetIds.length > 0) {
         await tx.assemblyProcedureAsset.updateMany({
           where: { id: { in: [...new Set(imageAssetIds)] }, kind: 'OVERLAY_IMAGE' },
+          data: { ownerDocumentId: null }
+        });
+      }
+      if (originalAssetIds.length > 0) {
+        // A photo sharpened before its first save also becomes shareable through its derivative.
+        await tx.assemblyProcedureAsset.updateMany({
+          where: { id: { in: originalAssetIds }, ownerDocumentId: doc.id },
           data: { ownerDocumentId: null }
         });
       }

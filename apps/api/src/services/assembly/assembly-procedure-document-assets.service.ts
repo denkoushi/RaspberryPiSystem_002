@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
 import type { Prisma } from '@prisma/client';
-import { projectOverlayBBoxToCrop, type OverlayRegionImage } from '@raspi-system/shared-types';
+import { projectOverlayBBoxToCrop, type AssemblyProcedureOverlayAssetMetadata, type OverlayRegionImage } from '@raspi-system/shared-types';
 import { assemblyProcedureAssetRoiToPixels, type AssemblyProcedureAssetPixelRoi } from '../assembly-procedure-assets/assembly-procedure-asset-roi.js';
 import { composeRegionImage, composeRegionRgb } from '../assembly-procedure-assets/assembly-procedure-region-image.js';
 import { padPixels, pixelsToBox, selectRewriteText, unionBoxes } from '../assembly-procedure-assets/assembly-procedure-text-rewrite.js';
@@ -26,6 +26,7 @@ import {
 } from '../assembly-procedure-assets/index.js';
 import type {
   AssemblyProcedureAssetStoragePort,
+  StoredAssemblyProcedureAsset,
   AssemblyProcedureTextCandidate,
   AssemblyProcedureTextCandidatePort
 } from '../assembly-procedure-assets/index.js';
@@ -34,6 +35,7 @@ import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-imag
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
+import { readableOverlayAssets, rotateOverlayImageBytes } from './assembly-procedure-overlay-image-access.js';
 
 export type AssemblyProcedureRegionBBox = {
   xRatio: number;
@@ -42,13 +44,9 @@ export type AssemblyProcedureRegionBBox = {
   heightRatio: number;
 };
 
-export type AssemblyProcedureOverlayAssetDto = {
-  assetId: string;
-  storageKey: string;
+export type AssemblyProcedureOverlayAssetDto = AssemblyProcedureOverlayAssetMetadata & {
   relativeUrl: string;
   sha256: string;
-  byteSize: number;
-  contentType: string;
   kind: 'OVERLAY_IMAGE';
 };
 
@@ -60,15 +58,23 @@ export type AssemblyProcedureDocumentAssetsServiceDeps = {
   accessService?: AssemblyTemplateAccessService;
 };
 
-type EditableAssetParams = AssemblyProcedureEditActor & {
+type DocumentEditParams = AssemblyProcedureEditActor & {
   documentId: string;
   accessPassword?: string;
 };
 
-type RegionParams = EditableAssetParams & {
+type RegionParams = DocumentEditParams & {
   pageIndex: number;
   bbox: AssemblyProcedureRegionBBox;
   overlays?: OverlayRegionImage[];
+};
+
+const PHOTO_SHARPEN_OPTIONS = { sigma: 1.2, m1: 1, m2: 2.5 };
+const PHOTO_SHARPEN_OUTPUT = {
+  'image/jpeg': (image: ReturnType<typeof sharp>) => image.jpeg({ quality: 92 }),
+  'image/png': (image: ReturnType<typeof sharp>) => image.png(),
+  'image/webp': (image: ReturnType<typeof sharp>) => image.webp(),
+  'image/tiff': (image: ReturnType<typeof sharp>) => image.tiff()
 };
 
 const FULL_PAGE = { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 };
@@ -121,14 +127,7 @@ function assertBytes(buffer: Buffer): void {
   }
 }
 
-function mapAsset(saved: {
-  assetId: string;
-  storageKey: string;
-  relativeUrl: string;
-  sha256: string;
-  size: number;
-  contentType: string;
-}): AssemblyProcedureOverlayAssetDto {
+function mapAsset(saved: StoredAssemblyProcedureAsset): AssemblyProcedureOverlayAssetDto {
   return {
     assetId: saved.assetId,
     storageKey: saved.storageKey,
@@ -238,80 +237,23 @@ export class AssemblyProcedureDocumentAssetsService {
     return AssemblyProcedureImageStorage.readImage(await this.pageImagePath(documentId, pageIndex));
   }
 
-  private async lockEditableDocument(params: EditableAssetParams, db: Prisma.TransactionClient) {
+  private async lockEditableDocument(params: DocumentEditParams, db: Prisma.TransactionClient) {
     await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
     await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
     return this.assertEditable(params.documentId, params.accessPassword, db, params);
   }
 
-  async uploadOverlayImage(params: EditableAssetParams & {
+  async uploadOverlayImage(params: DocumentEditParams & {
     bytes: Buffer;
     contentType: string;
     originalFileName?: string | null;
   }, db?: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
     if (!db) return runAssemblyTransaction((tx) => this.uploadOverlayImage(params, tx));
     await this.lockEditableDocument(params, db);
-    return this.saveOverlayImage(params, db);
-  }
-
-  async rotateOverlayImage(params: EditableAssetParams & {
-    assetId: string;
-    direction: 'left' | 'right';
-  }): Promise<AssemblyProcedureOverlayAssetDto> {
-    return runAssemblyTransaction(async (db) => {
-      const editable = await this.lockEditableDocument(params, db);
-      const [source] = await this.readableOverlayAssets(
-        params.documentId, editable.revisionMetadata!.revisionRootId, [params.assetId], db
-      );
-      const original = await this.storage.read(source);
-      assertBytes(original);
-      let bytes: Buffer;
-      let contentType: string;
-      try {
-        const image = sharp(original, { limitInputPixels: 40_000_000 });
-        const { format } = await image.metadata();
-        const rotated = image.autoOrient().rotate(params.direction === 'left' ? -90 : 90).keepIccProfile();
-        switch (format) {
-          case 'png': bytes = await rotated.png().toBuffer(); break;
-          case 'jpeg': bytes = await rotated.jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toBuffer(); break;
-          case 'webp': bytes = await rotated.webp({ lossless: true }).toBuffer(); break;
-          case 'tiff': bytes = await rotated.tiff({ compression: 'deflate' }).toBuffer(); break;
-          default: throw new ApiError(400, 'overlay画像はJPEG/PNG/WebP/TIFFのみ対応しています');
-        }
-        contentType = `image/${format}`;
-      } catch (error) {
-        if (error instanceof ApiError) throw error;
-        throw new ApiError(400, 'overlay画像を読み込めません');
-      }
-      return this.saveOverlayImage({ documentId: params.documentId, bytes, contentType }, db);
-    });
-  }
-
-  private async saveOverlayImage(params: {
-    documentId: string;
-    bytes: Buffer;
-    contentType: string;
-    originalFileName?: string | null;
-  }, db: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
-    assertBytes(params.bytes);
-    const contentType = params.contentType.trim().toLowerCase();
-    const saved = await this.storage.save({
-      data: params.bytes,
-      contentType,
-      extension: extensionForContentType(contentType)
-    });
+    const saved = await this.saveOverlayBlob(params.bytes, params.contentType);
     try {
-      await db.assemblyProcedureAsset.create({
-        data: {
-          id: saved.assetId,
-          kind: 'OVERLAY_IMAGE',
-          storageKey: saved.storageKey,
-          sha256: saved.sha256,
-          byteSize: saved.size,
-          contentType: saved.contentType,
-          ownerDocumentId: params.documentId,
-          originalFileName: params.originalFileName?.trim() || null
-        }
+      await this.createOwnedOverlayAsset(saved, params.documentId, db, {
+        originalFileName: params.originalFileName?.trim() || null
       });
       return mapAsset(saved);
     } catch (error) {
@@ -320,34 +262,124 @@ export class AssemblyProcedureDocumentAssetsService {
     }
   }
 
-  private async readableOverlayAssets(
+  private saveOverlayBlob(bytes: Buffer, inputContentType: string) {
+    assertBytes(bytes);
+    const contentType = inputContentType.trim().toLowerCase();
+    return this.storage.save({ data: bytes, contentType, extension: extensionForContentType(contentType) });
+  }
+
+  private createOwnedOverlayAsset(
+    saved: StoredAssemblyProcedureAsset,
     documentId: string,
-    revisionRootId: string,
-    ids: string[],
-    db: Prisma.TransactionClient
+    db: Prisma.TransactionClient,
+    metadata: Pick<Prisma.AssemblyProcedureAssetUncheckedCreateInput, 'originalFileName' | 'derivedFromAssetId' | 'width' | 'height'>
   ) {
-    const assets = await db.assemblyProcedureAsset.findMany({
-      where: { id: { in: ids }, kind: 'OVERLAY_IMAGE' },
-      select: { id: true, ownerDocumentId: true, storageKey: true, contentType: true }
+    return db.assemblyProcedureAsset.create({
+      data: {
+        ...metadata,
+        id: saved.assetId,
+        kind: 'OVERLAY_IMAGE',
+        storageKey: saved.storageKey,
+        sha256: saved.sha256,
+        byteSize: saved.size,
+        contentType: saved.contentType,
+        ownerDocumentId: documentId
+      }
     });
-    const unownedIds = assets.filter((asset) => asset.ownerDocumentId !== documentId).map((asset) => asset.id);
-    const references = unownedIds.length ? await db.assemblyProcedureOverlayElement.findMany({
-      where: {
-        assetId: { in: unownedIds },
-        kind: 'IMAGE',
-        document: { revisionMetadata: { is: { revisionRootId } } }
-      },
-      select: { assetId: true },
-      distinct: ['assetId']
-    }) : [];
-    const referencedIds = new Set(references.map(({ assetId }) => assetId));
-    // Released assets must still be referenced by a saved IMAGE in this revision family.
-    if (assets.length !== ids.length || assets.some((asset) =>
-      (asset.ownerDocumentId !== documentId && !referencedIds.has(asset.id)) ||
-      !asset.contentType.startsWith('image/'))) {
-      throw new ApiError(400, 'overlay画像assetが存在しないか、この文書では使用できません');
+  }
+
+  async sharpenOverlayImage(params: DocumentEditParams & { assetId: string }) {
+    let saved: StoredAssemblyProcedureAsset | undefined;
+    try {
+      return await runAssemblyTransaction(async (db) => {
+        await this.lockEditableDocument(params, db);
+        const source = await db.assemblyProcedureAsset.findFirst({
+          where: {
+            id: params.assetId,
+            kind: 'OVERLAY_IMAGE',
+            OR: [
+              { ownerDocumentId: params.documentId },
+              { overlayElements: { some: { documentId: params.documentId, kind: 'IMAGE' } } },
+              // Restored in the editor but not saved yet: the draft still points at its sharpened copy.
+              {
+                derivedAssets: {
+                  some: {
+                    OR: [
+                      { ownerDocumentId: params.documentId },
+                      { overlayElements: { some: { documentId: params.documentId, kind: 'IMAGE' } } }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          select: { id: true, storageKey: true, contentType: true, derivedFromAssetId: true }
+        });
+        if (!source) throw new ApiError(404, 'この下書きの画像が見つかりません');
+        if (source.derivedFromAssetId) throw new ApiError(409, 'この写真はすでにくっきり処理されています');
+        // Hold the source row through the FK insert, including while Sharp reads the blob.
+        const locked = await db.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "AssemblyProcedureAsset" WHERE "id" = ${source.id} FOR KEY SHARE
+        `;
+        if (!locked.length) throw new ApiError(404, 'この下書きの画像が見つかりません');
+        const contentType = source.contentType;
+        if (!Object.hasOwn(PHOTO_SHARPEN_OUTPUT, contentType)) {
+          throw new ApiError(400, 'この画像形式はくっきり処理に対応していません');
+        }
+        const bytes = await this.storage.read(source);
+        assertBytes(bytes);
+        const image = sharp(bytes, { limitInputPixels: 40_000_000 }).rotate().sharpen(PHOTO_SHARPEN_OPTIONS);
+        const output = PHOTO_SHARPEN_OUTPUT[contentType as keyof typeof PHOTO_SHARPEN_OUTPUT](image);
+        const { data, info } = await output.toBuffer({ resolveWithObject: true }).catch((error: unknown) => {
+          const message = error instanceof Error && error.message.includes('Input image exceeds pixel limit')
+            ? '画像の画素数が大きすぎます' : '写真をくっきりできませんでした';
+          throw new ApiError(400, message);
+        });
+        saved = await this.saveOverlayBlob(data, contentType);
+        await this.createOwnedOverlayAsset(saved, params.documentId, db, {
+          derivedFromAssetId: source.id, width: info.width, height: info.height
+        });
+        return { ...mapAsset(saved), derivedFromAssetId: source.id };
+      });
+    } catch (error) {
+      if (saved) await this.storage.delete(saved).catch(() => undefined);
+      throw error;
     }
-    return assets;
+  }
+
+  async rotateOverlayImage(params: DocumentEditParams & {
+    assetId: string;
+    direction: 'left' | 'right';
+  }): Promise<AssemblyProcedureOverlayAssetDto & { originalAsset?: AssemblyProcedureOverlayAssetDto }> {
+    const savedBlobs: StoredAssemblyProcedureAsset[] = [];
+    try {
+      return await runAssemblyTransaction(async (db) => {
+        const editable = await this.lockEditableDocument(params, db);
+        const [source] = await readableOverlayAssets(
+          params.documentId, editable.revisionMetadata!.revisionRootId, [params.assetId], db
+        );
+        const rotateAsset = async (input: { storageKey: string }, derivedFromAssetId?: string) => {
+          const saved = await this.rotateOverlayBlob(input, params.direction);
+          savedBlobs.push(saved);
+          await this.createOwnedOverlayAsset(saved, params.documentId, db, { derivedFromAssetId });
+          return mapAsset(saved);
+        };
+        // Restore must keep the new orientation even when sharpening is turned off.
+        const originalAsset = source.derivedFromAsset ? await rotateAsset(source.derivedFromAsset) : undefined;
+        const rotated = await rotateAsset(source, originalAsset?.assetId);
+        return originalAsset ? { ...rotated, derivedFromAssetId: originalAsset.assetId, originalAsset } : rotated;
+      });
+    } catch (error) {
+      await Promise.allSettled(savedBlobs.map(saved => this.storage.delete(saved)));
+      throw error;
+    }
+  }
+
+  private async rotateOverlayBlob(source: { storageKey: string }, direction: 'left' | 'right') {
+    const original = await this.storage.read(source);
+    assertBytes(original);
+    const { bytes, contentType } = await rotateOverlayImageBytes(original, direction);
+    return this.saveOverlayBlob(bytes, contentType);
   }
 
   private async regionAssets(
@@ -359,7 +391,7 @@ export class AssemblyProcedureDocumentAssetsService {
   ): Promise<Map<string, string>> {
     if (!overlays.length) return new Map();
     const ids = [...new Set(overlays.map(({ assetId }) => assetId))];
-    const assets = await this.readableOverlayAssets(documentId, revisionRootId, ids, db);
+    const assets = await readableOverlayAssets(documentId, revisionRootId, ids, db);
     const intersectingIds = new Set(overlays
       .filter(({ bbox }) => projectOverlayBBoxToCrop(bbox, roi) !== null)
       .map(({ assetId }) => assetId));

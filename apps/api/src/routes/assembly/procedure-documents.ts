@@ -1,7 +1,6 @@
 import { videosForPage, type ProcedureVideoPageLink } from '../../services/assembly/procedure-video.service.js';
-import { serializeLastProcedureManualApproval, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
+import { serializeAssemblyProcedureAssets, serializeLastProcedureManualApproval, type ProcedureAssetWithOriginal, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
 import type { MultipartFile } from '@fastify/multipart';
-import type { AssemblyProcedureAsset } from '@prisma/client';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
@@ -14,7 +13,6 @@ import { convertDrawingUploadToPreviewBuffer } from '../../lib/part-measurement-
 import {
   AssemblyProcedureDocumentService,
   AssemblyProcedureDraftImportService,
-  assemblyProcedureAssetUrl,
   serializeAssemblyProcedureOverlayElement,
   type AssemblyProcedureDocumentSummary,
   type AssemblyProcedureGmailImportService
@@ -48,9 +46,9 @@ type ProcedureDocumentLike = {
     pageIndex: number;
     imageRelativePath: string;
   }>;
-  overlayElements?: Parameters<typeof serializeAssemblyProcedureOverlayElement>[0][];
+  overlayElements?: Array<Parameters<typeof serializeAssemblyProcedureOverlayElement>[0] & { asset: ProcedureAssetWithOriginal | null }>;
   procedureVideoLinks?: ProcedureVideoPageLink[];
-  ownedAssets?: Array<Pick<AssemblyProcedureAsset, 'id' | 'storageKey' | 'contentType' | 'byteSize'>>;
+  ownedAssets?: ProcedureAssetWithOriginal[];
 };
 
 export type AssemblyProcedureDocumentRouteOptions = {
@@ -62,33 +60,9 @@ export type AssemblyProcedureDocumentRouteOptions = {
 };
 
 export function serializeProcedureDocument(doc: ProcedureDocumentLike) {
-  const assets: Record<string, {
-    assetId: string;
-    storageKey: string;
-    contentType: string;
-    byteSize: number;
-    url: string;
-  }> = {};
-  for (const asset of doc.ownedAssets ?? []) {
-    assets[asset.id] = {
-      assetId: asset.id,
-      storageKey: asset.storageKey,
-      contentType: asset.contentType,
-      byteSize: asset.byteSize,
-      url: assemblyProcedureAssetUrl(asset.id, asset.storageKey)
-    };
-  }
+  const assets = serializeAssemblyProcedureAssets(doc);
   const overlaysByPage = new Map<number, ReturnType<typeof serializeAssemblyProcedureOverlayElement>[]>();
   for (const overlay of doc.overlayElements ?? []) {
-    if (overlay.asset) {
-      assets[overlay.asset.id] = {
-        assetId: overlay.asset.id,
-        storageKey: overlay.asset.storageKey,
-        contentType: overlay.asset.contentType,
-        byteSize: overlay.asset.byteSize,
-        url: assemblyProcedureAssetUrl(overlay.asset.id, overlay.asset.storageKey)
-      };
-    }
     const values = overlaysByPage.get(overlay.pageIndex) ?? [];
     values.push(serializeAssemblyProcedureOverlayElement(overlay));
     overlaysByPage.set(overlay.pageIndex, values);

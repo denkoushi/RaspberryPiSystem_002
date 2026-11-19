@@ -27,7 +27,10 @@ export function historyReducer(state: OverlayHistory, action: OverlayHistoryActi
   if ((action.type === 'undo' || action.type === 'redo') && (action.restoredMaterials || action.failedMaterials)) {
     const restore = (items: AssemblyProcedureOverlayElement[]) => removeMaterialPlacements(items.map(element => {
       const update = action.restoredMaterials?.find(item => matchesMaterialPlacement(element, item.placement));
-      return update?.assetId && element.kind === 'IMAGE' && element.assetId === update.placement.assetId ? { ...element, assetId: update.assetId } : element;
+      return update?.assetId && element.kind === 'IMAGE' &&
+        !update.placement.rotatedAssetIds?.includes(element.assetId) &&
+        !update.placement.sharpenedAssetIds?.includes(element.assetId)
+        ? { ...element, assetId: update.assetId } : element;
     }), action.failedMaterials ?? []);
     state = { ...state, present: restore(state.present), past: state.past.map(restore), future: state.future.map(restore) };
   }

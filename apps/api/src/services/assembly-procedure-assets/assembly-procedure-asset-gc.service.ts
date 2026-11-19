@@ -83,6 +83,11 @@ export class PrismaAssemblyProcedureAssetGcRepository
             FROM "AssemblyProcedureDocumentRevision" revision
             WHERE revision."sourceAssetId" = a."id"
           )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "AssemblyProcedureAsset" derived
+            WHERE derived."derivedFromAssetId" = a."id"
+          )
           AND (
             a."ownerDocumentId" IS NULL
             OR owner."id" IS NULL
@@ -103,6 +108,11 @@ export class PrismaAssemblyProcedureAssetGcRepository
         const rows = await tx.$queryRaw<AssemblyProcedureAssetGcCandidate[]>(Prisma.sql`
           DELETE FROM "AssemblyProcedureAsset"
           WHERE "id" = ${candidate.id}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "AssemblyProcedureAsset" derived
+              WHERE derived."derivedFromAssetId" = ${candidate.id}
+            )
           RETURNING "id", "storageKey"
         `);
         if (rows[0]) deleted.push(rows[0]);

@@ -104,6 +104,7 @@ function buildHarness() {
     discardRevision: vi.fn(async () => makeRevision())
   };
   const assetsService = {
+    sharpenOverlayImage: vi.fn<AssemblyProcedureDocumentAssetsService['sharpenOverlayImage']>(),
     uploadOverlayImage: vi.fn(async () => ({
       assetId: 'asset-uploaded',
       storageKey: 'assembly-procedure-assets/asset-uploaded.png',
@@ -455,6 +456,46 @@ describe('assembly procedure revision routes', () => {
       documentId,
       ...region
     });
+  });
+
+  const photoAssetId = '00000000-0000-4000-8000-000000000003';
+  const sharpenRequest = {
+    method: 'POST' as const,
+    url: `/assembly/procedure-documents/${documentId}/assets/${photoAssetId}/sharpen`,
+    payload: { accessPassword: '2520' },
+    headers: { 'x-procedure-edit-token': 'lease-token' }
+  };
+
+  it('returns the derived asset and forwards the password and edit token', async () => {
+    const harness = buildHarness();
+    app = harness.app;
+    const asset = { ...await harness.assetsService.uploadOverlayImage(), derivedFromAssetId: photoAssetId };
+    harness.assetsService.sharpenOverlayImage.mockResolvedValue(asset);
+    const allowWriteKiosk = vi.fn(async () => undefined);
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk }, harness.service as never, harness.assetsService as never);
+
+    const response = await app.inject(sharpenRequest);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ asset });
+    expect(allowWriteKiosk).toHaveBeenCalledOnce();
+    expect(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).toHaveBeenCalledWith(documentId, null, undefined, 'lease-token');
+    expect(harness.assetsService.sharpenOverlayImage).toHaveBeenCalledWith(expect.objectContaining({
+      documentId, assetId: photoAssetId, accessPassword: '2520', holderToken: 'lease-token'
+    }));
+  });
+
+  it.each([
+    [409, 'この写真はすでにくっきり処理されています'],
+    [404, 'この下書きの画像が見つかりません']
+  ])('returns HTTP %d when the asset cannot be sharpened', async (status, message) => {
+    const harness = buildHarness();
+    app = harness.app;
+    harness.assetsService.sharpenOverlayImage.mockRejectedValue(new ApiError(status, message));
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+
+    const response = await app.inject(sharpenRequest);
+    expect(response.statusCode).toBe(status);
+    expect(response.json()).toMatchObject({ message });
   });
 
   it('returns the text rewrite patch and forwards the edit token', async () => {
