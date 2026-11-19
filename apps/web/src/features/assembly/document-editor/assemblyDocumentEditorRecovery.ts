@@ -54,8 +54,9 @@ export function writeAssemblyDocumentEditorRecovery(
   record: AssemblyDocumentEditorRecoveryRecord
 ): void {
   // Employee tag authorization belongs only to the current in-memory history.
-  const materialPlacements = record.materialPlacements?.map(({ elementId, materialId, assetId, fallbackAssetId }) => ({
-    elementId, materialId, ...(assetId !== undefined ? { assetId } : {}), ...(fallbackAssetId !== undefined ? { fallbackAssetId } : {})
+  const materialPlacements = record.materialPlacements?.map(({ elementId, materialId, assetId, fallbackAssetId, sharpenedAssetIds }) => ({
+    elementId, materialId, ...(assetId !== undefined ? { assetId } : {}), ...(fallbackAssetId !== undefined ? { fallbackAssetId } : {}),
+    ...(sharpenedAssetIds?.length ? { sharpenedAssetIds } : {})
   }));
   storage.setItem(assemblyDocumentEditorRecoveryKey(record.documentId), JSON.stringify({ ...record, materialPlacements }));
 }

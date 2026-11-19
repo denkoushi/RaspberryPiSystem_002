@@ -8,7 +8,9 @@ import {
   INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX
 } from './inspectionDrawingCanvasPointer';
 import { InspectionDrawingPlaceCalloutModeRow } from './InspectionDrawingPlaceCalloutModeRow';
+import { createInspectionDrawingCalloutDimsChangeHandler } from './useInspectionDrawingDimensionModeReset';
 
+import type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
 import type { DrawingProposalMarker } from './proposalToDrawingPoint';
 import type { InspectionDrawingPoint } from './types';
 
@@ -98,12 +100,14 @@ function renderCanvas({
   onProposalMove,
   points = [point],
   selectedPointId = null,
-  onCalloutDimsChange
+  onCalloutDimsChange,
+  onCalloutDimsAdjust
 }: {
   mode?: 'place' | 'callout' | 'dimX' | 'dimY' | 'test';
   points?: InspectionDrawingPoint[];
   selectedPointId?: string | null;
   onCalloutDimsChange?: ReturnType<typeof vi.fn>;
+  onCalloutDimsAdjust?: ReturnType<typeof vi.fn>;
   zoom?: number;
   onAddPoint?: ReturnType<typeof vi.fn>;
   onPointChange?: ReturnType<typeof vi.fn>;
@@ -126,6 +130,7 @@ function renderCanvas({
       zoom={zoom}
       selectedPointId={selectedPointId}
       onCalloutDimsChange={onCalloutDimsChange}
+      onCalloutDimsAdjust={onCalloutDimsAdjust}
       onSelectPoint={vi.fn()}
       onAddPoint={onAddPoint}
       onPointChange={withPointChange ? onPointChange : undefined}
@@ -494,17 +499,28 @@ describe('InspectionDrawingCanvas marker dragging', () => {
       yRatio: expect.closeTo(2 / 3)
     });
   });
-  it('places a dimension through 寸法 → X → drawing pointer tap without snapping', () => {
-    const onChange = vi.fn();
+  it('places X without snapping, adjusts it in dimY, then returns to place after placing Y', () => {
+    const onPlace = vi.fn();
+    const onAdjust = vi.fn();
     function Editor() {
-      const [mode, setMode] = useState<'place' | 'callout' | 'dimX' | 'dimY'>('place');
-      const [points, setPoints] = useState([{ ...point, calloutTipXRatio: 0.8, calloutTipYRatio: 0.7 }]);
+      const [mode, setMode] = useState<InspectionDrawingToolbarMode>('place');
+      const [selectedPoint, setSelectedPoint] = useState<InspectionDrawingPoint>({
+        ...point, calloutTipXRatio: 0.8, calloutTipYRatio: 0.7
+      });
+      const updatePoint = (_id: string, patch: Partial<InspectionDrawingPoint>) => {
+        setSelectedPoint((previous) => ({ ...previous, ...patch }));
+      };
+      const placeDims = createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint);
       return <>
         <InspectionDrawingPlaceCalloutModeRow mode={mode} onModeChange={setMode} hasDrawingImage hasMeasurementPoints
-          calloutStatus={{ hasCallout: true, onClear: vi.fn() }} />
-        <InspectionDrawingCanvas imageUrl="/drawing.svg" points={points} mode={mode} selectedPointId={point.id}
+          calloutStatus={{ hasCallout: true, dims: selectedPoint.calloutDims, onRemove: vi.fn() }} />
+        <InspectionDrawingCanvas imageUrl="/drawing.svg" points={[selectedPoint]} mode={mode === 'guidedTrial' ? 'test' : mode} selectedPointId={point.id}
           onSelectPoint={vi.fn()} onCalloutDimsChange={(id, dims) => {
-            onChange(id, dims); setPoints((prev) => prev.map((p) => ({ ...p, calloutDims: dims }))); setMode('place');
+            onPlace(id, dims);
+            placeDims(id, dims);
+          }} onCalloutDimsAdjust={(id, dims) => {
+            onAdjust(id, dims);
+            updatePoint(id, { calloutDims: dims });
           }} />
       </>;
     }
@@ -519,10 +535,34 @@ describe('InspectionDrawingCanvas marker dragging', () => {
     fireEvent.click(screen.getByRole('button', { name: 'X' }));
     fireEvent.pointerDown(viewport, { pointerId: 10, button: 0, clientX: 253, clientY: 237 });
     fireEvent.pointerUp(viewport, { pointerId: 10, button: 0, clientX: 253, clientY: 237 });
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith(point.id, [{ dir: 'x', baseXRatio: 243 / 800,
-      baseYRatio: 217 / 600, offsetRatio: 217 / 600 - 45 / 640 }]);
-    expect(viewport.querySelectorAll('[data-dimension] line')).toHaveLength(3);
+    const x = { dir: 'x', baseXRatio: 243 / 800, baseYRatio: 217 / 600, offsetRatio: 217 / 600 - 45 / 640 };
+    expect(onPlace).toHaveBeenCalledTimes(1);
+    expect(onPlace).toHaveBeenLastCalledWith(point.id, [x]);
+    expect(screen.getByRole('button', { name: 'Y' })).toHaveAttribute('aria-pressed', 'true');
+
+    const svg = screen.getByLabelText('寸法線');
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue(viewportRect);
+    const handle = screen.getByLabelText('X寸法位置');
+    expect(svg).toHaveClass('pointer-events-none', 'z-30');
+    expect(handle).toHaveClass('pointer-events-auto');
+    fireEvent.pointerDown(handle, { pointerId: 11, button: 0, clientX: 410, clientY: 200 });
+    fireEvent.pointerUp(handle, { pointerId: 11, button: 0, clientX: 410, clientY: 200 });
+    expect(onPlace).toHaveBeenCalledTimes(1);
+    expect(onAdjust).not.toHaveBeenCalled();
+    fireEvent.pointerDown(handle, { pointerId: 12, button: 0, clientX: 410, clientY: 200 });
+    fireEvent.pointerMove(handle, { pointerId: 12, clientX: 410, clientY: 230 });
+    fireEvent.pointerUp(handle, { pointerId: 12, clientX: 410, clientY: 230 });
+    const adjustedX = { ...x, offsetRatio: expect.closeTo(x.offsetRatio + 30 / 600) };
+    expect(onAdjust).toHaveBeenCalledExactlyOnceWith(point.id, [adjustedX]);
+    expect(onPlace).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Y' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '寸法Yを削除' })).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(viewport, { pointerId: 13, button: 0, clientX: 580, clientY: 400 });
+    fireEvent.pointerUp(viewport, { pointerId: 13, button: 0, clientX: 580, clientY: 400 });
+    expect(onPlace).toHaveBeenCalledTimes(2);
+    expect(onPlace).toHaveBeenLastCalledWith(point.id, [adjustedX, expect.objectContaining({ dir: 'y' })]);
+    expect(screen.getByRole('button', { name: '丸数字' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('replaces only the chosen dimension direction', () => {
@@ -537,11 +577,11 @@ describe('InspectionDrawingCanvas marker dragging', () => {
       baseYRatio: 0.5, offsetRatio: 0.5 - 45 / 640 }]);
   });
 
-  it('updates only the dragged SVG dimension and commits once after 4px', () => {
-    const onCalloutDimsChange = vi.fn();
+  it.each(['place', 'dimX', 'dimY'] as const)('updates only the dragged SVG dimension in %s and commits once after 4px', (mode) => {
+    const onCalloutDimsAdjust = vi.fn();
     const x = { dir: 'x' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 };
     const y = { ...x, dir: 'y' as const, offsetRatio: 0.9 };
-    const { viewport } = renderCanvas({ selectedPointId: point.id, onCalloutDimsChange,
+    const { viewport } = renderCanvas({ mode, selectedPointId: point.id, onCalloutDimsAdjust,
       points: [{ ...point, calloutTipXRatio: 0.8, calloutTipYRatio: 0.7, calloutDims: [x, y] }] });
     const svg = screen.getByLabelText('寸法線');
     const getRect = vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue(viewportRect);
@@ -558,19 +598,18 @@ describe('InspectionDrawingCanvas marker dragging', () => {
     flushAnimationFrames();
     expect(xGroup.innerHTML).not.toBe(originalX);
     expect(yGroup.innerHTML).toBe(originalY);
-    expect(onCalloutDimsChange).not.toHaveBeenCalled();
+    expect(onCalloutDimsAdjust).not.toHaveBeenCalled();
     fireEvent.pointerUp(handle, { pointerId: 12, clientX: 378, clientY: 64 });
-    expect(onCalloutDimsChange).toHaveBeenCalledTimes(1);
-    expect(onCalloutDimsChange).toHaveBeenCalledWith(point.id, [{ ...x, offsetRatio: 36 / 600 }, y]);
+    expect(onCalloutDimsAdjust).toHaveBeenCalledExactlyOnceWith(point.id, [{ ...x, offsetRatio: 36 / 600 }, y]);
     expect(getRect).toHaveBeenCalledTimes(1);
     expect(handle).toHaveAttribute('r', '21');
-    expect(svg).toHaveClass('z-20');
+    expect(svg).toHaveClass('z-30');
   });
 
   it('clamps a base handle to the image and restores cancelled drags', () => {
-    const onCalloutDimsChange = vi.fn();
+    const onCalloutDimsAdjust = vi.fn();
     const x = { dir: 'x' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 };
-    const { viewport } = renderCanvas({ selectedPointId: point.id, onCalloutDimsChange,
+    const { viewport } = renderCanvas({ selectedPointId: point.id, onCalloutDimsAdjust,
       points: [{ ...point, calloutTipXRatio: 0.8, calloutTipYRatio: 0.7, calloutDims: [x] }] });
     vi.spyOn(screen.getByLabelText('寸法線'), 'getBoundingClientRect').mockReturnValue(viewportRect);
     const handle = screen.getByLabelText('X寸法基準点');
@@ -583,7 +622,7 @@ describe('InspectionDrawingCanvas marker dragging', () => {
     expect(handle).toHaveAttribute('cy', '600');
     fireEvent.pointerCancel(handle, { pointerId: 13 });
     expect(group.innerHTML).toBe(original);
-    expect(onCalloutDimsChange).not.toHaveBeenCalled();
+    expect(onCalloutDimsAdjust).not.toHaveBeenCalled();
   });
 
   it('renders dimension lines without handles in a read-only canvas', () => {

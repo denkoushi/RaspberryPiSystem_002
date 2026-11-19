@@ -1,7 +1,7 @@
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
-import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision } from '../../../api/client';
+import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision, sharpenAssemblyProcedureOverlayImage } from '../../../api/client';
 import { DEFAULT_UNSAVED_NAVIGATION_MESSAGE, useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
@@ -445,6 +445,50 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectionMode(false);
   });
 
+  const selectedImageAssetId = selectedElement?.kind === 'IMAGE' ? selectedElement.assetId : undefined;
+  const originalPhotoAssetId = selectedImageAssetId ? document?.assets?.[selectedImageAssetId]?.derivedFromAssetId : undefined;
+  const canTogglePhotoSharpen = Boolean(selectedImageAssetId) && !conflict;
+  const isCurrentPhotoEdit = useEditorCallback((documentId: string, requestedDocumentId: string, holderToken: string | null, scope: number) =>
+    document?.id === documentId && input.documentId === requestedDocumentId &&
+    editLease.holderToken === holderToken && materialScope.current === scope && !readOnly && !conflict
+  );
+  const togglePhotoSharpen = useEditorCallback(async () => {
+    if (!document || selectedElement?.kind !== 'IMAGE' || !selectedImageAssetId ||
+        !canTogglePhotoSharpen || readOnly || busyRef.current) return;
+    if (originalPhotoAssetId) {
+      dispatch({ type: 'update', element: { ...selectedElement, assetId: originalPhotoAssetId } });
+      return;
+    }
+    const holderToken = editLease.holderToken;
+    const scope = materialScope.current;
+    const requestedDocumentId = input.documentId;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const asset = await sharpenAssemblyProcedureOverlayImage({
+        id: document.id, assetId: selectedImageAssetId, accessPassword: passwordInput, holderToken
+      });
+      if (!isCurrentPhotoEdit(document.id, requestedDocumentId, holderToken, scope)) return;
+      setDocument(current => current?.id === document.id
+        ? { ...current, assets: { ...current.assets, [asset.assetId]: asset } } : current);
+      const placement = pendingMaterials.current.get(selectedElement.id);
+      if (placement?.assetId === selectedImageAssetId) {
+        pendingMaterials.current.set(selectedElement.id, {
+          ...placement, sharpenedAssetIds: [...(placement.sharpenedAssetIds ?? []), asset.assetId]
+        });
+      }
+      dispatch({ type: 'update', element: { ...selectedElement, assetId: asset.assetId } });
+    } catch (error) {
+      if (isCurrentPhotoEdit(document.id, requestedDocumentId, holderToken, scope) && !onEditLeaseError(error)) {
+        const fallback = '写真をくっきりできませんでした。';
+        const status = isAxiosError(error) ? error.response?.status : undefined;
+        setErrorMessage(status && status < 500 ? readAssemblyApiErrorMessage(error, fallback) : fallback);
+      }
+    } finally {
+      setBusy(false);
+    }
+  });
+
   const beginOverlayDrag = useCallback(() => { if (!readOnly && !busyRef.current) dispatch({ type: 'beginDrag' }); }, [readOnly]);
   const endOverlayDrag = useCallback(() => dispatch({ type: 'endDrag' }), []);
   const { undo, redo } = useDocumentEditorHistoryCommands({ history, dispatch, materials, document, setDocument, passwordInput, holderToken: editLease.holderToken, readOnly, materialPlacementAllowed: !conflict && editLease.mine, get busy() { return busyRef.current; }, setBusy, setErrorMessage, onEditLeaseError });
@@ -500,6 +544,9 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     selectedOverlayId,
     setSelectedOverlayId: selectOverlay,
     selectedElement,
+    canTogglePhotoSharpen,
+    photoSharpened: Boolean(originalPhotoAssetId),
+    togglePhotoSharpen,
     elements,
     selectionMode: selectionMode && !readOnly,
     setSelectionMode: selectMode,

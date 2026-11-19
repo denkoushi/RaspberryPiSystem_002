@@ -18,6 +18,7 @@ const icons: Record<string, ReactNode> = {
   text: <path d="M5 6h14M12 6v13" />,
   shape: <><rect x="4" y="4" width="7" height="7" /><circle cx="16.5" cy="16.5" r="3.5" /></>,
   range: <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 3" />,
+  sharpen: <path d="M12 3l9 9-9 9-9-9zM9 12h6M12 9v6" />,
   layout: <><rect x="4" y="4" width="6" height="5" rx="1" /><rect x="4" y="13" width="6" height="5" rx="1" /><path d="M14 5h6M14 8h6M14 14h6M14 17h6" /></>,
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
   undo: <><path d="M9 5L4 10l5 5M4 10h9a6 6 0 016 6" /></>,
@@ -27,6 +28,7 @@ const icons: Record<string, ReactNode> = {
 export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, voiceInputEnabled, onToggleVoiceInput }: {
   controller: Pick<AssemblyProcedureDocumentEditorController,
     'readOnly' | 'busy' | 'canSave' | 'canPublish' | 'canUndo' | 'canRedo' |
+    'canTogglePhotoSharpen' | 'photoSharpened' | 'togglePhotoSharpen' |
     'selectionMode' | 'navigateBack' | 'save' | 'addOverlay' | 'setSelectionMode' | 'undo' | 'redo'> & {
       isDirty?: boolean;
       saving?: boolean;
@@ -60,6 +62,8 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
     {button('文字を置く', 'text', () => c.addOverlay('TEXT'), { disabled, pressed: c.selectedKind === 'TEXT' })}
     {button('図形を置く', 'shape', () => c.addOverlay('SHAPE'), { disabled, pressed: c.selectedKind === 'SHAPE' })}
     {button('範囲を選ぶ', 'range', () => c.setSelectionMode(!c.selectionMode), { disabled, pressed: c.selectionMode, target: 'assembly-document-editor-range-add' })}
+    {button(c.photoSharpened ? '元の写真に戻す' : '写真をくっきり', 'sharpen', () => void c.togglePhotoSharpen(),
+      { disabled: disabled || !c.canTogglePhotoSharpen, pressed: c.photoSharpened })}
     {button('整える', 'layout', () => void c.startLayout(), { disabled: disabled || !c.canSuggest, pressed: c.layoutLocked, color: '!border-[#5fc3e8] !text-[#5fc3e8]' })}
     {button('音声入力', 'mic', onToggleVoiceInput, { disabled, pressed: voiceInputEnabled, target: 'assembly-document-editor-voice-input', color: voiceInputEnabled ? '!border-[#7cc4ff] !bg-[#7cc4ff1f] !text-[#7cc4ff]' : undefined })}
     {separator}

@@ -1409,6 +1409,7 @@ export function KioskInspectionDrawingCreatePage() {
               onCalloutDimsChange={
                 contentReadOnly ? undefined : createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint)
               }
+              onCalloutDimsAdjust={contentReadOnly ? undefined : (id, dims) => updatePoint(id, { calloutDims: dims })}
               onSetCalloutTip={
                 contentReadOnly || mode !== 'callout' || !selectedPointId
                   ? undefined
