@@ -153,7 +153,7 @@ class FileStorageContractTest(unittest.TestCase):
             {entry["logical_key"] for entry in STORAGE_CONTRACT},
             {key for key in SERVER_MODEL["volumes"] if key in expected_keys},
         )
-        self.assertEqual(len(STORAGE_CONTRACT), 20)
+        self.assertEqual(len(STORAGE_CONTRACT), 21)
         self.assertTrue({"knowledge-assets-storage", "knowledge-git-storage"} <= expected_keys)
         for entry in STORAGE_CONTRACT:
             key = entry["logical_key"]
