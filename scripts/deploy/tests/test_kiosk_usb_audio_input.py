@@ -44,7 +44,7 @@ def test_pi4_kiosk_usb_audio_profile_policy():
     assert "'kiosk' in group_names" in shared["when"]
     assert "terminal_release_mode | default('full') == 'full'" in shared["when"]
 
-    _, install, restart = yaml.safe_load((kiosk / "tasks/usb-audio-input.yml").read_text())
+    _, install, deploy_user, restart = yaml.safe_load((kiosk / "tasks/usb-audio-input.yml").read_text())
     assert install["ansible.builtin.copy"] == {
         "src": config_name,
         "dest": f"/etc/wireplumber/wireplumber.conf.d/{config_name}",
@@ -52,7 +52,9 @@ def test_pi4_kiosk_usb_audio_profile_policy():
         "group": "root",
         "mode": "0644",
     }
-    assert restart["when"] == f"{install['register']}.changed"
+    assert restart["when"] == (
+        f"{install['register']}.changed or ({deploy_user['block'][2]['register']}.changed | default(false))"
+    )
     assert restart["become"] is True
     assert restart["become_user"] == "{{ kiosk_gui_user | default(ansible_user) }}"
     assert restart["ignore_errors"] is True
@@ -62,3 +64,30 @@ def test_pi4_kiosk_usb_audio_profile_policy():
         'if test -S "${XDG_RUNTIME_DIR}/bus" && pgrep -u "${uid}" -x labwc >/dev/null; then\n'
         "  systemctl --user restart wireplumber\n"
     ) in shell
+
+
+def test_pi4_deploy_account_does_not_own_alsa_devices():
+    kiosk = ROLES / "kiosk"
+    config_name = "90-kiosk-deploy-user-no-alsa.conf"
+    config = (kiosk / "files" / config_name).read_text()
+    assert config.startswith("#")
+    assert re.search(r"main\s*=\s*\{\s*monitor\.alsa\s*=\s*disabled\s*\}", config)
+
+    _, _, deploy_user, _ = yaml.safe_load((kiosk / "tasks/usb-audio-input.yml").read_text())
+    assert deploy_user["when"] == "(kiosk_gui_user | default(ansible_user)) != ansible_user"
+    lookup, directories, install, restart = deploy_user["block"]
+    assert lookup["ansible.builtin.getent"] == {"database": "passwd", "key": "{{ ansible_user }}"}
+    home = "{{ ansible_facts.getent_passwd[ansible_user][4] }}"
+    assert directories["loop"][-1] == ".config/wireplumber/wireplumber.conf.d"
+    assert directories["ansible.builtin.file"]["owner"] == "{{ ansible_user }}"
+    assert install["ansible.builtin.copy"] == {
+        "src": config_name,
+        "dest": f"{home}/.config/wireplumber/wireplumber.conf.d/{config_name}",
+        "owner": "{{ ansible_user }}",
+        "group": "{{ ansible_user }}",
+        "mode": "0644",
+    }
+    assert restart["when"] == f"{install['register']}.changed"
+    assert restart["become_user"] == "{{ ansible_user }}"
+    assert restart["ignore_errors"] is True
+    assert 'pgrep -u "${uid}" -x wireplumber' in restart["ansible.builtin.shell"]
