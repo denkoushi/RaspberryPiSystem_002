@@ -672,6 +672,8 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("api_sessaku_pieces_create_enabled | default(false)", bindings["SESSAKU_PIECES_CREATE_ENABLED"])
         # The DGX backup notice flag reaches the API the same way, off unless the inventory sets it
         self.assertIn("api_dgx_backup_notice_enabled | default(false)", bindings["DGX_BACKUP_NOTICE_ENABLED"])
+        # The procedure manual mail domain reaches the API the same way, empty (off) unless the inventory sets it
+        self.assertIn("assembly_procedure_mail_domain | default('')", bindings["ASSEMBLY_PROCEDURE_MAIL_DOMAIN"])
         self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
         self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
         self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")

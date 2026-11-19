@@ -147,6 +147,8 @@
     - { key: SESSAKU_PIECES_CREATE_ENABLED, value: "{{ api_sessaku_pieces_create_enabled | default(false) | bool | ternary('true', 'false') }}" }
     # DGX バックアップ失敗のお知らせ(既定 OFF)。inventory の値はここで渡さないと API に届かない
     - { key: DGX_BACKUP_NOTICE_ENABLED, value: "{{ api_dgx_backup_notice_enabled | default(false) | bool | ternary('true', 'false') }}" }
+    # 組立の要領書メールの宛先ドメイン(空なら機能オフ)。inventory の値はここで渡さないと API に届かない
+    - { key: ASSEMBLY_PROCEDURE_MAIL_DOMAIN, value: "{{ assembly_procedure_mail_domain | default('') }}" }
     - { key: TYPESAFE_API_KEY, value: "{{ hermes_search_typesafe_api_key | default('') }}" }
   no_log: true
 
