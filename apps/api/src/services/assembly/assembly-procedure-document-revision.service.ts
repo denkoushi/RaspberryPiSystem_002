@@ -35,6 +35,7 @@ import { resolveProcedureCaptionFeedback } from './procedure-caption-feedback.js
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { saveBlankProcedurePage } from './assembly-procedure-document-blank.service.js';
 import { deleteProcedurePageRows } from './assembly-procedure-document-page-delete.js';
+import { moveProcedurePageRows } from './assembly-procedure-document-page-move.js';
 import { copyProcedurePages, shiftProcedurePages } from './assembly-procedure-document-page-copy.js';
 
 const revisionDocumentInclude = {
@@ -370,6 +371,26 @@ export class AssemblyProcedureDocumentRevisionService {
     });
     await this.collectAssets(removedAssetIds);
     return result;
+  }
+
+  async movePage(params: PageInsertParams & { pageIndex: number; toPageIndex: number }): Promise<AssemblyProcedureDocumentRevisionRecord> {
+    await this.accessService.requireAccessPassword(params.accessPassword, params);
+    if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
+      throw new ApiError(400, 'expectedEditVersionが不正です');
+    }
+    const { pageIndex, toPageIndex } = params;
+    if ([pageIndex, toPageIndex].some(index => !Number.isInteger(index) || index < 0)) {
+      throw new ApiError(400, '並べ替えるページが不正です');
+    }
+    return runAssemblyTransaction(async tx => {
+      const doc = await this.lockEditableDocument(tx, params);
+      if (await moveProcedurePageRows(tx, doc.id, pageIndex, toPageIndex)) {
+        await tx.assemblyProcedureDocumentRevision.update({ where: { documentId: doc.id }, data: { editVersion: { increment: 1 } } });
+      }
+      const result = await tx.assemblyProcedureDocument.findUnique({ where: { id: doc.id }, include: revisionDocumentInclude });
+      if (!result) throw new ApiError(500, 'ページ並べ替え後の手順書を取得できませんでした');
+      return result;
+    });
   }
 
   async saveOverlays(params: AssemblyProcedureEditActor & {
