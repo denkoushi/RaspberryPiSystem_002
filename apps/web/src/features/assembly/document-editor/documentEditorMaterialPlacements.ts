@@ -6,10 +6,12 @@ export type PendingMaterialPlacement = {
   employeeTagUid?: string;
   assetId?: string;
   fallbackAssetId?: string;
+  rotatedAssetIds?: string[];
 };
 
 export function matchesMaterialPlacement(element: AssemblyProcedureOverlayElement, placement: PendingMaterialPlacement) {
-  return element.id === placement.elementId && (placement.assetId === undefined || (element.kind === 'IMAGE' && element.assetId === placement.assetId));
+  return element.id === placement.elementId && (placement.assetId === undefined || (element.kind === 'IMAGE' &&
+    (element.assetId === placement.assetId || placement.rotatedAssetIds?.includes(element.assetId) === true)));
 }
 
 // Remove unplaced references from a draft or recovery record.

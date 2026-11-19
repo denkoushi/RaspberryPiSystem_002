@@ -6,6 +6,22 @@ import { historyReducer, type OverlayHistory } from './documentEditorHistory';
 const bbox = { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.2, heightRatio: 0.2 };
 const elements = [0, 1, 2].map(pageIndex => ({ ...createOverlayForRange('TEXT', pageIndex, bbox), id: `page-${pageIndex}` }));
 
+it('undoes and redoes one rotation for a photo, its patch and its text in a single step', () => {
+  const photo = createOverlayForRange('IMAGE', 0, { xRatio: 0.25, yRatio: 0.25, widthRatio: 0.5, heightRatio: 0.5 });
+  const patch = { ...createOverlayForRange('IMAGE', 0, { ...bbox, xRatio: 0.25, yRatio: 0.25 }), id: 'text-erase-patch', zIndex: 1 };
+  const text = { ...createOverlayForRange('TEXT', 0, patch.bbox), zIndex: 2 };
+  const present = [photo, patch, text];
+  const rotated = historyReducer({ past: [], present, future: [], dragStart: null }, {
+    type: 'rotateImage', direction: 'right', id: photo.id, pageAspect: 1,
+    newAssetIds: new Map([[photo.id, 'new-photo'], [patch.id, 'new-patch']])
+  });
+  expect(rotated.past).toEqual([present]);
+  expect(rotated.present).not.toEqual(present);
+  const undone = historyReducer(rotated, { type: 'undo' });
+  expect(undone.present).toBe(present);
+  expect(historyReducer(undone, { type: 'redo' }).present).toBe(rotated.present);
+});
+
 describe('drag a photo with text-rewrite attachments', () => {
   it.each([
     ['keeps its own attachments while crossing a higher photo', 0, 1],

@@ -32,6 +32,7 @@ import { useAssemblyProcedureDocumentOverlayCommands } from './useAssemblyProced
 import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
 import { useAssemblyProcedureLayoutSuggestions } from './useAssemblyProcedureLayoutSuggestions';
 import { useDocumentEditorHistoryCommands } from './useDocumentEditorHistoryCommands';
+import { useDocumentEditorImageRotation } from './useDocumentEditorImageRotation';
 import { useDocumentEditorMaterialPlacements } from './useDocumentEditorMaterialPlacements';
 
 import type { InlineTextElement, InlineTextFlush } from './InlineTextEditor';
@@ -95,10 +96,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const draftElements = useMemo(() => inlineDraft ? elements.map(element => element.id === inlineDraft.id ? inlineDraft : element) : elements, [elements, inlineDraft]);
   const snapshot = useMemo(() => overlayDraftSnapshot(draftElements), [draftElements]);
   const isDirty = baselineSnapshot != null && baselineSnapshot !== snapshot;
-  const selectedPage = useMemo(
-    () => selectDocumentPage(document, selectedPageIndex),
-    [document, selectedPageIndex]
-  );
+  const selectedPage = useMemo(() => selectDocumentPage(document, selectedPageIndex), [document, selectedPageIndex]);
   const selectedElement = useMemo(
     () => selectDocumentElement(elements, selectedOverlayId),
     [elements, selectedOverlayId]
@@ -296,6 +294,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     materialScope, setBusy
   ]);
   const overlayCommands = useAssemblyProcedureDocumentOverlayCommands(overlaySession);
+  const rotateSelectedImage = useDocumentEditorImageRotation({ ...overlaySession, get busy() { return busyRef.current; }, materials });
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -557,6 +556,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     placeMaterial: overlayCommands.placeMaterial,
     materialRevision,
     replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,
+    rotateSelectedImage,
     document,
     pages: selectDocumentPages(document),
     loading,

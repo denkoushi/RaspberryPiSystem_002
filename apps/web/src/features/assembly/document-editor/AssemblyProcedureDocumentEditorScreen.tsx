@@ -30,6 +30,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const controller = useAssemblyProcedureDocumentEditor();
   const shelfResources = useShelfResources(controller.accessGranted);
   const { setSelectedOverlayId, setErrorMessage, addBlankPage: addControllerBlankPage, pages: controllerPages, placeMaterial: placeControllerMaterial, replaceSelectedImageMaterial: replaceControllerImageMaterial } = controller;
+  const { rotateSelectedImage } = controller;
   const controllerElements = controller.pagePreviewElements ?? controller.elements;
   const processNames = context?.processName.split(' › ') ?? [];
   const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
@@ -148,6 +149,10 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   });
   const closeInspector = useCallback(() => setSelectedOverlayId(null), [setSelectedOverlayId]);
   const replaceImage = useCallback(() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }, []);
+  const rotateImage = useCallback((direction: 'left' | 'right') => {
+    const layer = overlayLayerRef.current;
+    if (layer?.clientHeight) void rotateSelectedImage(direction, layer.clientWidth / layer.clientHeight);
+  }, [rotateSelectedImage]);
   const openMaterial = useCallback(() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }, []);
   const openVideo = useCallback(() => setVideoLinkOpen(true), []);
   const openPublish = useCallback(() => setPublishOpen(true), []);
@@ -339,6 +344,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onBringToFront={controller.bringToFront}
           onSendToBack={controller.sendToBack}
           onReplaceImage={replaceImage}
+          onRotateImage={rotateImage}
           onRefetchTextCandidates={controller.refetchTextCandidates}
           readOnly={controller.readOnly}
           busy={controller.busy}

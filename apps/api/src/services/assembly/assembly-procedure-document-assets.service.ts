@@ -60,9 +60,12 @@ export type AssemblyProcedureDocumentAssetsServiceDeps = {
   accessService?: AssemblyTemplateAccessService;
 };
 
-type RegionParams = AssemblyProcedureEditActor & {
+type EditableAssetParams = AssemblyProcedureEditActor & {
   documentId: string;
   accessPassword?: string;
+};
+
+type RegionParams = EditableAssetParams & {
   pageIndex: number;
   bbox: AssemblyProcedureRegionBBox;
   overlays?: OverlayRegionImage[];
@@ -235,23 +238,61 @@ export class AssemblyProcedureDocumentAssetsService {
     return AssemblyProcedureImageStorage.readImage(await this.pageImagePath(documentId, pageIndex));
   }
 
-  private async lockEditableRegion(params: RegionParams, db: Prisma.TransactionClient) {
+  private async lockEditableDocument(params: EditableAssetParams, db: Prisma.TransactionClient) {
     await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
     await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
     return this.assertEditable(params.documentId, params.accessPassword, db, params);
   }
 
-  async uploadOverlayImage(params: AssemblyProcedureEditActor & {
-    documentId: string;
-    accessPassword?: string;
+  async uploadOverlayImage(params: EditableAssetParams & {
     bytes: Buffer;
     contentType: string;
     originalFileName?: string | null;
   }, db?: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
     if (!db) return runAssemblyTransaction((tx) => this.uploadOverlayImage(params, tx));
-    await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
-    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
-    await this.assertEditable(params.documentId, params.accessPassword, db, params);
+    await this.lockEditableDocument(params, db);
+    return this.saveOverlayImage(params, db);
+  }
+
+  async rotateOverlayImage(params: EditableAssetParams & {
+    assetId: string;
+    direction: 'left' | 'right';
+  }): Promise<AssemblyProcedureOverlayAssetDto> {
+    return runAssemblyTransaction(async (db) => {
+      const editable = await this.lockEditableDocument(params, db);
+      const [source] = await this.readableOverlayAssets(
+        params.documentId, editable.revisionMetadata!.revisionRootId, [params.assetId], db
+      );
+      const original = await this.storage.read(source);
+      assertBytes(original);
+      let bytes: Buffer;
+      let contentType: string;
+      try {
+        const image = sharp(original, { limitInputPixels: 40_000_000 });
+        const { format } = await image.metadata();
+        const rotated = image.autoOrient().rotate(params.direction === 'left' ? -90 : 90).keepIccProfile();
+        switch (format) {
+          case 'png': bytes = await rotated.png().toBuffer(); break;
+          case 'jpeg': bytes = await rotated.jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toBuffer(); break;
+          case 'webp': bytes = await rotated.webp({ lossless: true }).toBuffer(); break;
+          case 'tiff': bytes = await rotated.tiff({ compression: 'deflate' }).toBuffer(); break;
+          default: throw new ApiError(400, 'overlay画像はJPEG/PNG/WebP/TIFFのみ対応しています');
+        }
+        contentType = `image/${format}`;
+      } catch (error) {
+        if (error instanceof ApiError) throw error;
+        throw new ApiError(400, 'overlay画像を読み込めません');
+      }
+      return this.saveOverlayImage({ documentId: params.documentId, bytes, contentType }, db);
+    });
+  }
+
+  private async saveOverlayImage(params: {
+    documentId: string;
+    bytes: Buffer;
+    contentType: string;
+    originalFileName?: string | null;
+  }, db: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
     assertBytes(params.bytes);
     const contentType = params.contentType.trim().toLowerCase();
     const saved = await this.storage.save({
@@ -279,15 +320,12 @@ export class AssemblyProcedureDocumentAssetsService {
     }
   }
 
-  private async regionAssets(
+  private async readableOverlayAssets(
     documentId: string,
     revisionRootId: string,
-    overlays: readonly OverlayRegionImage[],
-    roi: AssemblyProcedureRegionBBox,
-    db: Prisma.TransactionClient = prisma
-  ): Promise<Map<string, string>> {
-    if (!overlays.length) return new Map();
-    const ids = [...new Set(overlays.map(({ assetId }) => assetId))];
+    ids: string[],
+    db: Prisma.TransactionClient
+  ) {
     const assets = await db.assemblyProcedureAsset.findMany({
       where: { id: { in: ids }, kind: 'OVERLAY_IMAGE' },
       select: { id: true, ownerDocumentId: true, storageKey: true, contentType: true }
@@ -309,6 +347,19 @@ export class AssemblyProcedureDocumentAssetsService {
       !asset.contentType.startsWith('image/'))) {
       throw new ApiError(400, 'overlay画像assetが存在しないか、この文書では使用できません');
     }
+    return assets;
+  }
+
+  private async regionAssets(
+    documentId: string,
+    revisionRootId: string,
+    overlays: readonly OverlayRegionImage[],
+    roi: AssemblyProcedureRegionBBox,
+    db: Prisma.TransactionClient = prisma
+  ): Promise<Map<string, string>> {
+    if (!overlays.length) return new Map();
+    const ids = [...new Set(overlays.map(({ assetId }) => assetId))];
+    const assets = await this.readableOverlayAssets(documentId, revisionRootId, ids, db);
     const intersectingIds = new Set(overlays
       .filter(({ bbox }) => projectOverlayBBoxToCrop(bbox, roi) !== null)
       .map(({ assetId }) => assetId));
@@ -348,7 +399,7 @@ export class AssemblyProcedureDocumentAssetsService {
 
   async createImageRegion(params: RegionParams, db?: Prisma.TransactionClient): Promise<AssemblyProcedureOverlayAssetDto> {
     if (!db) return runAssemblyTransaction((tx) => this.createImageRegion(params, tx));
-    const editable = await this.lockEditableRegion(params, db);
+    const editable = await this.lockEditableDocument(params, db);
     const roi = normalizeRegion(params.bbox);
     const source = await this.pageImage(params.documentId, params.pageIndex);
     const storageKeys = await this.regionAssets(params.documentId, editable.revisionMetadata!.revisionRootId, params.overlays ?? [], roi, db);
@@ -438,7 +489,7 @@ export class AssemblyProcedureDocumentAssetsService {
     // OCR may outlast a transaction. Recheck write access and the page identity
     // under the same lock as image-region creation before storing the patch.
     const asset = await runAssemblyTransaction(async (db) => {
-      const current = await this.lockEditableRegion(params, db);
+      const current = await this.lockEditableDocument(params, db);
       if (await this.pageImagePath(params.documentId, params.pageIndex, db) !== pagePath ||
           current.revisionMetadata?.sourceAsset?.storageKey !== editable.revisionMetadata?.sourceAsset?.storageKey) {
         throw new ApiError(409, 'ページが更新されました。選択し直してください。');
