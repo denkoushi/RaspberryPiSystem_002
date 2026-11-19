@@ -57,6 +57,7 @@ export function usePlanningBoardDragPreview() {
 /** Drag state shared by the two panes of the two-machine view so a bar can move between them. */
 export type SharedForwardDrag = {
   preview: ForwardDragPreview | null;
+  selectionPreview: ForwardDragPreview | null;
   pointer: { readonly current: { x: number; y: number } };
   subscribe: (listener: () => void) => () => void;
   setPreview: (preview: ForwardDragPreview | null) => void;

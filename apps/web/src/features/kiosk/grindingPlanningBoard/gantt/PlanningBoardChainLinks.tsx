@@ -22,6 +22,7 @@ export type ChainLinkGeometry = {
   viewportWidth: number;
   viewportHeight: number | null;
   rowGeometryKey?: unknown;
+  pieceLayer?: RefObject<HTMLDivElement | null>;
 };
 type Props = ChainLinkGeometry;
 export type ChainLink = { id: string; path: string; x: number; y: number };
@@ -32,15 +33,25 @@ export function planningBoardChainPositions({ content, bars, barLocations, rowEl
   const element = content.current;
   if (!element) return new Map<string, ChainBarPosition | null>();
   const bounds = element.getBoundingClientRect();
+  const zoom = pageZoom();
+  const rowTops = new Map<HTMLDivElement, number>();
+  const rowTop = (row: HTMLDivElement) => {
+    const cached = rowTops.get(row);
+    if (cached !== undefined) return cached;
+    const top = (row.getBoundingClientRect().top - bounds.top) / zoom;
+    rowTops.set(row, top);
+    return top;
+  };
+  const forward = layout.mode === 'forward';
   const position = (bar: GanttBar) => {
     const locations = barLocations?.get(bar.item.itemId);
     const row = rowElements.current.get(locations?.first.rowKey ?? barRows.get(bar.item.itemId)!);
     const lastRow = locations ? rowElements.current.get(locations.last.rowKey) : row;
-    const first = ganttBarGeometry(locations?.first.bar ?? bar, locations?.first.start ?? layout.start, dayWidth, true, false, Boolean(row?.dataset.ganttWindowRow), Number(row?.dataset.ganttVerticalScale ?? 1));
-    const last = ganttBarGeometry(locations?.last.bar ?? bar, locations?.last.start ?? layout.start, dayWidth, true, true, Boolean(lastRow?.dataset.ganttWindowRow), Number(lastRow?.dataset.ganttVerticalScale ?? 1));
+    const first = ganttBarGeometry(locations?.first.bar ?? bar, locations?.first.start ?? layout.start, dayWidth, forward, false, Boolean(row?.dataset.ganttWindowRow), Number(row?.dataset.ganttVerticalScale ?? 1));
+    const last = ganttBarGeometry(locations?.last.bar ?? bar, locations?.last.start ?? layout.start, dayWidth, forward, true, Boolean(lastRow?.dataset.ganttWindowRow), Number(lastRow?.dataset.ganttVerticalScale ?? 1));
     if (!row || !lastRow || !first || !last) return null;
-    const top = (row.getBoundingClientRect().top - bounds.top) / pageZoom();
-    const lastTop = lastRow === row ? top : (lastRow.getBoundingClientRect().top - bounds.top) / pageZoom();
+    const top = rowTop(row);
+    const lastTop = rowTop(lastRow);
     return {
       first: { ...first, left: labelWidth + first.left, top: top + first.top },
       last: { ...last, left: labelWidth + last.left, top: lastTop + last.top }
