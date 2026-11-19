@@ -6,6 +6,7 @@ export const LEADERBOARD_BOARD_CACHE_SCHEMA_VERSION = 3;
 
 export const LEADERBOARD_BOARD_CACHE_IDB_NAME = 'kiosk-leader-order-board-cache';
 export const LEADERBOARD_BOARD_CACHE_IDB_STORE = 'boardSnapshots';
+export const LEADERBOARD_BOARD_CACHE_IDB_VERSION = 1;
 
 /** 鮮度許容（現ポーリング間隔と整合） */
 export const LEADERBOARD_BOARD_CACHE_MAX_AGE_MS = LEADER_BOARD_SCHEDULE_REFETCH_MS;

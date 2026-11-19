@@ -2,7 +2,8 @@ import { openDB, type IDBPDatabase } from 'idb';
 
 import {
   LEADERBOARD_BOARD_CACHE_IDB_NAME,
-  LEADERBOARD_BOARD_CACHE_IDB_STORE
+  LEADERBOARD_BOARD_CACHE_IDB_STORE,
+  LEADERBOARD_BOARD_CACHE_IDB_VERSION
 } from './leaderboardBoardCacheConstants';
 import { parseLeaderboardBoardCacheRecord, type PersistedLeaderboardBoardCacheRecord } from './leaderboardBoardCacheRecord';
 
@@ -22,7 +23,7 @@ function getDb(): Promise<CacheDb> {
     return Promise.reject(new Error('indexedDB unavailable'));
   }
   if (!dbPromise) {
-    dbPromise = openDB(LEADERBOARD_BOARD_CACHE_IDB_NAME, 1, {
+    dbPromise = openDB(LEADERBOARD_BOARD_CACHE_IDB_NAME, LEADERBOARD_BOARD_CACHE_IDB_VERSION, {
       upgrade(db) {
         if (!db.objectStoreNames.contains(LEADERBOARD_BOARD_CACHE_IDB_STORE)) {
           db.createObjectStore(LEADERBOARD_BOARD_CACHE_IDB_STORE, { keyPath: 'cacheKey' });
