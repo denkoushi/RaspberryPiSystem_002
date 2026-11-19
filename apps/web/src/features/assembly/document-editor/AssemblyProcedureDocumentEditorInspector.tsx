@@ -6,12 +6,14 @@ import { Input } from '../../../components/ui/Input';
 
 import {
   convertOverlayShapeKind,
+  isPhoto,
   lineEndpointsForDirection,
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
 import { ProcedureVoiceInput } from './ProcedureVoiceInput';
 import { useProcedureVoiceInput } from './useProcedureVoiceInput';
 
+import type { ImageRotationDirection } from './assemblyDocumentEditorDraft';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 function numberValue(value: string, fallback: number): number {
@@ -43,6 +45,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   onBringToFront,
   onSendToBack,
   onReplaceImage,
+  onRotateImage,
   onRefetchTextCandidates,
   readOnly = false,
   busy = false,
@@ -62,6 +65,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   onBringToFront: (id: string) => void;
   onSendToBack: (id: string) => void;
   onReplaceImage?: () => void;
+  onRotateImage?: (direction: ImageRotationDirection) => void;
   onRefetchTextCandidates: () => void;
   readOnly?: boolean;
   busy?: boolean;
@@ -181,6 +185,21 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
           >
             素材から差し替え
           </Button>
+          {isPhoto(element) ? (
+            <div className="grid grid-cols-2 gap-2">
+              {(['left', 'right'] as const).map(direction => (
+                <Button key={direction} type="button" variant="ghostOnDark" className="inline-flex min-h-11 items-center justify-center gap-1 !px-2"
+                  disabled={busy || readOnly || !element.assetId} onClick={() => onRotateImage?.(direction)}>
+                  <svg aria-hidden="true" className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path transform={direction === 'left' ? 'translate(24 0) scale(-1 1)' : undefined}
+                      d="M20 4v6h-6m6 0-3.2-3.2A8 8 0 1 0 20 15" />
+                  </svg>
+                  {direction === 'left' ? '左に回す' : '右に回す'}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           <label className="grid gap-0.5 text-sm font-semibold">
             画像の収まり
             <select

@@ -114,6 +114,7 @@ function buildHarness() {
       contentType: 'image/png',
       kind: 'OVERLAY_IMAGE' as const
     })),
+    rotateOverlayImage: vi.fn<AssemblyProcedureDocumentAssetsService['rotateOverlayImage']>(),
     createImageRegion: vi.fn(async () => ({
       assetId: 'asset-region',
       storageKey: 'assembly-procedure-assets/asset-region.jpg',
@@ -140,6 +141,36 @@ describe('assembly procedure revision routes', () => {
     if (app) await app.close();
     app = null;
     vi.restoreAllMocks();
+  });
+
+  it('checks the edit lease and forwards rotation parameters, returning the newly created asset', async () => {
+    const harness = buildHarness();
+    app = harness.app;
+    const asset = await harness.assetsService.uploadOverlayImage();
+    harness.assetsService.rotateOverlayImage.mockResolvedValue(asset);
+    const allowWriteKiosk = vi.fn(async () => undefined);
+    registerAssemblyProcedureDocumentRevisionRoutes(app, {
+      allowView: async () => undefined,
+      allowWriteKiosk
+    }, harness.service as never, harness.assetsService as never);
+    const request = {
+      method: 'POST' as const,
+      url: `/assembly/procedure-documents/${documentId}/assets/source-image/rotate`,
+      headers: { 'x-procedure-edit-token': 'rotate-token' },
+      payload: { accessPassword: '2520', direction: 'left' }
+    };
+    const response = await app.inject(request);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ asset });
+    expect(allowWriteKiosk).toHaveBeenCalledOnce();
+    expect(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).toHaveBeenCalled();
+    expect(harness.assetsService.rotateOverlayImage).toHaveBeenCalledWith({
+      clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: 'rotate-token',
+      documentId, assetId: 'source-image', ...request.payload
+    });
+    const invalid = await app.inject({ ...request, payload: { ...request.payload, direction: 'up' } });
+    expect(invalid.statusCode).toBe(400);
+    expect(harness.assetsService.rotateOverlayImage).toHaveBeenCalledOnce();
   });
 
   it('creates blank documents, appends pages and returns material draft elements', async () => {

@@ -326,6 +326,30 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(onReplaceImage).toHaveBeenCalledOnce();
   });
 
+  it('shows both rotation controls for photos and hides them for a patch or text', () => {
+    const onRotateImage = vi.fn();
+    const props = { ...commonProps(vi.fn()), onRotateImage };
+    const { rerender } = render(<AssemblyProcedureDocumentEditorInspector {...props} element={{ ...base, kind: 'IMAGE', assetId: 'photo' }} />);
+    const left = screen.getByRole('button', { name: '左に回す' });
+    const right = screen.getByRole('button', { name: '右に回す' });
+    expect(left.parentElement).toBe(right.parentElement);
+    expect(left).toHaveClass('min-h-11');
+    expect(right).toHaveClass('min-h-11');
+    fireEvent.click(left);
+    fireEvent.click(right);
+    expect(onRotateImage.mock.calls).toEqual([['left'], ['right']]);
+    rerender(<AssemblyProcedureDocumentEditorInspector {...props} element={{ ...base, id: 'text-erase-patch', kind: 'IMAGE', assetId: 'patch' }} />);
+    expect(screen.queryByRole('button', { name: /に回す/ })).not.toBeInTheDocument();
+    rerender(<AssemblyProcedureDocumentEditorInspector {...props} element={{ ...base, kind: 'TEXT', text: '手順' }} />);
+    expect(screen.queryByRole('button', { name: /に回す/ })).not.toBeInTheDocument();
+  });
+
+  it.each([{ busy: true }, { readOnly: true }])('disables both rotation controls with %o', state => {
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(vi.fn())} {...state} element={{ ...base, kind: 'IMAGE', assetId: 'photo' }} />);
+    expect(screen.getByRole('button', { name: '左に回す' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '右に回す' })).toBeDisabled();
+  });
+
   it.each([{ busy: true }, { readOnly: true }])('disables image replacement with %o', (state) => {
     const onReplaceImage = vi.fn();
     render(<AssemblyProcedureDocumentEditorInspector {...commonProps(vi.fn())} {...state}

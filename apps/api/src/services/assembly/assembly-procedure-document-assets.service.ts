@@ -35,6 +35,7 @@ import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-imag
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
+import { readableOverlayAssets, rotateOverlayImageBytes } from './assembly-procedure-overlay-image-access.js';
 
 export type AssemblyProcedureRegionBBox = {
   xRatio: number;
@@ -242,9 +243,7 @@ export class AssemblyProcedureDocumentAssetsService {
     return this.assertEditable(params.documentId, params.accessPassword, db, params);
   }
 
-  async uploadOverlayImage(params: AssemblyProcedureEditActor & {
-    documentId: string;
-    accessPassword?: string;
+  async uploadOverlayImage(params: DocumentEditParams & {
     bytes: Buffer;
     contentType: string;
     originalFileName?: string | null;
@@ -348,6 +347,41 @@ export class AssemblyProcedureDocumentAssetsService {
     }
   }
 
+  async rotateOverlayImage(params: DocumentEditParams & {
+    assetId: string;
+    direction: 'left' | 'right';
+  }): Promise<AssemblyProcedureOverlayAssetDto & { originalAsset?: AssemblyProcedureOverlayAssetDto }> {
+    const savedBlobs: StoredAssemblyProcedureAsset[] = [];
+    try {
+      return await runAssemblyTransaction(async (db) => {
+        const editable = await this.lockEditableDocument(params, db);
+        const [source] = await readableOverlayAssets(
+          params.documentId, editable.revisionMetadata!.revisionRootId, [params.assetId], db
+        );
+        const rotateAsset = async (input: { storageKey: string }, derivedFromAssetId?: string) => {
+          const saved = await this.rotateOverlayBlob(input, params.direction);
+          savedBlobs.push(saved);
+          await this.createOwnedOverlayAsset(saved, params.documentId, db, { derivedFromAssetId });
+          return mapAsset(saved);
+        };
+        // Restore must keep the new orientation even when sharpening is turned off.
+        const originalAsset = source.derivedFromAsset ? await rotateAsset(source.derivedFromAsset) : undefined;
+        const rotated = await rotateAsset(source, originalAsset?.assetId);
+        return originalAsset ? { ...rotated, derivedFromAssetId: originalAsset.assetId, originalAsset } : rotated;
+      });
+    } catch (error) {
+      await Promise.allSettled(savedBlobs.map(saved => this.storage.delete(saved)));
+      throw error;
+    }
+  }
+
+  private async rotateOverlayBlob(source: { storageKey: string }, direction: 'left' | 'right') {
+    const original = await this.storage.read(source);
+    assertBytes(original);
+    const { bytes, contentType } = await rotateOverlayImageBytes(original, direction);
+    return this.saveOverlayBlob(bytes, contentType);
+  }
+
   private async regionAssets(
     documentId: string,
     revisionRootId: string,
@@ -357,27 +391,7 @@ export class AssemblyProcedureDocumentAssetsService {
   ): Promise<Map<string, string>> {
     if (!overlays.length) return new Map();
     const ids = [...new Set(overlays.map(({ assetId }) => assetId))];
-    const assets = await db.assemblyProcedureAsset.findMany({
-      where: { id: { in: ids }, kind: 'OVERLAY_IMAGE' },
-      select: { id: true, ownerDocumentId: true, storageKey: true, contentType: true }
-    });
-    const unownedIds = assets.filter((asset) => asset.ownerDocumentId !== documentId).map((asset) => asset.id);
-    const references = unownedIds.length ? await db.assemblyProcedureOverlayElement.findMany({
-      where: {
-        assetId: { in: unownedIds },
-        kind: 'IMAGE',
-        document: { revisionMetadata: { is: { revisionRootId } } }
-      },
-      select: { assetId: true },
-      distinct: ['assetId']
-    }) : [];
-    const referencedIds = new Set(references.map(({ assetId }) => assetId));
-    // Released assets must still be referenced by a saved IMAGE in this revision family.
-    if (assets.length !== ids.length || assets.some((asset) =>
-      (asset.ownerDocumentId !== documentId && !referencedIds.has(asset.id)) ||
-      !asset.contentType.startsWith('image/'))) {
-      throw new ApiError(400, 'overlay画像assetが存在しないか、この文書では使用できません');
-    }
+    const assets = await readableOverlayAssets(documentId, revisionRootId, ids, db);
     const intersectingIds = new Set(overlays
       .filter(({ bbox }) => projectOverlayBBoxToCrop(bbox, roi) !== null)
       .map(({ assetId }) => assetId));

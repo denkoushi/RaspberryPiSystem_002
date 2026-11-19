@@ -59,6 +59,85 @@ beforeEach(async () => {
   layoutOcr.runLayoutOcrOnImage.mockResolvedValue({ text: '', engine: 'mock', words: [] });
 });
 
+describe('rotate overlay image', () => {
+  it.each([['left', 20], ['right', 50]] as const)('rotates PNG %s and creates a new owned asset without changing the source', async (direction, firstRed) => {
+    const pixels = Buffer.from([10, 20, 30, 40, 50, 60].flatMap(red => [red, 100, 200, 128]));
+    const original = await sharp(pixels, { raw: { width: 2, height: 3, channels: 4 } }).png().toBuffer();
+    storage.read.mockResolvedValue(original);
+    storage.save.mockResolvedValue({ assetId: 'rotated', storageKey: 'rotated.png', relativeUrl: '/rotated.png', contentType: 'image/png', size: 100, sha256: 'hash' });
+
+    await expect(service().rotateOverlayImage({ documentId: 'draft', assetId: 'material', direction })).resolves.toMatchObject({
+      assetId: 'rotated', contentType: 'image/png', kind: 'OVERLAY_IMAGE'
+    });
+    const [saved] = storage.save.mock.calls[0];
+    expect(saved).toMatchObject({ contentType: 'image/png', extension: '.png' });
+    expect(await sharp(saved.data).metadata()).toMatchObject({ format: 'png', width: 3, height: 2, hasAlpha: true });
+    const rotated = await sharp(saved.data).raw().toBuffer();
+    expect([...rotated.subarray(0, 4)]).toEqual([firstRed, 100, 200, 128]);
+    expect(await sharp(original).raw().toBuffer()).toEqual(pixels);
+    expect(storage.save).toHaveBeenCalledOnce();
+    expect(storage.delete).not.toHaveBeenCalled();
+    expect(mocks.db.assemblyProcedureAsset.create).toHaveBeenCalledWith({ data: expect.objectContaining({ id: 'rotated', ownerDocumentId: 'draft', kind: 'OVERLAY_IMAGE' }) });
+  });
+
+  it('normalizes EXIF orientation before rotating a JPEG referenced by another revision in the same family', async () => {
+    mocks.db.assemblyProcedureAsset.findMany.mockResolvedValue([{ id: 'material', ownerDocumentId: null, storageKey: 'material.jpg', contentType: 'image/jpeg' }]);
+    mocks.db.assemblyProcedureOverlayElement.findMany.mockResolvedValue([{ assetId: 'material' }]);
+    const original = await sharp({ create: { width: 40, height: 20, channels: 3, background: '#ff0000' } })
+      .composite([{ input: await image('#0000ff', 20, 20), left: 20, top: 0 }])
+      .withMetadata({ orientation: 6 }).jpeg().toBuffer();
+    storage.read.mockResolvedValue(original);
+
+    await service().rotateOverlayImage({ documentId: 'draft', assetId: 'material', direction: 'left' });
+
+    const [saved] = storage.save.mock.calls[0];
+    expect(saved).toMatchObject({ contentType: 'image/jpeg', extension: '.jpg' });
+    const output = sharp(saved.data);
+    const metadata = await output.metadata();
+    expect(metadata).toMatchObject({ width: 40, height: 20, format: 'jpeg' });
+    expect(metadata.orientation).toBeUndefined();
+    const rotated = await output.raw().toBuffer();
+    expect(rotated[0]).toBeGreaterThan(240);
+    expect(rotated[39 * 3 + 2]).toBeGreaterThan(240);
+    expect(mocks.db.assemblyProcedureOverlayElement.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ document: { revisionMetadata: { is: { revisionRootId: 'root' } } } })
+    }));
+  });
+
+  it('rejects an overlay owned by another document when this revision family has no reference to it', async () => {
+    mocks.db.assemblyProcedureAsset.findMany.mockResolvedValue([{ id: 'material', ownerDocumentId: 'other', storageKey: 'material.png', contentType: 'image/png' }]);
+    await expect(service().rotateOverlayImage({ documentId: 'draft', assetId: 'material', direction: 'right' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('rotates both copies of a sharpened image and preserves the link used to prevent sharpening twice', async () => {
+    const original = { storageKey: 'original.png' };
+    mocks.db.assemblyProcedureAsset.findMany.mockResolvedValue([{
+      id: 'material', ownerDocumentId: 'draft', storageKey: 'material.png', contentType: 'image/png', derivedFromAsset: original
+    }]);
+    storage.read.mockResolvedValue(await image('red', 40, 20));
+    const saved = { assetId: 'rotated', storageKey: 'rotated.png', relativeUrl: '/rotated.png', contentType: 'image/png', size: 100, sha256: 'hash' };
+    storage.save
+      .mockResolvedValueOnce({ ...saved, assetId: 'rotated-original', storageKey: 'rotated-original.png' })
+      .mockResolvedValueOnce(saved);
+
+    await expect(service().rotateOverlayImage({ documentId: 'draft', assetId: 'material', direction: 'right' })).resolves.toMatchObject({
+      assetId: 'rotated', derivedFromAssetId: 'rotated-original', originalAsset: { assetId: 'rotated-original' }
+    });
+    expect(storage.read).toHaveBeenNthCalledWith(1, original);
+    expect(storage.read).toHaveBeenNthCalledWith(2, expect.objectContaining({ storageKey: 'material.png' }));
+    for (const [blob] of storage.save.mock.calls) {
+      await expect(sharp(blob.data).metadata()).resolves.toMatchObject({ width: 20, height: 40 });
+    }
+    const rotated = mocks.db.assemblyProcedureAsset.create.mock.calls[1][0].data;
+    expect(rotated).toMatchObject({ id: 'rotated', derivedFromAssetId: 'rotated-original', ownerDocumentId: 'draft' });
+    mocks.db.assemblyProcedureAsset.findFirst.mockResolvedValue(rotated);
+    await expect(service().sharpenOverlayImage({ documentId: 'draft', assetId: rotated.id })).rejects.toMatchObject({ statusCode: 409 });
+    expect(storage.save).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('sharpenOverlayImage', () => {
   const sharpenParams = { documentId: 'draft', accessPassword: '1234', assetId: 'photo' };
   const source = { id: 'photo', storageKey: 'photo.png', contentType: 'image/png', derivedFromAssetId: null };
@@ -350,7 +429,7 @@ describe('assembly procedure region assets service', () => {
 
   it.each(['missing', 'other-owner', 'released-unreferenced', 'not-image'])('rejects %s assets with 400 for both operations before reading bytes', async (invalid) => {
     mocks.db.assemblyProcedureAsset.findMany.mockResolvedValue(invalid === 'missing' ? [] : [{
-      id: 'material', ownerDocumentId: invalid === 'other-owner' ? 'other-draft' : invalid === 'released-unreferenced' ? null : 'draft', storageKey: 'secret', contentType: invalid === 'not-image' ? 'application/pdf' : 'image/png'
+      id: 'material', ownerDocumentId: invalid === 'other-owner' ? 'other-draft' : invalid === 'released-unreferenced' ? null : 'draft', storageKey: 'secret', contentType: invalid === 'not-image' ? 'application/pdf' : 'image/png', derivedAssets: []
     }]);
     await expect(service().createImageRegion(params)).rejects.toMatchObject({ statusCode: 400 });
     await expect(service().findTextCandidates(params)).rejects.toMatchObject({ statusCode: 400 });
