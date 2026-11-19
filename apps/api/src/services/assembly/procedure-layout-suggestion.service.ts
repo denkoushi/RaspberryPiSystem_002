@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import type { Prisma } from '@prisma/client';
-import { procedureLayoutSuggestionResponseSchema, type OverlayTextElement, type ProcedureLayoutSuggestionRequest, type ProcedureLayoutSuggestionResponse } from '@raspi-system/shared-types';
+import { OVERLAY_DEFAULT_FONT_SIZE_RATIO, procedureLayoutSuggestionResponseSchema, type OverlayTextElement, type ProcedureLayoutSuggestionRequest, type ProcedureLayoutSuggestionResponse } from '@raspi-system/shared-types';
 
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -218,8 +218,8 @@ export class ProcedureLayoutSuggestionService {
         }) }, kind: 'OVERLAY_IMAGE' }, select: { id: true, storageKey: true },
       }).catch(() => []) : [];
       const pageTexts = rows.map((row, i) => `${i + 1}枚目: ${row.textIds.map(id => (byId.get(id) as OverlayTextElement).text).join('\n')}`).join('\n');
-      const representativeFont = median(texts.map(text => text.style?.fontSizeRatio ?? 0.025));
-      const representative = [...texts].sort((a, b) => Math.abs((a.style?.fontSizeRatio ?? 0.025) - representativeFont) - Math.abs((b.style?.fontSizeRatio ?? 0.025) - representativeFont))[0];
+      const representativeFont = median(texts.map(text => text.style?.fontSizeRatio ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO));
+      const representative = [...texts].sort((a, b) => Math.abs((a.style?.fontSizeRatio ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO) - representativeFont) - Math.abs((b.style?.fontSizeRatio ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO) - representativeFont))[0];
       for (const row of eligible) {
         params.signal.throwIfAborted();
         try {

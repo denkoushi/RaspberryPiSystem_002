@@ -1,6 +1,6 @@
 import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
 
+import { useNearViewportOnce } from '../../hooks/useNearViewportOnce';
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
@@ -106,25 +106,9 @@ function WorkInstructionThumbnail({
   overlays?: WorkInstructionStep['overlays'];
   assets?: Record<string, WorkInstructionOverlayAsset>;
 }) {
-  const containerRef = useRef<HTMLSpanElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(() => typeof IntersectionObserver === 'undefined');
-
-  useEffect(() => {
-    if (shouldLoad) return undefined;
-    const node = containerRef.current;
-    if (!node) return undefined;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        setShouldLoad(true);
-        observer.disconnect();
-      },
-      { rootMargin: '320px 0px' }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [shouldLoad]);
+  const { ref: containerRef, isNear: shouldLoad } = useNearViewportOnce<HTMLSpanElement>({
+    rootMargin: '320px 0px'
+  });
 
   return (
     <span ref={containerRef} className={clsx('block', WORK_INSTRUCTION_CARD_IMAGE_MIN_HEIGHT)}>

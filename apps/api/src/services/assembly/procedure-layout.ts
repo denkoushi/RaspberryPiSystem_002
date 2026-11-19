@@ -1,4 +1,4 @@
-import { overlayElementSchema, type OverlayBBox, type OverlayElement, type OverlayImageElement, type OverlayTextElement, type ProcedureLayoutSuggestionResponse } from '@raspi-system/shared-types';
+import { OVERLAY_DEFAULT_FONT_SIZE_RATIO, overlayElementSchema, type OverlayBBox, type OverlayElement, type OverlayImageElement, type OverlayTextElement, type ProcedureLayoutSuggestionResponse } from '@raspi-system/shared-types';
 import { z } from 'zod';
 
 export class ProcedureLayoutError extends Error {}
@@ -9,7 +9,7 @@ const TEXT_GAP = 0.008;
 const MIN_ROW_GAP = 0.01;
 const MAX_ROW_GAP = 0.035;
 const EPSILON = 1e-9;
-const fontSize = (text: OverlayTextElement) => Math.max(0.005, text.style?.fontSizeRatio ?? 0.025);
+const fontSize = (text: OverlayTextElement) => Math.max(0.005, text.style?.fontSizeRatio ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO);
 export function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
@@ -146,7 +146,7 @@ export function arrangeProcedureLayout(params: {
     row.texts.forEach((text, i) => {
       const textBox = { xRatio: textX, yRatio: textY, widthRatio: textWidth, heightRatio: row.heights[i] };
       placed.set(text.id, sameBox(text.bbox, textBox) && scale === 1 ? text : { ...text, bbox: textBox,
-        ...(scale === 1 ? {} : { style: { ...text.style, fontSizeRatio: (text.style?.fontSizeRatio ?? 0.025) * scale } }) });
+        ...(scale === 1 ? {} : { style: { ...text.style, fontSizeRatio: (text.style?.fontSizeRatio ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO) * scale } }) });
       textY += row.heights[i] + TEXT_GAP;
     });
     y += row.height + gap;

@@ -1,4 +1,4 @@
-import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX, assemblyProcedureOverlayBBoxCenter } from '@raspi-system/shared-types';
+import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX, assemblyProcedureOverlayBBoxCenter, OVERLAY_DEFAULT_FONT_SIZE_RATIO } from '@raspi-system/shared-types';
 
 import type { AssemblyProcedureDocumentDto } from '../types';
 import type {
@@ -185,7 +185,7 @@ function carryAttachedOverlays(
       const moved = { ...element, pageIndex: next.pageIndex, bbox };
       if (moved.kind === 'TEXT' && attachment.kind === 'TEXT') {
         const oldFontSize = attachment.style?.fontSizeRatio;
-        const fontSizeRatio = sx === 1 ? oldFontSize : (oldFontSize ?? 0.025) * sx;
+        const fontSizeRatio = sx === 1 ? oldFontSize : (oldFontSize ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO) * sx;
         if (fontSizeRatio !== moved.style?.fontSizeRatio) {
           carried.set(id, { ...moved, style: { ...moved.style, fontSizeRatio } });
           continue;
@@ -503,7 +503,7 @@ export function createOverlayForRange(
       text: 'ここに文章を入力',
       mask: { enabled: true, color: '#ffffff' },
       style: {
-        fontSizeRatio: 0.025,
+        fontSizeRatio: OVERLAY_DEFAULT_FONT_SIZE_RATIO,
         fontWeight: 'bold',
         color: '#0f172a',
         align: 'start'
