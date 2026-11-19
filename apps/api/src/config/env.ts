@@ -3,6 +3,8 @@ import './env/load-dotenv.js';
 
 import { z } from 'zod';
 
+import { procedureManualMailDomainSchema } from '../services/assembly/procedure-manual-mail-address.js';
+
 import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
 import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';
 import { advisoryCheckEnvShape } from './env/advisory-check.js';
@@ -48,6 +50,7 @@ const envSchema = z
     LOAN_PHOTO_RETENTION_MODE: z.enum(['disabled', 'report', 'delete']).default('report'),
     LOAN_PHOTO_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(365),
     LOAN_PHOTO_RETENTION_BATCH_LIMIT: z.coerce.number().int().min(1).max(10000).default(500),
+    ASSEMBLY_PROCEDURE_MAIL_DOMAIN: procedureManualMailDomainSchema,
     ...procedureMaterialEnvShape,
     ...procedureVideoEnvShape,
   })

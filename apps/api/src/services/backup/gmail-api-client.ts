@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
+import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { GmailRequestGateService, GmailRateLimitedDeferredError } from './gmail-request-gate.service.js';
 
@@ -699,6 +700,34 @@ export class GmailApiClient {
       }
       logger?.error({ err: error }, '[GmailApiClient] Failed to send message');
       throw new Error(`Failed to send message: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** Send RFC 822 media in a multipart upload without a base64url JSON envelope. */
+  async sendMessageFromMimeUpload(
+    rawMime: string,
+    beforeSend?: () => Promise<void>,
+    options?: { timeoutMs: number; signal: AbortSignal }
+  ): Promise<{ id: string }> {
+    try {
+      const response = await this.gateExecute('gmail.users.messages.send', async () => {
+        options?.signal.throwIfAborted();
+        await beforeSend?.();
+        options?.signal.throwIfAborted();
+        return this.gmail.users.messages.send({
+          userId: 'me',
+          // googleapis selects uploadType=multipart when media and metadata are both supplied.
+          requestBody: {},
+          media: { mimeType: 'message/rfc822', body: rawMime },
+        }, options ? { retry: false, timeout: options.timeoutMs, signal: options.signal } : this.requestOptions());
+      });
+      const id = response.data.id;
+      if (!id) throw new Error('Message id missing from Gmail API send response');
+      return { id };
+    } catch (error) {
+      if (error instanceof ApiError || error instanceof GmailRateLimitedDeferredError) throw error;
+      // Request errors can include the MIME body and OAuth headers.
+      throw wrapGmailOperationError('Failed to send message', error);
     }
   }
 }

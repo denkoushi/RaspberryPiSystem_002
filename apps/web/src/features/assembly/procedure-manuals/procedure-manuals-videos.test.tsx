@@ -15,6 +15,7 @@ import type { ProcedureVideoDto, ProcedureVideoSummaryDto } from './procedure-vi
 import type { AssemblyProcedureSequenceDto, AssemblyProcedureSequencePageDto } from '../types';
 
 const mocks = vi.hoisted(() => ({ autoEdit: vi.fn(), list: vi.fn(), file: vi.fn(), poster: vi.fn(), retry: vi.fn(), discard: vi.fn(), restore: vi.fn(), page: vi.fn(), save: vi.fn(), detail: vi.fn(), scenes: vi.fn(), createScene: vi.fn(), updateScene: vi.fn(), deleteScene: vi.fn(), comments: vi.fn(), saveComments: vi.fn(), concat: vi.fn() }));
+vi.mock('../../../api/hooks/kiosk', () => ({ useKioskConfig: () => ({ data: undefined }) }));
 vi.mock('../../../api/client', () => ({
   getProcedureVideoAutoEdit: mocks.autoEdit,
   listProcedureVideos: mocks.list, getProcedureVideoFile: mocks.file, getProcedureVideoPoster: mocks.poster,
