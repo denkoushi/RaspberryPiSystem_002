@@ -1,4 +1,8 @@
-import { clearInspectionDrawingCalloutTip, inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
+import {
+  clearInspectionDrawingCalloutTip,
+  inspectionDrawingPointHasCalloutTip,
+  removeInspectionDrawingCalloutDim
+} from './inspectionDrawingCalloutTip';
 import { InspectionDrawingPlaceCalloutModeRow } from './InspectionDrawingPlaceCalloutModeRow';
 import { InspectionDrawingPointSettingsPanel } from './InspectionDrawingPointSettingsPanel';
 import { InspectionDrawingPointSummaryList } from './InspectionDrawingPointSummaryList';
@@ -83,7 +87,9 @@ export function InspectionDrawingPointSidebar({
               hasCallout: inspectionDrawingPointHasCalloutTip(selectedPoint),
               dims: selectedPoint.calloutDims,
               disabled: contentReadOnly,
-              onClear: () => onPointChange(clearInspectionDrawingCalloutTip())
+              onRemove: (target) => onPointChange(target === 'tip'
+                ? clearInspectionDrawingCalloutTip()
+                : { calloutDims: removeInspectionDrawingCalloutDim(selectedPoint.calloutDims, target) })
             }
           : null
       }
