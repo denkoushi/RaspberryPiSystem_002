@@ -843,7 +843,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '音声入力', '元に戻す', 'やり直す']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '音声入力', '元に戻す', 'やり直す']);
     expect(within(rail).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');

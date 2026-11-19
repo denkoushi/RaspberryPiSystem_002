@@ -158,12 +158,15 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     canSave: controller.canSave, canPublish: controller.canPublish,
     canUndo: controller.canUndo, canRedo: controller.canRedo,
     selectionMode: controller.selectionMode, selectedKind: controller.selectedElement?.kind,
+    canTogglePhotoSharpen: controller.canTogglePhotoSharpen, photoSharpened: controller.photoSharpened,
+    togglePhotoSharpen: controller.togglePhotoSharpen,
     layoutLocked: controller.layoutSuggestions.locked, canSuggest: controller.layoutSuggestions.canSuggest,
     startLayout: controller.layoutSuggestions.start,
     navigateBack: controller.navigateBack, save: controller.save, addOverlay: controller.addOverlay,
     setSelectionMode: controller.setSelectionMode, undo: controller.undo, redo: controller.redo
   }), [controller.readOnly, controller.busy, controller.saving, controller.isDirty, controller.canSave, controller.canPublish,
     controller.canUndo, controller.canRedo, controller.selectionMode, controller.selectedElement?.kind,
+    controller.canTogglePhotoSharpen, controller.photoSharpened, controller.togglePhotoSharpen,
     controller.layoutSuggestions.locked,
     controller.layoutSuggestions.canSuggest, controller.layoutSuggestions.start, controller.navigateBack,
     controller.save, controller.addOverlay, controller.setSelectionMode, controller.undo, controller.redo]);

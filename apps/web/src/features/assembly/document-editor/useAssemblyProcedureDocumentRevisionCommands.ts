@@ -170,7 +170,11 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       });
       const nextElements = selectDocumentOverlayElements(saved);
       session.onSaved?.();
-      setDocument(saved);
+      setDocument(current => {
+        const variants = Object.entries(current?.assets ?? {}).filter(([, asset]) =>
+          asset.derivedFromAssetId && saved.assets?.[asset.derivedFromAssetId]);
+        return variants.length ? { ...saved, assets: { ...Object.fromEntries(variants), ...saved.assets } } : saved;
+      });
       dispatch({ type: 'replace', elements: nextElements, preserveHistory: true });
       setBaselineSnapshot(overlayDraftSnapshot(nextElements));
       recovery.clear();

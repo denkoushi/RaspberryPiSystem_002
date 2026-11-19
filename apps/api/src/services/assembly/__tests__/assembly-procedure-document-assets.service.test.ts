@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
     assemblyProcedureDocument: { findUnique: vi.fn() },
     assemblyProcedureDocumentPage: { findUnique: vi.fn() },
     assemblyProcedureOverlayElement: { findMany: vi.fn() },
-    assemblyProcedureAsset: { findMany: vi.fn(), create: vi.fn() }
+    assemblyProcedureAsset: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() }
   },
   pageImage: vi.fn(), warn: vi.fn()
 }));
@@ -53,9 +53,104 @@ beforeEach(async () => {
   }]);
   mocks.db.assemblyProcedureOverlayElement.findMany.mockResolvedValue([]);
   storage.read.mockResolvedValue(await image('red'));
+  storage.delete.mockResolvedValue(undefined);
   storage.save.mockResolvedValue({ assetId: 'crop', storageKey: 'crop.jpg', relativeUrl: '/crop.jpg', contentType: 'image/jpeg', size: 100, sha256: 'hash' });
   pdfTextCandidates.extractCandidates.mockResolvedValue([]);
   layoutOcr.runLayoutOcrOnImage.mockResolvedValue({ text: '', engine: 'mock', words: [] });
+});
+
+describe('sharpenOverlayImage', () => {
+  const sharpenParams = { documentId: 'draft', accessPassword: '1234', assetId: 'photo' };
+  const source = { id: 'photo', storageKey: 'photo.png', contentType: 'image/png', derivedFromAssetId: null };
+
+  beforeEach(() => {
+    mocks.db.$queryRaw.mockResolvedValue([{ id: source.id }]);
+    mocks.db.assemblyProcedureAsset.findFirst.mockResolvedValue(source);
+  });
+
+  it.each(['png', 'jpeg', 'webp', 'tiff'] as const)('creates a separate %s asset at the same dimensions', async (format) => {
+    const contentType = `image/${format}`;
+    const photo = await sharp(await image('white', 64, 48)).composite([
+      { input: await image('#404040', 24, 24), left: 20, top: 12 }
+    ]).toFormat(format).toBuffer();
+    const original = Buffer.from(photo);
+    storage.read.mockResolvedValue(photo);
+    mocks.db.assemblyProcedureAsset.findFirst.mockResolvedValue({ ...source, contentType });
+    storage.save.mockResolvedValue({ assetId: 'sharpened', storageKey: `sharpened.${format}`, relativeUrl: `/sharpened.${format}`, contentType, size: 100, sha256: 'hash' });
+
+    await expect(service().sharpenOverlayImage(sharpenParams)).resolves.toMatchObject({
+      assetId: 'sharpened', contentType, kind: 'OVERLAY_IMAGE', derivedFromAssetId: source.id
+    });
+    const [saved] = storage.save.mock.calls[0];
+    expect(saved).toMatchObject({ contentType });
+    expect(saved).not.toHaveProperty('assetId');
+    await expect(sharp(saved.data).metadata()).resolves.toMatchObject({ format, width: 64, height: 48 });
+    expect(photo).toEqual(original);
+    expect(storage.delete).not.toHaveBeenCalled();
+    expect(mocks.db.assemblyProcedureAsset.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      id: 'sharpened', ownerDocumentId: 'draft', derivedFromAssetId: source.id, width: 64, height: 48
+    }) });
+  });
+
+  it('rejects a source from another draft without reading its blob', async () => {
+    mocks.db.assemblyProcedureAsset.findFirst.mockResolvedValue(null);
+    await expect(service().sharpenOverlayImage(sharpenParams)).rejects.toMatchObject({ statusCode: 404 });
+    expect(mocks.db.assemblyProcedureAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: source.id, kind: 'OVERLAY_IMAGE',
+        OR: [
+          { ownerDocumentId: 'draft' },
+          { overlayElements: { some: { documentId: 'draft', kind: 'IMAGE' } } },
+          {
+            derivedAssets: {
+              some: {
+                OR: [
+                  { ownerDocumentId: 'draft' },
+                  { overlayElements: { some: { documentId: 'draft', kind: 'IMAGE' } } }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }));
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it('rejects an already sharpened source with 409', async () => {
+    mocks.db.assemblyProcedureAsset.findFirst.mockResolvedValue({ ...source, derivedFromAssetId: 'original' });
+    await expect(service().sharpenOverlayImage(sharpenParams)).rejects.toMatchObject({ statusCode: 409 });
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects an image larger than the overlay upload limit', async () => {
+    storage.read.mockResolvedValue(Buffer.alloc(12 * 1024 * 1024 + 1));
+    await expect(service().sharpenOverlayImage(sharpenParams)).rejects.toMatchObject({
+      statusCode: 400, message: 'overlay画像が大きすぎます'
+    });
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid image before creating an asset', async () => {
+    storage.read.mockResolvedValue(Buffer.from('invalid image'));
+    await expect(service().sharpenOverlayImage(sharpenParams)).rejects.toMatchObject({ statusCode: 400 });
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it.each(['insert', 'transaction commit'])('compensates the new blob when %s fails', async (stage) => {
+    const failure = new Error('database write failed');
+    if (stage === 'insert') {
+      mocks.db.assemblyProcedureAsset.create.mockRejectedValue(failure);
+    } else {
+      mocks.db.$transaction.mockImplementation(async (work) => {
+        await work(mocks.db);
+        throw failure;
+      });
+    }
+    await expect(service().sharpenOverlayImage(sharpenParams)).rejects.toBe(failure);
+    expect(storage.delete).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ assetId: 'crop', storageKey: 'crop.jpg' }));
+  });
 });
 
 describe('assembly procedure region assets service', () => {

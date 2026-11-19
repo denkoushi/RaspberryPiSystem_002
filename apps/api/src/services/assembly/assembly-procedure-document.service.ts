@@ -26,9 +26,9 @@ const procedureDocumentInclude = {
       { zIndex: 'asc' as const },
       { createdAt: 'asc' as const }
     ],
-    include: { asset: true }
+    include: { asset: { include: { derivedFromAsset: true } } }
   },
-  ownedAssets: true,
+  ownedAssets: { include: { derivedFromAsset: true } },
   procedureVideoLinks: procedureVideoLinksInclude,
   procedureManualApprovals: procedureManualApprovalInclude,
   revisionMetadata: true
