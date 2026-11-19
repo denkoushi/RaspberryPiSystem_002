@@ -12,6 +12,7 @@ import { PlanningBoardPiecesContext } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 import { PlanningBoardTestBarStrip } from '../PlanningBoardTestBarStrip';
 import { usePlanningBoardFillRowHeight } from '../usePersistedPlanningBoardFillHeight';
+import { usePersistedPlanningBoardPieceLinks } from '../usePersistedPlanningBoardPieceLinks';
 import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
@@ -26,6 +27,7 @@ import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { isNormalGanttBar , dayLabel, dayToDate, jstDay, planningBoardVisibleBars, type NormalGanttBar, type GanttBar, type GanttLayout } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow, type PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
+import { PlanningBoardPieceLinks } from './PlanningBoardPieceLinks';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
 import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 import { PlanningBoardSeibanShelf } from './PlanningBoardSeibanShelf';
@@ -42,7 +44,7 @@ import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 import { planningBoardBarsOnResource, planningBoardSeibansWithVisibleBars, usePlanningBoardSeibanColors, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
 import { usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
 import { usePlanningBoardSharedSheetBounds } from './usePlanningBoardSharedSheetBounds';
-import { usePlanningBoardShelfInteraction, type SharedShelfInteraction } from './usePlanningBoardShelfInteraction';
+import { usePlanningBoardShelfInteraction, useShelfSelectionPreview, type SharedShelfInteraction } from './usePlanningBoardShelfInteraction';
 
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { GrindingPlanningBoardBar , GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -81,7 +83,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   onSelectedBarResource, fillHeightEligible = false, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, capacity, resourceMove, resourceNameMap,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, sharedSeibanLegend = false, onCompleteToggle, completionPendingItemIds,
-  colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
+  category, colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
 }, ref) {
   const { resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange } = minutes ?? {}; const { onResourceReorder, onResourceMove, canMoveResource } = resourceMove ?? {}; const { dailyHoursByResource, runsThroughBreaks, capacityPending, capacityError, onCapacityChange, onBreaksChange } = capacity; const { enabled: offlineEnabled } = usePlanningBoardOffline(); const useUptime = offlineEnabled ? useOfflineUptime : useMachineSignalResourceUptime;
   const uptime = useUptime(currentLayout.mode === 'forward'); const previousUptime = useRef<ReadonlyMap<string, number>>(new Map());
@@ -224,13 +226,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     }
     return result;
   }, [renderedGroups, foldedRows, layout.start]);
-  const shelfResources = useMemo(() => singleResourceCd ? [singleResourceCd] : [], [singleResourceCd]);
+  const showShelf = Boolean(singleResourceCd || (interaction.resourceView && (category === 'grinding' || category === 'cutting')));
+  const shelfResources = useMemo(() => (singleResourceCd ? [singleResourceCd] : laneResources).filter(resource => resource !== '未設定'), [singleResourceCd, laneResources]);
   const visibleSeibans = useMemo(() => planningBoardSeibansWithVisibleBars(planningBoardVisibleBars(layout), singleGroup ? singleResourceCd : null), [layout, singleGroup, singleResourceCd]);
-  const shelfColumns = usePlanningBoardSeibanShelf(sourceLayout, resourceMinutesItems, shelfResources, seibanOrder, visibleSeibans, Boolean(singleResourceCd && colorBySeiban && !sharedSeibanLegend));
+  const shelfColumns = usePlanningBoardSeibanShelf(sourceLayout, resourceMinutesItems, shelfResources, seibanOrder, visibleSeibans, Boolean(showShelf && colorBySeiban && !sharedSeibanLegend), category, category === 'grinding' && !singleResourceCd);
   const seibanColors = usePlanningBoardSeibanColors(visibleSeibans, colorBySeiban, seibanOrder);
   useEffect(() => {
-    if (!sharedSeibanLegend && focusedSeiban !== null && !seibanColors?.has(focusedSeiban) && !(singleResourceCd && shelfColumns.some(column => column.seiban === focusedSeiban))) setFocusedSeiban(null);
-  }, [focusedSeiban, seibanColors, setFocusedSeiban, sharedSeibanLegend, singleResourceCd, shelfColumns]);
+    if (!sharedSeibanLegend && focusedSeiban !== null && !seibanColors?.has(focusedSeiban) && !shelfColumns.some(column => column.seiban === focusedSeiban)) setFocusedSeiban(null);
+  }, [focusedSeiban, seibanColors, setFocusedSeiban, sharedSeibanLegend, shelfColumns]);
   useEffect(() => {
     if (focusedSeiban === null) return;
     const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue], [data-planning-board-value-sheet]')) setFocusedSeiban(null); };
@@ -246,7 +249,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     ? singleGroup ? group.rows.map((row) => ({ resource: group.resource!, bars: row.bars.filter((bar) => bar.item.kind === 'test' || !bar.item.standardHoursMissing), rowKey: row.key,
       start: foldedRows.get(row.key)!.window.start, end: foldedRows.get(row.key)!.window.end }))
       : [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars).filter((bar) => bar.item.kind === 'test' || !bar.item.standardHoursMissing) }] : []), [renderedGroups, singleGroup, foldedRows]);
-  const { dragPreview, dragPointer, subscribePreview, setDragPreview, dragLanes: availableDragLanes, ownsDragPreview } = usePlanningBoardSharedDrag(sharedDrag, singleResourceCd, dragLanes);
+  const { dragPreview: activeDrag, dragPointer, subscribePreview, setDragPreview, dragLanes: availableDragLanes, ownsDragPreview } = usePlanningBoardSharedDrag(sharedDrag, singleResourceCd, dragLanes);
+  const [selectedPreview, setShelfSelection] = useShelfSelectionPreview(dragLanes, layout.start, dayWidth);
+  const dragPreview = activeDrag ?? sharedDrag?.selectionPreview ?? selectedPreview;
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const { localShelf, shelfInteractionRef, shelfActions, getShelfDrop } = usePlanningBoardShelfInteraction(
@@ -309,8 +314,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : planningBoardSharedBottomInset(sharedBounds.top, sharedBounds.bottom, sharedGeometry.sheetOverlap, sharedChainTop, sharedChainHeight);
   const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
   const { fillRowHeight, rowGeometryKey, setViewportClientHeight } = usePlanningBoardFillRowHeight(fillHeightEligible && forward && Boolean(interaction.resourceView), viewportHeight, renderedGroups, Boolean(singleGroup), bottomInset, chipsByPart, placementByPart);
-  useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { bars: linkBars, content, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey });
-
+  const { pieceLinks } = usePersistedPlanningBoardPieceLinks(); const pieceLayer = useRef<HTMLDivElement>(null);
+  const linkGeometry = useMemo(() => ({ content, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey, pieceLayer }), [barLocations, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey]);
+  const localPiecePanes = useMemo(() => [{ ...linkGeometry, bars: [], viewport: null }], [linkGeometry]);
+  useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { ...linkGeometry, bars: linkBars, headerHeight: singleGroup ? 0 : 36 });
   const latestFocus = useRef({ focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus, showChain });
   useLayoutEffect(() => { latestFocus.current = { focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus, showChain }; });
   const focusChain = useCallback((original: GanttBar, keepOpen = false) => {
@@ -352,6 +359,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(element);
     if (legend.current) observer?.observe(legend.current);
+    const toolbar = fitPane ? null : element.closest('main')?.querySelector('[data-planning-board-toolbar]'); if (toolbar) observer?.observe(toolbar);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [colorBySeiban, singleResourceCd, measureWindow, fitPane, setViewportClientHeight]);
   // Before paint, so the mounted window follows the new position without a blank frame.
@@ -541,6 +549,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
             style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
           {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
+          <div ref={pieceLayer} className="pointer-events-none absolute inset-0" aria-hidden="true" />
           {renderedGroups.map((group, index) => <div key={group.key} data-gantt-lane={group.resource ? '' : undefined} data-resource-code={group.resource ?? undefined}
             data-gantt-lane-resource={group.resource ?? undefined}
             style={{ opacity: dragPreview && group.resource && !dragPreview.allowed.has(group.resource) ? 0.3 : undefined,
@@ -595,23 +604,24 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           {forward && !singleGroup && <PlanningBoardForwardLaterQueue viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth}
             labelWidth={labelWidth} viewportWidth={viewportWidth}
             onOpen={(bar, anchor) => queuePopover.current?.show(bar, anchor, true)} />}
+          {pieceLinks && !sharedChain && <PlanningBoardPieceLinks panes={localPiecePanes} />}
           {(sharedChain ? linkBars.length > 0 : showChain) && <PlanningBoardChainLinks view={effectiveChainView} barLocations={barLocations} bars={linkBars} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} rowGeometryKey={rowGeometryKey} />}
         </div>
       </div>
       {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}
-      {!sharedSeibanLegend && seibanColors && (singleResourceCd
-        ? <PlanningBoardSeibanShelf ref={legend} interactionRef={localShelf} writePending={resourceOrderPending} onDragPreview={setDragPreview} getDrop={getShelfDrop} resources={shelfResources} actions={shelfActions}
+      {!sharedSeibanLegend && seibanColors && (showShelf
+        ? <PlanningBoardSeibanShelf ref={legend} interactionRef={localShelf} writePending={resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} getDrop={getShelfDrop} resources={shelfResources} actions={shelfActions}
           disabled={!forward || interaction.disabled || interaction.dragDisabled || interaction.pieceDisabled || interaction.pinMode} columns={shelfColumns} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
           highlightedItemId={[...interaction.selectedItemIds].at(-1) ?? null} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={toggleSeiban} />
         : <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
           focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />)}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} canMoveResource={canMoveResource} viewport={viewport} lanes={availableDragLanes} start={layout.start} dayWidth={dayWidth} focusedSeiban={focusedSeiban} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {valueSheet && (valueSheetContainer === null ? null : valueSheetContainer ? createPortal(valueSheet, valueSheetContainer) : valueSheet)}
-      {dragPreview && ownsDragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} subscribe={subscribePreview} />}
-      {dragPreview && ownsDragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
+      {dragPreview && (activeDrag ? ownsDragPreview : !sharedDrag || sharedDrag.selectionPreview?.drop?.resource === singleResourceCd) && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} subscribe={subscribePreview} />}
+      {activeDrag && ownsDragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed z-[110] scale-105 rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
         style={{ left: dragPointer.current.x / pageZoom() + 12, top: dragPointer.current.y / pageZoom() + 12 }}>
-        <strong className="font-mono">{dragPreview.bar.resource}</strong> {dragPreview.bar.item.kind === 'test' ? dragPreview.bar.item.name : dragPreview.bar.item.fhinmei || dragPreview.bar.item.fhincd}
+        <strong className="font-mono">{activeDrag.bar.resource}</strong> {activeDrag.bar.item.kind === 'test' ? activeDrag.bar.item.name : activeDrag.bar.item.fhinmei || activeDrag.bar.item.fhincd}
       </div>, document.body)}
     </section>
     </PlanningBoardPiecesContext.Provider></PlanningBoardUnitOpContext.Provider>

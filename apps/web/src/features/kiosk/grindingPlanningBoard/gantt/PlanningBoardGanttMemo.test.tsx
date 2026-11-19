@@ -279,7 +279,7 @@ it('batches move previews and publishes only a changed insertion target, cancell
 });
 
 
-it.each([false, true])('keeps Gantt rows memoized when shelf tiles, filters, and clear selection change (pair=%s)', pair => {
+it.each([false, true])('updates only the affected Gantt row for shelf selection and clear (pair=%s)', pair => {
   localStorage.clear();
   const items = [item('a', '305'), item('b', '306')];
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
@@ -291,12 +291,15 @@ it.each([false, true])('keeps Gantt rows memoized when shelf tiles, filters, and
     disabled={false} dragDisabled={false} selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
     colorBySeiban singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']} unitSplitEnabledByResource={{ '305': true, '306': true }} />);
   renders.length = 0;
+  const row = screen.getByTestId('planning-gantt-bar-a').closest<HTMLElement>('[data-gantt-window-row]')!;
   fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  expect(renders).toEqual([row.dataset.ganttWindowRow]);
   expect(screen.getByText('1件')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '残り', exact: true }));
   fireEvent.click(screen.getByRole('button', { name: 'すべて', exact: true }));
+  expect(renders).toEqual([row.dataset.ganttWindowRow]);
   fireEvent.click(screen.getByRole('button', { name: '選択を外す' }));
-  expect(renders).toEqual([]);
+  expect(renders).toEqual([row.dataset.ganttWindowRow, row.dataset.ganttWindowRow]);
   expect(toggle).not.toHaveBeenCalled();
 });
 

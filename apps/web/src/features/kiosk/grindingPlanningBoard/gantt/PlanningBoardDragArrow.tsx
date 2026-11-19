@@ -21,8 +21,11 @@ export function PlanningBoardDragArrow({ preview, viewport, subscribe }: {
         ? document.querySelector<HTMLElement>(`[data-testid="planning-forward-queue-card-${id}"]`)
         : (preview.rowKey ? Array.from(scope?.querySelectorAll<HTMLElement>('[data-gantt-window-row]') ?? []).find((row) => row.dataset.ganttWindowRow === preview.rowKey
           && (!board || row.dataset.resourceCode === preview.bar.resource)) : scope)?.querySelector<HTMLElement>(`[data-testid="planning-gantt-bar-${id}"]`);
-      const from = origin?.getBoundingClientRect();
-      const insertion = document.querySelector<HTMLElement>('[data-testid="planning-forward-queue-insertion"]') ??
+      const tile = preview.source === 'shelf-selection' && !origin
+        ? (board ?? viewport.current?.closest('[data-testid="planning-board-gantt"]'))?.querySelector<HTMLElement>(`[data-testid="planning-shelf-tile-${id}"]`) : null;
+      const from = (origin ?? tile)?.getBoundingClientRect();
+      const insertion = (preview.source !== 'shelf-selection'
+        ? document.querySelector<HTMLElement>('[data-testid="planning-forward-queue-insertion"]') : null) ??
         scope?.querySelector<HTMLElement>('[data-testid="planning-gantt-insertion"]');
       const to = insertion?.getBoundingClientRect();
       if (!from || !to) { setPoints(null); return; }
@@ -33,6 +36,14 @@ export function PlanningBoardDragArrow({ preview, viewport, subscribe }: {
     };
     measure();
     // Auto-scroll may move the marker while the logical drop target stays unchanged.
+    if (preview.source === 'shelf-selection') {
+      window.addEventListener('scroll', measure, true);
+      window.addEventListener('resize', measure);
+      return () => {
+        window.removeEventListener('scroll', measure, true);
+        window.removeEventListener('resize', measure);
+      };
+    }
     return subscribe(measure);
   }, [preview, viewport, subscribe]);
   if (!points) return null;
