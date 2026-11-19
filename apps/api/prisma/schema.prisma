@@ -6009,6 +6009,27 @@ model ProcedureManualApproval {
 }
 
 
+// Delivery audit snapshots are retained independently of employee/device or manual deletion.
+model ProcedureManualMailDelivery {
+  id               String   @id @default(uuid())
+  documentId       String
+  revisionId       String
+  revisionNumber   Int
+  employeeId       String
+  employeeCode     String
+  employeeName     String
+  clientDeviceId   String
+  clientDeviceName String
+  sentAt           DateTime
+  recipient        String
+  gmailMessageId   String   @unique
+  pdfSha256        String   @db.Char(64)
+  pageCount        Int
+  pdfByteSize      Int
+
+  @@index([documentId, sentAt])
+}
+
 enum ProcedureVideoStatus {
   PENDING
   PROCESSING

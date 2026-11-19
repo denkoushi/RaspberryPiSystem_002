@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { env } from '../../config/env.js';
 import { redactHeadersForLog } from '../../lib/log-headers.js';
 
 import { getKioskHeaderTabOrderSettings } from '../../services/kiosk/kiosk-header-tab-order.service.js';
@@ -66,7 +67,11 @@ export async function registerKioskConfigRoute(
       initialKioskPath,
       clientStatus,
       navTabOrder,
-      portalHiddenTabIds
+      portalHiddenTabIds,
+      assemblyProcedureMail: {
+        enabled: Boolean(client && env.ASSEMBLY_PROCEDURE_MAIL_DOMAIN),
+        domain: client ? env.ASSEMBLY_PROCEDURE_MAIL_DOMAIN ?? null : null
+      }
     };
   });
 }

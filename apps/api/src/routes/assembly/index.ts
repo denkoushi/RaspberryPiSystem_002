@@ -2,6 +2,7 @@ import { registerProcedureVideoRoutes } from './procedure-videos.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { registerProcedureMaterialRoutes } from './procedure-materials.js';
 import { registerProcedureManualRoutes } from './procedure-manuals.js';
+import { registerProcedureManualMailRoute } from './procedure-manual-mail.js';
 import { registerAssemblyProcedureDocumentRevisionRoutes } from './procedure-document-revisions.js';
 import { registerAssemblyProcedureDocumentEditLeaseRoutes } from './procedure-document-edit-leases.js';
 import { registerAssemblyProcedureDocumentRoutes } from './procedure-documents.js';
@@ -114,6 +115,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   registerProcedureMaterialRoutes(app, { allowView, allowWriteKiosk, semanticSearch: hermesSearchTrial });
   registerProcedureVideoRoutes(app, { allowView, allowWriteKiosk });
   registerProcedureManualRoutes(app, { allowView, allowWriteKiosk, serializeSequence: serializeProcedureSequence });
+  registerProcedureManualMailRoute(app);
 
   registerAssemblyProcedureDocumentRevisionRoutes(app, {
     allowView,

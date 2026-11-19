@@ -1,0 +1,54 @@
+.procedure-print {
+  display: grid;
+  grid-template-rows: 5mm minmax(0, 1fr) 5mm;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #fff;
+  font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+}
+
+.procedure-print-band {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  padding-inline: 3mm;
+  background: #161c22;
+  color: #eef3f6;
+  font-size: 8pt;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+footer.procedure-print-band {
+  background: #eee;
+  color: #343a40;
+}
+
+.procedure-print-field {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.procedure-print-field > span {
+  flex: none;
+}
+
+.procedure-print-page {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.procedure-print-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-28deg);
+  color: rgb(22 28 34 / 16%);
+  font-weight: 700;
+  font-size: 28pt;
+  white-space: nowrap;
+  pointer-events: none;
+}
