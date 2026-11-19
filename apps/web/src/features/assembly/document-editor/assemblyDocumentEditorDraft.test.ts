@@ -297,6 +297,19 @@ describe('photo text-rewrite attachments', () => {
     expect(overlayDraftReducer(elements, { type: 'remove', id: photo.id })).toEqual([edgeText]);
   });
 
+  it('carries rewritten text that grows below the patch', () => {
+    const tallText = { ...text, bbox: { ...patchBox, heightRatio: 0.3 } };
+    const below = { ...ordinaryText, bbox: { ...patchBox, yRatio: 0.38 } };
+    const elements = [photo, patch, tallText, below];
+    expect(findAttachedOverlayIds(elements, photo.id)).toEqual([patch.id, tallText.id]);
+    const moved = overlayDraftReducer(elements, {
+      type: 'update',
+      element: { ...photo, bbox: { ...photoBox, xRatio: 0.25 } }
+    });
+    expect(byId(moved, tallText.id)?.bbox.xRatio).toBe(0.375);
+    expect(byId(moved, below.id)).toBe(below);
+  });
+
   it.each([0, 1])('duplicates a photo group to page %i with distinct ownership and consecutive z-indices', pageIndex => {
     const elements = [...group, otherPage];
     const action = createDuplicateOverlayAction(elements, photo.id, 'copied-photo', pageIndex);
