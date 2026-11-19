@@ -27,7 +27,7 @@ export function disposeVoiceSession(session: VoiceSession) {
   session.stream?.getTracks().forEach(track => track.stop());
 }
 
-function waitForRetry(seconds: number, signal: AbortSignal): Promise<void> {
+export function waitForVoiceDelay(seconds: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     signal.throwIfAborted();
     const onAbort = () => { clearTimeout(timer); reject(new Error('Aborted')); };
@@ -81,23 +81,22 @@ function monitorRecording(session: VoiceSession, stream: MediaStream, options: V
   };
 }
 
-export async function startVoiceTranscription(
+async function startVoiceRecording(
   session: VoiceSession,
   active: () => boolean,
-  onProcessing: () => void,
-  onTranscript: (text: string) => Promise<void> | void,
+  onAudio: (audio: Blob) => void | Promise<void>,
   onError: (error: VoiceInputError) => void,
-  context?: string,
-  options?: VoiceRecordingOptions
+  recording: { maxMs: number; options?: VoiceRecordingOptions; requireWebm?: boolean; onRecording?: () => void }
 ) {
-  const availability = getAssemblyProcedureSpeechToTextAvailability(session.abort.signal).catch(() => false);
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     session.stream = stream;
     if (!active()) { stream.getTracks().forEach(track => track.stop()); return; }
+    const webm = MediaRecorder.isTypeSupported('audio/webm;codecs=opus');
+    if (recording.requireWebm && !webm) throw new Error('WebM unavailable');
     const recorder = new MediaRecorder(stream, {
       audioBitsPerSecond: 64000,
-      ...(MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? { mimeType: 'audio/webm;codecs=opus' } : {})
+      ...(webm ? { mimeType: 'audio/webm;codecs=opus' } : {})
     });
     session.recorder = recorder;
     const chunks: Blob[] = [];
@@ -111,51 +110,80 @@ export async function startVoiceTranscription(
       session.stopMonitoring?.();
       stream.getTracks().forEach(track => track.stop());
       if (!active()) return;
-      onProcessing();
-      let spokenText: string;
-      try {
-        const audio = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-        if (await availability) {
-          if (!active()) return;
-          if (audio.size > 2_000_000) { onError('長すぎます'); return; }
-          let result: { text: string };
-          try {
-            result = await transcribeAssemblyProcedureDictation(audio, session.abort.signal, context);
-          } catch (error) {
-            if (!isAxiosError(error) || error.response?.status !== 429) throw error;
-            const header = String(error.response.headers['retry-after'] ?? '');
-            const seconds = /^[1-9]\d*$/.test(header) ? Math.min(Number(header), 5) : 2;
-            await waitForRetry(seconds, session.abort.signal);
-            result = await transcribeAssemblyProcedureDictation(audio, session.abort.signal, context);
-          }
-          spokenText = result.text.trim();
-        } else {
-          if (!active()) return;
-          const form = new FormData();
-          form.append('file', new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }), 'dictation.webm');
-          form.append('response_format', 'json'); form.append('language', 'ja'); form.append('temperature', '0');
-          const response = await fetch(`${WHISPER_BASE_URL}/inference`, { method: 'POST', body: form, signal: session.abort.signal });
-          if (!response.ok) throw new Error('STT unavailable');
-          const data = await response.json() as { text?: unknown };
-          spokenText = typeof data.text === 'string' ? data.text.trim() : '';
-        }
-      } catch (error) {
-        if (!active()) return;
-        onError(isAxiosError(error) && error.response?.status === 429 ? '混んでいます' : '音声認識が動いていません');
-        return;
-      }
-      if (!active()) return;
-      if (!spokenText || isSilencePhrase(spokenText)) { onError('聞き取れませんでした'); return; }
-      await onTranscript(spokenText);
+      await onAudio(new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }));
     };
     recorder.start();
-    if (options) monitorRecording(session, stream, options);
+    if (recording.options) monitorRecording(session, stream, recording.options);
+    recording.onRecording?.();
     session.timer = setTimeout(() => {
       if (active() && recorder.state === 'recording') recorder.stop();
-    }, 60000);
+    }, recording.maxMs);
   } catch {
     if (active()) {
       onError('マイクを使えません'); disposeVoiceSession(session);
     }
   }
+}
+
+export const MEETING_RECORDING_MAX_SECONDS = 3600;
+
+export function startMeetingRecording(
+  session: VoiceSession,
+  active: () => boolean,
+  onRecording: () => void,
+  onAudio: (audio: Blob) => Promise<void>,
+  onError: (error: VoiceInputError) => void
+) {
+  return startVoiceRecording(session, active, onAudio, onError, {
+    maxMs: MEETING_RECORDING_MAX_SECONDS * 1000, requireWebm: true, onRecording
+  });
+}
+
+export async function startVoiceTranscription(
+  session: VoiceSession,
+  active: () => boolean,
+  onProcessing: () => void,
+  onTranscript: (text: string) => Promise<void> | void,
+  onError: (error: VoiceInputError) => void,
+  context?: string,
+  options?: VoiceRecordingOptions
+) {
+  const availability = getAssemblyProcedureSpeechToTextAvailability(session.abort.signal).catch(() => false);
+  return startVoiceRecording(session, active, async (audio) => {
+    onProcessing();
+    let spokenText: string;
+    try {
+      if (await availability) {
+        if (!active()) return;
+        if (audio.size > 2_000_000) { onError('長すぎます'); return; }
+        let result: { text: string };
+        try {
+          result = await transcribeAssemblyProcedureDictation(audio, session.abort.signal, context);
+        } catch (error) {
+          if (!isAxiosError(error) || error.response?.status !== 429) throw error;
+          const header = String(error.response.headers['retry-after'] ?? '');
+          const seconds = /^[1-9]\d*$/.test(header) ? Math.min(Number(header), 5) : 2;
+          await waitForVoiceDelay(seconds, session.abort.signal);
+          result = await transcribeAssemblyProcedureDictation(audio, session.abort.signal, context);
+        }
+        spokenText = result.text.trim();
+      } else {
+        if (!active()) return;
+        const form = new FormData();
+        form.append('file', audio, 'dictation.webm');
+        form.append('response_format', 'json'); form.append('language', 'ja'); form.append('temperature', '0');
+        const response = await fetch(`${WHISPER_BASE_URL}/inference`, { method: 'POST', body: form, signal: session.abort.signal });
+        if (!response.ok) throw new Error('STT unavailable');
+        const data = await response.json() as { text?: unknown };
+        spokenText = typeof data.text === 'string' ? data.text.trim() : '';
+      }
+    } catch (error) {
+      if (!active()) return;
+      onError(isAxiosError(error) && error.response?.status === 429 ? '混んでいます' : '音声認識が動いていません');
+      return;
+    }
+    if (!active()) return;
+    if (!spokenText || isSilencePhrase(spokenText)) { onError('聞き取れませんでした'); return; }
+    await onTranscript(spokenText);
+  }, onError, { maxMs: 60_000, options });
 }

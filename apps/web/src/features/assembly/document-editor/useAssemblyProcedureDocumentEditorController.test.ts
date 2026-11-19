@@ -2074,6 +2074,50 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.elements).toEqual([element]);
   });
 
+  it('appends meeting text to the latest text on its original page and restores the whole change', async () => {
+    const element = { ...createOverlayForRange('TEXT', 1, range), text: '元の文章' };
+    const other = createOverlayForRange('TEXT', 0, range);
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [other] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [element] }
+    ] }));
+    await authenticate(hook.result);
+    const original = { ...element, text: '元'.repeat(9990) };
+    act(() => hook.result.current.commitInlineText(original));
+    act(() => hook.result.current.setSelectedOverlayId(other.id));
+    let edit: ReturnType<typeof hook.result.current.updateMeetingText> = undefined;
+    act(() => { edit = hook.result.current.updateMeetingText(element, '話者1: 発言\n話者2: 続き'); });
+    expect(hook.result.current.elements).toEqual([
+      other, { ...original, text: `${original.text}\n\n話者1: 発言` },
+      expect.objectContaining({ kind: 'TEXT', pageIndex: 1, text: '話者2: 続き' })
+    ]);
+    expect(hook.result.current.selectedElement?.id).toBe(other.id);
+    act(() => expect(edit?.undo()).toBe(true));
+    expect(hook.result.current.elements).toEqual([other, original]);
+  });
+
+  it('creates a text element on the recording page when the target is deleted and can undo it', async () => {
+    const element = createOverlayForRange('TEXT', 1, range);
+    const hook = renderEditor(makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [] },
+      { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [element] }
+    ] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    act(() => hook.result.current.setSelectedOverlayId(element.id));
+    act(() => hook.result.current.deleteSelectedOverlay());
+    act(() => hook.result.current.setSelectedPageIndex(0));
+    let edit: ReturnType<typeof hook.result.current.updateMeetingText> = undefined;
+    act(() => { edit = hook.result.current.updateMeetingText(element, '話者1: 発言'); });
+    expect(hook.result.current.elements).toEqual([
+      expect.objectContaining({ kind: 'TEXT', pageIndex: 1, text: '話者1: 発言' })
+    ]);
+    expect(hook.result.current.elements[0]?.id).not.toBe(element.id);
+    expect(hook.result.current.selectedPageIndex).toBe(0);
+    act(() => expect(edit?.undo()).toBe(true));
+    expect(hook.result.current.elements).toEqual([]);
+  });
+
   it('starts inline editing after a 6px jitter without creating move history', async () => {
     const element = { ...createOverlayForRange('TEXT', 0, range), kind: 'TEXT' as const, text: '元の文章' };
     const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [element] }] }));

@@ -96,6 +96,7 @@ services:
       BACKUP_STORAGE_DIR: /opt/backups
       # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
       BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
+      PROCEDURE_MEETING_AUDIO_DIR: /app/storage/procedure-meeting-spool
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
@@ -128,6 +129,8 @@ services:
       - knowledge-assets-storage:/app/storage/knowledge-assets
       # 要領書の Gmail 素材（不変blob。未マウントだと再作成で消失）
       - procedure-materials-storage:/app/storage/procedure-materials
+      # 要領書の話し合い録音（書き起こし待ちの一時置き場。処理後と24時間後に消える）
+      - procedure-meeting-spool-storage:/app/storage/procedure-meeting-spool
       # 要領書の動画（SD 変換済み。未マウントだと再作成で消失）
       - procedure-videos-storage:/app/storage/procedure-videos
       - assembly-check-sheet-sources-storage:/app/storage/assembly-check-sheet-sources
@@ -386,6 +389,13 @@ volumes:
       type: none
       o: bind
       device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/procedure-materials
+  procedure-meeting-spool-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-meeting-spool-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/procedure-meeting-spool
   procedure-videos-storage:
     name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage
     driver: local

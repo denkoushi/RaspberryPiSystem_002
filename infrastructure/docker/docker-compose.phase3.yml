@@ -49,6 +49,7 @@ services:
       BACKUP_STORAGE_DIR: /opt/backups
       # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
       BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
+      PROCEDURE_MEETING_AUDIO_DIR: /app/storage/procedure-meeting-spool
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
@@ -78,6 +79,7 @@ services:
       - work-instruction-assets-storage:/app/storage/work-instruction-assets
       - knowledge-assets-storage:/app/storage/knowledge-assets
       - procedure-materials-storage:/app/storage/procedure-materials
+      - procedure-meeting-spool-storage:/app/storage/procedure-meeting-spool
       - procedure-videos-storage:/app/storage/procedure-videos
       - assembly-check-sheet-sources-storage:/app/storage/assembly-check-sheet-sources
       - knowledge-git-storage:/app/storage/knowledge-git
@@ -535,6 +537,9 @@ volumes:
   procedure-materials-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_procedure-materials-storage
+  procedure-meeting-spool-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-meeting-spool-storage
+    external: true
   procedure-videos-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage

@@ -4,6 +4,9 @@ export const inferenceEnvShape = {
   PROCEDURE_SPEECH_TO_TEXT_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
     .transform((v) => v === 'true'),
+  PROCEDURE_MEETING_TRANSCRIBE_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
   PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('true'))
     .transform((v) => v === 'true'),

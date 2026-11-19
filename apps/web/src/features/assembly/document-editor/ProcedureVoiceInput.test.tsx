@@ -2,17 +2,27 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getAssemblyProcedureSpeechToTextAvailability, rewriteAssemblyProcedureDictation, transcribeAssemblyProcedureDictation } from '../../../api/domains/assembly';
+import {
+  getAssemblyProcedureMeeting, getAssemblyProcedureMeetingAvailability, getAssemblyProcedureSpeechToTextAvailability,
+  rewriteAssemblyProcedureDictation, submitAssemblyProcedureMeeting, transcribeAssemblyProcedureDictation
+} from '../../../api/domains/assembly';
 import { rewriteAssemblyProcedureDictation as rewriteDictationRequest } from '../../../api/domains/assembly/dictation';
 import { useLocalLlmAvailability } from '../../../api/hooks/local-llm';
 import { api } from '../../../api/http';
 
+import { splitMeetingText } from './assemblyDocumentEditorDraft';
 import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDocumentEditorInspector';
-import { PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS, PROCEDURE_WHISPER_BASE_URL } from './useProcedureVoiceInput';
+import { PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS, PROCEDURE_WHISPER_BASE_URL, useProcedureMeetingInput } from './useProcedureVoiceInput';
 
 import type { OverlayTextElement } from '@raspi-system/shared-types';
 
-vi.mock('../../../api/domains/assembly', () => ({ rewriteAssemblyProcedureDictation: vi.fn(), getAssemblyProcedureSpeechToTextAvailability: vi.fn(), transcribeAssemblyProcedureDictation: vi.fn() }));
+vi.mock('../../../api/domains/assembly', () => ({
+  rewriteAssemblyProcedureDictation: vi.fn(), getAssemblyProcedureSpeechToTextAvailability: vi.fn(), transcribeAssemblyProcedureDictation: vi.fn(),
+  getAssemblyProcedureMeetingAvailability: vi.fn(), submitAssemblyProcedureMeeting: vi.fn(), getAssemblyProcedureMeeting: vi.fn()
+}));
+const meetingAvailability = vi.mocked(getAssemblyProcedureMeetingAvailability);
+const submitMeeting = vi.mocked(submitAssemblyProcedureMeeting);
+const getMeeting = vi.mocked(getAssemblyProcedureMeeting);
 const availability = vi.mocked(getAssemblyProcedureSpeechToTextAvailability);
 const transcribe = vi.mocked(transcribeAssemblyProcedureDictation);
 const rewrite = vi.mocked(rewriteAssemblyProcedureDictation);
@@ -41,9 +51,38 @@ class FakeRecorder {
 const makeElement = (text: string, id = 'one'): OverlayTextElement => ({ id, kind: 'TEXT', text, pageIndex: 0, zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.4, heightRatio: 0.1 } });
 const common = { onDelete: vi.fn(), onBringForward: vi.fn(), onSendBackward: vi.fn(), onBringToFront: vi.fn(), onSendToBack: vi.fn(), onRefetchTextCandidates: vi.fn() };
 const documentId = '00000000-0000-4000-8000-000000000001';
-function Harness({ text = '', enabled = true, onUpdate = vi.fn(), context, documentId, holderToken }: { text?: string; enabled?: boolean; onUpdate?: (element: OverlayTextElement) => void; context?: string; documentId?: string; holderToken?: string }) {
-  const [element, setElement] = useState(makeElement(text));
-  return <><button onClick={() => setElement(makeElement('別の文章', 'two'))}>選択を変える</button><button onClick={() => setElement(makeElement('前の文'))}>外から変える</button><AssemblyProcedureDocumentEditorInspector {...common} element={element} voiceInputEnabled={enabled} voiceContext={context} documentId={documentId} holderToken={holderToken} onUpdate={next => { if (next.kind === 'TEXT') { onUpdate(next); setElement(next); } }} /></>;
+function Harness({ text = '', enabled = true, saving = false, onUpdate = vi.fn(), context, documentId, holderToken, onMeetingUpdate }: { text?: string; enabled?: boolean; saving?: boolean; onUpdate?: (element: OverlayTextElement) => void; context?: string; documentId?: string; holderToken?: string; onMeetingUpdate?: (element: OverlayTextElement, overflow: string[]) => () => boolean }) {
+  const [elements, setElements] = useState({ one: makeElement(text), two: makeElement('別の文章', 'two') });
+  const [selected, setSelected] = useState<keyof typeof elements | null>('one');
+  const [working, setBusy] = useState(false);
+  const busy = saving || working;
+  const element = selected ? elements[selected] : null;
+  const setElement = (next: OverlayTextElement) => setElements(current => ({ ...current, [next.id]: next }));
+  const meeting = useProcedureMeetingInput({
+    element, enabled, disabled: false, busy, inlineEditingId: null, documentId,
+    applyTranscript: (target, transcript) => {
+      const original = elements[target.id as keyof typeof elements];
+      const [text, ...overflow] = splitMeetingText(original.text, transcript);
+      const updated = { ...original, text };
+      const undo = onMeetingUpdate?.(updated, overflow);
+      setElement(updated);
+      return { element: updated, undo: () => {
+        if (undo && !undo()) return false;
+        setElement(original);
+        return true;
+      } };
+    }
+  });
+  return <>
+    <button onClick={() => setSelected('two')}>選択を変える</button>
+    <button onClick={() => setSelected(null)}>選択を外す</button>
+    <button onClick={() => setSelected('one')}>最初の文章を選ぶ</button>
+    <button onClick={() => setBusy(value => !value)}>ビジー切替</button>
+    <button onClick={() => setElement(makeElement('前の文'))}>外から変える</button>
+    {element ? <AssemblyProcedureDocumentEditorInspector {...common} key={element.id} element={element}
+      voiceInputEnabled={enabled} voiceContext={context} documentId={documentId} holderToken={holderToken} meeting={meeting}
+      busy={busy} onUpdate={next => { if (next.kind === 'TEXT') { onUpdate(next); setElement(next); } }} /> : null}
+  </>;
 }
 async function record(label: string) {
   fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
@@ -55,6 +94,9 @@ beforeEach(() => {
     vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false });
   vi.clearAllMocks();
   FakeRecorder.audioSize = 5; FakeRecorder.isTypeSupported.mockReturnValue(true);
+  meetingAvailability.mockReset().mockResolvedValue(false);
+  submitMeeting.mockReset().mockResolvedValue({ jobId: 'meeting-job' });
+  getMeeting.mockReset().mockResolvedValue({ status: 'SUCCEEDED', text: '話者1: 発言。\n話者2: 了解。' });
   availability.mockResolvedValue(false); transcribe.mockReset().mockResolvedValue({ text: '棚' });
   getUserMedia.mockResolvedValue(stream);
   stt.mockResolvedValue({ ok: true, json: async () => ({ text: '  えーと、棚に直す  ' }) });
@@ -375,3 +417,198 @@ describe('procedure voice input API relay', () => {
 });
 
 vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: vi.fn(() => ({ unavailable: false })) }));
+
+describe('procedure meeting transcription', () => {
+  async function startMeeting(text = '既存。', onMeetingUpdate?: React.ComponentProps<typeof Harness>['onMeetingUpdate']) {
+    vi.useFakeTimers();
+    meetingAvailability.mockResolvedValue(true);
+    render(<Harness text={text} onMeetingUpdate={onMeetingUpdate} />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '話し合い' }));
+    await act(async () => {});
+  }
+
+  it('hides the meeting button while the feature is disabled', async () => {
+    render(<Harness text="既存。" />);
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: '話し合い' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '続き' })).toBeInTheDocument();
+  });
+
+  it('shows recording and processing, polls every five seconds, appends speakers, and restores', async () => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: true });
+    getMeeting.mockResolvedValueOnce({ status: 'QUEUED' }).mockResolvedValueOnce({ status: 'RUNNING' });
+    await startMeeting();
+    expect(screen.getByText('00:00 / 60:00')).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(12_000));
+    expect(screen.getByText('00:12 / 60:00')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await act(async () => {});
+    expect(screen.getByRole('status')).toHaveTextContent('書き起こし中…');
+    const button = screen.getByRole('button', { name: '話し合い' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription('AI 未起動');
+    await act(() => vi.advanceTimersByTimeAsync(4999));
+    expect(getMeeting).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(getMeeting).toHaveBeenCalledExactlyOnceWith('meeting-job', expect.any(AbortSignal));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(getMeeting).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole('textbox')).toHaveValue('既存。\n\n話者1: 発言。\n話者2: 了解。');
+    expect(rewrite).not.toHaveBeenCalled();
+    expect(transcribe).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '戻す' }));
+    expect(screen.getByRole('textbox')).toHaveValue('既存。');
+  });
+
+  it('sends automatically at 60 minutes even when the audio exceeds the short-input limit', async () => {
+    FakeRecorder.audioSize = 2_000_001;
+    await startMeeting();
+    await act(() => vi.advanceTimersByTimeAsync(3_599_000));
+    expect(screen.getByText('59:59 / 60:00')).toBeInTheDocument();
+    expect(submitMeeting).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(submitMeeting).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ size: 2_000_001 }), expect.any(AbortSignal));
+    expect(FakeRecorder.last.options).toMatchObject({ audioBitsPerSecond: 64_000, mimeType: 'audio/webm;codecs=opus' });
+    expect(screen.getByRole('status')).toHaveTextContent('書き起こし中…');
+  });
+
+  it('shows a short error when the worker fails', async () => {
+    getMeeting.mockResolvedValue({ status: 'FAILED', errorCode: 'meeting_transcribe_timeout' });
+    await startMeeting();
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await act(async () => {});
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(screen.getByRole('alert')).toHaveTextContent('時間がかかりすぎました');
+    expect(screen.getByRole('button', { name: '話し合い' })).toBeEnabled();
+    expect(screen.getByRole('textbox')).toHaveValue('既存。');
+  });
+
+  it('sends overflowing text to the editor on the same page and restores the edit', async () => {
+    const undo = vi.fn().mockReturnValue(true);
+    const onMeetingUpdate = vi.fn().mockReturnValue(undo);
+    const base = '元'.repeat(9990);
+    getMeeting.mockResolvedValue({ status: 'SUCCEEDED', text: '話者1: はい。\n話者2: 続き。' });
+    await startMeeting(base, onMeetingUpdate);
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await act(async () => {});
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(onMeetingUpdate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ pageIndex: 0, text: `${base}\n\n話者1: はい。` }), ['話者2: 続き。']);
+    fireEvent.click(screen.getByRole('button', { name: '戻す' }));
+    expect(undo).toHaveBeenCalledOnce();
+    expect(screen.getByRole('textbox')).toHaveValue(base);
+  });
+
+  it('keeps recording and waiting across selection, manual edits and a save', async () => {
+    await startMeeting();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '入力した文章' } });
+    fireEvent.click(screen.getByRole('button', { name: '選択を外す' }));
+    expect(FakeRecorder.last.state).toBe('recording');
+    fireEvent.click(screen.getByRole('button', { name: '選択を変える' }));
+    expect(screen.getByRole('button', { name: '話し合い' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '止める' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ビジー切替' }));
+    fireEvent.click(screen.getByRole('button', { name: '最初の文章を選ぶ' }));
+    expect(screen.getByRole('button', { name: '止める' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await act(async () => {});
+    expect(screen.getByRole('status')).toHaveTextContent('書き起こし中…');
+    fireEvent.click(screen.getByRole('button', { name: '選択を変える' }));
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(submitMeeting.mock.calls[0]?.[1].aborted).toBe(false);
+    expect(getMeeting).toHaveBeenCalledOnce();
+    expect(screen.getByRole('textbox')).toHaveValue('別の文章');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '最初の文章を選ぶ' }));
+    expect(screen.getByRole('textbox')).toHaveValue('入力した文章');
+    fireEvent.click(screen.getByRole('button', { name: '選択を変える' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ビジー切替' }));
+    expect(screen.getByRole('button', { name: '話し合い' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '最初の文章を選ぶ' }));
+    expect(screen.getByRole('textbox')).toHaveValue('入力した文章\n\n話者1: 発言。\n話者2: 了解。');
+    fireEvent.click(screen.getByRole('button', { name: '戻す' }));
+    expect(screen.getByRole('textbox')).toHaveValue('入力した文章');
+  });
+
+  it('does not apply a pending result to a different document', async () => {
+    vi.useFakeTimers();
+    meetingAvailability.mockResolvedValue(true);
+    const view = render(<Harness text="既存。" documentId={documentId} />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '話し合い' }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    view.rerender(<Harness text="既存。" documentId={documentId} saving />);
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(getMeeting).toHaveBeenCalledOnce();
+    expect(screen.getByRole('status')).toHaveTextContent('書き起こし中…');
+    view.rerender(<Harness text="既存。" documentId="another-document" />);
+    expect(screen.getByRole('textbox')).toHaveValue('既存。');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  const httpError = (status: number) => ({ isAxiosError: true, response: { status } });
+
+  it('keeps polling through network errors, timeouts, 5xx and 429', async () => {
+    getMeeting.mockRejectedValueOnce(new Error('offline'))
+      .mockRejectedValueOnce({ isAxiosError: true, code: 'ECONNABORTED' })
+      .mockRejectedValueOnce(httpError(503))
+      .mockRejectedValueOnce(httpError(429));
+    await startMeeting();
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await act(() => vi.advanceTimersByTimeAsync(20_000));
+    expect(screen.getByRole('status')).toHaveTextContent('書き起こし中…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(getMeeting).toHaveBeenCalledTimes(5);
+    expect(screen.getByRole('textbox')).toHaveValue('既存。\n\n話者1: 発言。\n話者2: 了解。');
+  });
+
+  it('gives up on continuous poll failures after ten minutes and resets the window on recovery', async () => {
+    getMeeting.mockRejectedValue(new Error('offline'));
+    await startMeeting();
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await act(() => vi.advanceTimersByTimeAsync(595_000));
+    getMeeting.mockResolvedValueOnce({ status: 'RUNNING' });
+    await act(() => vi.advanceTimersByTimeAsync(605_000));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(screen.getByRole('alert')).toHaveTextContent('書き起こしができませんでした');
+  });
+
+  it('ends polling immediately for a missing job', async () => {
+    getMeeting.mockRejectedValueOnce(httpError(404));
+    await startMeeting();
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(getMeeting).toHaveBeenCalledOnce();
+    expect(screen.getByRole('alert')).toHaveTextContent('書き起こしができませんでした');
+  });
+
+  it.each([true, false])('reuses the audio for at most three submissions (recovers %s)', async recovers => {
+    submitMeeting.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(httpError(503));
+    if (!recovers) submitMeeting.mockRejectedValue(new Error('offline'));
+    await startMeeting();
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    await act(() => vi.advanceTimersByTimeAsync(9999));
+    expect(submitMeeting).toHaveBeenCalledTimes(1);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(submitMeeting).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(19_999));
+    expect(submitMeeting).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(submitMeeting).toHaveBeenCalledTimes(3);
+    const [audio, signal] = submitMeeting.mock.calls[0]!;
+    for (const [retriedAudio, retriedSignal] of submitMeeting.mock.calls.slice(1)) {
+      expect(retriedAudio).toBe(audio);
+      expect(retriedSignal).toBe(signal);
+    }
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(submitMeeting).toHaveBeenCalledTimes(3);
+    if (recovers) expect(getMeeting).toHaveBeenCalledOnce();
+    else {
+      expect(getMeeting).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent('書き起こしができませんでした');
+    }
+  });
+});
