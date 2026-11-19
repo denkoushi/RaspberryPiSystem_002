@@ -22,6 +22,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "kiosk-sop:generate": "bash scripts/kiosk-sop/run-in-docker.sh generate",
+    "kiosk-sop:from-ci": "bash scripts/kiosk-sop/import-ci-candidate.sh",
     "kiosk-sop:check": "bash scripts/kiosk-sop/run-in-docker.sh check",
     "kiosk-sop:source-check": "node scripts/kiosk-sop/source-digest.mjs check",
     "kiosk-sop:source-refresh": "node scripts/kiosk-sop/source-digest.mjs refresh",
