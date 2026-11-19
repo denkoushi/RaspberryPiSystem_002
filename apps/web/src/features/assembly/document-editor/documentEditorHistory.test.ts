@@ -97,3 +97,19 @@ describe('delete a page from overlay history', () => {
   });
 
 });
+
+it('reorders past, present, future and drag snapshots before undo and redo', () => {
+  const edited = elements.map(element => ({ ...element, zIndex: 1 }));
+  const future = elements.map(element => ({ ...element, zIndex: 2 }));
+  const initial: OverlayHistory = { past: [elements], present: edited, future: [future], dragStart: elements };
+  const next = historyReducer(initial, { type: 'movePage', from: 2, to: 0 });
+  for (const snapshot of [...next.past, next.present, ...next.future, next.dragStart!]) {
+    expect(snapshot.map(element => element.pageIndex)).toEqual([1, 2, 0]);
+  }
+  const undone = historyReducer(next, { type: 'undo' });
+  expect(undone.present).toEqual(next.past[0]);
+  const redone = historyReducer(undone, { type: 'redo' });
+  expect(redone.present).toEqual(next.present);
+  expect(historyReducer(redone, { type: 'redo' }).present).toEqual(next.future[0]);
+  expect(initial.present.map(element => element.pageIndex)).toEqual([0, 1, 2]);
+});

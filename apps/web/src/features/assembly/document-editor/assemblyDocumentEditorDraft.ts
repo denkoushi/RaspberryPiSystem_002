@@ -239,6 +239,20 @@ export function shiftOverlayPages(elements: AssemblyProcedureOverlayElement[], a
   return elements.map(element => element.pageIndex > afterPageIndex ? { ...element, pageIndex: element.pageIndex + pageCount } : element);
 }
 
+export function movePageIndex(pageIndex: number, from: number, to: number): number {
+  if (pageIndex === from) return to;
+  if (from < pageIndex && pageIndex <= to) return pageIndex - 1;
+  if (to <= pageIndex && pageIndex < from) return pageIndex + 1;
+  return pageIndex;
+}
+
+export function moveOverlayPage(elements: AssemblyProcedureOverlayElement[], from: number, to: number): AssemblyProcedureOverlayElement[] {
+  return elements.map(element => {
+    const pageIndex = movePageIndex(element.pageIndex, from, to);
+    return pageIndex === element.pageIndex ? element : { ...element, pageIndex };
+  });
+}
+
 export function removeOverlayPage(elements: AssemblyProcedureOverlayElement[], pageIndex: number): AssemblyProcedureOverlayElement[] {
   return elements.filter(element => element.pageIndex !== pageIndex)
     .map(element => element.pageIndex > pageIndex ? { ...element, pageIndex: element.pageIndex - 1 } : element);

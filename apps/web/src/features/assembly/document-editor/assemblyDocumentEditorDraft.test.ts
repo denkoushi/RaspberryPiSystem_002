@@ -7,6 +7,7 @@ import {
   createOverlayForRange,
   findAttachedOverlayIds,
   lineEndpointsForDirection,
+  moveOverlayPage,
   normalizeOverlayBBox,
   overlayDraftReducer,
   overlayDraftSnapshot,
@@ -434,5 +435,20 @@ describe('overlayDraftSnapshot', () => {
       expect(next).toBe(JSON.stringify([changed, b]));
       expect(overlayDraftSnapshot(elements)).toBe(first);
     } finally { stringify.mockRestore(); }
+  });
+});
+
+describe('moveOverlayPage', () => {
+  it.each([
+    [0, 2, [2, 0, 1, 3]],
+    [2, 0, [1, 2, 0, 3]],
+    [1, 1, [0, 1, 2, 3]]
+  ] as const)('maps overlay indexes when moving page %i to %i', (from, to, expected) => {
+    const overlays = [0, 1, 2, 3].map(pageIndex => createOverlayForRange('TEXT', pageIndex, bbox));
+    const result = moveOverlayPage(overlays, from, to);
+    expect(result.map(element => element.pageIndex)).toEqual(expected);
+    expect(result.map(element => element.id)).toEqual(overlays.map(element => element.id));
+    expect(result[3]).toBe(overlays[3]);
+    expect(overlays.map(element => element.pageIndex)).toEqual([0, 1, 2, 3]);
   });
 });

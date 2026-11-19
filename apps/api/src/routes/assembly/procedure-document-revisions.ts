@@ -195,6 +195,15 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0) }).parse(request.body);
     return { document: serializeAssemblyProcedureDocumentRevision(await service.deletePage({ documentId: id, pageIndex, ...body, ...await resolveAssemblyProcedureEditWriter(request) })) };
   });
+  app.post('/assembly/procedure-documents/:id/pages/:pageIndex/move', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
+    const { id, pageIndex } = idParamsSchema.extend({ pageIndex: z.coerce.number().int().min(0) }).parse(request.params);
+    const body = z.object({
+      accessPassword: accessPasswordSchema,
+      expectedEditVersion: z.coerce.number().int().min(0),
+      toPageIndex: z.number().int().min(0)
+    }).parse(request.body);
+    return { document: serializeAssemblyProcedureDocumentRevision(await service.movePage({ documentId: id, pageIndex, ...body, ...await resolveAssemblyProcedureEditWriter(request) })) };
+  });
   app.post('/assembly/procedure-documents/:id/materials/:materialId/place', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id, materialId } = z.object({ id: z.string().guid(), materialId: z.string().guid() }).parse(request.params);
     const body = z.object({ accessPassword: accessPasswordSchema, pageIndex: z.coerce.number().int().min(0), employeeTagUid: z.string().trim().min(1).max(128).optional() }).parse(request.body);
