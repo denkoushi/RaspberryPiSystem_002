@@ -7,9 +7,10 @@ import type { ComponentProps } from 'react';
 
 vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: () => ({ unavailable: false }) }));
 
-function renderToolbar({ workshop = false, locked = false, readOnly = false, isDirty = false, saving = false } = {}) {
+function renderToolbar({ workshop = false, locked = false, readOnly = false, isDirty = false, saving = false, canTogglePhotoSharpen = false, photoSharpened = false } = {}) {
   const controller = {
     readOnly, isDirty, saving, busy: saving, canSave: true, canPublish: true, canUndo: true, canRedo: true,
+    canTogglePhotoSharpen, photoSharpened, togglePhotoSharpen: vi.fn(),
     layoutLocked: locked, canSuggest: true, startLayout: vi.fn(),
     save: vi.fn(), navigateBack: vi.fn(), undo: vi.fn(), redo: vi.fn()
   } as unknown as ComponentProps<typeof AssemblyProcedureDocumentEditorCanvasToolbar>['controller'];
@@ -57,5 +58,29 @@ describe('document editor save status', () => {
     expect(button).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-save');
     expect(button.querySelector('svg')?.innerHTML).not.toBe(screen.getByRole('button', { name: '公開する' }).querySelector('svg')?.innerHTML);
     if ('saving' in options) expect(button).toBeDisabled();
+  });
+});
+
+describe('photo sharpen button', () => {
+  it.each([
+    { canTogglePhotoSharpen: false, disabled: true },
+    { canTogglePhotoSharpen: true, saving: true, disabled: true },
+    { canTogglePhotoSharpen: true, readOnly: true, disabled: true },
+    { canTogglePhotoSharpen: true, disabled: false },
+    { canTogglePhotoSharpen: true, photoSharpened: true, disabled: false }
+  ])('renders the correct state for %o', ({ disabled, ...options }) => {
+    const { controller } = renderToolbar(options);
+    const button = screen.getByRole('button', {
+      name: options.photoSharpened ? '元の写真に戻す' : '写真をくっきり',
+      pressed: options.photoSharpened ?? false
+    });
+    const buttons = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
+    const index = buttons.indexOf(button);
+    expect(buttons[index - 1]).toHaveAccessibleName('範囲を選ぶ');
+    expect(buttons[index + 1]).toHaveAccessibleName('整える');
+    if (disabled) expect(button).toBeDisabled();
+    else expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(controller.togglePhotoSharpen).toHaveBeenCalledTimes(disabled ? 0 : 1);
   });
 });

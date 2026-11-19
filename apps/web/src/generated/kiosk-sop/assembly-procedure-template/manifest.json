@@ -1,14 +1,14 @@
 {
   "artifacts": {
-    "manual.html": "83f3df608c696476221348afe174e370bda026d0582c07671661f67cad522982",
+    "manual.html": "2169b73bee4cc90db350f7068e2f5c988f89af6c56c1167da726e44b1c2f70c1",
     "screens/assembly-document-editor-auth.png": "a09e45d9c349adb50fab414983651d694687b31e9950af9d8b28f236fc243565",
-    "screens/assembly-document-editor-conflict.png": "62d70f36badfa7a4e00fc6382330f4af0abc7b5d2474e60801e9cfe32dd4c7a4",
-    "screens/assembly-document-editor-image-properties.png": "a73b4028ece9c03a28b15b2958dd7d44d11cb7e13f6a0305f02ff4e96d7767c8",
-    "screens/assembly-document-editor-publish.png": "cdf4ebec59aaf846447cf226c41d9b2b11e3ab45d0828996ff29c23be89d9376",
-    "screens/assembly-document-editor-range.png": "edf3d7738b5ac0ffe419ef3dc53e70ce2519f06210e636fa289fc721269eb2b6",
-    "screens/assembly-document-editor-shape-properties.png": "02b914e219827fffd068a9df89bc78b776ffac91ec478af83d844a2b1961a5ed",
-    "screens/assembly-document-editor-text-properties.png": "02c7e4ea390830d7d2cb900f8cf07f8b81121b01276a1193ed29b9e1dd10d84e",
-    "screens/assembly-document-editor-types.png": "37f6e1403ef9d37fcd059f10c2887664c7216227742c4bcc0ad24f6780d1263a",
+    "screens/assembly-document-editor-conflict.png": "9ed69f1aebf38203e09f288652babbb93e3e407caf4309fd3f8a85b87c75702c",
+    "screens/assembly-document-editor-image-properties.png": "01d9414df4509328642344a356cfbc08df414f20b339fb08b677728ad6c77a70",
+    "screens/assembly-document-editor-publish.png": "4d4e65dc38cc909ea4b467af59f60c84a51229e7819453d6e95af8a2043794e3",
+    "screens/assembly-document-editor-range.png": "736f9013614be4479a16f0c712149b781f2497c0f47c0e5b88f551d294b51b7d",
+    "screens/assembly-document-editor-shape-properties.png": "a3aea65705a0261e01db86e1de7d6f9ce51cd87a8e0f6fa21325f7a694d20508",
+    "screens/assembly-document-editor-text-properties.png": "9e2a64d066255b49a6533b03cc225f4b680cd8424f6ed3f6195230d289a9a85e",
+    "screens/assembly-document-editor-types.png": "b78501520441062744dd38614a97d072962e533db01cd20d14a244a4c00a4994",
     "screens/assembly-file-register.png": "77e84483b12ddc6e5d4bcd6096f3cafc68c37794df830e95c59bbb53137a9882",
     "screens/assembly-gmail-publish.png": "3f6775c1e23ef6d3785594de2894a4b94ffa72fff33a9290573be801561b7329",
     "screens/assembly-overview.png": "0f85ef97d9dbabcf6c8f8a5eae0b88ee7d489c054cb57cdccc9268e15b9d5203",
@@ -20,13 +20,13 @@
     "screens/assembly-template-procedure.png": "a95b658bbc185665a64bb96a86ee2a889c97bf0643ee3ea56ff1f3857f5df8ca",
     "screens/assembly-template-save.png": "2bbd66beebfebac3cce4db8ee19456a63f7454eb3d571cccb3fafe8e5c0758b5",
     "sheets/assembly-document-editor-auth.png": "f226e19d7ed92cea1cd6929c75f3a8316485c0752e59fbedbef5e9d4376585e9",
-    "sheets/assembly-document-editor-conflict.png": "f0a5e1b365cb98305cb5f9128822ca4100ffe2e483d240900933d98bfae7adb9",
-    "sheets/assembly-document-editor-image-properties.png": "bf42edaf22b8c2df0e5634b7967031bc93530d8c5851f6b448c0df83770d35cf",
-    "sheets/assembly-document-editor-publish.png": "ff15572a2c1c90de9f54ebe7f72d2ceb99342f97700bb50ac3c15856227dd733",
-    "sheets/assembly-document-editor-range.png": "100029afa7966d0cc221cd3993a6cf86bf700e4f289bee35d40c000eff77d301",
-    "sheets/assembly-document-editor-shape-properties.png": "7f589d5f55b184d2ff283c7323f92d087d346fae8e96fe39fd6613f7fcd47f6c",
-    "sheets/assembly-document-editor-text-properties.png": "06e3be75f703277d8af90cb5661d0dafccfd0a56dcd6d7044dcc00f9f1c31af6",
-    "sheets/assembly-document-editor-types.png": "b816e460d9a59233b843d5b7c3f6686d473aba791eb5bb3004404e1e0e9826da",
+    "sheets/assembly-document-editor-conflict.png": "325dddd28471e0dea3fb8b1bd32ec3c15b33cfa475b12637f77d55bd903cefc2",
+    "sheets/assembly-document-editor-image-properties.png": "2317121ea0cbc9e38201c08d4d7f81421e2c3335cfa24ee51264fbba74e91b0a",
+    "sheets/assembly-document-editor-publish.png": "6dd3bc163a6710557e71e0d34d9533367ad322f4293f01dd2baf0b9f367629b8",
+    "sheets/assembly-document-editor-range.png": "d32b5fbbed10e5e54b5e560c7af39cc2156ded6fee0b3b9c288dfb7b57c38db9",
+    "sheets/assembly-document-editor-shape-properties.png": "e400cc1ae826f6aa89faa46967e4333f683b5a32a0c28e552c44e4d02e114600",
+    "sheets/assembly-document-editor-text-properties.png": "27e1b21f2d7bc8f273c1e5a41878d5b3dd1ba8d6bbba366f2bf4bf17d4b160ef",
+    "sheets/assembly-document-editor-types.png": "11e4f78b01f1c0d82d133884c14c762f41e3b4f2533b1ab25b4782da39e0c72f",
     "sheets/assembly-file-register.png": "237dfc295e526a4b7a6affc63d34b38fa15f91dcf450601be14d3b2bce75d343",
     "sheets/assembly-gmail-publish.png": "b947ead6e420217acd263a424951f600d0aa361edcb337222f92e824a9f2eb30",
     "sheets/assembly-overview.png": "47e9638acd0aedd5b0208c4d5594e71fa7e96e08a9046a53914e41df3046aa29",
@@ -513,7 +513,7 @@
       }
     ]
   },
-  "htmlSha256": "83f3df608c696476221348afe174e370bda026d0582c07671661f67cad522982",
+  "htmlSha256": "2169b73bee4cc90db350f7068e2f5c988f89af6c56c1167da726e44b1c2f70c1",
   "schemaVersion": 1,
-  "sourceSha256": "e537d4c44c7c6d3ffb9fa462d27044a20f2ce48bbfafe82f8ab7dbcc5230af00"
+  "sourceSha256": "d5d94b253a6a2f75378d48af921f5b3c2d7c36ac78cafdddf3d5caefec4a06ab"
 }

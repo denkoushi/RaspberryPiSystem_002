@@ -69,7 +69,11 @@ export function useDocumentEditorHistoryCommands(session: Session) {
               placed.push({ materialId, response });
               assetId = response.asset?.assetId ?? (response.element.kind === 'IMAGE' ? response.element.assetId : undefined);
             }
-            restoredMaterials.push(...related.map(placement => ({ placement, assetId })));
+            restoredMaterials.push(...related.map(placement => ({
+              placement,
+              // The derived image still points to the original from this draft's first placement.
+              assetId: placement.sharpenedAssetIds?.length ? placement.assetId : assetId
+            })));
           } catch (error) {
             failedMaterials.push(...related);
             if (mounted.current && !current.onEditLeaseError(error)) current.setErrorMessage(readAssemblyApiErrorMessage(error, '素材を再配置できませんでした。'));
