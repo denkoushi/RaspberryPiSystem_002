@@ -1,3 +1,9 @@
+import { randomUUID } from 'node:crypto';
+import { createWriteStream } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
+
 import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import {
@@ -21,6 +27,20 @@ import { ProcedureDictationRewriteService } from '../../services/assembly/proced
 import { documentSite } from '../../services/assembly/procedure-document-site.js';
 import { ProcedureSpeechToTextService, PROCEDURE_AUDIO_MAX_BYTES, procedureSpeechToTextError } from '../../services/assembly/procedure-speech-to-text.service.js';
 import { ProcedureLayoutSuggestionService } from '../../services/assembly/procedure-layout-suggestion.service.js';
+import { resolveMeetingTranscriptionProvider } from '../../services/inference/adapters/http-meeting-transcription.adapter.js';
+import {
+  PROCEDURE_MEETING_MAX_BYTES, PROCEDURE_MEETING_RETENTION_MS, getProcedureMeetingAudioDir, procedureMeetingTranscriptionWorker
+} from '../../services/assembly/procedure-meeting-transcription.worker.js';
+import { requireClientDevice } from '../kiosk/shared.js';
+
+const meetingRoute = '/assembly/procedure-documents/dictation/meetings';
+const meetingMimeTypes = new Set(['audio/webm', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/wave']);
+
+async function meetingOwner(request: FastifyRequest) {
+  if (request.headers['x-client-key'] === undefined && request.user) return `user:${request.user.id}`;
+  const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+  return `device:${clientDevice.id}`;
+}
 
 const idParamsSchema = z.object({ id: z.string().guid() });
 const accessPasswordSchema = z.string().max(128).default('');
@@ -49,7 +69,74 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
 ): void {
   app.get('/assembly/procedure-documents/dictation/speech-to-text', {
     preHandler: options.allowWriteKiosk
-  }, async () => ({ available: await new ProcedureSpeechToTextService().isAvailable() }));
+  }, async () => ({
+    available: await new ProcedureSpeechToTextService().isAvailable(),
+    meetingAvailable: resolveMeetingTranscriptionProvider() !== null
+  }));
+  app.post(meetingRoute, {
+    preHandler: options.allowWriteKiosk,
+    config: { rateLimit: { max: 4, timeWindow: '1 minute' } }
+  }, async (request, reply) => {
+    if (!resolveMeetingTranscriptionProvider()) throw procedureSpeechToTextError(503);
+    if (!request.isMultipart()) throw procedureSpeechToTextError(400);
+    const ownerKey = await meetingOwner(request);
+    const id = randomUUID();
+    const directory = getProcedureMeetingAudioDir();
+    const audioPath = join(directory, id);
+    const controller = new AbortController();
+    const disconnected = () => { if (!reply.raw.writableEnded) controller.abort(); };
+    reply.raw.once('close', disconnected);
+    let accepted = false;
+    try {
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      let audioBytes = 0;
+      let mimeType: string | undefined;
+      try {
+        // Busboy marks a file truncated when it reaches the limit, so read at most one extra byte.
+        for await (const part of request.parts({ limits: { fileSize: PROCEDURE_MEETING_MAX_BYTES + 1, files: 1, fields: 0, parts: 2 } })) {
+          if (part.type !== 'file' || part.fieldname !== 'audio' || mimeType) throw procedureSpeechToTextError(400);
+          mimeType = part.mimetype.split(';', 1)[0];
+          if (!mimeType || !meetingMimeTypes.has(mimeType)) throw procedureSpeechToTextError(400);
+          const output = createWriteStream(audioPath, { flags: 'wx', mode: 0o600 });
+          await pipeline(part.file, output, { signal: controller.signal });
+          audioBytes = output.bytesWritten;
+          if (part.file.truncated || audioBytes > PROCEDURE_MEETING_MAX_BYTES) throw procedureSpeechToTextError(413);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) throw procedureSpeechToTextError(499);
+        if (error instanceof ApiError) throw error;
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'FST_REQ_FILE_TOO_LARGE') throw procedureSpeechToTextError(413);
+        if (code && !code.startsWith('FST_')) throw procedureSpeechToTextError(503);
+        throw procedureSpeechToTextError(400);
+      }
+      if (!audioBytes || !mimeType) throw procedureSpeechToTextError(400);
+      if (controller.signal.aborted) throw procedureSpeechToTextError(499);
+      await prisma.procedureMeetingTranscriptionJob.create({ data: { id, ownerKey, audioPath, audioBytes, mimeType } });
+      accepted = true;
+      procedureMeetingTranscriptionWorker.kick();
+      return reply.code(202).send({ jobId: id });
+    } finally {
+      reply.raw.off('close', disconnected);
+      if (!accepted) await rm(audioPath, { force: true }).catch(() => request.log.warn('procedure_meeting_upload_cleanup_failed'));
+    }
+  });
+
+  app.get(`${meetingRoute}/:jobId`, { preHandler: options.allowWriteKiosk }, async (request, reply) => {
+    const { id } = idParamsSchema.parse({ id: (request.params as { jobId: string }).jobId });
+    const ownerKey = await meetingOwner(request);
+    const job = await prisma.procedureMeetingTranscriptionJob.findFirst({
+      where: { id, ownerKey, createdAt: { gt: new Date(Date.now() - PROCEDURE_MEETING_RETENTION_MS) } },
+      select: { status: true, resultText: true, errorCode: true }
+    });
+    if (!job) throw new ApiError(404, '書き起こしが見つかりません');
+    reply.header('Cache-Control', 'no-store');
+    return {
+      status: job.status,
+      ...(job.resultText !== null && { text: job.resultText }),
+      ...(job.errorCode !== null && { errorCode: job.errorCode })
+    };
+  });
   app.post('/assembly/procedure-documents/dictation/transcribe', {
     preHandler: options.allowWriteKiosk,
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },

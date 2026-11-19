@@ -13,6 +13,7 @@ import {
   isOverlayDraftSaveable,
   overlayDraftSnapshot,
   shiftOverlayPages,
+  splitMeetingText,
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
 import { readDocumentEditorConflict } from './documentEditorConflict';
@@ -25,6 +26,7 @@ import {
   selectDocumentPageElements,
   selectDocumentPages
 } from './documentEditorSelectors';
+import { placeMeetingOverflow } from './meetingTextPlacement';
 import { useAssemblyDocumentEditorRecovery } from './useAssemblyDocumentEditorRecovery';
 import { useAssemblyProcedureDocumentEditLease } from './useAssemblyProcedureDocumentEditLease';
 import { useAssemblyProcedureDocumentOverlayCommands } from './useAssemblyProcedureDocumentOverlayCommands';
@@ -37,7 +39,7 @@ import { useDocumentEditorPageCommands } from './useDocumentEditorPageCommands';
 
 import type { InlineTextElement, InlineTextFlush } from './InlineTextEditor';
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureTextCandidateDto } from '../types';
-import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement, OverlayTextElement } from '@raspi-system/shared-types';
 
 // Event callbacks keep their identity while reading the latest editor state.
 function useEditorCallback<Args extends unknown[], Result>(callback: (...args: Args) => Result) {
@@ -382,6 +384,30 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const updateElement = useCallback((element: AssemblyProcedureOverlayElement) => {
     if (!readOnly && !busyRef.current) dispatch({ type: 'update', element });
   }, [readOnly]);
+  const restoreMeetingText = useEditorCallback((original: OverlayTextElement | undefined, applied: OverlayTextElement, added: OverlayTextElement[]) => {
+    if (readOnly || busyRef.current) return false;
+    const current = elements.find(element => element.id === applied.id);
+    if (current?.kind !== 'TEXT' || current.text !== applied.text || added.some(element => !elements.includes(element))) return false;
+    const remove = added.map(element => element.id);
+    if (!original) remove.push(applied.id);
+    dispatch({ type: 'updateMeetingText', element: { ...current, text: original?.text ?? current.text }, remove });
+    return true;
+  });
+
+  const updateMeetingText = useEditorCallback((target: OverlayTextElement, transcript: string) => {
+    if (readOnly || busyRef.current) return;
+    const current = elements.find(candidate => candidate.id === target.id);
+    const original = current?.kind === 'TEXT' ? current : undefined;
+    if (!original && !document?.pages.some(page => page.pageIndex === target.pageIndex)) return;
+    const anchor = original ?? createOverlayForRange('TEXT', target.pageIndex, target.bbox, elements);
+    const [text, ...overflow] = splitMeetingText(original?.text ?? '', transcript);
+    if (!text) return;
+    const element = { ...anchor, text };
+    const added = placeMeetingOverflow(element, overflow, original ? elements : [...elements, element]);
+    dispatch({ type: 'updateMeetingText', element, add: original ? added : [element, ...added] });
+    return { element, undo: () => restoreMeetingText(original, element, added) };
+  });
+
   const bringForward = useCallback((id: string) => {
     if (!readOnly && !busyRef.current) dispatch({ type: 'bringForward', id });
   }, [readOnly]);
@@ -555,6 +581,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     createOverlay: overlayCommands.createOverlay,
     handleRangeSelected,
     updateElement,
+    updateMeetingText,
     deleteSelectedOverlay,
     save,
     publish: revisionCommands.publish,

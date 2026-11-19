@@ -176,9 +176,10 @@ describe('start-post-listen-schedulers fail-closed group', () => {
   });
 });
 
-const CONDITIONAL_SCHEDULER_NAMES = ['hermes-knowledge', 'signage-render', 'part-measurement-drawing-dimension-map'];
+const CONDITIONAL_SCHEDULER_NAMES = ['procedure-meeting-transcription', 'hermes-knowledge', 'signage-render', 'part-measurement-drawing-dimension-map'];
 
 const EXPECTED_SCHEDULER_NAMES = [
+  'procedure-meeting-transcription',
   'hermes-knowledge',
   'signage-render',
   'part-measurement-drawing-dimension-map',
@@ -214,16 +215,18 @@ const EXPECTED_SCHEDULER_NAMES = [
 ];
 
 function definedSchedulerNames(options: { conditionalEnabled: boolean }): string[] {
-  const mutableEnv = env as { SIGNAGE_RENDER_ENABLED: boolean };
-  const originalSignageRenderEnabled = mutableEnv.SIGNAGE_RENDER_ENABLED;
+  const originalSignageRenderEnabled = env.SIGNAGE_RENDER_ENABLED;
+  const originalMeetingEnabled = env.PROCEDURE_MEETING_TRANSCRIBE_ENABLED;
   const flag = options.conditionalEnabled ? 'true' : 'false';
   vi.stubEnv('HERMES_KNOWLEDGE_ENABLED', flag);
   vi.stubEnv('PART_MEASUREMENT_DRAWING_DIMENSION_MAP_ENABLED', flag);
-  mutableEnv.SIGNAGE_RENDER_ENABLED = options.conditionalEnabled;
+  env.SIGNAGE_RENDER_ENABLED = options.conditionalEnabled;
+  env.PROCEDURE_MEETING_TRANSCRIBE_ENABLED = options.conditionalEnabled;
   try {
     return buildPostListenSchedulerDefinitions({} as FastifyInstance).map(step => step.name);
   } finally {
-    mutableEnv.SIGNAGE_RENDER_ENABLED = originalSignageRenderEnabled;
+    env.SIGNAGE_RENDER_ENABLED = originalSignageRenderEnabled;
+    env.PROCEDURE_MEETING_TRANSCRIBE_ENABLED = originalMeetingEnabled;
     vi.unstubAllEnvs();
   }
 }

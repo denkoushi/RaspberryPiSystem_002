@@ -1,8 +1,13 @@
+import { mkdtemp, open, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../../config/env.js';
+import { prisma } from '../../../lib/prisma.js';
+import * as meetingAdapter from '../../../services/inference/adapters/http-meeting-transcription.adapter.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { registerRateLimit } from '../../../plugins/rate-limit.js';
@@ -24,7 +29,7 @@ function contextPart(value: string, name = 'context') {
   return `--test-boundary\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
 }
 const headers = { 'content-type': 'multipart/form-data; boundary=test-boundary' };
-function register(allowWriteKiosk = async () => {}) {
+function register(allowWriteKiosk: import('fastify').preHandlerHookHandler = async () => {}) {
   registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk });
 }
 beforeEach(async () => {
@@ -73,7 +78,7 @@ describe('procedure speech to text routes', () => {
     expect(env.PROCEDURE_SPEECH_TO_TEXT_ENABLED).toBe(false);
     register();
     const result = await app.inject({ method: 'GET', url: `${base}/speech-to-text` });
-    expect(result.statusCode).toBe(200); expect(result.json()).toEqual({ available: state === 'healthy' });
+    expect(result.statusCode).toBe(200); expect(result.json()).toEqual({ available: state === 'healthy', meetingAvailable: false });
   });
   it('returns trimmed text and forwards only in-memory audio, mime and signal', async () => {
     register();
@@ -149,5 +154,129 @@ describe('procedure speech to text routes', () => {
     const limited = await app.inject({ method: 'POST', url: `${base}/transcribe`, headers, payload: upload() });
     expect(limited.statusCode).toBe(429); expect(limited.json().statusCode).toBeUndefined();
     expect(port.transcribe).toHaveBeenCalledTimes(20);
+  });
+});
+
+describe('procedure meeting transcription routes', () => {
+  const meetings = `${base}/meetings`;
+  const userId = 'test-user';
+  let spool: string;
+  beforeEach(async () => {
+    spool = await mkdtemp(join(tmpdir(), 'procedure-meeting-upload-test-'));
+    vi.stubEnv('PROCEDURE_MEETING_AUDIO_DIR', spool);
+  });
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await rm(spool, { recursive: true, force: true });
+  });
+  const registerMeetingWriter = () => register(async request => {
+    request.user = { id: userId, username: userId, role: 'ADMIN' };
+  });
+  const enableMeeting = () => vi.spyOn(meetingAdapter, 'resolveMeetingTranscriptionProvider').mockReturnValue({} as never);
+
+  it('hides meeting availability by default and rejects a meeting upload when disabled', async () => {
+    registerMeetingWriter();
+    const result = await app.inject({ method: 'POST', url: meetings, headers, payload: upload(5, '', 'audio') });
+    expect(result.statusCode).toBe(503);
+    expect(result.json().errorCode).toBe('ASSEMBLY_PROCEDURE_SPEECH_TO_TEXT_UNAVAILABLE');
+  });
+
+  it('requires the same kiosk write permission for submission and polling', async () => {
+    enableMeeting();
+    register(async () => { throw new ApiError(403, '権限がありません'); });
+    expect((await app.inject({ method: 'POST', url: meetings, headers, payload: upload(5, '', 'audio') })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: `${meetings}/00000000-0000-4000-8000-000000000001` })).statusCode).toBe(403);
+  });
+
+  it('accepts audio larger than the short-dictation limit and returns an owned job', async () => {
+    enableMeeting();
+    registerMeetingWriter();
+    const create = vi.spyOn(prisma.procedureMeetingTranscriptionJob, 'create').mockResolvedValue({} as never);
+    const size = 2_000_001;
+    const availability = await app.inject({ method: 'GET', url: `${base}/speech-to-text` });
+    expect(availability.json()).toEqual({ available: true, meetingAvailable: true });
+    const result = await app.inject({ method: 'POST', url: meetings, headers, payload: upload(size, '', 'audio') });
+    const row = create.mock.calls[0]?.[0].data;
+    expect(result.statusCode).toBe(202);
+    expect(row).toMatchObject({ id: result.json().jobId, ownerKey: `user:${userId}`, audioBytes: size, mimeType: 'audio/webm' });
+    const file = await open(row!.audioPath!, 'r');
+    try {
+      expect((await file.stat()).size).toBe(size);
+      const { buffer } = await file.read(Buffer.alloc(5), 0, 5, size - 5);
+      expect(buffer.toString()).toBe('AAAAA');
+    } finally {
+      await file.close();
+    }
+  });
+
+  it.each([64 * 1024 * 1024, 64 * 1024 * 1024 + 1])('enforces the 64 MiB upload limit for %d bytes', async size => {
+    enableMeeting();
+    registerMeetingWriter();
+    const create = vi.spyOn(prisma.procedureMeetingTranscriptionJob, 'create').mockResolvedValue({} as never);
+    const result = await app.inject({ method: 'POST', url: meetings, headers, payload: upload(size, '', 'audio') });
+    const fits = size === 64 * 1024 * 1024;
+    expect(result.statusCode).toBe(fits ? 202 : 413);
+    expect(create).toHaveBeenCalledTimes(fits ? 1 : 0);
+  });
+
+  it.each([
+    upload(0, '', 'audio'), upload(5, '', 'file'),
+    upload(5, contextPart('unexpected'), 'audio'),
+    upload(5, '--test-boundary\r\nContent-Disposition: form-data; name="audio"; filename="second.webm"\r\nContent-Type: audio/webm\r\n\r\naudio\r\n', 'audio')
+  ])('rejects empty audio, a wrong field or extra parts', async payload => {
+    enableMeeting();
+    registerMeetingWriter();
+    const create = vi.spyOn(prisma.procedureMeetingTranscriptionJob, 'create');
+    expect((await app.inject({ method: 'POST', url: meetings, headers, payload })).statusCode).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['QUEUED', null, null, { status: 'QUEUED' }],
+    ['SUCCEEDED', '話者1: 棚', null, { status: 'SUCCEEDED', text: '話者1: 棚' }],
+    ['FAILED', null, 'meeting_transcribe_timeout', { status: 'FAILED', errorCode: 'meeting_transcribe_timeout' }]
+  ] as const)('returns %s to the submitting writer', async (status, resultText, errorCode, body) => {
+    registerMeetingWriter();
+    const find = vi.spyOn(prisma.procedureMeetingTranscriptionJob, 'findFirst').mockResolvedValue({ status, resultText, errorCode } as never);
+    const id = '00000000-0000-4000-8000-000000000001';
+    const result = await app.inject({ method: 'GET', url: `${meetings}/${id}` });
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['cache-control']).toBe('no-store');
+    expect(result.json()).toEqual(body);
+    expect(find.mock.calls[0]?.[0]?.where).toMatchObject({ id, ownerKey: `user:${userId}`, createdAt: { gt: expect.any(Date) } });
+  });
+
+  it.each([true, false])('keeps the device owner when JWT presence changes (upload JWT %s)', async uploadHasJwt => {
+    enableMeeting();
+    register(async request => {
+      if (request.headers.authorization) request.user = { id: userId, username: userId, role: 'ADMIN' };
+    });
+    const deviceHeaders = { 'x-client-key': 'meeting-device-key' };
+    const authorization = { authorization: 'Bearer test-jwt' };
+    const device = vi.spyOn(prisma.clientDevice, 'findUnique').mockResolvedValue({ id: 'meeting-device' } as never);
+    const create = vi.spyOn(prisma.procedureMeetingTranscriptionJob, 'create').mockResolvedValue({} as never);
+    const find = vi.spyOn(prisma.procedureMeetingTranscriptionJob, 'findFirst').mockImplementation(async args =>
+      args?.where?.ownerKey === create.mock.calls[0]?.[0].data.ownerKey
+        ? { status: 'QUEUED', resultText: null, errorCode: null } as never : null);
+
+    const uploadResult = await app.inject({
+      method: 'POST', url: meetings, headers: { ...headers, ...deviceHeaders, ...(uploadHasJwt && authorization) },
+      payload: upload(5, '', 'audio')
+    });
+    expect(uploadResult.statusCode).toBe(202);
+    const { jobId } = uploadResult.json();
+    const result = await app.inject({
+      method: 'GET', url: `${meetings}/${jobId}`, headers: { ...deviceHeaders, ...(!uploadHasJwt && authorization) }
+    });
+    expect(result.statusCode).toBe(200);
+    expect(device).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[0]?.[0].data.ownerKey).toBe('device:meeting-device');
+    expect(find.mock.calls[0]?.[0]?.where).toMatchObject({ id: jobId, ownerKey: 'device:meeting-device' });
+  });
+
+  it('returns 404 when the job is outside the writer scope', async () => {
+    registerMeetingWriter();
+    vi.spyOn(prisma.procedureMeetingTranscriptionJob, 'findFirst').mockResolvedValue(null);
+    expect((await app.inject({ method: 'GET', url: `${meetings}/00000000-0000-4000-8000-000000000001` })).statusCode).toBe(404);
   });
 });

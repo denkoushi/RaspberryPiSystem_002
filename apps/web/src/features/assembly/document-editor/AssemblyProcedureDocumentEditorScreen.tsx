@@ -23,6 +23,7 @@ import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTy
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 import { DocumentEditorMaterials } from './DocumentEditorMaterials';
 import { useMaterialDrag } from './useMaterialDrag';
+import { useProcedureMeetingInput } from './useProcedureVoiceInput';
 import { useRotationImagePreload } from './useRotationImagePreload';
 
 import type { AssemblyProcedureDocumentPageDto } from '../types';
@@ -74,6 +75,15 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
   const [materialShelfMode, setMaterialShelfMode] = useState<'place' | 'replace'>('place');
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const meeting = useProcedureMeetingInput({
+    element: controller.selectedElement?.kind === 'TEXT' ? controller.selectedElement : null,
+    enabled: voiceInputEnabled && controller.accessGranted,
+    disabled: inlineEditingId === controller.selectedElement?.id,
+    busy: controller.busy || controller.saving || controller.readOnly,
+    inlineEditingId,
+    documentId: controller.document?.id,
+    applyTranscript: controller.updateMeetingText,
+  });
   const overlayLayerRef = useRef<HTMLDivElement>(null);
   const overlayInteractionActive = useRef(false);
   const canvasSaving = controller.saving || controller.busy || !controller.editLeaseMine;
@@ -352,6 +362,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onClose={closeInspector}
           onDuplicate={controller.duplicateSelectedOverlay}
           onUpdate={controller.updateElement}
+          meeting={meeting}
           onDelete={controller.deleteSelectedOverlay}
           onBringForward={controller.bringForward}
           onSendBackward={controller.sendBackward}

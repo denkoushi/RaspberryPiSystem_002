@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { mockVoiceRecording } from './voiceRecording.test-support';
-import { disposeVoiceSession, isSilencePhrase, startVoiceTranscription, type VoiceSession } from './voiceTranscription';
+import { disposeVoiceSession, isSilencePhrase, startMeetingRecording, startVoiceTranscription, type VoiceSession } from './voiceTranscription';
 
 vi.mock('../../api/domains/assembly', () => ({
   getAssemblyProcedureSpeechToTextAvailability: vi.fn().mockResolvedValue(true),
@@ -44,6 +44,23 @@ describe('voice recording options', () => {
     expect(media.recorder.state).toBe('recording');
     await vi.advanceTimersByTimeAsync(1000);
     expect(media.recorder.state).toBe('inactive');
+    expect(media.closeContext).not.toHaveBeenCalled();
+  });
+
+  it('records a meeting for 60 minutes without short-dictation processing', async () => {
+    vi.useFakeTimers();
+    const media = mockVoiceRecording();
+    const session: VoiceSession = { abort: new AbortController() };
+    const onRecording = vi.fn();
+    const onAudio = vi.fn();
+    await startMeetingRecording(session, () => true, onRecording, onAudio, vi.fn());
+    expect(onRecording).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(3_599_999);
+    expect(media.recorder.state).toBe('recording');
+    expect(onAudio).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onAudio).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ size: 5, type: 'audio/webm' }));
+    expect(media.stopTrack).toHaveBeenCalled();
     expect(media.closeContext).not.toHaveBeenCalled();
   });
 

@@ -19,6 +19,7 @@ export type OverlayDraftAction =
   | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number; attachedIds: ReadonlyMap<string, string> }
   | { type: 'rotateImage'; id: string; direction: ImageRotationDirection; newAssetIds: ReadonlyMap<string, string>; pageAspect: number }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
+  | { type: 'updateMeetingText'; element: Extract<AssemblyProcedureOverlayElement, { kind: 'TEXT' }>; add?: AssemblyProcedureOverlayElement[]; remove?: string[] }
   | { type: 'remove'; id: string }
   | { type: 'bringForward'; id: string }
   | { type: 'sendBackward'; id: string }
@@ -304,6 +305,11 @@ export function overlayDraftReducer(
       const updated = state.map((element) => (element.id === action.element.id ? action.element : element));
       return isPhoto(action.element) ? carryAttachedOverlays(state, updated, undefined, attachmentElements) : updated;
     }
+    case 'updateMeetingText':
+      return [
+        ...state.filter(element => !action.remove?.includes(element.id)).map(element => element.id === action.element.id ? action.element : element),
+        ...(action.add ?? [])
+      ];
     case 'remove': {
       const attachedIds = new Set(findAttachedOverlayIds(state, action.id));
       return state.filter((element) => element.id !== action.id && !attachedIds.has(element.id));
@@ -564,3 +570,20 @@ export function canPublishAssemblyProcedureDocument(
   return !dirty && document?.status === 'draft' && (document.isRevisionHead ?? true);
 }
 
+
+export function splitMeetingText(original: string, transcript: string) {
+  const limit = 10_000;
+  const base = original.trim() === 'ここに文章を入力' ? '' : original.trimEnd();
+  const chunks: string[] = [];
+  let remaining = base ? `${base}\n\n${transcript}` : transcript;
+  while (remaining.length > limit) {
+    const lineBreak = remaining.lastIndexOf('\n', limit);
+    // Prefer a speaker line boundary, and keep a surrogate pair together if a line is longer than a whole element.
+    const boundary = lineBreak > Math.max(chunks.length ? 0 : base.length - 1, limit / 2) ? lineBreak
+      : /[\uD800-\uDBFF]/.test(remaining[limit - 1]!) ? limit - 1 : limit;
+    chunks.push(remaining.slice(0, boundary).trimEnd());
+    remaining = remaining.slice(boundary).trimStart();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}

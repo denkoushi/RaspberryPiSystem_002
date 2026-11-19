@@ -5627,6 +5627,32 @@ model WorkInstructionSourceAssetDeletionAudit {
   @@index([sourceVersionId, requestedAt], map: "WorkInstructionSourceAssetDeletionAudit_idx_version")
 }
 
+enum ProcedureMeetingTranscriptionStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model ProcedureMeetingTranscriptionJob {
+  id             String                              @id
+  ownerKey       String
+  status         ProcedureMeetingTranscriptionStatus @default(QUEUED)
+  audioPath      String?
+  audioBytes     Int
+  mimeType       String
+  resultText     String?
+  errorCode      String?
+  leaseExpiresAt DateTime?
+  attempts       Int                                 @default(0)
+  retryAt        DateTime                            @default(now())
+  createdAt      DateTime                            @default(now())
+  updatedAt      DateTime                            @updatedAt
+
+  @@index([status, retryAt, createdAt])
+  @@index([createdAt])
+}
+
 /// Owner-scoped raw intake and durable knowledge processing state.
 model KnowledgeIntake {
   id                 String   @id

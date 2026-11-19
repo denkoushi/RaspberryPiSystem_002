@@ -7,6 +7,7 @@ import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notic
 import { getCsvFeedFreshnessEvaluator } from '../services/kiosk-inquiry/csv-feed-freshness-evaluator.js';
 import { getProcedureVideoScheduler } from '../services/assembly/procedure-video.scheduler.js';
 import type { FastifyInstance } from 'fastify';
+import { procedureMeetingTranscriptionWorker } from '../services/assembly/procedure-meeting-transcription.worker.js';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
@@ -124,6 +125,13 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
     delayMs: env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS,
     snapshotStore: leaderboardShellSnapshotStore
   });
+  if (env.PROCEDURE_MEETING_TRANSCRIBE_ENABLED) {
+    definitions.push({
+      name: 'procedure-meeting-transcription',
+      start: () => procedureMeetingTranscriptionWorker.start(),
+      stop: () => procedureMeetingTranscriptionWorker.stop()
+    });
+  }
   if (process.env.HERMES_KNOWLEDGE_ENABLED === 'true') {
     const stopKnowledge = async () => {
       const runtime = getKnowledgeRuntime();

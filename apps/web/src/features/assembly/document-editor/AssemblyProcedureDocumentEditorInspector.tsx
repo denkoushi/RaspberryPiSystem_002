@@ -12,7 +12,7 @@ import {
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
 import { ProcedureVoiceInput } from './ProcedureVoiceInput';
-import { useProcedureVoiceInput } from './useProcedureVoiceInput';
+import { useProcedureVoiceInput, type useProcedureMeetingInput } from './useProcedureVoiceInput';
 
 import type { ImageRotationDirection } from './assemblyDocumentEditorDraft';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
@@ -38,6 +38,7 @@ export function percentToRatio(percent: number): number {
 export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyProcedureDocumentEditorInspector({
   element,
   onUpdate,
+  meeting,
   onDuplicate,
   onClose,
   onDelete,
@@ -61,6 +62,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   onDuplicate?: () => void;
   onClose?: () => void;
   onUpdate: (element: AssemblyProcedureOverlayElement) => void;
+  meeting?: ReturnType<typeof useProcedureMeetingInput>;
   onDelete: () => void;
   onBringForward: (id: string) => void;
   onSendBackward: (id: string) => void;
@@ -116,7 +118,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
             onChange={(event) => { voice.manualEdit(); patch({ text: event.target.value }); }}
             className="min-h-24 min-w-0 rounded border border-slate-500 bg-white px-2 py-2 text-lg text-slate-900"
           />
-          {voiceInputEnabled ? <ProcedureVoiceInput voice={voice} empty={!element.text.trim() || element.text.trim() === 'ここに文章を入力'} disabled={readOnly || busy || textReadOnly} /> : null}
+          {voiceInputEnabled || (meeting && meeting.status !== 'idle') ? <ProcedureVoiceInput voice={voice} meeting={meeting} empty={!element.text.trim() || element.text.trim() === 'ここに文章を入力'} disabled={readOnly || busy || textReadOnly} /> : null}
           <Button
             type="button"
             variant="ghostOnDark"
