@@ -70,13 +70,6 @@ export type UseLeaderboardBoardTerminalCacheResult = {
   applyMutationPatch: (mutation: LeaderboardBoardCacheMutation) => void;
 };
 
-const EMPTY_DECORATIONS: AccumulatedLeaderboardDecorations = {
-  rowDecorationsById: new Map(),
-  leaderboardFooterChipsByPartKey: {},
-  leaderboardMaterialArrivalByPartKey: {},
-  leaderboardMaterialArrivalBasisByPartKey: {}
-};
-
 export function useLeaderboardBoardTerminalCache(
   options: UseLeaderboardBoardTerminalCacheOptions
 ): UseLeaderboardBoardTerminalCacheResult {
@@ -341,5 +334,3 @@ export function useLeaderboardBoardTerminalCache(
     applyMutationPatch
   };
 }
-
-export { EMPTY_DECORATIONS };
