@@ -124,7 +124,7 @@ export function AssemblyProcedureDocumentPageImportDialog({
       >
         {selected && selectedPages.length ? (
           <div className="flex flex-wrap justify-center gap-1.5">
-            {selectedPages.map(page => <div key={page.pageIndex} className="w-9"><AssemblyProcedureDocumentEditorPagePreview page={page} assets={source?.assets} /></div>)}
+            {selectedPages.map(page => <div key={page.pageIndex} className="w-9"><AssemblyProcedureDocumentEditorPagePreview page={page} assets={source?.assets} lazy /></div>)}
           </div>
         ) : <span className={`mx-auto block w-full border-t border-dashed ${selected ? 'border-[#5fc3e8]' : 'border-[#344252] group-hover:border-[#5fc3e8]'}`} />}
       </button>
@@ -191,7 +191,7 @@ export function AssemblyProcedureDocumentPageImportDialog({
                   <button type="button" aria-label={`${page.pageIndex + 1}ページ目`} aria-pressed={order > 0}
                     onClick={() => togglePage(page.pageIndex)}
                     className={`relative block w-full rounded-md border-2 p-0.5 ${order > 0 ? 'border-[#5fc3e8]' : 'border-[#344252]'}`}>
-                    <AssemblyProcedureDocumentEditorPagePreview page={page} assets={source?.assets} />
+                    <AssemblyProcedureDocumentEditorPagePreview page={page} assets={source?.assets} lazy />
                     {order > 0 ? <span className="absolute right-1.5 top-1.5 grid h-6 min-w-6 place-items-center rounded-full bg-[#5fc3e8] px-1 font-mono text-sm font-bold text-[#0a0d10]">{order}</span> : null}
                   </button>
                   <button type="button" aria-label={`${page.pageIndex + 1}ページ目を拡大`}
@@ -212,7 +212,7 @@ export function AssemblyProcedureDocumentPageImportDialog({
           {pages.map((page, index) => <Fragment key={page.pageIndex}>
             <button type="button" className="mx-auto block w-14 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#5fc3e8]"
               aria-label={`${page.pageIndex + 1}ページ目を拡大`} onClick={() => setZoom({ kind: 'destination', index })}>
-              <AssemblyProcedureDocumentEditorPagePreview page={page} assets={document.assets} />
+              <AssemblyProcedureDocumentEditorPagePreview page={page} assets={document.assets} lazy />
             </button>
             {position(page.pageIndex)}
           </Fragment>)}
