@@ -1,11 +1,9 @@
-import { api, getResolvedClientKey } from '../../http';
+import { api } from '../../http';
 
 export async function sendProcedureManualMail(input: { documentId: string; revisionId: string; nfcUid: string; localPart: string }) {
   const { data } = await api.post<{
     deliveryId: string; sentAt: string; gmailMessageId: string; pageCount: number; pdfByteSize: number;
-  }>('/assembly/procedure-manuals/mail', input, {
-    headers: { 'x-client-key': getResolvedClientKey() }
-  });
+  }>('/assembly/procedure-manuals/mail', input);
   return data;
 }
 

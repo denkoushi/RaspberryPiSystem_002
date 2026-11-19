@@ -32,6 +32,7 @@ function splitHeader(value: string, maxLength: number, encode: (char: string) =>
 }
 
 export function buildProcedureManualMime({ to, subject, filename, pdf }: PdfMail): string {
+  // eslint-disable-next-line no-control-regex -- reject CR/LF and other control characters in headers
   if ([to, subject, filename].some((header) => /[\u0000-\u001f\u007f]/.test(header))) {
     throw new Error('Invalid mail header');
   }

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import fc from 'fast-check';
+import * as fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProcedureManualMailService, formatProcedureManualMailTime } from '../procedure-manual-mail.service.js';

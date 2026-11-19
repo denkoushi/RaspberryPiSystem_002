@@ -138,11 +138,14 @@ async function capturePages(
         await page.waitForFunction((overlayIds) => {
           const root = document.querySelector('[data-procedure-print]');
           const image = root?.querySelector<HTMLImageElement>('[data-testid="assembly-procedure-crop-view"] img, [data-testid="assembly-procedure-full-page-view"] img');
-          const loaded = (img?: HTMLImageElement | null) => Boolean(img?.complete && img.naturalWidth > 0);
-          if (!loaded(image)) return false;
+          // No named inner functions: tsx (dev) would inject a __name helper the page lacks.
+          if (!(image?.complete && image.naturalWidth > 0)) return false;
           const overlays = new Map(Array.from(root!.querySelectorAll<HTMLElement>('[data-overlay-id]'),
             (element) => [element.dataset.overlayId, element]));
-          return overlayIds.every((id) => loaded(overlays.get(id)?.querySelector('img')));
+          return overlayIds.every((id) => {
+            const img = overlays.get(id)?.querySelector('img');
+            return Boolean(img?.complete && img.naturalWidth > 0);
+          });
         }, visibleImageIds);
         await page.evaluate(async () => {
           await document.fonts.ready;

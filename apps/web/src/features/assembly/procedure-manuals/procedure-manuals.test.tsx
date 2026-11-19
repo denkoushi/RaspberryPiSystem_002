@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAssemblyProcedureSpeechToTextAvailability, transcribeAssemblyProcedureDictation } from '../../../api/domains/assembly';
-import { api, getResolvedClientKey } from '../../../api/http';
+import { api } from '../../../api/http';
 import { mockVoiceRecording } from '../../voice/voiceRecording.test-support';
 
 import { clearManualLists } from './procedure-manual-list-cache';
@@ -182,8 +182,7 @@ describe('procedure-manuals', () => {
     fireEvent.click(screen.getByRole('button', { name: '送る', exact: true }));
     expect(screen.getByText('送っています')).toBeVisible();
     expect(post).toHaveBeenCalledExactlyOnceWith('/assembly/procedure-manuals/mail',
-      { documentId: 'root', revisionId: 'v3', nfcUid: 'TAG-1', localPart: 'a' },
-      { headers: { 'x-client-key': getResolvedClientKey() } });
+      { documentId: 'root', revisionId: 'v3', nfcUid: 'TAG-1', localPart: 'a' });
     await act(async () => complete());
     const done = screen.getByRole('dialog');
     expect(within(done).getByText('送りました')).toBeVisible();

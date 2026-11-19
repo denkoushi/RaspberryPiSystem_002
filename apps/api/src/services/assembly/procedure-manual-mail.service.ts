@@ -145,6 +145,7 @@ export class ProcedureManualMailService {
     const outputTime = formatProcedureManualMailTime(this.now());
     const revisionNumber = document.revisionMetadata?.revisionNumber ?? 1;
     const revisionDate = formatProcedureManualMailTime(document.publishedAt ?? document.createdAt).slice(0, 10);
+    // eslint-disable-next-line no-control-regex -- strip control characters from the title
     const title = document.name.replace(/[\u0000-\u001f\u007f]+/g, ' ');
     const revisionLabel = `第${revisionNumber}版(改版 ${revisionDate})`;
     const pdf = await this.renderPdf(pages.map((page, index) => ({
