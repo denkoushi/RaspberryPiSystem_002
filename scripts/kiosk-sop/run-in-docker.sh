@@ -7,7 +7,6 @@ shift || true
 image_tag="raspisys-kiosk-sop-generator:playwright-1.64.1"
 generator_platform="linux/amd64"
 dockerfile="$repo_root/infrastructure/docker/Dockerfile.kiosk-sop-generator"
-generated_root="$repo_root/apps/web/src/generated/kiosk-sop"
 inspection_preview_path="$repo_root/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html"
 assembly_preview_path="$repo_root/docs/design-previews/kiosk-assembly-procedure-template-sop.html"
 
@@ -25,15 +24,14 @@ if [[ "$mode" == "generate" ]]; then
   }
   trap cleanup EXIT INT TERM
   docker run --rm --init --ipc=host --network=none --platform "$generator_platform" \
+    --env KIOSK_SOP_SERVER_TIMEOUT_MS --env KIOSK_SOP_GOTO_TIMEOUT_MS \
     --volume "$output_dir:/output" \
     "$image_id" \
     node scripts/kiosk-sop/generate.mjs generate --all --output-root /output "$@"
-  mkdir -p "$generated_root"
-  rsync -a --delete "$output_dir/" "$generated_root/"
-  cp "$generated_root/inspection-drawing/manual.html" "$inspection_preview_path"
-  cp "$generated_root/assembly-procedure-template/manual.html" "$assembly_preview_path"
+  bash "$repo_root/scripts/kiosk-sop/install-generated.sh" "$output_dir"
 elif [[ "$mode" == "check" ]]; then
   docker run --rm --init --ipc=host --network=none --platform "$generator_platform" \
+    --env KIOSK_SOP_SERVER_TIMEOUT_MS --env KIOSK_SOP_GOTO_TIMEOUT_MS \
     --volume "$inspection_preview_path:/workspace/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html:ro" \
     --volume "$assembly_preview_path:/workspace/docs/design-previews/kiosk-assembly-procedure-template-sop.html:ro" \
     "$image_id" \
