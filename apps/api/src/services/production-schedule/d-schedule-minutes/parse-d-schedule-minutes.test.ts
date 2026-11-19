@@ -543,6 +543,14 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(result.blocks[0].surfaceSendOutDates[0]).toEqual({ date: '2026-05-01', label: '★LSLH処理出', note: '(CT 以外)' });
   });
 
+  it.each([['★LSLH最終', null], ['★ＬＳＬＨ最終', null], ['★LSLH 最終 (CT以外)', '(CT以外)']])('reads short final star %s as 最終処理品', async (value, note) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, 22).value = value;
+    const result = success(await parse(fixture));
+    expect(result.blocks[0].surfaceSendOutDates[0]).toEqual({ date: '2026-05-01', label: '★LSLH最終処理品', note });
+    expect(result.warnings).not.toContainEqual(expect.objectContaining({ code: 'UNKNOWN_STAR', cell: 'V10' }));
+  });
+
   it.each(['★未知', '★LSLH最終処理', '★', '★別処理'])('warns on unknown star %s', async (value) => {
     const fixture = buildWorkbook();
     fixture.sheet.getCell(fixture.start, 22).value = value;

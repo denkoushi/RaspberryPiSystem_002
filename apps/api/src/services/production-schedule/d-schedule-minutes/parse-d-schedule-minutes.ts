@@ -319,10 +319,11 @@ export async function parseDScheduleMinutesXlsx(input: {
           warn('UNKNOWN_STAR', block.seiban, cell);
         }
         if (!text.startsWith('★')) continue;
-        // 最終処理出 is the older spelling of 最終処理品 (May 2026 sheets).
-        const star = text.match(/^(★ *L *S *L *H *(?:最 *終 *処 *理 *(?:品|出)|処 *理 *出))(.*)$/s);
+        // 最終処理出 is the older spelling of 最終処理品 (May 2026 sheets); bare 最終 is its short form (Nov 2026 sheets).
+        const star = text.match(/^(★ *L *S *L *H *(?:最 *終(?: *処 *理 *(?:品|出)|(?! *処))|処 *理 *出))(.*)$/s);
         if (!star) warn('UNKNOWN_STAR', block.seiban, cell);
-        if (star && date) block.surfaceSendOutDates.push({ date, label: star[1].replace(/ /g, ''), note: star[2].trim() || null });
+        const label = star?.[1].replace(/ /g, '').replace(/最終$/, '最終処理品');
+        if (star && label && date) block.surfaceSendOutDates.push({ date, label, note: star[2].trim() || null });
       }
     }
     block.outsourceMarks = [...new Set(block.outsourceMarks)];
