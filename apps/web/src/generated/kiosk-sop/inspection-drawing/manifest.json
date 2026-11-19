@@ -1,7 +1,7 @@
 {
   "artifacts": {
-    "manual.html": "c67356f4c510c6f53518d6abde891fbb4c6e08fe6d338166fdb68ef16eb7dfe0",
-    "screens/edit-advanced-point.png": "b4b62e8b56c7eeb62e816d726e5907dc13569021c4b4d1489078e3ac48e996b1",
+    "manual.html": "f10775b582d61eb42d4786b6862334c6a2700a750e565f046f3f799b12c60f49",
+    "screens/edit-advanced-point.png": "69d86f808bfe0f8f8f39d009b86a57a849e29d52f32c65380004828ed21ace65",
     "screens/edit-basics.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
     "screens/edit-group-history.png": "0f6ce0a3716113d9da95f1c3231a3667e9d171a187e8a93288110a12df02f0de",
     "screens/edit-point-management.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
@@ -11,7 +11,7 @@
     "screens/library-entry-search.png": "d4adc7eceb70e8b05030b9bb7701bb4762b3cb915cb1930aa09dcf58f2eafcdb",
     "screens/library-template-management.png": "d4adc7eceb70e8b05030b9bb7701bb4762b3cb915cb1930aa09dcf58f2eafcdb",
     "screens/library-visual-management.png": "6958815d3b2dc2ee4f0e1cc89aea1edaae514145e0a1a31ef5c0b6dc1519fac3",
-    "sheets/edit-advanced-point.png": "a65c26c45b2fab243591330839f74a7fbe9a7d876bd49acc3594f61eeaf076a1",
+    "sheets/edit-advanced-point.png": "cb50603c3fbd7a7a3edd429a5cc6da68edc0a0aa7daa2285a62e1487f35cee85",
     "sheets/edit-basics.png": "bf8d682e268266a437e0d372d529e1bcf499f3627411734ef26ba7e045d342f8",
     "sheets/edit-group-history.png": "c9fa9c6235fe498f60a39898dc54c9908273089309251587826bdb78c6213962",
     "sheets/edit-point-management.png": "932aeca35745fa96c9d7d7c5c5709d8e9e332d460e7439e1469817dd9ebe8577",
@@ -663,7 +663,7 @@
       }
     ]
   },
-  "htmlSha256": "c67356f4c510c6f53518d6abde891fbb4c6e08fe6d338166fdb68ef16eb7dfe0",
+  "htmlSha256": "f10775b582d61eb42d4786b6862334c6a2700a750e565f046f3f799b12c60f49",
   "schemaVersion": 1,
   "sourceSha256": "fc63ca0cc4440a566c3c8e59a3e8a8df6fc148d811af247c8e8ba4fea095ade5"
 }
