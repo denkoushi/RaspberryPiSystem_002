@@ -7,7 +7,7 @@ import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assembl
 import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 import {
-  createOverlayForRange,
+  createDuplicateOverlayAction, createOverlayForRange,
   createOverlayId,
   duplicateOverlayId,
   isOverlayDraftSaveable,
@@ -504,17 +504,17 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     const id = duplicateOverlayId(source.id, createOverlayId);
     const placement = pendingMaterials.current.get(sourceId);
     if (placement) pendingMaterials.current.set(id, { ...placement, elementId: id, fallbackAssetId: undefined });
-    dispatch({ type: 'duplicate', sourceId, id, pageIndex: selectedPage.pageIndex });
+    dispatch(createDuplicateOverlayAction(elements, sourceId, id, selectedPage.pageIndex));
     setSelectedOverlayId(id);
   });
 
   const duplicateSelectedOverlay = useEditorCallback(() => {
     if (!selectedElement || readOnly || busyRef.current) return;
-    const copy = { ...selectedElement, id: duplicateOverlayId(selectedElement.id, createAssemblyRequestId), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
+    const id = duplicateOverlayId(selectedElement.id, createAssemblyRequestId);
     const placement = pendingMaterials.current.get(selectedElement.id);
-    if (placement) pendingMaterials.current.set(copy.id, { ...placement, elementId: copy.id, fallbackAssetId: undefined });
-    dispatch({ type: 'add', element: copy });
-    setSelectedOverlayId(copy.id);
+    if (placement) pendingMaterials.current.set(id, { ...placement, elementId: id, fallbackAssetId: undefined });
+    dispatch(createDuplicateOverlayAction(elements, selectedElement.id, id, selectedElement.pageIndex));
+    setSelectedOverlayId(id);
   });
   const addOverlay = useEditorCallback((kind: 'TEXT' | 'SHAPE') => {
     if (readOnly || busyRef.current) return;
