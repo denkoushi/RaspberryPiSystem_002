@@ -1,4 +1,5 @@
 import {
+  OVERLAY_DEFAULT_FONT_SIZE_RATIO,
   projectOverlayBBoxFromCrop,
   projectOverlayElementToCrop
 } from '@raspi-system/shared-types';
@@ -252,7 +253,7 @@ function ImageContent({ element, source }: {
 /** Text is sized against the source page width, so a cropped layer scales it up by the crop width. */
 export function overlayTextFontSize(fontSizeRatio: number | undefined, crop?: OverlayCropRect | null): string {
   const cropScale = crop && crop.widthRatio > 0 ? 1 / crop.widthRatio : 1;
-  return `${Math.max(0.005, fontSizeRatio ?? 0.025) * 100 * cropScale}cqw`;
+  return `${Math.max(0.005, fontSizeRatio ?? OVERLAY_DEFAULT_FONT_SIZE_RATIO) * 100 * cropScale}cqw`;
 }
 
 function OverlayContent({ element, assetSource, crop }: {

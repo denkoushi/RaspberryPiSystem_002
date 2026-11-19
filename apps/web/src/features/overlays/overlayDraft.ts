@@ -1,3 +1,5 @@
+import { OVERLAY_DEFAULT_FONT_SIZE_RATIO } from '@raspi-system/shared-types';
+
 import type {
   OverlayBBox,
   OverlayElement,
@@ -133,7 +135,7 @@ export function createOverlayForRange(kind: OverlayCreationKind, pageIndex: numb
       kind,
       text: 'ここに文章を入力',
       mask: { enabled: true, color: '#ffffff' },
-      style: { fontSizeRatio: 0.025, fontWeight: 'bold', color: '#0f172a', align: 'start' }
+      style: { fontSizeRatio: OVERLAY_DEFAULT_FONT_SIZE_RATIO, fontWeight: 'bold', color: '#0f172a', align: 'start' }
     };
   }
   if (kind === 'IMAGE') {
