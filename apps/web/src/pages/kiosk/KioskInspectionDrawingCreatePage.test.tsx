@@ -306,7 +306,7 @@ describe('KioskInspectionDrawingCreatePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '寸法' }));
     fireEvent.click(screen.getByRole('button', { name: 'Y', exact: true }));
     expect(screen.getByRole('button', { name: '寸法' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(within(screen.getByTestId('inspection-drawing-place-callout-mode-row')).getByRole('button', { name: '削除' }));
+    fireEvent.click(within(screen.getByTestId('inspection-drawing-place-callout-mode-row')).getByRole('button', { name: '矢視を削除' }));
     expect(screen.getByRole('button', { name: '丸数字', exact: true })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '寸法' })).toBeDisabled();
   });
