@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { removeOverlayPage } from './assemblyDocumentEditorDraft';
+import { moveOverlayPage, removeOverlayPage } from './assemblyDocumentEditorDraft';
 import {
   assemblyDocumentEditorRecoveryKey,
   clearAssemblyDocumentEditorRecovery,
@@ -184,6 +184,25 @@ export function useAssemblyDocumentEditorRecovery(input: {
     }
   };
 
+  const movePage = (
+    from: number,
+    to: number,
+    next: Pick<AssemblyDocumentEditorRecoveryMatch, 'baseUpdatedAt' | 'editVersion'>,
+    currentElements: AssemblyProcedureOverlayElement[],
+    placements: PendingMaterialPlacement[],
+    hasUnsavedChanges: boolean
+  ) => {
+    if (pending) {
+      rebasePending({
+        ...pending,
+        ...next,
+        elements: moveOverlayPage(pending.elements, from, to)
+      });
+    } else if (hasUnsavedChanges) {
+      saveImmediately(next, currentElements, placements);
+    }
+  };
+
   const discard = async () => {
     const stored = pending ?? readAssemblyDocumentEditorRecovery(window.localStorage, documentId);
     await onDiscardMaterials?.(stored?.materialPlacements ?? []);
@@ -198,6 +217,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
   return {
     pending,
     deletePage,
+    movePage,
     importPages,
     restore,
     discard,
