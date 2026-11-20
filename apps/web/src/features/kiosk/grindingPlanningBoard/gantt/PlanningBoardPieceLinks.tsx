@@ -16,8 +16,83 @@ type Gap = Point & { width: number; height: number };
 /** Scroll offset plus the pane's visible track area, both in container coordinates. */
 type PaneOffset = Point & { box: { left: number; top: number; right: number; bottom: number } };
 const pieceLinkWeight = () => (window.innerWidth >= 3000 ? 9 : 4.5) / pageZoom();
-type Piece = { pane: number; resource: string; id: string; row: number; rect: ChainBarPosition['first'] };
-type Pair = { from: Piece; to: Piece; color: string; depth: number };
+type Piece = { pane: number; resource: string; id: string; row: number; rowKey: string; part: string; rect: ChainBarPosition['first'] };
+type Pair = { from: Piece; to: Piece; color: string; depth: number; lane?: { side: LaneSide; level: number; rows: LaneRow[] } };
+
+export type LaneSide = 'above' | 'below';
+/** One window row crossed by a link, in layer coordinates. min/max bound where lane lines may sit. */
+export type LaneRow = { left: number; right: number; barTop: number; barBottom: number; minY: number; maxY: number };
+export const PIECE_LANE_LEVELS = 4;
+
+/** Alternates parts below/above per pane, in order of their first piece, and staggers levels per side. */
+export function pieceLaneSides(pieces: readonly { part: string; pane: number; row: number; left: number }[]) {
+  const sorted = [...pieces].sort((a, b) => a.pane - b.pane || a.row - b.row || a.left - b.left);
+  const counts = new Map<number, number>();
+  const result = new Map<string, { side: LaneSide; level: number }>();
+  for (const { part, pane } of sorted) {
+    const key = `${pane}|${part}`;
+    if (result.has(key)) continue;
+    const index = counts.get(pane) ?? 0;
+    counts.set(pane, index + 1);
+    result.set(key, { side: index % 2 === 0 ? 'below' : 'above', level: Math.floor(index / 2) % PIECE_LANE_LEVELS });
+  }
+  return result;
+}
+
+export function pieceLaneY(row: LaneRow, side: LaneSide, level: number, weight: number) {
+  const step = weight * 1.6 * (level + 1);
+  return side === 'below'
+    ? Math.max(Math.min(row.barBottom + step, row.maxY), row.barBottom + weight / 2)
+    : Math.min(Math.max(row.barTop - step, row.minY), row.barTop - weight / 2);
+}
+
+/** Orthogonal route along the gap above or below the bars, wrapping row by row. Pure geometry. */
+export function pieceLanePath({ rows, side, level, weight, fromX, fromEdge, toX, toEdge }: {
+  rows: readonly LaneRow[]; side: LaneSide; level: number; weight: number;
+  fromX: number; fromEdge: number; toX: number; toEdge: number;
+}) {
+  const ys = rows.map(row => pieceLaneY(row, side, level, weight));
+  const last = rows.length - 1;
+  const arrows: Point[] = [];
+  let path = `M ${fromX} ${fromEdge} L ${fromX} ${ys[0]}`;
+  if (last === 0) return { path: `${path} L ${toX} ${ys[0]} L ${toX} ${toEdge}`, arrows, ys };
+  path += ` L ${rows[0]!.right} ${ys[0]}`;
+  arrows.push({ x: rows[0]!.right, y: ys[0]! });
+  for (let i = 1; i < last; i++) {
+    path += ` M ${rows[i]!.left} ${ys[i]} L ${rows[i]!.right} ${ys[i]}`;
+    arrows.push({ x: rows[i]!.right, y: ys[i]! });
+  }
+  return { path: `${path} M ${rows[last]!.left} ${ys[last]} L ${toX} ${ys[last]} L ${toX} ${toEdge}`, arrows, ys };
+}
+
+function laneRows(pane: Pane, from: Piece, to: Piece, bounds: DOMRect, zoom: number): LaneRow[] | null {
+  const start = pane.rowElements.current.get(from.rowKey);
+  const end = pane.rowElements.current.get(to.rowKey);
+  if (!start || !end) return null;
+  const rect = (element: Element) => element.getBoundingClientRect();
+  const topOf = (element: Element) => (rect(element).top - bounds.top) / zoom;
+  const startTop = topOf(start);
+  const endTop = topOf(end);
+  let chain: HTMLDivElement[] = [start];
+  if (start !== end) {
+    if (endTop <= startTop) return null;
+    const between = [...pane.rowElements.current.values()].filter(row => row !== start && row !== end
+      && row.dataset.ganttWindowRow !== undefined && topOf(row) > startTop && topOf(row) < endTop);
+    chain = [start, ...between.sort((a, b) => topOf(a) - topOf(b)), end];
+  }
+  const barOffset = from.rect.top - startTop;
+  const bottomMost = Math.max(...[...pane.rowElements.current.values()].map(topOf));
+  return chain.map(row => {
+    const top = topOf(row);
+    const track = row.querySelector('[data-gantt-track]');
+    const right = ((track ? rect(track) : rect(row)).right - bounds.left) / zoom;
+    const bottom = (rect(row).bottom - bounds.top) / zoom;
+    const barTop = top + barOffset;
+    // Only the pane's last row may spill below it, into the extra SVG height.
+    return { left: pane.labelWidth, right, barTop, barBottom: barTop + from.rect.height,
+      minY: top + 1, maxY: top === bottomMost ? bottom + 28 : bottom - 1 };
+  });
+}
 
 function measurePairs(panes: readonly Pane[]): Pair[] {
   const parts = new Map<string, Map<string, Piece>>();
@@ -33,24 +108,54 @@ function measurePairs(panes: readonly Pane[]): Pair[] {
       const pieceId = bar.item.pieceId ?? bar.item.itemId;
       if (!rect || rect.left + rect.width <= pane.labelWidth) continue;
       const rowKey = pane.barLocations?.get(bar.item.itemId)?.first.rowKey;
-      const piece = { pane: index, resource: bar.resource, id: bar.item.itemId, row: rows.get(rowKey!)!, rect };
+      const piece = { pane: index, resource: bar.resource, id: bar.item.itemId, row: rows.get(rowKey!)!, rowKey: rowKey!, part: bar.partKey, rect };
       let part = parts.get(bar.partKey);
       if (!part) { part = new Map(); parts.set(bar.partKey, part); }
       if (!part.has(pieceId)) part.set(pieceId, piece);
     }
   });
-  return [...parts.keys()].filter(key => parts.get(key)!.size > 1).sort().flatMap((key, index) => {
+  const linked = [...parts.keys()].filter(key => parts.get(key)!.size > 1).sort();
+  const sides = pieceLaneSides(linked.flatMap(key => [...parts.get(key)!.values()].map(p => ({ part: key, pane: p.pane, row: p.row, left: p.rect.left }))));
+  const zoom = pageZoom();
+  const bounds = panes.map(pane => pane.content.current?.getBoundingClientRect());
+  return linked.flatMap((key, index) => {
     const pieces = [...parts.get(key)!.values()];
     pieces.sort((a, b) => a.pane - b.pane || a.row - b.row || a.rect.left - b.rect.left);
-    return pieces.slice(1).map((to, previous) => ({
-      from: pieces[previous]!, to, color: PART_COLORS[index % PART_COLORS.length]!, depth: index % 4
-    }));
+    return pieces.slice(1).map((to, previous): Pair => {
+      const from = pieces[previous]!;
+      const pair: Pair = { from, to, color: PART_COLORS[index % PART_COLORS.length]!, depth: index % 4 };
+      const side = sides.get(`${from.pane}|${key}`);
+      const box = bounds[from.pane];
+      if (from.pane === to.pane && from.resource === to.resource && side && box) {
+        const rows = laneRows(panes[from.pane]!, from, to, box, zoom);
+        if (rows) pair.lane = { ...side, rows };
+      }
+      return pair;
+    });
   });
 }
 
-const PieceLink = memo(function PieceLink({ pair: { from, to, color, depth }, offsets, weight, duplicate = false }: {
+const PieceLink = memo(function PieceLink({ pair: { from, to, color, depth, lane }, offsets, weight, duplicate = false }: {
   pair: Pair; offsets?: PaneOffset[]; weight: number; duplicate?: boolean;
 }) {
+  if (lane && !offsets) {
+    const fromX = from.rect.left + from.rect.width / 2;
+    const toX = to.rect.left + to.rect.width / 2;
+    const below = lane.side === 'below';
+    const fromEdge = from.rect.top + (below ? from.rect.height : 0);
+    const toEdge = to.rect.top + (below ? to.rect.height : 0);
+    const { path, arrows } = pieceLanePath({ rows: lane.rows, side: lane.side, level: lane.level, weight, fromX, fromEdge, toX, toEdge });
+    const size = weight * 1.6;
+    const heads = arrows.map(({ x, y }) => `M ${x - size} ${y - size} L ${x} ${y} L ${x - size} ${y + size}`).join(' ');
+    return <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+      <path d={path} stroke="#020617" strokeWidth={weight * 5 / 3} />
+      {heads && <path d={heads} stroke="#020617" strokeWidth={weight * 5 / 3} />}
+      <path data-testid={duplicate ? undefined : 'planning-gantt-normal-piece-link'} data-from-to={`${from.id}->${to.id}`} d={path} stroke={color} strokeWidth={weight} />
+      {heads && <path d={heads} stroke={color} strokeWidth={weight} />}
+      <circle cx={fromX} cy={fromEdge} r={weight * 0.95} fill={color} stroke="#020617" strokeWidth={weight / 3} />
+      <circle cx={toX} cy={toEdge} r={weight * 0.95} fill={color} stroke="#020617" strokeWidth={weight / 3} />
+    </g>;
+  }
   const sameMachine = from.resource === to.resource;
   // A cross-pane end scrolled out of its own pane stops at that pane's edge without a dot,
   // so it never appears over the other pane's rows.
