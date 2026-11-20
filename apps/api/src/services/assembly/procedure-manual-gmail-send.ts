@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { ApiError } from '../../lib/errors.js';
+import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import { GmailRateLimitedDeferredError, GmailRequestGateService } from '../backup/gmail-request-gate.service.js';
 import { resolveGmailApiClientFromBackupConfig } from '../gmail/gmail-api-client.factory.js';
@@ -77,7 +78,6 @@ export function buildProcedureManualMime({ to, subject, filename, pdf }: PdfMail
     'Content-Type: application/pdf;',
     ` name="${encodeHeaderWords(filename)}"`,
     'Content-Disposition: attachment;',
-    ` filename="${encodeHeaderWords(filename)}";`,
     filenameParts.join(';\r\n'),
     'Content-Transfer-Encoding: base64',
     '',
@@ -139,6 +139,13 @@ export const procedureManualGmailSender: ProcedureManualMailSender = {
           'GMAIL_SCOPE_INSUFFICIENT'
         );
       }
+      // Log only Gmail's status and reason; the request error can carry the MIME body and OAuth headers.
+      logger.warn({
+        gmailStatus: status,
+        gmailCode: code,
+        gmailReasons: [...(apiError?.errors ?? []), ...(apiError?.details ?? [])].map(({ reason }) => reason),
+        gmailMessage: message.slice(0, 300),
+      }, '[ProcedureManualMail] Gmail send failed');
       throw new ApiError(500, 'Gmail 送信に失敗しました', undefined, 'GMAIL_SEND_FAILED');
     } finally {
       clearTimeout(timer);
