@@ -92,8 +92,16 @@ describe('mobile verify records', () => {
     expect(records.map((row: { result: string }) => row.result)).toEqual(['match', 'mismatch', 'mismatch', 'not_found', 'error']);
     expect(records.map((row: { mismatch: string | null }) => row.mismatch)).toEqual([null, 'fseiban', 'part', null, null]);
     expect(records[0]).toEqual({ id: '0', verifiedAt: body.verifiedAt, deviceName: 'スマホ', result: 'match', reason: 'match',
+      recheckOutcome: null, recheckReason: null, recheckedAt: null,
       transfer: { orderNo: body.transferOrderBarcodeRaw, partNo: 'P1', fseiban: 'FS1' },
       actual: { slipNo: body.actualOrderBarcodeRaw, partNo: null, fseiban: null }, mismatch: null,
       fhinmei: 'ブラケット', machineName: '機械', placedShelfCodeRaw: '北-1', branchNo: 0 });
+  });
+  it('returns the appended recheck result as ISO time', async () => {
+    vi.mocked(prisma.mobileSlipVerifyRecord.findMany).mockResolvedValue([{ ...body, id: 'r', verifiedAt: new Date(body.verifiedAt), clientDeviceId: 'device',
+      clientDevice: { name: 'スマホ' }, clientRecordId: null, outcome: 'not_found', reason: 'transfer_not_found',
+      recheckOutcome: 'match', recheckReason: 'match', recheckedAt: new Date('2026-10-30T20:00:00Z') }] as never);
+    const response = await app.inject({ method: 'GET', url: '/mobile-placement/verify-records?days=7', headers: { 'x-client-key': 'device-test-key' } });
+    expect(response.json().records[0]).toMatchObject({ result: 'not_found', recheckOutcome: 'match', recheckReason: 'match', recheckedAt: '2026-10-30T20:00:00.000Z' });
   });
 });

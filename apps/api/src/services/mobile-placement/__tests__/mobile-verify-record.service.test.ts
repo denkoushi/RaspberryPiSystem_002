@@ -33,6 +33,7 @@ describe('listMobileVerifyRecords', () => {
     } }));
     expect(prisma.orderPlacementEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { clientRecordId: { in: ['placement'] } } }));
     expect(records).toEqual([{ id: 'verify', verifiedAt: '2026-10-29T03:00:00.000Z', deviceName: 'スマホ', result: 'mismatch', reason: 'different_seiban',
+      recheckOutcome: null, recheckReason: null, recheckedAt: null,
       transfer: { orderNo: '0002178005', partNo: 'P1', fseiban: 'FS1' }, actual: { slipNo: null, partNo: 'RAW', fseiban: 'FS3' },
       mismatch: 'fseiban', fhinmei: '部品', machineName: '機械', placedShelfCodeRaw: '棚', branchNo: 2 }]);
     now.mockRestore();
