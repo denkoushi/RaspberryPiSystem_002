@@ -32,7 +32,9 @@ describe('procedure manual Gmail MIME', () => {
     const name = mime.match(/Content-Type: application\/pdf;\r\n name="([^"]+)"/)?.[1] ?? '';
     const nameWords = Array.from(name.matchAll(/=\?UTF-8\?B\?([^?]+)\?=/g));
     expect(nameWords.map(([, word]) => Buffer.from(word!, 'base64').toString('utf8')).join('')).toBe(mail.filename);
-    expect(mime).toContain('Content-Disposition: attachment;\r\n filename="manual.pdf";\r\n');
+    expect(mime).not.toContain('manual.pdf');
+    const dispositionWords = Array.from(mime.match(/Content-Disposition: attachment;\r\n filename="([^"]+)";/)![1]!.matchAll(/=\?UTF-8\?B\?([^?]+)\?=/g));
+    expect(Buffer.concat(dispositionWords.map(([, word]) => Buffer.from(word!, 'base64'))).toString('utf8')).toBe(mail.filename);
 
     const segments = Array.from(mime.matchAll(/\r\n filename\*(\d+)\*=(?:UTF-8'')?([^;\r\n]+)/g));
     expect(segments.map(([, index]) => Number(index))).toEqual(segments.map((_, index) => index));
