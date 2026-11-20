@@ -60,3 +60,13 @@ env が無効のとき、文章欄に「話し合い」ボタンは出ず、今�
 ## Interfaces and Dependencies
 
 新しい env `PROCEDURE_MEETING_TRANSCRIBE_ENABLED`(既定 false)。新しいルート `POST /assembly/procedure-documents/dictation/meetings` と `GET /assembly/procedure-documents/dictation/meetings/:jobId`。DGX 側のフラグ `dgx_business_meeting_transcribe_enabled`(既定 false)。
+
+## ライブ書き起こし（暫定）
+
+録音後に送る方式とは別に、話しながら選択中の文章へ書き起こしを流し込むライブ方式を追加した。DGX 側のライブ受け口は暫定の試験用サーバーで、恒久版は `denkoushi/DGXSparkControlPlane` の責務とする（このリポジトリは取り込み側だけを持つ）。
+
+- API: `GET /assembly/procedure-documents/meeting-live/availability`（`{ available }`、`Cache-Control: no-store`）と、WebSocket `GET /assembly/procedure-documents/meeting-live?clientKey=...`。キオスクの client key が無効なら 1008 で閉じ、上流は開かない。
+- 上流の約束: 業務用 DGX の基底 URL に対する `/ws`。クライアントは Int16 little-endian・mono・16 kHz の PCM をバイナリで送り、終了時にテキスト `end` を送る。サーバーは `{"spk","text","t"}` を発話ごとに返し、混雑時は `{"error":"busy"}` で閉じる。1 セッションだけ受け付ける。
+- 中継: ブラウザのバイナリと `end` を上流へ、上流のテキストをそのままブラウザへ流す。ブラウザが閉じたら上流もすぐ閉じる（上流の 1 枠を空けるため）。上流へ繋げないときは `{"error":"unavailable"}`。音声と本文はログに出さない。
+- 利用可否: `PROCEDURE_SPEECH_TO_TEXT_ENABLED` が有効で、`GET ${baseUrl}/ws` がステータス 400（WebSocket 以外の要求を拒否する応答）を返すときだけ利用可。3 秒で打ち切り、エラーは利用不可。通常の業務用プロキシに戻れば `/ws` は無く、自動で従来の方式へ戻る。
+- 画面: 利用可のとき「話し合い」ボタンがライブ方式になり、話者ごとに `話者N: ...` の行で選択中の文章の末尾へ追記する。同じ話者で 4 秒未満なら同じ行に続ける。選択の変更、編集不可、10,000 文字超過で止める。1 回の録音で取り消し履歴は 1 件にまとめる。

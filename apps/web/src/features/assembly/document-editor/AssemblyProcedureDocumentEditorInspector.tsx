@@ -15,6 +15,7 @@ import { ProcedureVoiceInput } from './ProcedureVoiceInput';
 import { useProcedureVoiceInput, type useProcedureMeetingInput } from './useProcedureVoiceInput';
 
 import type { ImageRotationDirection } from './assemblyDocumentEditorDraft';
+import type { useProcedureLiveMeeting } from './useProcedureLiveMeeting';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 function numberValue(value: string, fallback: number): number {
@@ -39,6 +40,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   element,
   onUpdate,
   meeting,
+  live,
   onDuplicate,
   onClose,
   onDelete,
@@ -63,6 +65,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   onClose?: () => void;
   onUpdate: (element: AssemblyProcedureOverlayElement) => void;
   meeting?: ReturnType<typeof useProcedureMeetingInput>;
+  live?: ReturnType<typeof useProcedureLiveMeeting>;
   onDelete: () => void;
   onBringForward: (id: string) => void;
   onSendBackward: (id: string) => void;
@@ -118,7 +121,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
             onChange={(event) => { voice.manualEdit(); patch({ text: event.target.value }); }}
             className="min-h-24 min-w-0 rounded border border-slate-500 bg-white px-2 py-2 text-lg text-slate-900"
           />
-          {voiceInputEnabled || (meeting && meeting.status !== 'idle') ? <ProcedureVoiceInput voice={voice} meeting={meeting} empty={!element.text.trim() || element.text.trim() === 'ここに文章を入力'} disabled={readOnly || busy || textReadOnly} /> : null}
+          {voiceInputEnabled || (meeting && meeting.status !== 'idle') || (live && live.status !== 'idle') ? <ProcedureVoiceInput voice={voice} meeting={meeting} live={live} empty={!element.text.trim() || element.text.trim() === 'ここに文章を入力'} disabled={readOnly || busy || textReadOnly} /> : null}
           <Button
             type="button"
             variant="ghostOnDark"
