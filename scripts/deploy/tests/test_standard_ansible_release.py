@@ -960,7 +960,9 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                     self.assertIn(address, all_vars["tailscale_network"].values())
                     self.assertEqual(port, 22)
 
-    def test_standard_route_excludes_offline_optional_profiles_before_artifact_pull(self) -> None:
+    def _run_route_with_offline_pi3(
+        self, stdout: io.TextIOBase, ansible: Any = 1, *, offline: bool = True,
+    ) -> tuple[int, Any, Any, tuple[dict[str, str], ...]]:
         args = argparse.Namespace(
             inventory=MODULE.DEFAULT_INVENTORY,
             sha=SHA,
@@ -999,7 +1001,9 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         ), mock.patch.object(
             MODULE, "run", return_value=completed(["git"], f"{SHA}\n")
         ), mock.patch.object(
-            MODULE, "preflight_optional_hosts", return_value=(reachable, excluded)
+            MODULE,
+            "preflight_optional_hosts",
+            return_value=(reachable, excluded) if offline else (reachable, ()),
         ), mock.patch.object(
             MODULE,
             "release_set_artifacts",
@@ -1009,16 +1013,99 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         ), mock.patch.object(
             MODULE, "signage_identity"
         ) as signage_identity, mock.patch.object(
-            MODULE, "execute_ansible_with_cleanup", return_value=1
-        ) as execute, redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(MODULE.execute_standard_route(args), 1)
+            MODULE, "execute_ansible_with_cleanup"
+        ) as execute, redirect_stdout(stdout):
+            def run_ansible(*_: object, **__: object) -> int:
+                stdout.lines_at_ansible = len(stdout.getvalue().splitlines())  # type: ignore[attr-defined]
+                if isinstance(ansible, BaseException):
+                    raise ansible
+                return ansible
+
+            execute.side_effect = run_ansible
+            try:
+                result = MODULE.execute_standard_route(args)
+            finally:
+                stdout.replaced = sys.stdout is not stdout  # type: ignore[attr-defined]
+        return result, execute, signage_identity, excluded
+
+    def test_standard_route_excludes_offline_optional_profiles_before_artifact_pull(self) -> None:
+        output = io.StringIO()
+        result, execute, signage_identity, excluded = self._run_route_with_offline_pi3(output)
+        self.assertEqual(result, 1)
 
         signage_identity.assert_not_called()
         command = execute.call_args.args[0]
         self.assertEqual(command[command.index("--tags") + 1], "pi5,pi4")
         self.assertEqual(command[-2:], ["--limit", "pi5:pi4-online"])
-        event = json.loads(output.getvalue())
+        lines = output.getvalue().splitlines()
+        # Printed before Ansible and again after it, so --status's journal tail keeps it.
+        self.assertEqual(output.lines_at_ansible, 1)  # type: ignore[attr-defined]
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0], lines[1])
+        event = json.loads(lines[0])
         self.assertEqual(event["excluded"], list(excluded))
+        prefix = "2026-11-20T10:00:00+09:00 raspberrypi bash[456]: "
+        self.assertEqual(
+            MODULE.summarize_release_journal(
+                "\n".join(prefix + line for line in lines),
+                frozenset({("pi3-offline", "pi3")}),
+            ),
+            ["excluded offline hosts: pi3-offline(pi3)"],
+        )
+
+    def test_standard_route_keeps_ansible_result_when_repeat_cannot_be_written(self) -> None:
+        class ClosedAfterFirstEvent(io.StringIO):
+            def write(self, text: str) -> int:
+                if "optional-host-preflight" in text and "optional-host-preflight" in self.getvalue():
+                    raise BrokenPipeError(32, "Broken pipe")
+                return super().write(text)
+
+        output = ClosedAfterFirstEvent()
+        result, execute, _, _ = self._run_route_with_offline_pi3(output)
+        self.assertEqual(result, 1)
+        execute.assert_called_once()
+        self.assertEqual(len(output.getvalue().splitlines()), 1)
+        # The unwritable stream is swapped out so interpreter shutdown cannot fail.
+        self.assertTrue(getattr(output, "replaced", False))
+
+    def test_standard_route_prints_preflight_once_when_no_host_was_skipped(self) -> None:
+        output = io.StringIO()
+        result, _, _, _ = self._run_route_with_offline_pi3(output, offline=False)
+        self.assertEqual(result, 1)
+        self.assertEqual(len(output.getvalue().splitlines()), 1)
+        self.assertEqual(json.loads(output.getvalue())["excluded"], [])
+
+    def test_standard_route_repeats_skipped_hosts_when_ansible_raises(self) -> None:
+        output = io.StringIO()
+        with self.assertRaisesRegex(RuntimeError, "synthetic ansible failure"):
+            self._run_route_with_offline_pi3(output, RuntimeError("synthetic ansible failure"))
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(lines[0], lines[1])
+
+    def test_standard_route_keeps_ansible_exception_when_repeat_flush_fails(self) -> None:
+        class FlushFailsAfterAnsible(io.StringIO):
+            def flush(self) -> None:
+                if getattr(self, "lines_at_ansible", None) is not None:
+                    raise ValueError("I/O operation on closed file")
+
+        output = FlushFailsAfterAnsible()
+        with self.assertRaisesRegex(RuntimeError, "synthetic ansible failure"):
+            self._run_route_with_offline_pi3(output, RuntimeError("synthetic ansible failure"))
+        self.assertTrue(getattr(output, "replaced", False))
+
+    def test_status_allowlist_ignores_other_groups_and_unsafe_names(self) -> None:
+        document = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-a", "bad\nname", 7]},
+            "signage": {"hosts": ["pi3-a"]},
+            "monitoring": {"hosts": ["outside"]},
+            "_meta": {"hostvars": {"pi5": {}, "pi4-a": {}, "pi3-a": {}, "outside": {}}},
+        }
+        self.assertEqual(
+            MODULE.status_optional_hosts(document),
+            frozenset({("pi4-a", "pi4"), ("pi3-a", "pi3")}),
+        )
 
     def test_ansible_argv_is_exact_and_contains_no_legacy_inputs(self) -> None:
         variables = {
@@ -1732,26 +1819,84 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertNotIn("synthetic-secret", "\n".join(summaries))
         self.assertNotIn("sensitive-template-value", "\n".join(summaries))
 
+    def test_release_journal_lists_hosts_skipped_as_offline(self) -> None:
+        prefix = "2026-11-20T10:00:00+09:00 raspberrypi "
+        event = {
+            "event": "optional-host-preflight",
+            "excluded": [
+                {"host": "raspi4-robodrill01", "profile": "pi4", "reason": "tcp-unreachable"},
+                {"host": "raspi4-robodrill01", "profile": "pi4", "reason": "tcp-unreachable"},
+                {"host": "bad host;rm", "profile": "pi4", "reason": "tcp-unreachable"},
+                {"host": "synthetic-secret", "profile": "pi4", "reason": "tcp-unreachable"},
+                {"host": "raspberrypi3", "profile": "pi4", "reason": "tcp-unreachable"},
+                {"host": ["raspberrypi3"], "profile": {"pi3": 1}, "reason": "tcp-unreachable"},
+                {"host": "raspberrypi3", "profile": "pi3", "reason": "other", "token": "synthetic-secret"},
+            ],
+            "reachable": [{"hosts": ["raspberrypi5"], "profile": "pi5"}],
+        }
+        raw = "\n".join([
+            prefix + "bash[456]: " + json.dumps(event, sort_keys=True),
+            prefix + "bash[456]: PLAY RECAP *****",
+        ])
+        known = frozenset({("raspi4-robodrill01", "pi4"), ("raspberrypi3", "pi3")})
+        summaries = MODULE.summarize_release_journal(raw, known)
+        self.assertEqual(summaries, [
+            "excluded offline hosts: raspi4-robodrill01(pi4)",
+            "PLAY RECAP",
+        ])
+        self.assertNotIn("synthetic-secret", "\n".join(summaries))
+        # Without the inventory pairs no host name is ever shown.
+        self.assertEqual(MODULE.summarize_release_journal(raw), ["PLAY RECAP"])
+
+    def test_release_journal_is_unchanged_when_no_host_was_skipped(self) -> None:
+        prefix = "2026-11-20T10:00:00+09:00 raspberrypi "
+        event = {"event": "optional-host-preflight", "excluded": [], "reachable": []}
+        raw = "\n".join([
+            prefix + "bash[456]: " + json.dumps(event, sort_keys=True),
+            prefix + 'bash[456]: {"event": "optional-host-preflight", broken',
+            prefix + 'bash[456]: {"event": "optional-host-preflight", "x": ' + "[" * 100000 + "]" * 100000 + "}",
+            prefix + "bash[456]: PLAY RECAP *****",
+        ])
+        self.assertEqual(
+            MODULE.summarize_release_journal(raw, frozenset({("raspberrypi3", "pi3")})),
+            ["PLAY RECAP"],
+        )
+
     def test_status_reads_only_systemd_and_journal(self) -> None:
         args = argparse.Namespace(inventory=MODULE.DEFAULT_INVENTORY, status=RUN_ID)
         inventory = {
             "server": {"hosts": ["pi5"]},
+            "signage": {"hosts": ["pi3-offline"]},
             "_meta": {
                 "hostvars": {
                     "pi5": {
                         "deploy_executor_host": "100.106.158.2",
                         "ansible_user": "pi",
-                    }
+                    },
+                    "pi3-offline": {},
                 }
             },
         }
         calls: list[list[str]] = []
+        event = json.dumps({
+            "event": "optional-host-preflight",
+            "excluded": [
+                {"host": "pi3-offline", "profile": "pi3", "reason": "tcp-unreachable"},
+                {"host": "pi5", "profile": "pi3", "reason": "tcp-unreachable"},
+                {"host": "synthetic-secret", "profile": "pi4", "reason": "tcp-unreachable"},
+            ],
+            "reachable": [],
+        }, sort_keys=True)
 
         def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
             calls.append(command)
             if "systemctl" in command[-1]:
                 return completed(command, "LoadState=loaded\nActiveState=inactive\nResult=success\nExecMainStatus=0\n")
-            return completed(command, "2026-09-15T19:17:37+09:00 raspberrypi sudo[123]: COMMAND=TOKEN=synthetic-secret\n")
+            return completed(
+                command,
+                "2026-09-15T19:17:37+09:00 raspberrypi sudo[123]: COMMAND=TOKEN=synthetic-secret\n"
+                f"2026-09-15T19:17:38+09:00 raspberrypi bash[456]: {event}\n",
+            )
 
         with mock.patch.object(MODULE, "inventory_path", return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY)), mock.patch.object(
             MODULE, "inventory_document", return_value=inventory
@@ -1760,7 +1905,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
 
         payload = json.loads(output.getvalue())
         self.assertEqual(payload["status"]["Result"], "success")
-        self.assertEqual(payload["journal"], [])
+        self.assertEqual(payload["journal"], ["excluded offline hosts: pi3-offline(pi3)"])
         self.assertNotIn("synthetic-secret", output.getvalue())
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0][-2], "pi@100.106.158.2")

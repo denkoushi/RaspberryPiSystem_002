@@ -76,6 +76,7 @@ wrapperの出力は次の契約で扱う。
 - `--print-plan`のJSONで `releaseSha`、`inventory`、`limit`/`fullFleet`、`executionOrder[].profile`、`executionOrder[].hosts`、`executionOrder[].images` を希望scopeとして記録する。torque cutoverでは`artifactResolution=signed-release-set-v2-before-service-quiesce`と、`PREPARED`から`BROWSERS_RESUMED`までの`cutoverPhases`も確認する。plan時点のtorque image表示は署名済みv2から実行時に解決するlocatorであり、digestの最終証拠はmutation開始後・Ansible開始前の`release-set-v2-prepared` journal eventである。
 - mutationのJSONで返された `runId` と `statusCommand` だけを後続操作へ渡す。別のrun IDを作らず、別のDeployを起動しない。
 - `--status RUN_ID`のJSONに含まれるsystemdのraw fields（`ActiveState`、`SubState`、`Result`、`ExecMainStatus`）とjournalを、preflight除外、実行状態、Ansible recap、health、rollbackの一次証拠として読む。systemd oneshotの正常完了は実績上 `ActiveState=active`、`SubState=exited`、`Result=success`、`ExecMainStatus=0` である。`active`/`inactive`だけでDeploy中・完了を判定しない。`SubState=running`等の非終端なら「実行中」、`SubState=exited`かつ上記Result/ExecMainStatusとrecapが合格なら「完了」、runを開始していなければ「未実行」と報告し、raw fieldsを併記する。手書きの監視shellや独自の終了判定を追加しない。
+- `--status`のjournalには、到達できず除外したPi4/Pi3が`excluded offline hosts: HOST(PROFILE)`として出る（inventoryに載っている名前だけ）。この行はAnsibleの開始前と終了後に出るため、実行中は末尾200行から外れて見えないことがある。照合には`--status`に渡したinventoryを使うため、デプロイ時と違うinventoryでは表示されない。
 
 ### 空のPi4キオスクへの初回導入
 
