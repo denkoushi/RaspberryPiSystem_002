@@ -6,6 +6,8 @@ import {
 } from '../../../api/domains/assembly';
 import { disposeVoiceSession, MEETING_RECORDING_MAX_SECONDS, startMeetingRecording, startVoiceTranscription, waitForVoiceDelay } from '../../voice/voiceTranscription';
 
+import { PROCEDURE_TEXT_MAX_LENGTH } from './assemblyDocumentEditorDraft';
+
 import type { ProcedureDictationMode } from '../../../api/domains/assembly';
 import type { VoiceSession } from '../../voice/voiceTranscription';
 import type { OverlayTextElement } from '@raspi-system/shared-types';
@@ -13,7 +15,6 @@ import type { OverlayTextElement } from '@raspi-system/shared-types';
 export { WHISPER_BASE_URL as PROCEDURE_WHISPER_BASE_URL } from '../../voice/voiceTranscription';
 export const PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS = 20000;
 
-const TEXT_MAX_LENGTH = 10_000;
 
 function meetingErrorMessage(code?: string) {
   if (code === 'meeting_transcribe_too_large' || code === 'meeting_transcribe_too_long') return '長すぎます';
@@ -68,7 +69,7 @@ export function useProcedureVoiceInput(
     const apply = (text: string) => {
       if (!active() || !latest.current.element) return false;
       const next = mode === 'append' ? original.text + '\n' + text : text;
-      if (next.length > TEXT_MAX_LENGTH) { setError('長すぎます'); return false; }
+      if (next.length > PROCEDURE_TEXT_MAX_LENGTH) { setError('長すぎます'); return false; }
       setPrevious({ text: original.text, applied: next });
       latest.current.onUpdate({ ...latest.current.element, text: next });
       return true;

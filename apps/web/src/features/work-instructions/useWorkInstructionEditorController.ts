@@ -25,6 +25,7 @@ import {
 } from '../../api/client';
 import { useWorkInstructionEditorGroup } from '../../api/hooks/work-instructions';
 import { useUnsavedChangesGuard } from '../navigation/useUnsavedChangesGuard';
+import { OVERLAY_TEXT_PLACEHOLDER } from '../overlays/overlayDraft';
 
 import { useWorkInstructionEditorRecovery } from './useWorkInstructionEditorRecovery';
 import {
@@ -834,7 +835,7 @@ export function useWorkInstructionEditorController({
     if (textCandidateRange.overlayId) {
       const current = activeElements.find((element) => element.id === textCandidateRange.overlayId);
       if (current?.kind === 'TEXT' && candidate) setActiveElement({ ...current, text: candidate.text });
-    } else addElement({ ...createWorkInstructionOverlayForRange('TEXT', pageIndex, textCandidateRange.stepKey, bbox), text: candidate?.text || 'ここに文章を入力' } as WorkInstructionOverlayElement);
+    } else addElement({ ...createWorkInstructionOverlayForRange('TEXT', pageIndex, textCandidateRange.stepKey, bbox), text: candidate?.text || OVERLAY_TEXT_PLACEHOLDER } as WorkInstructionOverlayElement);
     setTextCandidates([]);
     setTextCandidateRange(null);
     setMessage(candidate ? '文章を追加しました' : '文章候補をキャンセルしました。');

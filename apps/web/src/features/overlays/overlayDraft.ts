@@ -125,6 +125,8 @@ export function convertOverlayShapeKind(
   return { ...element, shape, start: undefined, end: undefined };
 }
 
+export const OVERLAY_TEXT_PLACEHOLDER = 'ここに文章を入力';
+
 export type OverlayCreationKind = 'TEXT' | 'IMAGE' | 'SHAPE';
 
 export function createOverlayForRange(kind: OverlayCreationKind, pageIndex: number, bbox: OverlayBBox): OverlayElement {
@@ -133,7 +135,7 @@ export function createOverlayForRange(kind: OverlayCreationKind, pageIndex: numb
     return {
       ...base,
       kind,
-      text: 'ここに文章を入力',
+      text: OVERLAY_TEXT_PLACEHOLDER,
       mask: { enabled: true, color: '#ffffff' },
       style: { fontSizeRatio: OVERLAY_DEFAULT_FONT_SIZE_RATIO, fontWeight: 'bold', color: '#0f172a', align: 'start' }
     };

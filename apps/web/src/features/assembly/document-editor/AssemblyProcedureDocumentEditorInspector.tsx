@@ -4,6 +4,7 @@ import { memo, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Input } from '../../../components/ui/Input';
+import { OVERLAY_TEXT_PLACEHOLDER } from '../../overlays/overlayDraft';
 
 import {
   convertOverlayShapeKind,
@@ -121,7 +122,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
             onChange={(event) => { voice.manualEdit(); patch({ text: event.target.value }); }}
             className="min-h-24 min-w-0 rounded border border-slate-500 bg-white px-2 py-2 text-lg text-slate-900"
           />
-          {voiceInputEnabled || (meeting && meeting.status !== 'idle') || (live && live.status !== 'idle') ? <ProcedureVoiceInput voice={voice} meeting={meeting} live={live} empty={!element.text.trim() || element.text.trim() === 'ここに文章を入力'} disabled={readOnly || busy || textReadOnly} /> : null}
+          {voiceInputEnabled || (meeting && meeting.status !== 'idle') || (live && live.status !== 'idle') ? <ProcedureVoiceInput voice={voice} meeting={meeting} live={live} empty={!element.text.trim() || element.text.trim() === OVERLAY_TEXT_PLACEHOLDER} disabled={readOnly || busy || textReadOnly} /> : null}
           <Button
             type="button"
             variant="ghostOnDark"
