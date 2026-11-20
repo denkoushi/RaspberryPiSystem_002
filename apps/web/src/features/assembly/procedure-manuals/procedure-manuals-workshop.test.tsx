@@ -965,3 +965,85 @@ describe('procedure-manuals workshop', () => {
     expect(screen.getByRole('dialog', { name: '動画' })).toBeInTheDocument();
   });
 });
+
+describe('procedure-manuals workshop rename', () => {
+  const named = { ...published, assignmentId: 'named', documentId: 'doc-1', title: '主軸_DFD1_組立_研削_旧補足', draftRevision: null };
+  const withOverview = (...rows: ProcedureManualOverviewItemDto[]) => mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: rows.length, items: rows }] });
+
+  it('shows rename on document rows (draft and published), not on PDF, labeled or unavailable rows', async () => {
+    withOverview(named, { ...named, assignmentId: 'd', title: '下書き_DFD1_組立_研削', status: 'draft', publishedRevisionNumber: null },
+      { ...named, assignmentId: 'pdf', title: 'PDF行', kind: 'kiosk_document' }, { ...named, assignmentId: 'lab', title: '元の名前', label: '表示名' },
+      { ...named, assignmentId: 'bad', title: '無効行', status: 'unavailable' });
+    show();
+    await screen.findByRole('row', { name: named.title });
+    for (const [name, visible] of [[named.title, true], ['下書き_DFD1_組立_研削', true], ['PDF行', false], ['表示名', false], ['無効行', false]] as const) {
+      expect(within(screen.getByRole('row', { name })).queryByRole('button', { name: '名前を変える' }) !== null).toBe(visible);
+    }
+  });
+
+  it('hides rename in the common workshop', async () => {
+    mocks.common.mockResolvedValue({ categories: [], actions: [], subjects: [] });
+    mocks.processes.mockResolvedValue([{ id: 'common-category', name: '共通分類', subjectKind: 'COMMON', parentId: null }]);
+    mocks.allOverview.mockResolvedValue({ processes: [{ processId: 'common-category', count: 1, items: [{ ...named, modelCode: '', modelCodeKey: '', processId: 'common-category', subjectKind: 'COMMON' }] }] });
+    show('?common=1');
+    expect(await screen.findByRole('button', { name: '見る' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '名前を変える' })).not.toBeInTheDocument();
+  });
+
+  it('disables rename while another terminal holds the revision draft lease', async () => {
+    withOverview({ ...named, draftRevision: { documentId: 'v3', editVersion: 8, revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: '2026-10-06T09:12:00' } } });
+    show();
+    const button = within(await screen.findByRole('row', { name: named.title })).getByRole('button', { name: '名前を変える' });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(screen.queryByRole('dialog', { name: '名前を変える' })).not.toBeInTheDocument();
+  });
+
+  it('prefills 品名 and 補足, saves the composed name and refreshes the list', async () => {
+    withOverview(named);
+    mocks.rename.mockResolvedValue({});
+    show();
+    fireEvent.click(within(await screen.findByRole('row', { name: named.title })).getByRole('button', { name: '名前を変える' }));
+    const dialog = within(screen.getByRole('dialog', { name: '名前を変える' }));
+    expect(dialog.getByText('公開 第2版')).toBeInTheDocument();
+    expect(dialog.getByText('DFD1')).toBeInTheDocument();
+    const partName = dialog.getByLabelText('品名');
+    expect(partName).toHaveValue('主軸'); expect(partName).toHaveFocus();
+    expect(dialog.getByLabelText('補足')).toHaveValue('旧補足');
+    expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.change(partName, { target: { value: ' 新_品名 ' } });
+    fireEvent.change(dialog.getByLabelText('補足'), { target: { value: '' } });
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mocks.rename).toHaveBeenCalledExactlyOnceWith('doc-1', '新 品名_DFD1_組立_研削'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '名前を変える' })).not.toBeInTheDocument());
+    expect(mocks.allOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the dialog open and shows the API error when saving fails', async () => {
+    withOverview(named);
+    mocks.rename.mockRejectedValue({ response: { data: { message: '他の人が編集中です' } } });
+    show();
+    fireEvent.click(within(await screen.findByRole('row', { name: named.title })).getByRole('button', { name: '名前を変える' }));
+    const dialog = within(screen.getByRole('dialog', { name: '名前を変える' }));
+    fireEvent.change(dialog.getByLabelText('補足'), { target: { value: '新補足' } });
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }));
+    expect(await dialog.findByRole('alert')).toHaveTextContent('他の人が編集中です');
+    expect(screen.getByRole('dialog', { name: '名前を変える' })).toBeInTheDocument();
+    expect(mocks.allOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks saving when the composed name or an empty 品名 is invalid, and closes with やめる', async () => {
+    withOverview(named);
+    show();
+    fireEvent.click(within(await screen.findByRole('row', { name: named.title })).getByRole('button', { name: '名前を変える' }));
+    const dialog = within(screen.getByRole('dialog', { name: '名前を変える' }));
+    fireEvent.change(dialog.getByLabelText('品名'), { target: { value: '   ' } });
+    expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.change(dialog.getByLabelText('品名'), { target: { value: 'あ'.repeat(201) } });
+    expect(dialog.getByRole('alert')).toHaveTextContent('名前は200文字以内にしてください');
+    expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.click(dialog.getByRole('button', { name: 'やめる' }));
+    expect(screen.queryByRole('dialog', { name: '名前を変える' })).not.toBeInTheDocument();
+    expect(mocks.rename).not.toHaveBeenCalled();
+  });
+});
