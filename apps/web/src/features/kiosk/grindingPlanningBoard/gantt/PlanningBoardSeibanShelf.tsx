@@ -27,6 +27,10 @@ type Props = {
   disabled?: boolean;
   writePending?: boolean;
   onSelectionPreview?: (selection: ShelfSelection | null) => void;
+  /** The insertion target the selection arrow currently points at. */
+  selectionDrop?: ForwardDragPreview['drop'];
+  /** Called once a placed piece's new position has been confirmed. */
+  onPlaced?: (itemId: string) => void;
   onDragPreview?: (preview: ForwardDragPreview | null) => void;
   seibanColors: ReadonlyMap<string, string>;
   focusedSeiban: string | null;
@@ -36,7 +40,7 @@ type Props = {
 };
 
 export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(function PlanningBoardSeibanShelf({
-  columns, seibanColors, focusedSeiban, highlightedItemId, onFocusedSeibanChange, onFocusSeiban, interactionRef, getDrop, resources, actions, disabled = false, writePending = false, onDragPreview, onSelectionPreview
+  columns, seibanColors, focusedSeiban, highlightedItemId, onFocusedSeibanChange, onFocusSeiban, interactionRef, getDrop, resources, actions, disabled = false, writePending = false, onDragPreview, onSelectionPreview, selectionDrop = null, onPlaced
 }, ref) {
   const { open, changeOpen } = usePersistedPlanningBoardShelf();
   const [remaining, setRemaining] = useState(false);
@@ -106,6 +110,7 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
       }
       const id = batch.waiting.id;
       setSelected(current => { const next = new Set(current); next.delete(id); return next; });
+      onPlaced?.(id);
       batch.waiting = undefined;
       if (placementFrame.current !== null) cancelAnimationFrame(placementFrame.current);
       placementFrame.current = null;
@@ -169,6 +174,12 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
     const source = bars.get(ids[0]!);
     return source ? place(ids, getDrop(x, y, source, allowedFor(ids), new Set(ids))) : false;
   } }));
+  const lastSelectedSeiban = useMemo(() => [...visibleColumns].reverse().find(column => selectedBySeiban.has(column.seiban))?.seiban ?? null, [visibleColumns, selectedBySeiban]);
+  const canPlaceSelected = Boolean(open && actions && selectionDrop && !disabled && !frozen && !writePending && activeSelected.size > 0 && [...activeSelected].some(id => {
+    const bar = bars.get(id)!;
+    return bar.item.kind !== 'test' && !bar.item.isCompleted && !atDestination(bar, { ids: [], resource: selectionDrop!.resource,
+      targetId: selectionDrop!.bar?.item.itemId ?? null, placement: selectionDrop!.placement });
+  }));
   const drag = useRef<{ pointerId: number; x: number; y: number; ids: string[]; source: GanttBar; allowed: ReadonlySet<string>; moving: ReadonlySet<string>; active: boolean; element: HTMLButtonElement } | null>(null);
   const suppressClick = useRef(false);
   const clearDrag = useCallback(() => {
@@ -215,16 +226,13 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
     clearDrag();
     if (current.active) place(current.ids, drop ?? null);
   };
-  const toggle = (ids: readonly string[]) => setSelected(current => {
-    const next = new Set(current);
-    const remove = ids.length > 0 && ids.every(id => next.has(id));
-    ids.forEach(id => remove ? next.delete(id) : next.add(id));
-    return next;
-  });
+  const toggle = (ids: readonly string[]) => { if (ids.length) selectOnly(ids[0]!); };
+  const selectOnly = (id: string) => setSelected(current => current.size === 1 && current.has(id) ? new Set() : new Set([id]));
   // Column event props keep their identity while reading the current placement/drag state.
   const handlers = { startDrag, moveDrag, endDrag, clearDrag, toggle,
+    placeSelected: () => { if (selectionDrop) place([...activeSelected], selectionDrop); },
     cancelDrag: () => { suppressClick.current = true; clearDrag(); },
-    clickTile: (id: string) => { if (suppressClick.current) { suppressClick.current = false; return; } toggle([id]); },
+    clickTile: (id: string) => { if (suppressClick.current) { suppressClick.current = false; return; } selectOnly(id); },
     onFocus: (seiban: string, focused: boolean) => {
       revealSeiban(seiban);
       if (focused) onFocusedSeibanChange(null); else onFocusSeiban(seiban);
@@ -239,6 +247,7 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
     cancelDrag: () => latestHandlers.current.cancelDrag(),
     toggle: (ids: readonly string[]) => latestHandlers.current.toggle(ids),
     clickTile: (id: string) => latestHandlers.current.clickTile(id),
+    placeSelected: () => latestHandlers.current.placeSelected(),
     onFocus: (seiban: string, focused: boolean) => latestHandlers.current.onFocus(seiban, focused)
   }), []);
   return <div ref={ref} data-testid="planning-seiban-shelf" className="shrink-0 border-t-2 border-slate-600 bg-slate-900">
@@ -262,7 +271,7 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
         {visibleColumns.slice(shelfWindow.start, shelfWindow.end).map(column => <PlanningBoardSeibanShelfColumn key={column.seiban}
           column={column} remaining={remaining} focused={focusedSeiban === column.seiban}
           highlightedItemId={highlightedSeiban === column.seiban ? highlightedItemId : null}
-          selected={selectedBySeiban.get(column.seiban) ?? EMPTY_SELECTED} {...columnActions} />)}
+          selected={selectedBySeiban.get(column.seiban) ?? EMPTY_SELECTED} showPlaceButton={canPlaceSelected && lastSelectedSeiban === column.seiban} {...columnActions} />)}
         {shelfWindow.end < visibleColumns.length && <div aria-hidden="true" className="shrink-0" style={{ width: (visibleColumns.length - shelfWindow.end) * SHELF_COLUMN_STRIDE - 8 }} />}
       </div>
     </>}
