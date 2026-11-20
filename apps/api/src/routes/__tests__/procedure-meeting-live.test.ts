@@ -35,12 +35,13 @@ const tick = () => new Promise(r => setTimeout(r, 30));
 beforeEach(async () => {
   mocks.enabled = true;
   upstreams = [];
-  fetchImpl = vi.fn();
+  fetchImpl = vi.fn().mockResolvedValue({ status: 400 });
   app = Fastify();
   await app.register(websocket, websocketOptions);
   registerProcedureMeetingLiveRoutes(app, { allowWriteKiosk: async () => {} }, {
     upstreamFactory: (url) => { const u = new FakeUpstream(url); upstreams.push(u); return u; },
-    fetchImpl: fetchImpl as unknown as typeof fetch
+    fetchImpl: fetchImpl as unknown as typeof fetch,
+    sttHealthy: async () => false
   });
   await app.ready();
 });

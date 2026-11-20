@@ -92,6 +92,9 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     onUpdate: controller.updateElement,
     onBegin: controller.beginOverlayDrag,
     onEnd: controller.endOverlayDrag,
+    getTerms: () => controller.elements
+      .flatMap(item => (item.kind === 'TEXT' && item.id !== controller.selectedElement?.id ? [item.text] : []))
+      .join(' '),
   });
   const overlayLayerRef = useRef<HTMLDivElement>(null);
   const overlayInteractionActive = useRef(false);

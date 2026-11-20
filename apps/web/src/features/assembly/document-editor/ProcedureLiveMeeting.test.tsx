@@ -57,7 +57,7 @@ function Harness({ text = '' }: { text?: string }) {
   const element = elements[selected];
   latestText = elements.one.text;
   const update = (next: OverlayTextElement) => setElements(current => ({ ...current, [next.id]: next }));
-  const live = useProcedureLiveMeeting({ element, enabled: true, disabled, onUpdate: update, onBegin, onEnd });
+  const live = useProcedureLiveMeeting({ element, enabled: true, disabled, onUpdate: update, onBegin, onEnd, getTerms: () => `${elements.two.text}  語` });
   return <>
     <button onClick={() => setSelected('two')}>選択を変える</button>
     <button onClick={() => setDisabled(true)}>編集不可</button>
@@ -71,7 +71,9 @@ async function startLive() {
   await waitFor(() => expect(FakeSocket.last).toBeDefined());
   await act(async () => { FakeSocket.last.open(); });
 }
-const speak = (spk: number, text: string, t: number) => act(async () => { FakeSocket.last.emit({ spk, text, t }); });
+const send = (payload: unknown) => act(async () => { FakeSocket.last.emit(payload); });
+const final = (id: number, text: string) => send({ type: 'final', id, text });
+const partial = (id: number, text: string) => send({ type: 'partial', id, text });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -90,54 +92,79 @@ describe('live meeting input', () => {
   it('connects with the client key and streams pcm frames', async () => {
     render(<Harness />);
     await startLive();
-    expect(FakeSocket.last.url).toContain('/api/assembly/procedure-documents/meeting-live?clientKey=kiosk%20key');
+    expect(FakeSocket.last.url).toContain('/api/assembly/procedure-documents/meeting-live?clientKey=kiosk%20key&v=2');
     const frame = new ArrayBuffer(4);
     FakeWorkletNode.last.port.onmessage?.({ data: frame });
-    expect(FakeSocket.last.sent).toEqual([frame]);
+    expect(FakeSocket.last.sent.at(-1)).toBe(frame);
     expect(onBegin).toHaveBeenCalled();
   });
 
-  it('merges the same speaker and starts a new line for another speaker or a gap', async () => {
+  it('connects with v=2 and sends the context terms before audio', async () => {
     render(<Harness />);
     await startLive();
-    await speak(0, 'こんにちは。', 1);
-    expect(latestText).toBe('話者0: こんにちは。');
-    await speak(0, 'よろしく。', 3);
-    expect(latestText).toBe('話者0: こんにちは。よろしく。');
-    await speak(1, 'はい。', 4);
-    expect(latestText).toBe('話者0: こんにちは。よろしく。\n話者1: はい。');
-    await speak(1, 'また。', 20);
-    expect(latestText).toBe('話者0: こんにちは。よろしく。\n話者1: はい。\n話者1: また。');
+    expect(FakeSocket.last.url).toContain('&v=2');
+    expect(FakeSocket.last.sent[0]).toBe(JSON.stringify({ type: 'context', terms: '別 語' }));
   });
 
-  it('appends to existing text and keeps manual edits', async () => {
+  it('shows the partial as the last line and replaces it with the final', async () => {
+    render(<Harness />);
+    await startLive();
+    await final(1, 'こんにちは');
+    await partial(2, 'つぎの');
+    expect(latestText).toBe('【発言記録】\nこんにちは\nつぎの');
+    await partial(2, 'つぎの話');
+    expect(latestText).toBe('【発言記録】\nこんにちは\nつぎの話');
+    await final(2, 'つぎの話です');
+    expect(latestText).toBe('【発言記録】\nこんにちは\nつぎの話です');
+  });
+
+  it('puts the organised document first and keeps both after done', async () => {
     render(<Harness text="前の文" />);
     await startLive();
-    await speak(0, '追加', 1);
-    expect(latestText).toBe('前の文\n話者0: 追加');
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '前の文\n話者0: 追加!' } });
-    await speak(0, 'つづき', 2);
-    expect(latestText).toBe('前の文\n話者0: 追加!つづき');
+    await final(1, '発言');
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '納期' });
+    expect(latestText).toBe('前の文\n\n【論点】\n・寸法\n\n【発言記録】\n発言');
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    expect(FakeSocket.last.sent).toContain('end');
+    await send({ type: 'done' });
+    expect(FakeSocket.last.closed).toBe(true);
+    expect(latestText).toBe('前の文\n\n【論点】\n・寸法\n\n【発言記録】\n発言');
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: '戻す' }));
+    expect(latestText).toBe('前の文');
+  });
+
+  it('drops the oldest raw lines first when the text gets too long', async () => {
+    render(<Harness />);
+    await startLive();
+    const long = 'あ'.repeat(4_000);
+    await final(1, long);
+    await final(2, long.replace(/あ/gu, 'い'));
+    await final(3, long.replace(/あ/gu, 'う'));
+    expect(latestText.length).toBeLessThanOrEqual(10_000);
+    expect(latestText).toContain('う');
+    expect(latestText).not.toContain('あ');
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('shows the busy message and stops', async () => {
     render(<Harness />);
     await startLive();
-    await act(async () => { FakeSocket.last.emit({ error: 'busy' }); });
+    await act(async () => { FakeSocket.last.emit({ type: 'error', error: 'busy' }); });
     expect(screen.getByRole('alert').textContent).toBe('混んでいます');
     expect(FakeSocket.last.closed).toBe(true);
     expect(onEnd).toHaveBeenCalled();
   });
 
-  it('sends end on stop, releases the mic, and keeps appending until the server closes', async () => {
+  it('sends end on stop, releases the mic, and keeps appending until done', async () => {
     render(<Harness />);
     await startLive();
     fireEvent.click(screen.getByRole('button', { name: '止める' }));
     expect(FakeSocket.last.sent).toContain('end');
     expect(stopTrack).toHaveBeenCalled();
     expect(FakeSocket.last.closed).toBe(false);
-    await speak(0, '最後', 1);
-    expect(latestText).toBe('話者0: 最後');
+    await final(1, '最後');
+    expect(latestText).toBe('【発言記録】\n最後');
     await act(async () => { FakeSocket.last.serverClose(); });
     expect(FakeSocket.last.closed).toBe(true);
     expect(screen.queryByRole('alert')).toBeNull();
@@ -150,7 +177,7 @@ describe('live meeting input', () => {
     await startLive();
     fireEvent.click(screen.getByText('選択を変える'));
     await waitFor(() => expect(FakeSocket.last.closed).toBe(true));
-    await speak(0, '無視', 1);
+    await final(1, '無視');
     expect(latestText).toBe('');
   });
 
@@ -161,10 +188,10 @@ describe('live meeting input', () => {
     await waitFor(() => expect(FakeSocket.last.closed).toBe(true));
   });
 
-  it('refuses to exceed the maximum length', async () => {
+  it('refuses when the organised document alone exceeds the maximum length', async () => {
     render(<Harness text={'あ'.repeat(9_995)} />);
     await startLive();
-    await speak(0, 'いいいいいいいいいい', 1);
+    await send({ type: 'doc', text: 'いいいいいいいいいい', next: '' });
     expect(latestText).toBe('あ'.repeat(9_995));
     expect(screen.getByRole('alert').textContent).toBe('長すぎます');
     expect(FakeSocket.last.closed).toBe(true);

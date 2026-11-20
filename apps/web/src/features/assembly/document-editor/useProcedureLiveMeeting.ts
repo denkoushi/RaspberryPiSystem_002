@@ -8,8 +8,9 @@ import { PROCEDURE_TEXT_MAX_LENGTH } from './assemblyDocumentEditorDraft';
 
 import type { OverlayTextElement } from '@raspi-system/shared-types';
 
-const SAME_LINE_SECONDS = 4;
-const FINISH_TIMEOUT_MS = 30_000;
+const FINISH_TIMEOUT_MS = 60_000;
+const TERMS_MAX_CHARS = 200;
+const RECORD_HEADER = '【発言記録】';
 const FAILURE_MESSAGE = '書き起こしができませんでした';
 
 const WORKLET_SOURCE = `
@@ -41,7 +42,10 @@ registerProcessor('pcm', Pcm);
 type LiveSession = {
   targetId: string;
   before: string;
-  last: { spk: number; t: number } | null;
+  prefix: string;
+  doc: string;
+  finals: Array<{ id: number; text: string }>;
+  partial: { id: number; text: string } | null;
   written: string | null;
   stopped: boolean;
   finished: boolean;
@@ -56,7 +60,19 @@ type LiveSession = {
 
 export function liveMeetingUrl(clientKey: string) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/api/assembly/procedure-documents/meeting-live?clientKey=${encodeURIComponent(clientKey)}`;
+  return `${protocol}//${window.location.host}/api/assembly/procedure-documents/meeting-live?clientKey=${encodeURIComponent(clientKey)}&v=2`;
+}
+
+/** Joins the organised document and the raw lines; drops the oldest raw lines to fit the limit. */
+export function composeLiveText(prefix: string, doc: string, lines: string[]): string | null {
+  const head = [prefix, doc].filter(Boolean).join('\n\n');
+  for (let from = 0; from <= lines.length; from++) {
+    const rest = lines.slice(from);
+    const records = rest.length > 0 ? `${RECORD_HEADER}\n${rest.join('\n')}` : '';
+    const text = [head, records].filter(Boolean).join('\n\n');
+    if (text.length <= PROCEDURE_TEXT_MAX_LENGTH) return text;
+  }
+  return null;
 }
 
 function releaseAudio(session: LiveSession) {
@@ -67,8 +83,9 @@ function releaseAudio(session: LiveSession) {
   session.node = undefined; session.stream = undefined; session.context = undefined;
 }
 
-export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, onBegin, onEnd }: {
+export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, onBegin, onEnd, getTerms }: {
   element: OverlayTextElement | null;
+  getTerms?: () => string;
   enabled: boolean;
   disabled: boolean;
   onUpdate: (element: OverlayTextElement) => void;
@@ -82,8 +99,8 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
   const [error, setError] = useState('');
   const [previous, setPrevious] = useState<{ text: string; applied: string } | null>(null);
   const sessionRef = useRef<LiveSession | null>(null);
-  const latest = useRef({ element, onUpdate, onEnd });
-  latest.current = { element, onUpdate, onEnd };
+  const latest = useRef({ element, onUpdate, onEnd, getTerms });
+  latest.current = { element, onUpdate, onEnd, getTerms };
 
   useEffect(() => {
     if (!enabled) return;
@@ -110,26 +127,14 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     latest.current.onEnd?.();
   };
 
-  const handleEvent = (session: LiveSession, raw: unknown) => {
-    if (session.finished || typeof raw !== 'string') return;
-    let data: { spk?: unknown; text?: unknown; t?: unknown; error?: unknown };
-    try { data = JSON.parse(raw); } catch { return; }
-    if (typeof data.error === 'string') {
-      session.failed = true;
-      finish(session, data.error === 'busy' ? '混んでいます' : FAILURE_MESSAGE);
-      return;
-    }
-    if (typeof data.text !== 'string' || typeof data.spk !== 'number') return;
+  const write = (session: LiveSession) => {
     const current = latest.current.element;
     if (!current || current.id !== session.targetId) { finish(session, FAILURE_MESSAGE); return; }
-    const text = data.text.trim();
-    if (!text) return;
-    const t = typeof data.t === 'number' ? data.t : 0;
-    const base = isOverlayTextBlankOrPlaceholder(current.text) ? '' : current.text;
-    const sameLine = session.last !== null && session.last.spk === data.spk && t - session.last.t < SAME_LINE_SECONDS && base !== '';
-    const next = sameLine ? base + text : `${base ? `${base}\n` : ''}話者${data.spk}: ${text}`;
-    if (next.length > PROCEDURE_TEXT_MAX_LENGTH) { finish(session, '長すぎます'); return; }
-    session.last = { spk: data.spk, t };
+    const lines = session.finals.map(item => item.text);
+    if (session.partial) lines.push(session.partial.text);
+    const next = composeLiveText(session.prefix, session.doc, lines);
+    if (next === null) { finish(session, '長すぎます'); return; }
+    if (next === current.text) return;
     session.written = next;
     const updated = { ...current, text: next };
     latest.current.element = updated;
@@ -137,12 +142,48 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     setPrevious(value => ({ text: value?.text ?? session.before, applied: next }));
   };
 
+  const handleEvent = (session: LiveSession, raw: unknown) => {
+    if (session.finished || typeof raw !== 'string') return;
+    let data: { type?: unknown; id?: unknown; text?: unknown; error?: unknown };
+    try { data = JSON.parse(raw); } catch { return; }
+    if (typeof data.error === 'string') {
+      session.failed = true;
+      finish(session, data.error === 'busy' ? '混んでいます' : FAILURE_MESSAGE);
+      return;
+    }
+    if (data.type === 'done') {
+      if (session.partial) { session.partial = null; write(session); }
+      finish(session);
+      return;
+    }
+    const text = typeof data.text === 'string' ? data.text.trim() : '';
+    if (data.type === 'doc') {
+      if (typeof data.text !== 'string') return;
+      session.doc = text;
+      write(session);
+      return;
+    }
+    if (typeof data.id !== 'number' || !text) return;
+    const id = data.id;
+    if (data.type === 'partial') {
+      if (session.finals.some(item => item.id === id)) return;
+      session.partial = { id, text };
+    } else if (data.type === 'final') {
+      session.finals = [...session.finals.filter(item => item.id !== id), { id, text }];
+      if (session.partial?.id === id) session.partial = null;
+    } else {
+      return;
+    }
+    write(session);
+  };
+
   const start = async () => {
     const target = latest.current.element;
     if (!target || !enabled || disabled || !available || sessionRef.current) return;
     const clientKey = getResolvedClientKey();
     const session: LiveSession = {
-      targetId: target.id, before: target.text, last: null, written: null,
+      targetId: target.id, before: target.text, prefix: isOverlayTextBlankOrPlaceholder(target.text) ? '' : target.text,
+      doc: '', finals: [], partial: null, written: null,
       stopped: false, finished: false, failed: false, queue: []
     };
     sessionRef.current = session;
@@ -166,7 +207,11 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
       const ws = new WebSocket(liveMeetingUrl(clientKey));
       ws.binaryType = 'arraybuffer';
       session.ws = ws;
-      ws.onopen = () => { for (const item of session.queue.splice(0)) ws.send(item); };
+      ws.onopen = () => {
+        const terms = (latest.current.getTerms?.() ?? '').replace(/\s+/gu, ' ').trim().slice(0, TERMS_MAX_CHARS);
+        if (terms) ws.send(JSON.stringify({ type: 'context', terms }));
+        for (const item of session.queue.splice(0)) ws.send(item);
+      };
       ws.onmessage = event => handleEvent(session, event.data);
       ws.onerror = () => { if (!session.finished) { session.failed = true; finish(session, FAILURE_MESSAGE); } };
       ws.onclose = () => {

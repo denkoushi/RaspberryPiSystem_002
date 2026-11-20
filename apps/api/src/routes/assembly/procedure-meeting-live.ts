@@ -3,11 +3,19 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { env } from '../../config/env.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
 import { findClientDeviceIdRecordByApiKey } from '../../services/clients/client-device-auth.service.js';
+import { defaultComplete, defaultSttHealthy, defaultTranscribe } from '../../services/assembly/procedure-meeting-live/default-deps.js';
+import { LiveMeetingSession, type LiveMessage, type LiveSession } from '../../services/assembly/procedure-meeting-live/live-session.js';
 import { getInferenceRuntime } from '../../services/inference/inference-runtime.js';
 
 export const MEETING_LIVE_PATH = '/assembly/procedure-documents/meeting-live';
 const BUFFER_LIMIT_BYTES = 2 * 1024 * 1024;
 const WS_OPEN = 1;
+const AVAILABILITY_TTL_MS = 30000;
+const TERMS_MAX_CHARS = 200;
+
+export type LocalSessionFactory = (opts: { emit: (message: LiveMessage) => void; terms: string }) => LiveSession;
+const defaultSessionFactory: LocalSessionFactory = ({ emit, terms }) =>
+  new LiveMeetingSession({ transcribe: defaultTranscribe, complete: defaultComplete, emit, terms });
 
 /** Minimal browser-style WebSocket surface used for the upstream (injectable for tests). */
 export interface LiveUpstream {
@@ -66,13 +74,35 @@ const defaultFactory: LiveUpstreamFactory = (url) => new WebSocket(url) as unkno
 export function registerProcedureMeetingLiveRoutes(
   app: FastifyInstance,
   options: { allowWriteKiosk: preHandlerHookHandler },
-  deps: { upstreamFactory?: LiveUpstreamFactory; fetchImpl?: typeof fetch } = {}
+  deps: {
+    upstreamFactory?: LiveUpstreamFactory;
+    fetchImpl?: typeof fetch;
+    sessionFactory?: LocalSessionFactory;
+    sttHealthy?: () => Promise<boolean>;
+    now?: () => number;
+  } = {}
 ): void {
   const factory = deps.upstreamFactory ?? defaultFactory;
+  const sessionFactory = deps.sessionFactory ?? defaultSessionFactory;
+  const sttHealthy = deps.sttHealthy ?? defaultSttHealthy;
+  const now = deps.now ?? Date.now;
+  let localActive = false;
+
+  const cache = new Map<'upstream' | 'stt', { at: number; value: boolean }>();
+  const cached = async (key: 'upstream' | 'stt', probe: () => Promise<boolean>): Promise<boolean> => {
+    const hit = cache.get(key);
+    if (hit && now() - hit.at < AVAILABILITY_TTL_MS) return hit.value;
+    let value = false;
+    try { value = await probe(); } catch { value = false; }
+    cache.set(key, { at: now(), value });
+    return value;
+  };
+  const upstreamUp = () => cached('upstream', () => isMeetingLiveAvailable(deps.fetchImpl));
+  const sttUp = () => cached('stt', async () => Boolean(env.PROCEDURE_SPEECH_TO_TEXT_ENABLED) && (await sttHealthy()));
 
   app.get(`${MEETING_LIVE_PATH}/availability`, { preHandler: options.allowWriteKiosk }, async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');
-    return { available: await isMeetingLiveAvailable(deps.fetchImpl) };
+    return { available: (await upstreamUp()) || (await sttUp()) };
   });
 
   app.get(MEETING_LIVE_PATH, { websocket: true }, (connection, req) => {
@@ -82,10 +112,34 @@ export function registerProcedureMeetingLiveRoutes(
     let upstreamOpen = false;
     let pending: Array<ArrayBuffer | Uint8Array | string> = [];
     let pendingBytes = 0;
+    const v2 = (req.query as { v?: unknown }).v === '2';
+    let session: LiveSession | null = null;
+    let upstreamSeq = 0;
+    const startedAt = now();
+
+    const releaseSession = () => {
+      if (!session) return;
+      session.close();
+      session = null;
+      localActive = false;
+    };
+    const sendError = (error: 'busy' | 'unavailable') => {
+      if (socket.readyState !== WS_OPEN) return;
+      try { socket.send(JSON.stringify(v2 ? { type: 'error', error } : { error })); } catch { /* ignore */ }
+    };
+    const emitLocal = (message: LiveMessage) => {
+      if (closed || socket.readyState !== WS_OPEN) return;
+      try {
+        if (v2) socket.send(JSON.stringify(message));
+        else if (message.type === 'final') socket.send(JSON.stringify({ spk: 0, text: message.text, t: (now() - startedAt) / 1000 }));
+        else if (message.type === 'error') socket.send(JSON.stringify({ error: message.error }));
+      } catch { /* ignore */ }
+    };
 
     const closeUpstream = () => {
       pending = [];
       try { upstream?.close(); } catch { /* already closed */ }
+      releaseSession();
     };
     const closeDownstream = (code?: number, reason?: string) => {
       if (closed) return;
@@ -94,9 +148,7 @@ export function registerProcedureMeetingLiveRoutes(
     };
     const failUnavailable = () => {
       if (closed) return;
-      if (socket.readyState === WS_OPEN) {
-        try { socket.send(JSON.stringify({ error: 'unavailable' })); } catch { /* ignore */ }
-      }
+      sendError('unavailable');
       closeDownstream();
       closeUpstream();
     };
@@ -118,9 +170,28 @@ export function registerProcedureMeetingLiveRoutes(
     const handle = (data: unknown, isBinary: boolean) => {
       if (isBinary) {
         const buf = Array.isArray(data) ? Buffer.concat(data as Buffer[]) : (data as Buffer);
-        forward(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
-      } else if (String(data) === 'end') {
-        forward('end');
+        if (session) session.push(Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength));
+        else forward(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
+        return;
+      }
+      const text = String(data);
+      if (text === 'end') {
+        const current = session;
+        if (current) {
+          void current.end().catch(() => sendError('unavailable')).finally(() => {
+            releaseSession();
+            closeDownstream();
+          });
+        } else {
+          forward('end');
+        }
+      } else if (v2 && text.startsWith('{')) {
+        try {
+          const message = JSON.parse(text) as { type?: unknown; terms?: unknown };
+          if (message.type === 'context' && typeof message.terms === 'string') {
+            session?.setTerms(message.terms.slice(0, TERMS_MAX_CHARS));
+          }
+        } catch { /* ignore malformed context */ }
       }
     };
     socket.on('message', (data, isBinary) => {
@@ -141,6 +212,17 @@ export function registerProcedureMeetingLiveRoutes(
 
       const baseUrl = resolveBaseUrl();
       if (!baseUrl) { failUnavailable(); return; }
+      if (!(await upstreamUp())) {
+        if (!(await sttUp())) { failUnavailable(); return; }
+        if (closed) return;
+        if (localActive) { sendError('busy'); closeDownstream(); return; }
+        localActive = true;
+        session = sessionFactory({ emit: emitLocal, terms: '' });
+        ready = true;
+        for (const item of early.splice(0)) handle(item.data, item.isBinary);
+        return;
+      }
+      if (closed) return;
       try {
         upstream = factory(liveUrl(baseUrl, 'ws'));
         upstream.binaryType = 'arraybuffer';
@@ -160,13 +242,27 @@ export function registerProcedureMeetingLiveRoutes(
       });
       upstream.addEventListener('message', (event) => {
         if (closed || typeof event.data !== 'string') return;
-        try { socket.send(event.data); } catch { /* ignore */ }
+        if (!v2) {
+          try { socket.send(event.data); } catch { /* ignore */ }
+          return;
+        }
+        try {
+          const line = JSON.parse(event.data) as { text?: unknown; error?: unknown };
+          if (typeof line.error === 'string') {
+            sendError(line.error === 'busy' ? 'busy' : 'unavailable');
+          } else if (typeof line.text === 'string') {
+            socket.send(JSON.stringify({ type: 'final', id: ++upstreamSeq, text: line.text }));
+          }
+        } catch { /* ignore */ }
       });
       upstream.addEventListener('error', () => {
         if (!upstreamOpen) failUnavailable();
       });
       upstream.addEventListener('close', () => {
         if (!upstreamOpen && !closed) { failUnavailable(); return; }
+        if (v2 && !closed && socket.readyState === WS_OPEN) {
+          try { socket.send(JSON.stringify({ type: 'done' })); } catch { /* ignore */ }
+        }
         closeDownstream();
       });
 
