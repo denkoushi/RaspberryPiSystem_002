@@ -138,13 +138,18 @@ function measurePairs(panes: readonly Pane[]): Pair[] {
   });
 }
 
+/** The link leaves a piece from its right quarter and enters the next from its left quarter, so lines meeting at one piece stay apart. */
+const linkOutX = (rect: { left: number; width: number }) => rect.left + rect.width * 0.75;
+const linkInX = (rect: { left: number; width: number }) => rect.left + rect.width * 0.25;
+
 const PieceEndStripes = memo(function PieceEndStripes({ pair: { from, to, color, lane }, weight }: { pair: Pair; weight: number }) {
   const below = lane?.side === 'below';
   return <g>{[from.rect, to.rect].map((rect, i) => {
     const stripe = Math.min(weight * 1.75, rect.height / 6);
-    const inset = Math.min(weight, rect.width / 4);
-    return <rect key={i} data-testid="planning-gantt-piece-end-stripe" x={rect.left + inset} y={below ? rect.top + rect.height - stripe - weight : rect.top + weight}
-      width={Math.max(0, rect.width - inset * 2)} height={stripe} rx={stripe / 3}
+    const length = Math.min(weight * 12, rect.width / 2 - weight * 2);
+    const x = i === 0 ? linkOutX(rect) : linkInX(rect);
+    return <rect key={i} data-testid="planning-gantt-piece-end-stripe" x={x - Math.max(0, length) / 2} y={below ? rect.top + rect.height - stripe - weight : rect.top + weight}
+      width={Math.max(0, length)} height={stripe} rx={stripe / 3}
       fill={color} stroke="#020617" strokeWidth={weight / 2} />;
   })}</g>;
 });
@@ -153,8 +158,8 @@ const PieceLink = memo(function PieceLink({ pair: { from, to, color, depth, lane
   pair: Pair; offsets?: PaneOffset[]; weight: number; duplicate?: boolean;
 }) {
   if (lane && !offsets) {
-    const fromX = from.rect.left + from.rect.width / 2;
-    const toX = to.rect.left + to.rect.width / 2;
+    const fromX = linkOutX(from.rect);
+    const toX = linkInX(to.rect);
     const below = lane.side === 'below';
     const fromEdge = from.rect.top + (below ? from.rect.height : 0);
     const toEdge = to.rect.top + (below ? to.rect.height : 0);
