@@ -11,7 +11,7 @@ import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
 import { findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
 import { forwardItemDetails } from './planningBoardForwardQueue';
-import { operationSplitGap } from './planningBoardGanttGeometry';
+import { FOLDED_BAR_TOP, FOLDED_ROW_BASE_HEIGHT, operationSplitGap } from './planningBoardGanttGeometry';
 import { dayLabel, dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_SINGLE_RESOURCE_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
@@ -243,7 +243,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
   const shiftPeriods = workingPeriods(hours, pausesForBreaks);
   const firstOfDay = !foldedWindow?.working || Math.abs(start - day - shiftPeriods[0]!.start) < 1e-9;
   const workingWidth = foldedWindow?.periods.reduce((sum, period) => sum + period.end - period.start, 0) ?? 0;
-  const rowBaseHeight = foldedWindow ? 96 : 76;
+  const rowBaseHeight = foldedWindow ? FOLDED_ROW_BASE_HEIGHT : 76;
   const originalHeight = rowBaseHeight + chipLayout.lines * CHIP_LINE_HEIGHT;
   const rowHeight = Math.max(originalHeight, fillRowHeight ?? 0);
   const verticalScale = fillRowHeight === undefined ? 1 : rowHeight / originalHeight;
@@ -328,7 +328,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 normal?.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
                 split && opIndex > 0 && 'border-l border-slate-950/60',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
-              style={{ top: (foldedWindow ? 22 : 3) * verticalScale, height: 70 * verticalScale, fontSize: 11 * textScale, lineHeight: `${14 * textScale}px`, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
+              style={{ top: (foldedWindow ? FOLDED_BAR_TOP : 3) * verticalScale, height: 70 * verticalScale, fontSize: 11 * textScale, lineHeight: `${14 * textScale}px`, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 borderRadius: split && !bar.item.itemId.startsWith('piece:') ? 0 : undefined,
                 clipPath: !split && bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
                 backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : test ? '#c4b5fd' : undefined,
