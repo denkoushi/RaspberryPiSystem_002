@@ -4,14 +4,10 @@ import { renameAssemblyProcedureDocument } from '../../../api/client';
 import { Dialog } from '../../../components/ui/Dialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { procedureManualButtonBase, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { procedureManualButtonUnselected, procedureManualDialogAction, procedureManualDialogChip, procedureManualDialogInput } from './procedure-manual-button-styles';
 import { joinProcedureManualName } from './procedure-manual-name';
 
 import type { ProcedureManualAssignmentOverviewItemDto } from '../types';
-
-const action = `${procedureManualButtonBase} inline-flex items-center justify-center px-4 text-[19px] font-bold disabled:opacity-40`;
-const chip = 'inline-flex min-h-11 min-w-0 items-center truncate rounded-lg border border-[#344252] px-3.5 text-xl text-[#eef3f6]';
-const input = 'h-14 w-full min-w-0 rounded-lg border border-[#344252] bg-white px-3.5 text-[22px] text-[#0f1317] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] disabled:opacity-60';
 
 export function ProcedureManualRenameDialog({ item, name, onClose, onSaved }: {
   item: ProcedureManualAssignmentOverviewItemDto;
@@ -50,23 +46,23 @@ export function ProcedureManualRenameDialog({ item, name, onClose, onSaved }: {
         </span>
       </div>
       <div className="flex min-w-0 flex-wrap gap-3">
-        <span className={`${chip} font-mono font-bold`}>{name.subjectKey}</span>
-        <span className={chip}>{name.process}</span>
-        <span className={chip}>{name.work}</span>
+        <span className={`${procedureManualDialogChip} font-mono font-bold`}>{name.subjectKey}</span>
+        <span className={procedureManualDialogChip}>{name.process}</span>
+        <span className={procedureManualDialogChip}>{name.work}</span>
       </div>
       <div className="grid min-w-0 grid-cols-2 gap-4">
         <label className="grid gap-1.5 text-base font-bold text-[#9fadb9]">品名
-          <input ref={partNameRef} value={partName} disabled={busy} onChange={event => setPartName(event.target.value)} className={input} />
+          <input ref={partNameRef} value={partName} disabled={busy} onChange={event => setPartName(event.target.value)} className={procedureManualDialogInput} />
         </label>
         <label className="grid gap-1.5 text-base font-bold text-[#9fadb9]">補足
-          <input value={supplement} disabled={busy} onChange={event => setSupplement(event.target.value)} className={input} />
+          <input value={supplement} disabled={busy} onChange={event => setSupplement(event.target.value)} className={procedureManualDialogInput} />
         </label>
       </div>
       {error ? <p role="alert" className="text-red-400">{error}</p> : null}
       {tooLong ? <p role="alert" className="text-red-400">名前は200文字以内にしてください</p> : null}
       <div className="flex justify-end gap-2.5 border-t border-[#27313b] pt-4">
-        <button type="button" className={`${action} ${procedureManualButtonUnselected}`} disabled={busy} onClick={onClose}>やめる</button>
-        <button type="submit" className={`${action} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={!canSave}>保存</button>
+        <button type="button" className={`${procedureManualDialogAction} ${procedureManualButtonUnselected}`} disabled={busy} onClick={onClose}>やめる</button>
+        <button type="submit" className={`${procedureManualDialogAction} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={!canSave}>保存</button>
       </div>
     </form>
   </Dialog>;

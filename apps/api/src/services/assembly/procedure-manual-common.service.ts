@@ -11,6 +11,13 @@ import { COMMON_PARENT_ID, ensureProcedureManualCommonSeeded, ensureProcedureMan
 const commonAssignments = { process: { subjectKind: 'COMMON' as const } };
 const categoryWhere = { subjectKind: 'COMMON' as const, parentId: COMMON_PARENT_ID, active: true };
 
+function parseCommonTarget(raw: string) {
+  const target = raw.trim();
+  const key = procedureManualCommonKey(target);
+  if (!key || target.length > 179) throw new ApiError(400, '対象は1〜179文字で入力してください');
+  return { target, key };
+}
+
 export class ProcedureManualCommonService {
   constructor(private readonly documents = new AssemblyProcedureDocumentService()) {}
 
@@ -42,9 +49,7 @@ export class ProcedureManualCommonService {
   }
 
   async create(input: { categoryId: string; target: string; actionId: string; kanaRow?: string }) {
-    const target = input.target.trim();
-    const key = procedureManualCommonKey(target);
-    if (!key || target.length > 179) throw new ApiError(400, '対象は1〜179文字で入力してください');
+    const { target, key } = parseCommonTarget(input.target);
     await ensureProcedureManualCommonSeeded();
     let page: Awaited<ReturnType<typeof saveBlankProcedurePage>> | undefined;
     try {
@@ -67,6 +72,39 @@ export class ProcedureManualCommonService {
       if (page) await AssemblyProcedureImageStorage.deleteImage(page.relativeUrl);
       throw error;
     }
+  }
+
+  async renameTarget(assignmentId: string, input: { target: string; kanaRow?: string }) {
+    const { target, key } = parseCommonTarget(input.target);
+    await ensureProcedureManualCommonSeeded();
+    return runAssemblyTransaction(async tx => {
+      await lockProcedureManualCommon(tx);
+      const assignment = await tx.procedureManualAssignment.findUnique({ where: { id: assignmentId }, include: { process: { select: { subjectKind: true } } } });
+      if (!assignment) throw new ApiError(404, '手順が見つかりません');
+      const documentId = assignment.assemblyProcedureDocumentId;
+      const label = assignment.label;
+      if (assignment.process.subjectKind !== 'COMMON' || !label || !documentId) throw new ApiError(400, '名前を変えられない手順です');
+      if (`${target}_${label}`.length > 200) throw new ApiError(400, '名前は200文字以内にしてください');
+      const moving = await tx.procedureManualAssignment.findMany({ where: { ...commonAssignments, assemblyProcedureDocumentId: documentId, modelCodeKey: assignment.modelCodeKey, label } });
+      const ids = moving.map(row => row.id);
+      for (const row of moving) {
+        if (await tx.procedureManualAssignment.findFirst({ where: { processId: row.processId, modelCodeKey: key, label, id: { notIn: ids } } })) {
+          throw new ApiError(409, '同じ手順があります');
+        }
+      }
+      const subject = await ensureProcedureManualCommonSubject(tx, target, input.kanaRow);
+      await this.documents.rename(documentId, `${subject.name}_${label}`, {}, tx);
+      if (key === assignment.modelCodeKey) {
+        await tx.procedureManualAssignment.updateMany({ where: { id: { in: ids } }, data: { modelCode: subject.name, modelCodeKey: key } });
+      } else {
+        // (modelCodeKey, processId, sortOrder) is unique, so each moved row goes to the end of its category under the new target.
+        for (const row of moving) {
+          const last = await tx.procedureManualAssignment.findFirst({ where: { processId: row.processId, modelCodeKey: key }, orderBy: { sortOrder: 'desc' } });
+          await tx.procedureManualAssignment.update({ where: { id: row.id }, data: { modelCode: subject.name, modelCodeKey: key, sortOrder: (last?.sortOrder ?? -1) + 1 } });
+        }
+      }
+      return { id: documentId, modelCode: subject.name, modelCodeKey: key };
+    });
   }
 
   private async category(tx: Prisma.TransactionClient, id: string) {

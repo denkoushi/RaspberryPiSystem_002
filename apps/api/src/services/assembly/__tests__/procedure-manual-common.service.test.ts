@@ -276,3 +276,47 @@ it('rejects expanded COMMON replacement keys even for empty replacements', async
   }
   expect(remove).not.toHaveBeenCalled(); expect(prisma.procedureManualCommonSubject.upsert).not.toHaveBeenCalled();
 });
+
+describe('common manual target rename', () => {
+  const row = { id: 'a1', modelCode: 'トルクレンチ', modelCodeKey: 'トルクレンチ', processId: 'tools', label: '使い方', assemblyProcedureDocumentId: documentId, process: { subjectKind: 'COMMON' } };
+  beforeEach(() => {
+    vi.spyOn(prisma.procedureManualAssignment, 'findUnique').mockResolvedValue(row as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([row] as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'updateMany').mockResolvedValue({ count: 1 } as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'update').mockResolvedValue({} as never);
+    documents.rename.mockResolvedValue({ id: documentId });
+  });
+
+  it('renames the document family and moves the assignment to the new target, keeping the action', async () => {
+    vi.mocked(prisma.procedureManualCommonSubject.upsert).mockResolvedValue({ key: 'ハンマー', name: 'ハンマー', kanaRow: 'は' });
+    const result = await service().renameTarget('a1', { target: ' ハンマー ' });
+    expect(result).toEqual({ id: documentId, modelCode: 'ハンマー', modelCodeKey: 'ハンマー' });
+    expect(documents.rename).toHaveBeenCalledWith(documentId, 'ハンマー_使い方', {}, prisma);
+    expect(prisma.procedureManualAssignment.update).toHaveBeenCalledWith({ where: { id: 'a1' }, data: { modelCode: 'ハンマー', modelCodeKey: 'ハンマー', sortOrder: 0 } });
+  });
+
+  it('puts the moved assignment after the existing actions of the new target in the same category', async () => {
+    vi.mocked(prisma.procedureManualCommonSubject.upsert).mockResolvedValue({ key: 'ハンマー', name: 'ハンマー', kanaRow: 'は' });
+    vi.mocked(prisma.procedureManualAssignment.findFirst).mockImplementation((async (args: { where: { label?: string } }) => (args.where.label ? null : { sortOrder: 2 })) as never);
+    await service().renameTarget('a1', { target: 'ハンマー' });
+    expect(prisma.procedureManualAssignment.findFirst).toHaveBeenCalledWith({ where: { processId: 'tools', modelCodeKey: 'ハンマー' }, orderBy: { sortOrder: 'desc' } });
+    expect(prisma.procedureManualAssignment.update).toHaveBeenCalledWith({ where: { id: 'a1' }, data: { modelCode: 'ハンマー', modelCodeKey: 'ハンマー', sortOrder: 3 } });
+    expect(prisma.procedureManualAssignment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects an existing procedure with the same target and action', async () => {
+    vi.mocked(prisma.procedureManualAssignment.findFirst).mockResolvedValue({ id: 'other' } as never);
+    await expect(service().renameTarget('a1', { target: 'ハンマー' })).rejects.toMatchObject({ statusCode: 409, message: '同じ手順があります' });
+    expect(documents.rename).not.toHaveBeenCalled();
+    expect(prisma.procedureManualAssignment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('requires a reading for a new non-kana target and rejects a missing or non-common assignment', async () => {
+    await expect(service().renameTarget('a1', { target: '研削盤' })).rejects.toMatchObject({ statusCode: 400, message: 'よみを選んでください' });
+    expect(documents.rename).not.toHaveBeenCalled();
+    vi.mocked(prisma.procedureManualAssignment.findUnique).mockResolvedValue(null);
+    await expect(service().renameTarget('a1', { target: 'ハンマー' })).rejects.toMatchObject({ statusCode: 404 });
+    vi.mocked(prisma.procedureManualAssignment.findUnique).mockResolvedValue({ ...row, process: { subjectKind: 'MODEL' } } as never);
+    await expect(service().renameTarget('a1', { target: 'ハンマー' })).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
