@@ -12,6 +12,7 @@ import {
   findAssemblyProcedureTextCandidates,
   uploadAssemblyProcedureOverlayImage
 } from '../../../api/client';
+import { OVERLAY_TEXT_PLACEHOLDER } from '../../overlays/overlayDraft';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { createOverlayForRange, type OverlayCreationKind, type OverlayDraftAction, type OverlayRangeChoice } from './assemblyDocumentEditorDraft';
@@ -254,7 +255,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     }
 
     const bbox = candidate?.bounds ?? textCandidateRange.bbox;
-    addCreatedOverlay('TEXT', bbox, { text: candidate?.text ?? 'ここに文章を入力' }, textCandidateRange.pageIndex);
+    addCreatedOverlay('TEXT', bbox, { text: candidate?.text ?? OVERLAY_TEXT_PLACEHOLDER }, textCandidateRange.pageIndex);
     setTextCandidates([]);
     setTextCandidateRange(null);
     setMessage('文章オーバーレイを追加しました。内容を編集して保存してください。');

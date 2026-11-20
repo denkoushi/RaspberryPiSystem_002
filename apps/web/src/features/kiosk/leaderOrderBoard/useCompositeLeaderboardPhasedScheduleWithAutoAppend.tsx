@@ -25,7 +25,6 @@ import {
   isLeaderboardBoardDataSyncing,
   isLeaderboardDecorationSyncing
 } from './cache/leaderboardBoardInteractionLockPolicy';
-import { invalidateLeaderboardDecorationsQueries } from './invalidateLeaderboardDecorationsQueries';
 import {
   pickLeaderboardAppendOverrideForDisplay,
   resolveScopedLeaderboardAppendOverride
@@ -622,7 +621,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             purgeCache();
             await Promise.all([
               queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll }),
-              invalidateLeaderboardDecorationsQueries(queryClient)
+              queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll })
             ]);
             break;
           }

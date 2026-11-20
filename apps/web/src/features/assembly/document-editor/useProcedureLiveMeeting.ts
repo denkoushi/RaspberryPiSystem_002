@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 
 import { getResolvedClientKey } from '../../../api/client';
 import { getAssemblyProcedureMeetingLiveAvailability } from '../../../api/domains/assembly';
+import { isOverlayTextBlankOrPlaceholder } from '../../overlays/overlayDraft';
+
+import { PROCEDURE_TEXT_MAX_LENGTH } from './assemblyDocumentEditorDraft';
 
 import type { OverlayTextElement } from '@raspi-system/shared-types';
 
-const TEXT_MAX_LENGTH = 10_000;
 const SAME_LINE_SECONDS = 4;
 const FINISH_TIMEOUT_MS = 30_000;
-const PLACEHOLDER_TEXT = 'ここに文章を入力';
 const FAILURE_MESSAGE = '書き起こしができませんでした';
 
 const WORKLET_SOURCE = `
@@ -124,10 +125,10 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     const text = data.text.trim();
     if (!text) return;
     const t = typeof data.t === 'number' ? data.t : 0;
-    const base = current.text.trim() === '' || current.text.trim() === PLACEHOLDER_TEXT ? '' : current.text;
+    const base = isOverlayTextBlankOrPlaceholder(current.text) ? '' : current.text;
     const sameLine = session.last !== null && session.last.spk === data.spk && t - session.last.t < SAME_LINE_SECONDS && base !== '';
     const next = sameLine ? base + text : `${base ? `${base}\n` : ''}話者${data.spk}: ${text}`;
-    if (next.length > TEXT_MAX_LENGTH) { finish(session, '長すぎます'); return; }
+    if (next.length > PROCEDURE_TEXT_MAX_LENGTH) { finish(session, '長すぎます'); return; }
     session.last = { spk: data.spk, t };
     session.written = next;
     const updated = { ...current, text: next };

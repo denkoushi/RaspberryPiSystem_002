@@ -1,5 +1,7 @@
 import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX, assemblyProcedureOverlayBBoxCenter, OVERLAY_DEFAULT_FONT_SIZE_RATIO } from '@raspi-system/shared-types';
 
+import { OVERLAY_TEXT_PLACEHOLDER } from '../../overlays/overlayDraft';
+
 import type { AssemblyProcedureDocumentDto } from '../types';
 import type {
   AssemblyProcedureOverlayBBox,
@@ -506,7 +508,7 @@ export function createOverlayForRange(
     return {
       ...base,
       kind,
-      text: 'ここに文章を入力',
+      text: OVERLAY_TEXT_PLACEHOLDER,
       mask: { enabled: true, color: '#ffffff' },
       style: {
         fontSizeRatio: OVERLAY_DEFAULT_FONT_SIZE_RATIO,
@@ -571,9 +573,11 @@ export function canPublishAssemblyProcedureDocument(
 }
 
 
+export const PROCEDURE_TEXT_MAX_LENGTH = 10_000;
+
 export function splitMeetingText(original: string, transcript: string) {
-  const limit = 10_000;
-  const base = original.trim() === 'ここに文章を入力' ? '' : original.trimEnd();
+  const limit = PROCEDURE_TEXT_MAX_LENGTH;
+  const base = original.trim() === OVERLAY_TEXT_PLACEHOLDER ? '' : original.trimEnd();
   const chunks: string[] = [];
   let remaining = base ? `${base}\n\n${transcript}` : transcript;
   while (remaining.length > limit) {

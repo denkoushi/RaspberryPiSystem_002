@@ -15,7 +15,6 @@ import {
 import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 
 import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from './constants';
-import { invalidateLeaderboardDecorationsQueries } from './invalidateLeaderboardDecorationsQueries';
 import { buildLeaderboardPartKeyFromScheduleRow } from './leaderboardDecorationStalePolicy';
 
 import type { LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
@@ -224,7 +223,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
             await Promise.all([
               queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardShellAll }),
               queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardTotalAll }),
-              invalidateLeaderboardDecorationsQueries(queryClient)
+              queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll })
             ]);
             break;
           }

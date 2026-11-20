@@ -223,11 +223,9 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
       queryKey: ['kiosk-production-schedule', 'leaderboard-total']
     });
 
-    const decoInvalidate = invalidateSpy.mock.calls.find((c) => {
-      const arg = c[0] as { predicate?: unknown };
-      return typeof arg?.predicate === 'function';
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['kiosk-production-schedule', 'leaderboard-decorations']
     });
-    expect(decoInvalidate).toBeDefined();
 
     expect(invalidateSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
 
