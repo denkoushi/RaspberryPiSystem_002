@@ -138,6 +138,17 @@ function measurePairs(panes: readonly Pane[]): Pair[] {
   });
 }
 
+const PieceEndStripes = memo(function PieceEndStripes({ pair: { from, to, color, lane }, weight }: { pair: Pair; weight: number }) {
+  const below = lane?.side === 'below';
+  return <g>{[from.rect, to.rect].map((rect, i) => {
+    const stripe = Math.min(weight * 1.75, rect.height / 6);
+    const inset = Math.min(weight, rect.width / 4);
+    return <rect key={i} x={rect.left + inset} y={below ? rect.top + rect.height - stripe - weight : rect.top + weight}
+      width={Math.max(0, rect.width - inset * 2)} height={stripe} rx={stripe / 3}
+      fill={color} stroke="#020617" strokeWidth={weight / 2} />;
+  })}</g>;
+});
+
 const PieceLink = memo(function PieceLink({ pair: { from, to, color, depth, lane }, offsets, weight, duplicate = false }: {
   pair: Pair; offsets?: PaneOffset[]; weight: number; duplicate?: boolean;
 }) {
@@ -155,8 +166,6 @@ const PieceLink = memo(function PieceLink({ pair: { from, to, color, depth, lane
       {heads && <path d={heads} stroke="#020617" strokeWidth={weight * 2} />}
       <path data-testid={duplicate ? undefined : 'planning-gantt-normal-piece-link'} data-from-to={`${from.id}->${to.id}`} d={path} stroke={color} strokeWidth={weight} />
       {heads && <path d={heads} stroke={color} strokeWidth={weight} />}
-      <circle cx={fromX} cy={fromEdge} r={weight * 1.5} fill={color} stroke="#020617" strokeWidth={weight / 2} />
-      <circle cx={toX} cy={toEdge} r={weight * 1.5} fill={color} stroke="#020617" strokeWidth={weight / 2} />
     </g>;
   }
   const sameMachine = from.resource === to.resource;
@@ -282,13 +291,16 @@ export const PlanningBoardPieceLinks = memo(function PlanningBoardPieceLinks({ p
     // The final machine's arc can extend past the rows. Leave room in the scrollable SVG,
     // while keeping the rows and their bars at their original positions.
     const hasArc = paths.some(({ from, to }) => from.resource === to.resource);
-    return createPortal(<svg aria-hidden="true" className="absolute left-0 top-0 w-full"
+    return createPortal(<><svg aria-hidden="true" className="absolute left-0 top-0 w-full"
       style={{ height: hasArc ? 'calc(100% + 32px)' : '100%' }}>
       {paths.map(pair => <PieceLink key={pair.from.id} pair={pair} weight={weight} />)}
       {offset && <g transform={`translate(${-offset.x} ${-offset.y})`}>
         {cross.map(pair => <PieceLink key={pair.from.id} pair={pair} offsets={offsets} weight={weight} duplicate={index !== 0} />)}
       </g>}
-    </svg>, layer, index);
+    </svg>
+    <svg aria-hidden="true" className="pointer-events-none absolute left-0 top-0 h-full w-full" style={{ zIndex: 3 }}>
+      {paths.map(pair => pair.lane && <PieceEndStripes key={pair.from.id} pair={pair} weight={weight} />)}
+    </svg></>, layer, index);
   })}
     {gap && hasCrossLinks && <svg aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full">
       <defs><clipPath id={clipId}><rect {...gap} /></clipPath></defs>
