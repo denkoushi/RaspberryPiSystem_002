@@ -54,6 +54,20 @@ describe('PlanningBoardToolbar forward controls', () => {
     rerender(<PlanningBoardToolbar {...values} ganttEnabled={false} focusedSeiban="26-1041" />);
     expect(container.firstElementChild).toHaveClass('h-[66px]');
   });
+  it('scrolls the one-row toolbar sideways with a vertical mouse wheel', () => {
+    const { container } = render(<PlanningBoardToolbar {...props()} />);
+    const toolbar = container.firstElementChild as HTMLDivElement;
+    Object.defineProperty(toolbar, 'scrollWidth', { value: 1500, configurable: true });
+    Object.defineProperty(toolbar, 'clientWidth', { value: 1000, configurable: true });
+    const wheel = (deltaY: number) => fireEvent.wheel(toolbar, { deltaY, cancelable: true });
+    expect(wheel(120)).toBe(false);
+    expect(toolbar.scrollLeft).toBe(120);
+    wheel(1000);
+    expect(toolbar.scrollLeft).toBe(500);
+    expect(wheel(100)).toBe(true);
+    wheel(-600);
+    expect(toolbar.scrollLeft).toBe(0);
+  });
   it.each([false, true])('keeps the icon-only scan control outside the Gantt group with gantt=%s', (ganttEnabled) => {
     render(<PlanningBoardToolbar {...props()} ganttEnabled={ganttEnabled} onOrderScan={() => null} />);
     const scan = screen.getByRole('button', { name: '移動票で製番を探す' });

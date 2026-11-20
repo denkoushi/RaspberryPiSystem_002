@@ -13,6 +13,8 @@ const PART_COLORS = ['#67e8f9', '#f9a8d4', '#fde047', '#a5b4fc', '#86efac', '#fd
 type Pane = ChainLinkGeometry & { viewport: HTMLDivElement | null };
 type Point = { x: number; y: number };
 type Gap = Point & { width: number; height: number };
+/** Scroll offset plus the pane's visible track area, both in container coordinates. */
+type PaneOffset = Point & { box: { left: number; top: number; right: number; bottom: number } };
 const pieceLinkWeight = () => (window.innerWidth >= 3000 ? 9 : 4.5) / pageZoom();
 type Piece = { pane: number; resource: string; id: string; row: number; rect: ChainBarPosition['first'] };
 type Pair = { from: Piece; to: Piece; color: string; depth: number };
@@ -47,15 +49,25 @@ function measurePairs(panes: readonly Pane[]): Pair[] {
 }
 
 const PieceLink = memo(function PieceLink({ pair: { from, to, color, depth }, offsets, weight, duplicate = false }: {
-  pair: Pair; offsets?: Point[]; weight: number; duplicate?: boolean;
+  pair: Pair; offsets?: PaneOffset[]; weight: number; duplicate?: boolean;
 }) {
   const sameMachine = from.resource === to.resource;
-  const a = offsets?.[from.pane];
-  const b = offsets?.[to.pane];
-  const x1 = from.rect.left + from.rect.width / 2 + (a?.x ?? 0);
-  const x2 = to.rect.left + to.rect.width / 2 + (b?.x ?? 0);
-  const y1 = from.rect.top + from.rect.height + (a?.y ?? 0);
-  const y2 = to.rect.top + (sameMachine ? to.rect.height : 0) + (b?.y ?? 0);
+  // A cross-pane end scrolled out of its own pane stops at that pane's edge without a dot,
+  // so it never appears over the other pane's rows.
+  const end = (piece: Piece, y: number) => {
+    const offset = offsets?.[piece.pane];
+    const point = { x: piece.rect.left + piece.rect.width / 2 + (offset?.x ?? 0), y: y + (offset?.y ?? 0) };
+    if (!offset) return { ...point, shown: true };
+    const { box } = offset;
+    const x = Math.min(box.right, Math.max(box.left, point.x));
+    const clamped = { x, y: Math.min(box.bottom, Math.max(box.top, point.y)) };
+    return { ...clamped, shown: clamped.x === point.x && clamped.y === point.y };
+  };
+  const start = end(from, from.rect.top + from.rect.height);
+  const finish = end(to, to.rect.top + (sameMachine ? to.rect.height : 0));
+  if (!start.shown && !finish.shown) return null;
+  const { x: x1, y: y1 } = start;
+  const { x: x2, y: y2 } = finish;
   const bend = sameMachine
     ? Math.min(from.rect.height * 0.6, 15 + depth * 3)
     : Math.max(weight * 8, (y2 - y1) / 2);
@@ -63,14 +75,14 @@ const PieceLink = memo(function PieceLink({ pair: { from, to, color, depth }, of
   return <g fill="none" strokeLinecap="round">
     <path d={path} stroke="#020617" strokeWidth={weight * 5 / 3} />
     <path data-testid={duplicate ? undefined : 'planning-gantt-normal-piece-link'} data-from-to={`${from.id}->${to.id}`} d={path} stroke={color} strokeWidth={weight} />
-    <circle cx={x1} cy={y1} r={weight * 0.95} fill={color} stroke="#020617" strokeWidth={weight / 3} />
-    <circle cx={x2} cy={y2} r={weight * 0.95} fill={color} stroke="#020617" strokeWidth={weight / 3} />
+    {start.shown && <circle cx={x1} cy={y1} r={weight * 0.95} fill={color} stroke="#020617" strokeWidth={weight / 3} />}
+    {finish.shown && <circle cx={x2} cy={y2} r={weight * 0.95} fill={color} stroke="#020617" strokeWidth={weight / 3} />}
   </g>;
 });
 
 export const PlanningBoardPieceLinks = memo(function PlanningBoardPieceLinks({ panes, container }: { panes: readonly Pane[]; container?: HTMLDivElement | null }) {
   const [pairs, setPairs] = useState<Pair[]>([]);
-  const [offsets, setOffsets] = useState<Point[]>([]);
+  const [offsets, setOffsets] = useState<PaneOffset[]>([]);
   const [gap, setGap] = useState<Gap | null>(null);
   const [weight, setWeight] = useState(pieceLinkWeight);
   const clipId = useId();
@@ -106,10 +118,16 @@ export const PlanningBoardPieceLinks = memo(function PlanningBoardPieceLinks({ p
     let frame: number | null = null;
     const update = () => {
       frame = null;
-      setOffsets(panes.map((pane, index) => ({
-        x: origins[index]!.x - (pane.viewport?.scrollLeft ?? 0),
-        y: origins[index]!.y - (pane.viewport?.scrollTop ?? 0)
-      })));
+      setOffsets(panes.map((pane, index) => {
+        const origin = origins[index]!;
+        return {
+          x: origin.x - (pane.viewport?.scrollLeft ?? 0),
+          y: origin.y - (pane.viewport?.scrollTop ?? 0),
+          box: pane.viewport
+            ? { left: origin.x + pane.labelWidth, top: origin.y, right: origin.x + pane.viewport.clientWidth, bottom: origin.y + pane.viewport.clientHeight }
+            : { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity }
+        };
+      }));
     };
     const measure = () => {
       const zoom = pageZoom();
