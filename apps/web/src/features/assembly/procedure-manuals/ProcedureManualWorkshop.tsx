@@ -11,7 +11,7 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 
-import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected, procedureManualSymbolAction as symbolAction } from './procedure-manual-button-styles';
 import { clearManualLists, fetchManualList, readManualList, retainEqual } from './procedure-manual-list-cache';
 import { splitProcedureManualName } from './procedure-manual-name';
 import { useShelfResources } from './procedure-material-shelf-search';
@@ -33,7 +33,6 @@ import type { ProcedureManualCommonCatalogDto, ProcedureManualModelDto, Assembly
 const action = `${procedureManualButtonBase} ${procedureManualButtonUnselected} inline-flex items-center justify-center px-4 text-xl font-bold disabled:opacity-40`;
 const primaryAction = `${procedureManualButtonBase} inline-flex items-center justify-center px-4 text-xl font-bold disabled:opacity-40 border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`;
 const badge = 'inline-flex h-[30px] w-max items-center rounded-full border px-2.5 text-base font-bold';
-const symbolAction = 'inline-flex min-h-12 w-11 shrink-0 items-center justify-center rounded-lg border border-transparent text-[#9fadb9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] disabled:opacity-40';
 const statusFilters = ['全て', '公開', '下書き', '改版中'] as const;
 const usageLabel = (assignments: ProcedureManualOverviewItemDto['otherAssignments']) => assignments.map(row => `${row.modelCode} · ${row.processName}`).join('、');
 const canDelete = (item: ProcedureManualOverviewItemDto) => item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision && item.otherAssignments.length === 0;
