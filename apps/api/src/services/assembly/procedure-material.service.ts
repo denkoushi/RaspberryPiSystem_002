@@ -1,4 +1,4 @@
-import { normalizeEmployeeNumber, materialAppText, resolveProcedureMaterialEmployeeTag } from './procedure-material-employee-number.js';
+import { employeeMatchesMaterialNameId, normalizeEmployeeNumber, materialAppText, resolveProcedureMaterialEmployeeTag } from './procedure-material-employee-number.js';
 import { buildProcedureMaterialAppNote } from './procedure-material-app-note.js';
 import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
 
@@ -75,14 +75,13 @@ export class ProcedureMaterialService {
       if (!(error instanceof ApiError) || ![403, 404].includes(error.statusCode)) throw error;
       throw new ApiError(404, '社員タグが見つかりません', undefined, 'EMPLOYEE_TAG_NOT_FOUND');
     }
-    const number = normalizeEmployeeNumber(employee.employeeCode);
     const unplaced = { documentId: null, placedAt: null, discardedAt: null };
     const candidates = await this.db.procedureMaterial.findMany({
       where: { origin: 'APP', ...unplaced, kind: { not: 'PDF' } },
       orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     });
     const belongsToEmployee = (material: ProcedureMaterial) =>
-      number !== null && normalizeEmployeeNumber(materialAppText(material, 'nameId')) === number;
+      employeeMatchesMaterialNameId(employee.employeeCode, materialAppText(material, 'nameId'));
     const owned = candidates.filter(belongsToEmployee);
     const notesByMessage = new Map<string, ProcedureMaterial>();
     const unplacedPhotoMessages = new Set<string>();

@@ -145,16 +145,20 @@ describe('developer employee number 9999', () => {
   const developer = { ...employee, employeeCode: '9999', nfcTagUid: 'developer' };
   const developerMaterial = { ...material, appRef: { nameId: '9999' } };
 
-  it.each(['ACTIVE', 'INACTIVE', 'SUSPENDED'])('lists and places 9999 materials with a %s 9999 tag', async status => {
+  it.each(['ACTIVE', 'INACTIVE', 'SUSPENDED'])('lists and places every employee-numbered material with a %s 9999 tag', async status => {
     mocks.tx.employee.findFirst.mockResolvedValue({ ...developer, status });
-    mocks.tx.procedureMaterial.findMany.mockResolvedValue([developerMaterial, { ...material, id: 'other', appRef: { nameId: '1234' } }]);
-    mocks.tx.procedureMaterial.findUnique.mockResolvedValue(developerMaterial);
+    const others = [{ ...material, id: 'other', gmailMessageId: 'other', appRef: { nameId: '1234' } },
+      { ...material, id: 'odd', gmailMessageId: 'odd', appRef: { nameId: '津田' } }];
+    const unnumbered = { ...material, id: 'unnumbered', gmailMessageId: 'unnumbered', appRef: {} };
+    mocks.tx.procedureMaterial.findMany.mockResolvedValue([developerMaterial, ...others, unnumbered]);
 
-    expect(await shelf().listByEmployeeTag('developer')).toMatchObject({
-      employee: { employeeCode: '9999' }, materials: [{ id: developerMaterial.id }],
-    });
-    expect((await shelf().listByEmployeeTag('developer')).materials).toHaveLength(1);
-    await expect(service().place({ ...params, employeeTagUid: 'developer' })).resolves.toMatchObject({ element: { kind: 'TEXT' } });
+    const listed = await shelf().listByEmployeeTag('developer');
+    expect(listed).toMatchObject({ employee: { employeeCode: '9999' } });
+    expect(listed.materials.map(item => item.id).sort()).toEqual(['material', 'odd', 'other']);
+    for (const target of [developerMaterial, ...others]) {
+      mocks.tx.procedureMaterial.findUnique.mockResolvedValue(target);
+      await expect(service().place({ ...params, materialId: target.id, employeeTagUid: 'developer' })).resolves.toMatchObject({ element: { kind: 'TEXT' } });
+    }
   });
 
   it.each(['INACTIVE', 'SUSPENDED'])('still stops a %s non-9999 tag on list and place', async status => {
@@ -164,9 +168,9 @@ describe('developer employee number 9999', () => {
     expect(mocks.tx.procedureMaterial.updateMany).not.toHaveBeenCalled();
   });
 
-  it('does not let the 9999 tag place another employee\'s material', async () => {
-    mocks.tx.employee.findFirst.mockResolvedValue({ ...developer, status: 'INACTIVE' });
-    await expect(service().place({ ...params, employeeTagUid: 'developer' })).rejects.toMatchObject({ statusCode: 403, code: 'EMPLOYEE_TAG_MISMATCH' });
+  it('keeps other tags to their own number', async () => {
+    mocks.tx.procedureMaterial.findMany.mockResolvedValue([material, developerMaterial, { ...material, id: 'other', gmailMessageId: 'other', appRef: { nameId: '1234' } }]);
+    expect((await shelf().listByEmployeeTag('mine')).materials.map(item => item.id)).toEqual(['material']);
   });
 
   it('does not let another tag place 9999 materials, and an unknown tag stays 404', async () => {
