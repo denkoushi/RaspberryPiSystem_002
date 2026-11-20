@@ -138,6 +138,13 @@ RUN apk add --no-cache ca-certificates gettext \
       *) echo "$package remains below the CVE-2026-14456 fixed version: $installed_version" >&2; exit 1 ;; \
     esac; \
   done \
+  && installed_package="$(apk info -e -v libxml2)" \
+    || { echo "libxml2 is not installed" >&2; exit 1; } \
+  && installed_version="${installed_package#libxml2-}" \
+  && case "$(apk version -t "$installed_version" '2.13.9-r3')" in \
+    '='|'>') ;; \
+    *) echo "libxml2 remains below the CVE-2026-86144 fixed version: $installed_version" >&2; exit 1 ;; \
+  esac \
   && addgroup -g 1000 -S caddy \
   && adduser -u 1000 -S -D -H -G caddy caddy \
   && mkdir -p /srv/phase2-maintenance /data /config /var/log/caddy \
