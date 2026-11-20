@@ -68,6 +68,14 @@ describe('pieceLanePath', () => {
     expect(ys[1]! - ys[0]!).toBeCloseTo(100);
   });
 
+  it('puts lanes flush against the bar edge and each other, one outline width apart', () => {
+    const row: LaneRow = { left: 0, right: 10, barTop: 22, barBottom: 92, minY: 0, maxY: 200 };
+    expect(pieceLaneY(row, 'below', 0, 2)).toBe(94);
+    expect(pieceLaneY(row, 'below', 1, 2)).toBe(98);
+    expect(pieceLaneY(row, 'above', 0, 2)).toBe(20);
+    expect(pieceLaneY(row, 'above', 1, 2)).toBe(16);
+  });
+
   it('never sits inside the bars when the gap is too small', () => {
     const tight: LaneRow = { left: 0, right: 10, barTop: 3, barBottom: 73, minY: 4, maxY: 70 };
     expect(pieceLaneY(tight, 'below', 3, 4.5)).toBeGreaterThan(73);
