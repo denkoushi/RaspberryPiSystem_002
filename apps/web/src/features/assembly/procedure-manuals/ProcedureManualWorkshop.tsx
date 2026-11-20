@@ -22,6 +22,7 @@ import { ProcedureManualCommonList, filterProcedureManualCommonItems } from './P
 import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
 import { ProcedureManualFullscreenPreview, procedureDocumentToSequence } from './ProcedureManualFullscreenPreview';
 import { ProcedureManualReattachPartDialog } from './ProcedureManualReattachPartDialog';
+import { ProcedureManualRenameDialog } from './ProcedureManualRenameDialog';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 import { ProcedureVideoShelfDialog } from './ProcedureVideoShelfDialog';
 
@@ -84,6 +85,7 @@ export function ProcedureManualWorkshop() {
   const [discarding, setDiscarding] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [deleting, setDeleting] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [reattaching, setReattaching] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
+  const [renaming, setRenaming] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const searchStarted = useRef(false);
@@ -301,11 +303,20 @@ export function ProcedureManualWorkshop() {
   const confirmDiscard = (item: ProcedureManualAssignmentOverviewItemDto) => {
     if (!busy && item.draftRevision && !item.draftRevision.editLease && checkAccess()) setDiscarding(item);
   };
+  const splitRowName = (item: ProcedureManualAssignmentOverviewItemDto) => {
+    const fullName = item.label || item.title;
+    const child = processes.find(process => process.id === item.processId);
+    return parsedNames.get(fullName) ?? {
+      partName: fullName, subjectKey: item.modelCode,
+      process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
+    };
+  };
   // Columns nobody in the list fills are collapsed so the name gets their width.
   // Which optional action buttons a row shows; 削除/外す is always shown in addition.
   const rowActions = (item: ProcedureManualAssignmentOverviewItemDto) => ({
     view: item.status !== 'unavailable',
     fix: item.kind === 'assembly_procedure_document' && item.status !== 'unavailable',
+    rename: !isCommon && item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' && !item.label,
     reattach: processes.find(row => row.id === item.processId)?.subjectKind === 'PART' && item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision,
     use: item.kind === 'assembly_procedure_document' && item.status === 'published',
     discard: Boolean(item.draftRevision)
@@ -360,11 +371,7 @@ export function ProcedureManualWorkshop() {
           {filteredItems.map(item => {
             const fullName = item.label || item.title;
             const actions = rowActions(item);
-            const child = processes.find(process => process.id === item.processId);
-            const name = parsedNames.get(fullName) ?? {
-              partName: fullName, subjectKey: item.modelCode,
-              process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
-            };
+            const name = splitRowName(item);
             return <div role="row" key={item.assignmentId} aria-label={item.label || item.title} title={fullName} style={{ gridTemplateColumns: `minmax(0,1.5fr) minmax(0,1.5fr) 96px 128px minmax(0,0.6fr) 120px ${usageColumn} ${approvalColumn} 40px ${actionColumn}` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
             <div role="cell" className="min-w-0 truncate text-xl font-bold" title={fullName}>{name.partName}</div>
             <div role="cell" className="min-w-0 truncate font-mono text-[17px] font-bold">{name.subjectKey}</div>
@@ -384,6 +391,7 @@ export function ProcedureManualWorkshop() {
             <div role="cell" className="flex gap-1">
               {actions.view ? <IconActionTooltip label="見る" disabled={previewLoading}><button aria-label="見る" className={`${symbolAction} !border-[#344252] !text-[#eef3f6]`} disabled={previewLoading} onClick={() => void view(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></button></IconActionTooltip> : null}
               {actions.fix ? <IconActionTooltip label="直す" disabled={busy}><button aria-label="直す" className={`${symbolAction} !border-[#3ba776] !text-[#3ba776]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button></IconActionTooltip> : null}
+              {actions.rename ? <IconActionTooltip label="名前を変える" disabled={busy || Boolean(item.draftRevision?.editLease)}><button aria-label="名前を変える" className={symbolAction} disabled={busy || Boolean(item.draftRevision?.editLease)} onClick={() => { if (checkAccess()) { setOperationMessage(null); setRenaming(item); } }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7V5h12v2M10 5v14M7 19h6M16 13h5M18.5 13v6M17 19h3" /></svg></button></IconActionTooltip> : null}
               {actions.reattach ? <IconActionTooltip label="部品を付け直す" disabled={busy}><button aria-label="部品を付け直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => { if (checkAccess()) { setOperationMessage(null); setReattaching(item); } }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.4" /></svg></button></IconActionTooltip> : null}
               {actions.use ? <IconActionTooltip label="使う"><Link aria-label="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link></IconActionTooltip> : null}
               {actions.discard && item.draftRevision ? <IconActionTooltip label="改版を破棄" disabled={busy || Boolean(item.draftRevision.editLease)}><button aria-label="改版を破棄" className={symbolAction} disabled={busy || Boolean(item.draftRevision.editLease)} onClick={() => confirmDiscard(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : null}
@@ -413,6 +421,8 @@ export function ProcedureManualWorkshop() {
     {accessGranted && reattaching ? <ProcedureManualReattachPartDialog item={reattaching} processes={processes} currentPartName={partCandidates.find(row => row.partNumberKey === reattaching.modelCodeKey)?.partName}
       beforeMutation={checkAccess} onClose={() => setReattaching(null)} onChanged={() => setVersion(value => value + 1)}
       onSaved={(key, id, message) => { setReattaching(null); select(key, id); setVersion(value => value + 1); setOperationMessage(message); }} /> : null}
+    {accessGranted && renaming ? <ProcedureManualRenameDialog item={renaming} name={splitRowName(renaming)} onClose={() => setRenaming(null)}
+      onSaved={() => { setRenaming(null); setVersion(value => value + 1); }} /> : null}
     {materialOpen ? <ProcedureMaterialShelfDialog resources={shelfResources} onClose={() => { clearManualLists(); setMaterialOpen(false); }} onCreatedDocument={(documentId) => {
       clearManualLists();
       setMaterialOpen(false);

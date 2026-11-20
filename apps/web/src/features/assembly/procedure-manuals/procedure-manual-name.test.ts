@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { splitProcedureManualName } from './procedure-manual-name';
+import { joinProcedureManualName, splitProcedureManualName } from './procedure-manual-name';
 
 describe('splitProcedureManualName', () => {
   it.each([
@@ -19,5 +19,12 @@ describe('splitProcedureManualName', () => {
 
   it('keeps empty fields in their original positions', () => {
     expect(splitProcedureManualName('主軸__加工_')).toEqual({ partName: '主軸', subjectKey: '', process: '加工', work: '', supplement: '' });
+  });
+});
+
+describe('joinProcedureManualName', () => {
+  it('trims fields, turns underscores into spaces and drops empty fields', () => {
+    expect(joinProcedureManualName([' 主_軸 ', 'P-123', '加工', '研削', ''])).toBe('主 軸_P-123_加工_研削');
+    expect(joinProcedureManualName(['主軸', 'P-123', '加工', '研削', ' 仕上げ '])).toBe('主軸_P-123_加工_研削_仕上げ');
   });
 });

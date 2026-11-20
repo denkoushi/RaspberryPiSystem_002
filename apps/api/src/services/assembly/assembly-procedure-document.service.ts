@@ -463,12 +463,16 @@ export class AssemblyProcedureDocumentService {
       throw new ApiError(400, '手順書名が必要です');
     }
     const rename = async (tx: Prisma.TransactionClient) => {
-      const documents = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
-      if (!documents.length) throw new ApiError(404, '手順書が見つかりません');
-      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
-      return tx.assemblyProcedureDocument.update({
-        where: { id }, data: { name: trimmed.slice(0, 200) }, include: this.includePages
-      });
+      // Every revision is its own row; rename the whole family so a later publish cannot bring the old name back.
+      const family = await tx.$queryRaw<Array<{ id: string }>>`SELECT d.id FROM "AssemblyProcedureDocument" d
+        LEFT JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d.id
+        WHERE COALESCE(r."revisionRootId", d.id) = (SELECT COALESCE(t."revisionRootId", ${id}) FROM (SELECT ${id}::text AS id) s
+          LEFT JOIN "AssemblyProcedureDocumentRevision" t ON t."documentId" = s.id) ORDER BY d.id FOR UPDATE OF d`;
+      if (!family.some(row => row.id === id)) throw new ApiError(404, '手順書が見つかりません');
+      const leases = new AssemblyProcedureDocumentEditLeaseService();
+      for (const row of family) await leases.assertCanWrite(row.id, actor.holderKey ?? null, tx, actor.holderToken ?? null);
+      const updated = await Promise.all(family.map(row => tx.assemblyProcedureDocument.update({ where: { id: row.id }, data: { name: trimmed.slice(0, 200) }, include: this.includePages })));
+      return updated.find(row => row.id === id)!;
     };
     return transaction ? rename(transaction) : runAssemblyTransaction(rename);
   }

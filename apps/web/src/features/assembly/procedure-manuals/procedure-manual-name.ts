@@ -14,3 +14,8 @@ export function buildProcedureManualName(subjectKey: string, partName: string | 
   return [partName?.replace(/_/g, ' ').trim(), subjectKey, procedureManualShortProcessName(parent),
     procedureManualShortProcessName(child), supplement.trim()].filter(Boolean).join('_');
 }
+
+/** Joins already-split fields back into a name; underscores typed inside a field become spaces. */
+export function joinProcedureManualName(fields: Array<string | null | undefined>) {
+  return fields.map(field => field?.replace(/_/g, ' ').trim()).filter(Boolean).join('_');
+}
