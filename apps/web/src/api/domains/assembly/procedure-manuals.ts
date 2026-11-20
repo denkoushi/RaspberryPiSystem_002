@@ -93,6 +93,11 @@ export async function createProcedureManualCommon(input: { categoryId: string; t
   return data;
 }
 
+export async function renameProcedureManualCommonTarget(assignmentId: string, input: { target: string; kanaRow?: string }) {
+  const { data } = await api.patch<{ id: string; modelCode: string; modelCodeKey: string }>(`/assembly/procedure-manuals/common/assignments/${encodeURIComponent(assignmentId)}/target`, input);
+  return data;
+}
+
 export async function saveProcedureManualCommonChoice(kind: 'categories' | 'actions', name: string, id?: string) {
   const path = `/assembly/procedure-manuals/common/${kind}${id ? `/${encodeURIComponent(id)}` : ''}`;
   if (id) await api.patch(path, { name }); else await api.post(path, { name });

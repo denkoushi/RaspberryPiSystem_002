@@ -37,6 +37,9 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
     categoryId: z.string().min(1).max(200), target: z.string().trim().min(1).max(179), actionId: z.string().min(1).max(200),
     kanaRow: z.enum(['あ','か','さ','た','な','は','ま','や','ら','わ']).optional()
   }).parse(request.body)));
+  app.patch(`${commonPath}/assignments/:id/target`, { preHandler: options.allowWriteKiosk }, async request => common.renameTarget(
+    z.object({ id: z.string().uuid() }).parse(request.params).id,
+    z.object({ target: z.string().trim().min(1).max(179), kanaRow: z.enum(['あ','か','さ','た','な','は','ま','や','ら','わ']).optional() }).parse(request.body)));
   const nameSchema = z.object({ name: z.string().trim().min(1).max(20) });
   const idSchema = z.object({ id: z.string().min(1).max(200) });
   for (const kind of ['categories', 'actions'] as const) {

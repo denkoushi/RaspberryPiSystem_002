@@ -19,6 +19,7 @@ import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './Proc
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureManualCommonDialog } from './ProcedureManualCommonDialog';
 import { ProcedureManualCommonList, filterProcedureManualCommonItems } from './ProcedureManualCommonList';
+import { ProcedureManualCommonRenameDialog } from './ProcedureManualCommonRenameDialog';
 import { ProcedureManualFilterPane } from './ProcedureManualFilterPane';
 import { ProcedureManualFullscreenPreview, procedureDocumentToSequence } from './ProcedureManualFullscreenPreview';
 import { ProcedureManualReattachPartDialog } from './ProcedureManualReattachPartDialog';
@@ -85,6 +86,7 @@ export function ProcedureManualWorkshop() {
   const [discarding, setDiscarding] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [deleting, setDeleting] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [reattaching, setReattaching] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
+  const [commonRenaming, setCommonRenaming] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [renaming, setRenaming] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -348,6 +350,7 @@ export function ProcedureManualWorkshop() {
       <section aria-label="要領書一覧" className={isCommon ? 'flex min-h-0 min-w-0 flex-col' : 'grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3'}>
         {isCommon ? <ProcedureManualCommonList items={filteredItems} processes={processes} categoryId={processId} kanaRow={kanaRow} busy={busy || previewLoading}
           onView={item => void view(item)} onFix={fix} onDiscard={confirmDiscard}
+          onRename={item => { if (checkAccess()) { setOperationMessage(null); setCommonRenaming(item); } }}
           onRemove={(item, deleteDocument) => { if (checkAccess()) { if (deleteDocument) setDeleting(item); else setRemoving(item); } }} /> : <>
           <div className="mb-1.5 flex min-h-[52px] min-w-max items-center gap-3">
             <h2 aria-label={`${modelCodeKey || (subjectKind === 'PART' ? '全部品' : '全機種')} › ${process ? shortName(process) : '全工程'}`} className="flex items-center gap-2 text-[22px] font-black">
@@ -421,6 +424,8 @@ export function ProcedureManualWorkshop() {
     {accessGranted && reattaching ? <ProcedureManualReattachPartDialog item={reattaching} processes={processes} currentPartName={partCandidates.find(row => row.partNumberKey === reattaching.modelCodeKey)?.partName}
       beforeMutation={checkAccess} onClose={() => setReattaching(null)} onChanged={() => setVersion(value => value + 1)}
       onSaved={(key, id, message) => { setReattaching(null); select(key, id); setVersion(value => value + 1); setOperationMessage(message); }} /> : null}
+    {accessGranted && isCommon && commonRenaming ? <ProcedureManualCommonRenameDialog item={commonRenaming} catalog={commonCatalog} onClose={() => setCommonRenaming(null)}
+      onSaved={() => { setCommonRenaming(null); void refreshCommon(); }} /> : null}
     {accessGranted && renaming ? <ProcedureManualRenameDialog item={renaming} name={splitRowName(renaming)} onClose={() => setRenaming(null)}
       onSaved={() => { setRenaming(null); setVersion(value => value + 1); }} /> : null}
     {materialOpen ? <ProcedureMaterialShelfDialog resources={shelfResources} onClose={() => { clearManualLists(); setMaterialOpen(false); }} onCreatedDocument={(documentId) => {

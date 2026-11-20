@@ -12,11 +12,11 @@ import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualCommonCatalogDto, ProcedureManualProcessDto } from '../types';
 import type { ReactNode } from 'react';
 
-const api = vi.hoisted(() => ({ catalog: vi.fn(), overview: vi.fn(), create: vi.fn(), save: vi.fn(), delete: vi.fn(), assignments: vi.fn(), replace: vi.fn(), deleteDocument: vi.fn(), document: vi.fn() }));
+const api = vi.hoisted(() => ({ catalog: vi.fn(), overview: vi.fn(), create: vi.fn(), save: vi.fn(), delete: vi.fn(), assignments: vi.fn(), replace: vi.fn(), deleteDocument: vi.fn(), document: vi.fn(), rename: vi.fn() }));
 vi.mock('../../../api/hooks/kiosk', () => ({ useKioskConfig: () => ({ data: undefined }) }));
 vi.mock('../../../api/client', () => ({
   listProcedureManualCommon: api.catalog, getProcedureManualOverview: api.overview,
-  createProcedureManualCommon: api.create, saveProcedureManualCommonChoice: api.save, deleteProcedureManualCommonChoice: api.delete,
+  createProcedureManualCommon: api.create, renameProcedureManualCommonTarget: api.rename, saveProcedureManualCommonChoice: api.save, deleteProcedureManualCommonChoice: api.delete,
   listProcedureManualProcesses: async () => processes,
   listProcedureWorkInstructionCandidates: async () => ({ items: [] }),
   listProcedureManualModels: async () => [], listProcedureManualParts: async () => [],
@@ -51,6 +51,7 @@ beforeEach(() => {
   api.catalog.mockResolvedValue(catalog);
   api.overview.mockImplementation(async (_processId, published) => ({ processes: processes.map(row => ({ processId: row.id, count: 0, items: items.filter(item => item.processId === row.id && (!published || item.status === 'published')) })) }));
   api.create.mockResolvedValue({ id: 'new-manual', modelCode: 'エアブロー', modelCodeKey: 'エアブロー', processId: 'tools' });
+  api.rename.mockResolvedValue({ id: 'torque', modelCode: 'ハンマー', modelCodeKey: 'ハンマー' });
   api.save.mockResolvedValue(undefined); api.delete.mockResolvedValue(undefined); onChanged.mockResolvedValue(undefined);
   api.assignments.mockResolvedValue({ assignments: [{ id: 'micrometer', assemblyProcedureDocumentId: 'micrometer', sortOrder: 0, label: '使い方' }], sequence: { documents: [] } });
   api.replace.mockResolvedValue(undefined); api.deleteDocument.mockResolvedValue(undefined);
@@ -293,5 +294,37 @@ describe('common choice editors', () => {
       expect(screen.queryByRole('button', { name: '清掃', exact: true })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: '工具', exact: true })).toHaveAttribute('aria-pressed', 'false');
     }
+  });
+});
+
+describe('common target rename', () => {
+  it('shows the button only on document rows, keeps the action fixed and saves the new target', async () => {
+    showWorkshop('?common=1&process=tools');
+    await screen.findByRole('row', { name: 'トルクレンチ_使い方' });
+    expect(screen.getAllByRole('button', { name: '名前を変える' })).toHaveLength(2);
+    fireEvent.click(within(screen.getByRole('row', { name: 'トルクレンチ_使い方' })).getByRole('button', { name: '名前を変える' }));
+    const dialog = within(await screen.findByRole('dialog', { name: '名前を変える' }));
+    expect(dialog.getByText('使い方')).toBeInTheDocument();
+    expect(dialog.getByLabelText('対象')).toHaveValue('トルクレンチ');
+    expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.change(dialog.getByLabelText('対象'), { target: { value: 'ハンマー' } });
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.rename).toHaveBeenCalledWith('torque', { target: 'ハンマー' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '名前を変える' })).not.toBeInTheDocument());
+  });
+
+  it('asks for a reading for a new non-kana target and disables the button while another person edits', async () => {
+    items[1] = { ...items[1], draftRevision: { editLease: { holderLabel: 'x' } } } as never;
+    showWorkshop('?common=1&process=tools');
+    await screen.findByRole('row', { name: 'トルクレンチ_使い方' });
+    expect(within(screen.getByRole('row', { name: 'マイクロメータ_使い方' })).getByRole('button', { name: '名前を変える' })).toBeDisabled();
+    fireEvent.click(within(screen.getByRole('row', { name: 'トルクレンチ_使い方' })).getByRole('button', { name: '名前を変える' }));
+    const dialog = within(await screen.findByRole('dialog', { name: '名前を変える' }));
+    fireEvent.change(dialog.getByLabelText('対象'), { target: { value: '研磨機' } });
+    expect(dialog.getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.click(dialog.getByRole('button', { name: 'か', exact: true }));
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(api.rename).toHaveBeenCalledWith('torque', { target: '研磨機', kanaRow: 'か' }));
+    items[1] = item('micrometer', 'マイクロメータ', 'tools', 'ま', 'draft');
   });
 });

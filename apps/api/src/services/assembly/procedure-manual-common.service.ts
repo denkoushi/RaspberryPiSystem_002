@@ -69,6 +69,33 @@ export class ProcedureManualCommonService {
     }
   }
 
+  async renameTarget(assignmentId: string, input: { target: string; kanaRow?: string }) {
+    const target = input.target.trim();
+    const key = procedureManualCommonKey(target);
+    if (!key || target.length > 179) throw new ApiError(400, '対象は1〜179文字で入力してください');
+    await ensureProcedureManualCommonSeeded();
+    return runAssemblyTransaction(async tx => {
+      await lockProcedureManualCommon(tx);
+      const assignment = await tx.procedureManualAssignment.findUnique({ where: { id: assignmentId }, include: { process: { select: { subjectKind: true } } } });
+      if (!assignment) throw new ApiError(404, '手順が見つかりません');
+      const documentId = assignment.assemblyProcedureDocumentId;
+      const label = assignment.label;
+      if (assignment.process.subjectKind !== 'COMMON' || !label || !documentId) throw new ApiError(400, '名前を変えられない手順です');
+      if (`${target}_${label}`.length > 200) throw new ApiError(400, '名前は200文字以内にしてください');
+      const moving = await tx.procedureManualAssignment.findMany({ where: { ...commonAssignments, assemblyProcedureDocumentId: documentId, modelCodeKey: assignment.modelCodeKey, label } });
+      const ids = moving.map(row => row.id);
+      for (const row of moving) {
+        if (await tx.procedureManualAssignment.findFirst({ where: { processId: row.processId, modelCodeKey: key, label, id: { notIn: ids } } })) {
+          throw new ApiError(409, '同じ手順があります');
+        }
+      }
+      const subject = await ensureProcedureManualCommonSubject(tx, target, input.kanaRow);
+      await this.documents.rename(documentId, `${subject.name}_${label}`, {}, tx);
+      await tx.procedureManualAssignment.updateMany({ where: { id: { in: ids } }, data: { modelCode: subject.name, modelCodeKey: key } });
+      return { id: documentId, modelCode: subject.name, modelCodeKey: key };
+    });
+  }
+
   private async category(tx: Prisma.TransactionClient, id: string) {
     const row = await tx.procedureManualProcess.findFirst({ where: { id, ...categoryWhere } });
     if (!row) throw new ApiError(404, '分類が見つかりません');
