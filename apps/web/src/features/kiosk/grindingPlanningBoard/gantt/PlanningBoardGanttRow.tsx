@@ -27,6 +27,8 @@ import type { PointerEvent } from 'react';
 export const GANTT_LABEL_WIDTH = 320;
 // 「今日から」 only shows the machine and its daily-hours buttons, so its label column is narrower.
 export const GANTT_FORWARD_LABEL_WIDTH = 168;
+// One machine (or the 2-machine stack) only shows the date and 「0–6時」 per row, so its column hugs that text.
+export const GANTT_SINGLE_RESOURCE_LABEL_WIDTH = 120;
 export const GANTT_ROW_HEIGHT = 56;
 export const GANTT_IMPORT_HATCH = 'repeating-linear-gradient(135deg, #475569 0 6px, #334155 6px 12px)';
 export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f1239 4px 8px)';
