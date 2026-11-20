@@ -1,4 +1,4 @@
-import { normalizeEmployeeNumber, materialAppText, resolveProcedureMaterialEmployeeTag } from './procedure-material-employee-number.js';
+import { employeeMatchesMaterialNameId, materialAppText, resolveProcedureMaterialEmployeeTag } from './procedure-material-employee-number.js';
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -55,8 +55,7 @@ export class ProcedureMaterialPlacementService {
             if (!(error instanceof ApiError) || ![403, 404].includes(error.statusCode)) throw error;
             throw forbidden();
           }
-          const number = normalizeEmployeeNumber(nameId);
-          if (number === null || number !== normalizeEmployeeNumber(employee.employeeCode)) throw forbidden();
+          if (!employeeMatchesMaterialNameId(employee.employeeCode, nameId)) throw forbidden();
         }
 
         if (material.kind === 'PDF') throw new ApiError(400, 'PDF 素材は要領書を作成してください');
