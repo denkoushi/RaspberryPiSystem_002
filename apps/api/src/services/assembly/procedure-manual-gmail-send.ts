@@ -77,7 +77,7 @@ export function buildProcedureManualMime({ to, subject, filename, pdf }: PdfMail
     'Content-Type: application/pdf;',
     ` name="${encodeHeaderWords(filename)}"`,
     'Content-Disposition: attachment;',
-    ' filename="manual.pdf";',
+    ` filename="${encodeHeaderWords(filename)}";`,
     filenameParts.join(';\r\n'),
     'Content-Transfer-Encoding: base64',
     '',
