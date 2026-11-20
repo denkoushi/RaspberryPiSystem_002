@@ -1,5 +1,6 @@
 import { ProcedureManualCommonService } from '../../services/assembly/procedure-manual-common.service.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
+import { PROCEDURE_MANUAL_KANA_ROWS } from '@raspi-system/shared-types';
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
@@ -7,6 +8,7 @@ import { ProcedureManualPartCandidatesService } from '../../services/assembly/pr
 import { ProcedureManualService } from '../../services/assembly/procedure-manual.service.js';
 import type { AssemblyProcedureSequence } from '../../services/assembly/assembly-procedure-sequence.service.js';
 
+const kanaRowSchema = z.enum(PROCEDURE_MANUAL_KANA_ROWS).optional();
 const paramsSchema = z.object({ modelCodeKey: z.string().min(1).max(200), processId: z.string().min(1).max(200) });
 const bodySchema = z.object({
   modelCode: z.string().min(1).max(200),
@@ -35,11 +37,11 @@ export function registerProcedureManualRoutes(app: FastifyInstance, options: {
   });
   app.post(commonPath, { preHandler: options.allowWriteKiosk }, async request => common.create(z.object({
     categoryId: z.string().min(1).max(200), target: z.string().trim().min(1).max(179), actionId: z.string().min(1).max(200),
-    kanaRow: z.enum(['あ','か','さ','た','な','は','ま','や','ら','わ']).optional()
+    kanaRow: kanaRowSchema
   }).parse(request.body)));
   app.patch(`${commonPath}/assignments/:id/target`, { preHandler: options.allowWriteKiosk }, async request => common.renameTarget(
     z.object({ id: z.string().uuid() }).parse(request.params).id,
-    z.object({ target: z.string().trim().min(1).max(179), kanaRow: z.enum(['あ','か','さ','た','な','は','ま','や','ら','わ']).optional() }).parse(request.body)));
+    z.object({ target: z.string().trim().min(1).max(179), kanaRow: kanaRowSchema }).parse(request.body)));
   const nameSchema = z.object({ name: z.string().trim().min(1).max(20) });
   const idSchema = z.object({ id: z.string().min(1).max(200) });
   for (const kind of ['categories', 'actions'] as const) {

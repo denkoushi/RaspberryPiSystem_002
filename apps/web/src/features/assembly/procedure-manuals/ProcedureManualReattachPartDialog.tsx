@@ -5,7 +5,7 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected, procedureManualDialogAction } from './procedure-manual-button-styles';
 import { buildProcedureManualName } from './procedure-manual-name';
 import { ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
 import { ProcedureManualPartCandidateButton, useProcedureManualPartScan } from './ProcedureManualPartPicker';
@@ -13,7 +13,6 @@ import { ProcedureManualPartCandidateButton, useProcedureManualPartScan } from '
 import type { ProcedureManualPartCandidateDto } from '../../../api/client';
 import type { ProcedureManualAssignmentDto, ProcedureManualAssignmentOverviewItemDto, ProcedureManualProcessDto } from '../types';
 
-const action = `${procedureManualButtonBase} inline-flex items-center justify-center px-4 text-[19px] font-bold disabled:opacity-40`;
 const assignmentInput = (row: ProcedureManualAssignmentDto, sortOrder: number) => ({
   kioskDocumentId: row.kioskDocumentId, assemblyProcedureDocumentId: row.assemblyProcedureDocumentId, label: row.label, sortOrder
 });
@@ -148,12 +147,12 @@ export function ProcedureManualReattachPartDialog({ item, processes, currentPart
       </div>
       <div className="grid min-w-0 gap-[22px] min-[900px]:h-[592px] min-[900px]:grid-cols-[252px_300px_minmax(0,1fr)]">
         <div className="grid content-start gap-2">
-          <button type="button" aria-pressed={scanArmed} disabled={busy} className={`${action} h-[52px] justify-start gap-2.5 border-transparent bg-[#7cc4ff1f] !px-3 !text-lg text-[#7cc4ff]`} onClick={() => setScanArmed(!scanArmed)}>
+          <button type="button" aria-pressed={scanArmed} disabled={busy} className={`${procedureManualDialogAction} h-[52px] justify-start gap-2.5 border-transparent bg-[#7cc4ff1f] !px-3 !text-lg text-[#7cc4ff]`} onClick={() => setScanArmed(!scanArmed)}>
             <svg aria-hidden="true" className="h-[30px] w-[30px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M8 9v6M11 9v6M14 9v6M17 9v6" /></svg>移動票をスキャン
           </button>
           <div role="group" aria-label="数字でさがす対象" className="grid grid-cols-2 gap-2">
             {(['machine', 'part'] as const).map(target => <button key={target} type="button" aria-pressed={searchTarget === target} disabled={busy}
-              className={`${action} ${searchTarget === target ? procedureManualButtonSelected : `${procedureManualButtonUnselected} text-[#9fadb9]`}`}
+              className={`${procedureManualDialogAction} ${searchTarget === target ? procedureManualButtonSelected : `${procedureManualButtonUnselected} text-[#9fadb9]`}`}
               onClick={() => { setSearchTarget(target); setDigitQuery(''); setQ(''); setScanArmed(false); }}>{target === 'machine' ? '機種' : '品番'}</button>)}
           </div>
           <output aria-label="数字検索" className="flex h-[52px] items-center overflow-hidden rounded-lg border border-[#344252] bg-[#0b0f13] px-3.5 font-mono text-[26px] tracking-widest">{digitQuery || <span className="font-sans text-[17px] tracking-normal text-[#5f6d7a]">{searchTarget === 'machine' ? '機種の数字' : '品番の数字'}</span>}</output>
@@ -187,8 +186,8 @@ export function ProcedureManualReattachPartDialog({ item, processes, currentPart
       <div className="flex flex-wrap items-center gap-3.5 border-t border-[#27313b] pt-4">
         <label className="flex min-h-12 cursor-pointer items-center gap-2.5 text-lg"><input type="checkbox" checked={rename} disabled={busy} onChange={event => setRename(event.target.checked)} className="h-[26px] w-[26px] accent-[#3ba776]" />名前も変える</label>
         <output aria-label="名前のプレビュー" className="min-w-0 flex-1 truncate font-mono text-base text-[#9fadb9]" title={selected && rename ? name : undefined}>{selected && rename ? name : ''}</output>
-        <div className="ml-auto flex gap-2.5"><button type="button" className={`${action} ${procedureManualButtonUnselected}`} disabled={busy} onClick={onClose}>やめる</button>
-          <button type="submit" className={`${action} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !targetKey || targetKey === currentKey || loading || (rename && name.length > 200)}>付け直す</button></div>
+        <div className="ml-auto flex gap-2.5"><button type="button" className={`${procedureManualDialogAction} ${procedureManualButtonUnselected}`} disabled={busy} onClick={onClose}>やめる</button>
+          <button type="submit" className={`${procedureManualDialogAction} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !targetKey || targetKey === currentKey || loading || (rename && name.length > 200)}>付け直す</button></div>
       </div>
     </form>
   </Dialog>;

@@ -91,7 +91,15 @@ export class ProcedureManualCommonService {
       }
       const subject = await ensureProcedureManualCommonSubject(tx, target, input.kanaRow);
       await this.documents.rename(documentId, `${subject.name}_${label}`, {}, tx);
-      await tx.procedureManualAssignment.updateMany({ where: { id: { in: ids } }, data: { modelCode: subject.name, modelCodeKey: key } });
+      if (key === assignment.modelCodeKey) {
+        await tx.procedureManualAssignment.updateMany({ where: { id: { in: ids } }, data: { modelCode: subject.name, modelCodeKey: key } });
+      } else {
+        // (modelCodeKey, processId, sortOrder) is unique, so each moved row goes to the end of its category under the new target.
+        for (const row of moving) {
+          const last = await tx.procedureManualAssignment.findFirst({ where: { processId: row.processId, modelCodeKey: key }, orderBy: { sortOrder: 'desc' } });
+          await tx.procedureManualAssignment.update({ where: { id: row.id }, data: { modelCode: subject.name, modelCodeKey: key, sortOrder: (last?.sortOrder ?? -1) + 1 } });
+        }
+      }
       return { id: documentId, modelCode: subject.name, modelCodeKey: key };
     });
   }

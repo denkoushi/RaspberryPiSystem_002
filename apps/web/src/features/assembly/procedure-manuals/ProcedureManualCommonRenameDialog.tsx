@@ -5,26 +5,16 @@ import { renameProcedureManualCommonTarget } from '../../../api/client';
 import { Dialog } from '../../../components/ui/Dialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { procedureManualButtonBase, procedureManualButtonUnselected, procedureManualKanaSelected } from './procedure-manual-button-styles';
+import { procedureManualButtonBase, procedureManualButtonUnselected, procedureManualDialogAction, procedureManualDialogChip, procedureManualDialogInput, procedureManualKanaSelected } from './procedure-manual-button-styles';
 
 import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualCommonCatalogDto } from '../types';
-
-const action = `${procedureManualButtonBase} inline-flex items-center justify-center px-4 text-[19px] font-bold disabled:opacity-40`;
-const chip = 'inline-flex min-h-11 min-w-0 items-center truncate rounded-lg border border-[#344252] px-3.5 text-xl text-[#eef3f6]';
-const input = 'h-14 w-full min-w-0 rounded-lg border border-[#344252] bg-white px-3.5 text-[22px] text-[#0f1317] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] disabled:opacity-60';
-
-function currentTarget(item: ProcedureManualAssignmentOverviewItemDto) {
-  if (item.target) return item.target;
-  const index = item.title.lastIndexOf('_');
-  return index > 0 ? item.title.slice(0, index) : item.title;
-}
 
 export function ProcedureManualCommonRenameDialog({ item, catalog, onClose, onSaved }: {
   item: ProcedureManualAssignmentOverviewItemDto; catalog: ProcedureManualCommonCatalogDto;
   onClose: () => void; onSaved: () => void;
 }) {
   const label = item.label ?? '';
-  const original = currentTarget(item);
+  const original = item.target ?? item.title;
   const [target, setTarget] = useState(original);
   const [reading, setReading] = useState('');
   const [busy, setBusy] = useState(false);
@@ -56,16 +46,16 @@ export function ProcedureManualCommonRenameDialog({ item, catalog, onClose, onSa
           {item.status === 'published' ? item.publishedRevisionNumber == null ? '公開' : `公開 第${item.publishedRevisionNumber}版` : '下書き'}
         </span>
       </div>
-      <div className="flex min-w-0 flex-wrap gap-3"><span className={chip}>{label}</span></div>
+      <div className="flex min-w-0 flex-wrap gap-3"><span className={procedureManualDialogChip}>{label}</span></div>
       <label className="grid gap-1.5 text-base font-bold text-[#9fadb9]">対象
-        <input ref={targetRef} value={target} maxLength={179} disabled={busy} onChange={event => { setTarget(event.target.value); setReading(''); }} className={input} />
+        <input ref={targetRef} value={target} maxLength={179} disabled={busy} onChange={event => { setTarget(event.target.value); setReading(''); }} className={procedureManualDialogInput} />
       </label>
       {needsReading ? <section aria-label="よみ" className="grid gap-2"><h3 className="text-base text-[#9fadb9]">よみ</h3><div className="grid grid-cols-10 gap-1.5">{PROCEDURE_MANUAL_KANA_ROWS.map(row => <button key={row} type="button" disabled={busy} aria-pressed={reading === row} className={`${procedureManualButtonBase} h-[52px] text-xl ${reading === row ? procedureManualKanaSelected : procedureManualButtonUnselected}`} onClick={() => setReading(row)}>{row}</button>)}</div></section> : null}
       {error ? <p role="alert" className="text-red-400">{error}</p> : null}
       {tooLong ? <p role="alert" className="text-red-400">名前は200文字以内にしてください</p> : null}
       <div className="flex justify-end gap-2.5 border-t border-[#27313b] pt-4">
-        <button type="button" className={`${action} ${procedureManualButtonUnselected}`} disabled={busy} onClick={onClose}>やめる</button>
-        <button type="submit" className={`${action} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={!canSave}>保存</button>
+        <button type="button" className={`${procedureManualDialogAction} ${procedureManualButtonUnselected}`} disabled={busy} onClick={onClose}>やめる</button>
+        <button type="submit" className={`${procedureManualDialogAction} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={!canSave}>保存</button>
       </div>
     </form>
   </Dialog>;

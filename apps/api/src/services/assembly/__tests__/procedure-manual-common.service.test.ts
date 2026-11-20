@@ -283,6 +283,7 @@ describe('common manual target rename', () => {
     vi.spyOn(prisma.procedureManualAssignment, 'findUnique').mockResolvedValue(row as never);
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([row] as never);
     vi.spyOn(prisma.procedureManualAssignment, 'updateMany').mockResolvedValue({ count: 1 } as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'update').mockResolvedValue({} as never);
     documents.rename.mockResolvedValue({ id: documentId });
   });
 
@@ -291,7 +292,16 @@ describe('common manual target rename', () => {
     const result = await service().renameTarget('a1', { target: ' ハンマー ' });
     expect(result).toEqual({ id: documentId, modelCode: 'ハンマー', modelCodeKey: 'ハンマー' });
     expect(documents.rename).toHaveBeenCalledWith(documentId, 'ハンマー_使い方', {}, prisma);
-    expect(prisma.procedureManualAssignment.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['a1'] } }, data: { modelCode: 'ハンマー', modelCodeKey: 'ハンマー' } });
+    expect(prisma.procedureManualAssignment.update).toHaveBeenCalledWith({ where: { id: 'a1' }, data: { modelCode: 'ハンマー', modelCodeKey: 'ハンマー', sortOrder: 0 } });
+  });
+
+  it('puts the moved assignment after the existing actions of the new target in the same category', async () => {
+    vi.mocked(prisma.procedureManualCommonSubject.upsert).mockResolvedValue({ key: 'ハンマー', name: 'ハンマー', kanaRow: 'は' });
+    vi.mocked(prisma.procedureManualAssignment.findFirst).mockImplementation((async (args: { where: { label?: string } }) => (args.where.label ? null : { sortOrder: 2 })) as never);
+    await service().renameTarget('a1', { target: 'ハンマー' });
+    expect(prisma.procedureManualAssignment.findFirst).toHaveBeenCalledWith({ where: { processId: 'tools', modelCodeKey: 'ハンマー' }, orderBy: { sortOrder: 'desc' } });
+    expect(prisma.procedureManualAssignment.update).toHaveBeenCalledWith({ where: { id: 'a1' }, data: { modelCode: 'ハンマー', modelCodeKey: 'ハンマー', sortOrder: 3 } });
+    expect(prisma.procedureManualAssignment.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects an existing procedure with the same target and action', async () => {
