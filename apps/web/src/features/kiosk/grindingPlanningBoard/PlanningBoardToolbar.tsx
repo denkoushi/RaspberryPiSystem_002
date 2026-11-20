@@ -12,6 +12,7 @@ import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResource
 import { planningBoardPair } from './planningBoardTwoMachine';
 import { usePersistedPlanningBoardFillHeight } from './usePersistedPlanningBoardFillHeight';
 import { usePersistedPlanningBoardPieceLinks } from './usePersistedPlanningBoardPieceLinks';
+import { usePlanningBoardToolbarWheel } from './usePlanningBoardToolbarWheel';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { UnitOrderMethod } from './gantt/planningBoardUnitOrder';
@@ -239,8 +240,10 @@ export function PlanningBoardToolbar({
       top: Math.max(8, Math.min(anchor.bottom / zoom + 4, (window.innerHeight - panel.height) / zoom - 8)) });
     (scalePanel.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? scalePanel.current.querySelector<HTMLButtonElement>('button'))?.focus();
   }, [scaleOpen]);
+  const toolbar = useRef<HTMLDivElement>(null);
+  usePlanningBoardToolbarWheel(toolbar);
   return (
-    <div data-planning-board-toolbar className="[&_button[aria-disabled=true]]:opacity-55 flex h-[66px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
+    <div ref={toolbar} data-planning-board-toolbar className="[&_button[aria-disabled=true]]:opacity-55 flex h-[66px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
         type="button"
         onClick={onOpenDrawer}

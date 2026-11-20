@@ -961,6 +961,21 @@ describe('two-machine chain links', () => {
     }
   });
 
+  it('stops a cross-pane curve at the edge of the pane that scrolled its piece out of view', () => {
+    render(<PlanningBoardGanttDisplay {...pieces()} />);
+    const dots = () => screen.getByTestId('planning-gantt-normal-piece-link').parentElement!.querySelectorAll('circle');
+    expect(dots()).toHaveLength(2);
+    const upper = within(screen.getByRole('region', { name: '021' })).getByLabelText('ガントの日付と工程');
+    upper.scrollTop = 1000;
+    fireEvent.scroll(upper);
+    act(() => vi.advanceTimersByTime(20));
+    expect(dots()).toHaveLength(1);
+    upper.scrollTop = 0;
+    fireEvent.scroll(upper);
+    act(() => vi.advanceTimersByTime(20));
+    expect(dots()).toHaveLength(2);
+  });
+
   const controls = (): NonNullable<PlanningBoardGanttProps['testBarControls']> => ({
     bars: [], nextSequence: 1, selectedId: null, selectedBar: null, disabled: false,
     select: vi.fn(), create: vi.fn(async () => true), remove: vi.fn(), complete: vi.fn(), accept: vi.fn(), undo: vi.fn()
