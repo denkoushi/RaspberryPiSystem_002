@@ -29,7 +29,7 @@ const kioskInclude = {
   visualTemplate: true,
   items: {
     orderBy: { sortOrder: 'asc' },
-    select: { markerXRatio: true, markerYRatio: true, lowerLimit: true, upperLimit: true }
+    select: { markerXRatio: true, markerYRatio: true, lowerLimit: true, upperLimit: true, valueKind: true }
   }
 };
 
@@ -123,6 +123,23 @@ describe('PartMeasurementTemplateService queries', () => {
       include: kioskInclude
     });
     expect(result).toEqual([{ template: { ...template, siblingGroupActiveResourceCds: [] }, itemCount: 1 }]);
+  });
+
+  it('keeps templates whose pipe-thread OK/NG items have no limits', async () => {
+    const template = {
+      id: 'drawing-judgement',
+      siblingGroupId: null,
+      visualTemplate: { drawingImageRelativePath: 'drawings/part-a.png' },
+      items: [
+        { markerXRatio: 0.2, markerYRatio: 0.3, lowerLimit: 9, upperLimit: 11, valueKind: 'NUMERIC' },
+        { markerXRatio: 0.4, markerYRatio: 0.5, lowerLimit: null, upperLimit: null, valueKind: 'JUDGEMENT' }
+      ]
+    };
+    findMany.mockResolvedValue([template]);
+
+    const result = await service.listKioskInspectionDrawingTemplates({});
+
+    expect(result).toEqual([{ template: { ...template, siblingGroupActiveResourceCds: [] }, itemCount: 2 }]);
   });
 
   it('keeps blank kiosk FKOJUN and resource filters while including inactive templates', async () => {

@@ -478,7 +478,8 @@ export class PartMeasurementTemplateService {
             markerXRatio: true,
             markerYRatio: true,
             lowerLimit: true,
-            upperLimit: true
+            upperLimit: true,
+            valueKind: true
           }
         }
       }
