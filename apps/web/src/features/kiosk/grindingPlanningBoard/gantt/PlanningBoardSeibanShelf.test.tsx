@@ -48,23 +48,35 @@ it('renders model, due, counts, linked operation tiles, resources, and lateness'
   expect(screen.getByTestId('planning-shelf-tile-c')).toHaveTextContent('—');
 });
 
-it('toggles selection, selects remaining part tiles, filters only unplaced tiles, and clears selection', () => {
+it('selects only the first unplaced tile from a part header, then deselects it, and filters only unplaced tiles', () => {
   render(<PlanningBoardSeibanShelf {...props} />);
   fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  fireEvent.click(screen.getByRole('button', { name: 'フランジ P1 ×2' }));
   expect(screen.getByText('1件')).toBeInTheDocument();
-  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  expect(screen.getByTestId('planning-shelf-tile-a')).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByTestId('planning-shelf-tile-b')).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: 'フランジ P1 ×2' }));
   expect(screen.queryByText('1件')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'フランジ P1 ×2' }));
-  expect(screen.getByText('2件')).toBeInTheDocument();
-  expect(screen.getByTestId('planning-shelf-tile-a')).toHaveAttribute('aria-pressed', 'false');
   fireEvent.click(screen.getByRole('button', { name: '残り', exact: true }));
   expect(screen.queryByTestId('planning-shelf-tile-a')).not.toBeInTheDocument();
   expect(screen.getByTestId('planning-shelf-tile-b')).toBeVisible();
-  expect(screen.getByText('2件')).toBeInTheDocument();
+  expect(screen.getByText('1件')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '選択を外す' }));
-  expect(screen.queryByText('2件')).not.toBeInTheDocument();
+  expect(screen.queryByText('1件')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'すべて', exact: true }));
   expect(screen.getByTestId('planning-shelf-tile-a')).toBeVisible();
+});
+
+it('keeps only one tile selected: a second tile replaces the first and a pressed tile deselects', () => {
+  render(<PlanningBoardSeibanShelf {...props} />);
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-b'));
+  expect(screen.getByTestId('planning-shelf-tile-a')).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByTestId('planning-shelf-tile-b')).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByText('1件')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-b'));
+  expect(screen.queryByText('1件')).not.toBeInTheDocument();
 });
 
 it('uses the legend focus behavior and highlights only the selected bar item', () => {
@@ -119,12 +131,12 @@ it.each([false, true])('waits for the existing write queue and retains unsaved s
   const optimistic = items.map(item => item.itemId === 'b' ? { ...item, effectiveResourceCd: '021', alternateRank: 1 } : item);
   rerender(draw(optimistic, true));
   expect(move).toHaveBeenCalledTimes(1);
-  expect(screen.getByText('2件')).toBeInTheDocument();
+  expect(screen.getByText('1件')).toBeInTheDocument();
   const saved = items.map(item => item.itemId === 'b' ? { ...item, effectiveResourceCd: '021', itemRevision: 'saved', version: 2 } : item);
   rerender(draw(failed ? items : saved));
-  expect(move).toHaveBeenCalledTimes(failed ? 1 : 2);
-  expect(screen.getByText(failed ? '2件' : '1件')).toBeInTheDocument();
+  expect(move).toHaveBeenCalledTimes(1);
   if (failed) {
+    expect(screen.getByText('1件')).toBeInTheDocument();
     act(() => { expect(interactionRef.current!.placeAt(10, 10)).toBe(true); });
     expect(move).toHaveBeenCalledTimes(2);
   }
@@ -140,26 +152,21 @@ it.each([false, true])('settles rank-only reorders on the pending falling edge w
     columns={buildPlanningBoardSeibanShelf(members.map(item => ({ ...item, alternateRank: order.indexOf(item.itemId) + 1 })), [], ['021'], colors)}
     interactionRef={interactionRef} getDrop={getDrop} actions={actions} resources={['021']} writePending={writePending} />;
   const { rerender } = render(draw(['a', 'b', 'c']));
-  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
   fireEvent.click(screen.getByTestId('planning-shelf-tile-b'));
   act(() => { expect(interactionRef.current!.placeAt(10, 10)).toBe(true); });
   expect(reorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'b' }), expect.objectContaining({ itemId: 'c' }), 'after');
   rerender(draw(['a', 'c', 'b'], true));
   await nextFrame();
   expect(reorder).toHaveBeenCalledTimes(1);
-  expect(screen.getByText('2件')).toBeInTheDocument();
+  expect(screen.getByText('1件')).toBeInTheDocument();
   rerender(draw(failed ? ['a', 'b', 'c'] : ['a', 'c', 'b']));
-  expect(reorder).toHaveBeenCalledTimes(failed ? 1 : 2);
+  expect(reorder).toHaveBeenCalledTimes(1);
   if (failed) {
-    expect(screen.getByText('2件')).toBeInTheDocument();
+    expect(screen.getByText('1件')).toBeInTheDocument();
     act(() => { expect(interactionRef.current!.placeAt(10, 10)).toBe(true); });
     expect(reorder).toHaveBeenCalledTimes(2);
   } else {
-    expect(reorder).toHaveBeenLastCalledWith(expect.objectContaining({ itemId: 'a' }), expect.objectContaining({ itemId: 'c' }), 'after');
-    rerender(draw(['c', 'a', 'b'], true));
-    rerender(draw(['c', 'a', 'b']));
     expect(screen.queryByText('1件')).not.toBeInTheDocument();
-    expect(screen.queryByText('2件')).not.toBeInTheDocument();
   }
 });
 
@@ -243,7 +250,7 @@ it('rerenders only columns whose local selection, bar highlight or focus changes
   expect(columnRenders).toEqual(['S0']);
   columnRenders.length = 0;
   fireEvent.click(screen.getByTestId('planning-shelf-tile-item-1'));
-  expect(columnRenders).toEqual(['S1']);
+  expect(columnRenders).toEqual(['S0', 'S1']);
   columnRenders.length = 0;
   rerender(<PlanningBoardSeibanShelf {...manyProps} highlightedItemId="item-0" />);
   expect(columnRenders).toEqual(['S0']);
@@ -255,7 +262,7 @@ it('rerenders only columns whose local selection, bar highlight or focus changes
   expect(columnRenders).toEqual(['S1']);
   columnRenders.length = 0;
   fireEvent.click(screen.getByRole('button', { name: '選択を外す' }));
-  expect(columnRenders).toEqual(['S0', 'S1']);
+  expect(columnRenders).toEqual(['S1']);
 });
 
 it('retains offscreen tile selections across window unmounts and reopening', async () => {

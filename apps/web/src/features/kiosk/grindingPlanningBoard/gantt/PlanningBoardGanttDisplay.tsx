@@ -149,6 +149,9 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     const bar = props.layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).find((bar) => bar.item.itemId === itemId);
     return bar ? handles.current.get(bar.resource)?.scrollToItem(itemId) ?? false : false;
   };
+  const latestNavigate = useRef(navigate);
+  useLayoutEffect(() => { latestNavigate.current = navigate; });
+  const revealPlaced = useCallback((itemId: string) => { latestNavigate.current(itemId); }, []);
   useImperativeHandle(ref, () => ({
     scrollToItem: navigate,
     scrollToNextLate: () => {
@@ -215,7 +218,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
       }} />}
     {pieceLinks && <PlanningBoardPieceLinks panes={piecePanes} container={container} />}
     <PlanningBoardTwoMachineChainLinks container={container} panes={panes} bars={chainBars} view={effectiveView} />
-    {seibanColors && <PlanningBoardSeibanShelf interactionRef={shelfHandle} writePending={props.resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} getDrop={getShelfDrop} resources={resources} actions={shelfActions}
+    {seibanColors && <PlanningBoardSeibanShelf interactionRef={shelfHandle} writePending={props.resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} selectionDrop={selectionPreview?.drop ?? null} onPlaced={revealPlaced} getDrop={getShelfDrop} resources={resources} actions={shelfActions}
       disabled={props.layout.mode !== 'forward' || props.disabled || props.dragDisabled || props.pieceDisabled || props.pinMode} columns={shelfColumns} highlightedItemId={[...props.selectedItemIds].at(-1) ?? null} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
       onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={focusSeiban} />}
   </div></TwoMachineChainContext.Provider>;
