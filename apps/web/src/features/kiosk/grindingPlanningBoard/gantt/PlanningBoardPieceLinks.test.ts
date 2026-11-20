@@ -68,12 +68,15 @@ describe('pieceLanePath', () => {
     expect(ys[1]! - ys[0]!).toBeCloseTo(100);
   });
 
-  it('puts lanes flush against the bar edge and each other, one outline width apart', () => {
-    const row: LaneRow = { left: 0, right: 10, barTop: 22, barBottom: 92, minY: 0, maxY: 200 };
-    expect(pieceLaneY(row, 'below', 0, 2)).toBe(94);
-    expect(pieceLaneY(row, 'below', 1, 2)).toBe(98);
-    expect(pieceLaneY(row, 'above', 0, 2)).toBe(20);
-    expect(pieceLaneY(row, 'above', 1, 2)).toBe(16);
+  it('keeps lanes clear of the bar edge so a line reads as leaving the piece', () => {
+    const row: LaneRow = { left: 0, right: 10, barTop: 34, barBottom: 104, minY: 0, maxY: 200 };
+    expect(pieceLaneY(row, 'below', 0, 2.5)).toBe(112);
+    expect(pieceLaneY(row, 'below', 1, 2.5)).toBe(119);
+    expect(pieceLaneY(row, 'above', 0, 2.5)).toBe(27);
+    expect(pieceLaneY(row, 'above', 1, 2.5)).toBe(21);
+    // A thicker 4K line adds only its extra half, and deeper levels reuse the outermost lane.
+    expect(pieceLaneY(row, 'below', 0, 5)).toBe(113.25);
+    expect(pieceLaneY(row, 'below', 3, 2.5)).toBe(119);
   });
 
   it('never sits inside the bars when the gap is too small', () => {
