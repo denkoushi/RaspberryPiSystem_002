@@ -94,10 +94,9 @@ function blank(pair: boolean, x = 0) {
 it.each([false, true])('places a remaining part selection at a blank Gantt time, preserving shelf order (pair=%s)', pair => {
   render(<Board pair={pair} />);
   fireEvent.click(screen.getByRole('button', { name: 'フランジ P1 ×3' }));
-  expect(screen.getByText('2件')).toBeInTheDocument();
+  expect(screen.getByText('1件')).toBeInTheDocument();
   blank(pair);
-  expect(moves.mock.calls).toEqual([['a', pair ? '306' : '305', 'anchor', 'before'], ['b', pair ? '306' : '305', 'anchor', 'before']]);
-  expect(screen.queryByText('2件')).not.toBeInTheDocument();
+  expect(moves.mock.calls).toEqual([['a', pair ? '306' : '305', 'anchor', 'before']]);
   expect(screen.queryByText('1件')).not.toBeInTheDocument();
   expect(clear).not.toHaveBeenCalled();
 });
@@ -106,7 +105,7 @@ it('reverses dispatch after the anchor so the final order follows the shelf', ()
   render(<Board />);
   fireEvent.click(screen.getByRole('button', { name: 'フランジ P1 ×3' }));
   blank(false, 10000);
-  expect(moves.mock.calls.map(call => [call[0], call[3]])).toEqual([['b', 'after'], ['a', 'after']]);
+  expect(moves.mock.calls.map(call => [call[0], call[3]])).toEqual([['a', 'after']]);
 });
 
 it('uses the existing reorder action for a tile already on the displayed machine', () => {
@@ -202,7 +201,7 @@ it.each([{ pair: false, pointerType: 'mouse' }, { pair: true, pointerType: 'touc
   for (let i = 0; i < 10; i++) fireEvent.pointerMove(tile, { pointerType, clientX: i, clientY: 10 });
   await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
   fireEvent.pointerUp(tile, { button: 0, pointerType, clientX: 0, clientY: 10 });
-  expect(moves.mock.calls.map(call => call[0])).toEqual(['a', 'b']);
+  expect(moves.mock.calls.map(call => call[0])).toEqual(['a']);
   expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
   expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
   fireEvent.click(tile);
@@ -264,13 +263,8 @@ it.each(['grinding', 'cutting'] as const)('reuses drag feedback on tile selectio
   const sourceLane = screen.getByTestId('planning-gantt-bar-a').closest<HTMLElement>('[data-gantt-lane]')!;
   const otherLane = screen.getByTestId('planning-gantt-bar-anchor').closest<HTMLElement>('[data-gantt-lane]')!;
   const otherTile = screen.getByTestId('planning-shelf-tile-b');
+  fireEvent.click(otherTile);
   fireEvent.click(tile);
-  fireEvent.click(otherTile);
-  expect(otherLane).toContainElement(screen.getByTestId('planning-gantt-insertion'));
-  expect(otherLane).toHaveStyle({ outline: '3px solid rgb(110 231 183)' });
-  expect(sourceLane.style.outline).toBe('');
-
-  fireEvent.click(otherTile);
   const marker = screen.getByTestId('planning-gantt-insertion');
   expect(sourceLane).toContainElement(marker);
   expect(sourceLane.style.outline).toBe('');
@@ -313,4 +307,48 @@ it.each(['grinding', 'cutting'] as const)('draws only repeated parts in distinct
   expect(screen.queryByTestId('planning-gantt-normal-piece-link')).not.toBeInTheDocument();
   fireEvent.click(restored);
   expect(screen.getAllByTestId('planning-gantt-normal-piece-link')).toHaveLength(3);
+});
+
+it.each([false, true])('places the selection at the arrow target with the symbol button (pair=%s)', pair => {
+  render(<Board pair={pair} />);
+  expect(screen.queryByTestId('planning-shelf-place-button')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'フランジ P1 ×3' }));
+  expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
+  const button = screen.getByTestId('planning-shelf-place-button');
+  expect(button).toHaveAccessibleName('選んだ片を矢印の先へ置く');
+  expect(button).toHaveTextContent('');
+  expect(button.parentElement).toBe(screen.getByTestId('planning-shelf-tile-a').parentElement?.parentElement);
+  expect(screen.getAllByTestId('planning-shelf-place-button')).toHaveLength(1);
+  fireEvent.click(button);
+  // Two-machine mode points at the first pane's (empty) lane; one machine at the head of the anchor's lane.
+  expect(moves.mock.calls).toEqual(pair ? [['a', '305', undefined, 'after']]
+    : [['a', '305', 'anchor', 'before']]);
+  expect(screen.queryByTestId('planning-shelf-place-button')).not.toBeInTheDocument();
+});
+
+it('uses the reorder action from the button and hides it when the piece is already at the target', () => {
+  render(<Board outside={false} />);
+  // The arrow points before the head piece, which 'a' already occupies.
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
+  expect(screen.queryByTestId('planning-shelf-place-button')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-b'));
+  fireEvent.click(screen.getByTestId('planning-shelf-place-button'));
+  expect(reorders).toHaveBeenCalledWith('b', 'a', 'before');
+  expect(moves).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('planning-shelf-place-button')).not.toBeInTheDocument();
+});
+
+it('hides the button while controls are disabled or nothing is selected', () => {
+  render(<Board disabled />);
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  expect(screen.queryByTestId('planning-shelf-place-button')).not.toBeInTheDocument();
+});
+
+it('hides the button when the selection has no valid arrow target', () => {
+  render(<Board outside={false} withTest />);
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  expect(screen.queryByTestId('planning-shelf-place-button')).not.toBeInTheDocument();
 });

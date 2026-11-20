@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { memo } from 'react';
+import { Fragment, memo } from 'react';
 
 import { dayLabel, dateToDay } from './planningBoardGanttLayout';
 import { operationSplitColor } from './planningBoardSeibanColor';
@@ -13,6 +13,8 @@ type Props = {
   focused: boolean;
   highlightedItemId: string | null;
   selected: ReadonlySet<string>;
+  showPlaceButton: boolean;
+  placeSelected: () => void;
   onFocus: (seiban: string, focused: boolean) => void;
   toggle: (ids: readonly string[]) => void;
   clickTile: (id: string) => void;
@@ -24,7 +26,7 @@ type Props = {
 };
 
 export const PlanningBoardSeibanShelfColumn = memo(function PlanningBoardSeibanShelfColumn({
-  column, remaining, focused, highlightedItemId, selected, onFocus, toggle, clickTile, startDrag, moveDrag, endDrag, clearDrag, cancelDrag
+  column, remaining, focused, highlightedItemId, selected, showPlaceButton, placeSelected, onFocus, toggle, clickTile, startDrag, moveDrag, endDrag, clearDrag, cancelDrag
 }: Props) {
   return <div data-shelf-unfocused={!focused ? '' : undefined}
     className="flex w-56 shrink-0 flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
@@ -39,6 +41,7 @@ export const PlanningBoardSeibanShelfColumn = memo(function PlanningBoardSeibanS
       {column.parts.map(part => {
         const units = part.units.map(connected => ({ connected, visible: remaining ? connected.filter(tile => !tile.placed) : connected })).filter(unit => unit.visible.length);
         if (!units.length) return null;
+        const placeAfter = showPlaceButton ? units.flatMap(unit => unit.visible).filter(tile => selected.has(tile.item.itemId)).at(-1) : undefined;
         return <div key={part.key} className="flex flex-col gap-[3px]">
           <button type="button" onClick={() => toggle(part.units.flat().filter(tile => !tile.placed).map(tile => tile.item.itemId))}
             className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-1.5 py-0.5 text-left text-slate-200">
@@ -47,7 +50,7 @@ export const PlanningBoardSeibanShelfColumn = memo(function PlanningBoardSeibanS
             <span className="col-start-2 row-start-1 font-mono text-xs font-bold text-slate-400">×{part.quantity ?? '—'}</span>
           </button>
           <div className="flex flex-wrap gap-1">
-            {units.map(({ visible, connected }) => <div key={connected[0]!.item.itemId} className="flex gap-px">
+            {units.map(({ visible, connected }) => <Fragment key={connected[0]!.item.itemId}><div className="flex gap-px">
               {visible.map(tile => {
                 const index = connected.indexOf(tile);
                 const color = operationSplitColor(column.color, index);
@@ -65,7 +68,10 @@ export const PlanningBoardSeibanShelfColumn = memo(function PlanningBoardSeibanS
                   style={{ background: tile.placed ? tile.late ? '#fb7185' : color : 'transparent',
                     borderColor: color, color: tile.late ? tile.placed ? '#fff' : '#fb7185' : tile.placed ? '#020617' : color }}>{tile.resource ?? '—'}</button>;
               })}
-            </div>)}
+            </div>{placeAfter && visible.includes(placeAfter) && <button type="button" data-testid="planning-shelf-place-button" aria-label="選んだ片を矢印の先へ置く"
+              onClick={placeSelected} className="grid h-9 w-7 shrink-0 place-items-center rounded-[5px] border border-slate-500 bg-slate-700 text-white">
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 13 C3 8 6 5 12 4" /><path d="M8 2.5 L12.5 4 L10.5 8.5" /></svg>
+            </button>}</Fragment>)}
           </div>
         </div>;
       })}

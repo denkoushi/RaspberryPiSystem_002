@@ -421,7 +421,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
     else { element.scrollLeft = left; element.scrollTop = top; measureWindow(); }
     return true;
-  }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset, measureWindow]);
+  }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset, measureWindow]); const revealPlaced = useCallback((itemId: string) => { const bar = currentBars.get(itemId); if (bar) scrollToBar(bar); }, [currentBars, scrollToBar]);
   useImperativeHandle(ref, () => ({ scrollToItem: (itemId) => { const bar = currentBars.get(itemId); return bar ? scrollToBar(bar) : false; }, scrollToNextOverlap: () => {
     const element = viewport.current;
     const rows = layout.groups.flatMap((group) => group.rows).filter((row) => row.flagged);
@@ -610,7 +610,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
       </div>
       {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}
       {!sharedSeibanLegend && seibanColors && (showShelf
-        ? <PlanningBoardSeibanShelf ref={legend} interactionRef={localShelf} writePending={resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} getDrop={getShelfDrop} resources={shelfResources} actions={shelfActions}
+        ? <PlanningBoardSeibanShelf ref={legend} interactionRef={localShelf} writePending={resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} selectionDrop={selectedPreview?.drop ?? null} onPlaced={revealPlaced} getDrop={getShelfDrop} resources={shelfResources} actions={shelfActions}
           disabled={!forward || interaction.disabled || interaction.dragDisabled || interaction.pieceDisabled || interaction.pinMode} columns={shelfColumns} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
           highlightedItemId={[...interaction.selectedItemIds].at(-1) ?? null} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={toggleSeiban} />
         : <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
