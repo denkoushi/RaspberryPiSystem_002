@@ -21,6 +21,8 @@ const mockGmailLabels = {
   create: vi.fn()
 };
 
+const mockGetProfile = vi.fn(async () => ({ data: { emailAddress: 'sender@example.com' } }));
+
 const mockGmail = {
   users: {
     messages: mockGmailMessages,
@@ -33,6 +35,7 @@ vi.mock('googleapis', () => {
     google: {
       gmail: vi.fn(() => ({
         users: {
+          getProfile: mockGetProfile,
           messages: mockGmailMessages,
           labels: mockGmailLabels
         }
@@ -70,6 +73,15 @@ describe('GmailApiClient', () => {
       media: { mimeType: 'message/rfc822', body: mime },
     }, { retry: false, timeout: expect.any(Number) });
     expect(gate.execute).toHaveBeenCalledWith('gmail.users.messages.send', expect.any(Function), { allowWait: false });
+  });
+
+  it('refreshes an expired access token with a replayable request before the stream upload', async () => {
+    const order: string[] = [];
+    mockGetProfile.mockImplementationOnce(async () => { order.push('profile'); return { data: {} }; });
+    mockGmailMessages.send.mockImplementationOnce(async () => { order.push('send'); return { data: { id: 'sent-id' } }; });
+    await gmailClient.sendMessageFromMimeUpload('mime');
+    expect(order).toEqual(['profile', 'send']);
+    expect(mockGetProfile).toHaveBeenCalledWith({ userId: 'me', fields: 'emailAddress' }, { retry: false, timeout: expect.any(Number) });
   });
 
   it('rechecks eligibility when the shared Gmail gate admits the upload', async () => {
