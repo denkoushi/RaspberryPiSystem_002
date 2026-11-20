@@ -127,6 +127,11 @@ export function convertOverlayShapeKind(
 
 export const OVERLAY_TEXT_PLACEHOLDER = 'ここに文章を入力';
 
+export function isOverlayTextBlankOrPlaceholder(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed === '' || trimmed === OVERLAY_TEXT_PLACEHOLDER;
+}
+
 export type OverlayCreationKind = 'TEXT' | 'IMAGE' | 'SHAPE';
 
 export function createOverlayForRange(kind: OverlayCreationKind, pageIndex: number, bbox: OverlayBBox): OverlayElement {

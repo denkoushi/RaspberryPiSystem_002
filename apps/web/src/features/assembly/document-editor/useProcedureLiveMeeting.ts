@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { getResolvedClientKey } from '../../../api/client';
 import { getAssemblyProcedureMeetingLiveAvailability } from '../../../api/domains/assembly';
-import { OVERLAY_TEXT_PLACEHOLDER } from '../../overlays/overlayDraft';
+import { isOverlayTextBlankOrPlaceholder } from '../../overlays/overlayDraft';
 
 import { PROCEDURE_TEXT_MAX_LENGTH } from './assemblyDocumentEditorDraft';
 
@@ -125,7 +125,7 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     const text = data.text.trim();
     if (!text) return;
     const t = typeof data.t === 'number' ? data.t : 0;
-    const base = current.text.trim() === '' || current.text.trim() === OVERLAY_TEXT_PLACEHOLDER ? '' : current.text;
+    const base = isOverlayTextBlankOrPlaceholder(current.text) ? '' : current.text;
     const sameLine = session.last !== null && session.last.spk === data.spk && t - session.last.t < SAME_LINE_SECONDS && base !== '';
     const next = sameLine ? base + text : `${base ? `${base}\n` : ''}話者${data.spk}: ${text}`;
     if (next.length > PROCEDURE_TEXT_MAX_LENGTH) { finish(session, '長すぎます'); return; }

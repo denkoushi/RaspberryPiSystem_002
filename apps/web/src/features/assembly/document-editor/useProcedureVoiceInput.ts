@@ -15,7 +15,6 @@ import type { OverlayTextElement } from '@raspi-system/shared-types';
 export { WHISPER_BASE_URL as PROCEDURE_WHISPER_BASE_URL } from '../../voice/voiceTranscription';
 export const PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS = 20000;
 
-
 function meetingErrorMessage(code?: string) {
   if (code === 'meeting_transcribe_too_large' || code === 'meeting_transcribe_too_long') return '長すぎます';
   if (code === 'meeting_transcribe_busy' || code === 'meeting_transcribe_insufficient_memory') return '混んでいます';
