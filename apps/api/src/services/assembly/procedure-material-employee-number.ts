@@ -1,6 +1,4 @@
-import { ApiError } from '../../lib/errors.js';
-
-import { findAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
+import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
 
 import type { ProcedureMaterial } from '@prisma/client';
 
@@ -26,11 +24,6 @@ export function isDeveloperEmployeeNumber(value: string | null | undefined): boo
 }
 
 /** 素材→社員番号用の社員タグ解決。在籍の社員に加え、開発者番号は状態を問わず通す。 */
-export async function resolveProcedureMaterialEmployeeTag(db: Pick<AssemblyTransactionClient, 'employee'>, rawUid: string) {
-  const employee = await findAssemblyOperatorNfcUid(db, rawUid);
-  if (!employee) throw new ApiError(404, '社員タグが見つかりません');
-  if (employee.status !== 'ACTIVE' && !isDeveloperEmployeeNumber(employee.employeeCode)) {
-    throw new ApiError(403, '有効な社員のみ組立作業を開始・再開できます');
-  }
-  return { employeeId: employee.employeeId, employeeCode: employee.employeeCode, displayName: employee.displayName, nfcTagUid: employee.nfcTagUid };
+export function resolveProcedureMaterialEmployeeTag(db: Pick<AssemblyTransactionClient, 'employee'>, rawUid: string) {
+  return resolveActiveAssemblyOperatorNfcUid(db, rawUid, { allowInactive: (employee) => isDeveloperEmployeeNumber(employee.employeeCode) });
 }

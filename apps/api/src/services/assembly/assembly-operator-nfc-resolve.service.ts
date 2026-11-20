@@ -14,8 +14,7 @@ export type AssemblyOperatorNfcResolveResult = {
 
 type AssemblyOperatorNfcDb = Pick<AssemblyTransactionClient, 'employee'>;
 
-/** 状態を問わず NFC UID の社員を探す。拒否の判断は呼び出し側で行う。 */
-export async function findAssemblyOperatorNfcUid(
+async function findAssemblyOperatorNfcUid(
   db: AssemblyOperatorNfcDb,
   rawUid: string
 ): Promise<(AssemblyOperatorNfcResolveResult & { status: EmployeeStatus }) | null> {
@@ -48,16 +47,17 @@ export async function findAssemblyOperatorNfcUid(
   };
 }
 
-/** NFC UID を有効な組立作業者（社員）に解決する。 */
+/** NFC UID を有効な組立作業者（社員）に解決する。allowInactive が真を返す社員は状態を問わず通す。 */
 export async function resolveActiveAssemblyOperatorNfcUid(
   db: AssemblyOperatorNfcDb,
-  rawUid: string
+  rawUid: string,
+  options: { allowInactive?: (employee: { employeeCode: string }) => boolean } = {}
 ): Promise<AssemblyOperatorNfcResolveResult> {
   const employee = await findAssemblyOperatorNfcUid(db, rawUid);
   if (!employee) {
     throw new ApiError(404, '社員タグが見つかりません');
   }
-  if (employee.status !== 'ACTIVE') {
+  if (employee.status !== 'ACTIVE' && !options.allowInactive?.(employee)) {
     throw new ApiError(403, '有効な社員のみ組立作業を開始・再開できます');
   }
   return {
