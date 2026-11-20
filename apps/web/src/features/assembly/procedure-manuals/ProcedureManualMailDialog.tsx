@@ -117,7 +117,6 @@ export function ProcedureManualMailDialog({ documentId, revision, firstPage, pag
         <AssemblyProcedureCropView pageUrl={firstPage.pageUrl} crop={null} overlay={
           <AssemblyProcedureOverlayLayer elements={firstPage.overlays ?? []} assets={assets} />
         } />
-        <span className="procedure-mail-watermark">控え {outputTime.slice(0, 10)} 社員番号 {sender.employeeCode}</span>
       </div>
       <div className="procedure-mail-band procedure-mail-band-footer">
         <strong>{outputTime} 時点の情報です。最新版はキオスクで確認してください。</strong>

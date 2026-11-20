@@ -142,14 +142,14 @@ export class ProcedureManualMailService {
       pageLabel: `${index + 1} / ${pages.length}`,
       informationLabel: `${outputTime} 時点の情報です。最新版はキオスクで確認してください。`,
       outputLabel: `出力 ${outputTime} 社員番号 ${employee.employeeCode} ${client.name} ${employee.displayName}`,
-      watermark: `控え ${outputTime.slice(0, 10)} 社員番号 ${employee.employeeCode}`,
     })));
 
     const pdfSha256 = createHash('sha256').update(pdf).digest('hex');
+    const subject = `要領書の控え ${title} 第${revisionNumber}版`;
     const { id: gmailMessageId } = await this.sender.send({
       to: recipient,
-      subject: `要領書の控え ${title} 第${revisionNumber}版`,
-      filename: `${title} 第${revisionNumber}版.pdf`,
+      subject,
+      filename: `${subject}.pdf`,
       pdf,
     }, async () => {
       // Check after rendering and any wait for the shared Gmail send slot.

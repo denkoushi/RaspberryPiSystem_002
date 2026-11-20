@@ -66,7 +66,7 @@ describe('procedure manual image-only PDF', () => {
     env.SIGNAGE_WEB_CAPTURE_BASE_URL = 'http://localhost:4173';
     const payload: ProcedureManualPrintPayload = {
       title: '組立要領書', revisionLabel: '第1版', pageLabel: '1 / 3',
-      informationLabel: '', outputLabel: '', watermark: '',
+      informationLabel: '', outputLabel: '',
       pageUrl: '/api/storage/assembly-procedure-images/wide.png', crop: null, overlays: [], assets: {},
     };
     try {
@@ -120,7 +120,6 @@ describe('procedure manual image-only PDF', () => {
       title: '組立要領書', revisionLabel: '第2版(改版 2026-11-18)', pageLabel: '1 / 2',
       informationLabel: '2026-11-19 10:01 時点の情報です。最新版はキオスクで確認してください。',
       outputLabel: '出力 2026-11-19 10:01 社員番号 001 組立端末 山田 花子',
-      watermark: '控え 2026-11-19 社員番号 001',
       pageUrl: widePageUrl, crop: { xRatio: 0.2, yRatio: 0, widthRatio: 0.3, heightRatio: 1 }, overlays: [], assets: {},
     };
     try {

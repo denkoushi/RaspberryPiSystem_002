@@ -49,7 +49,6 @@ function PrintPage(print: ProcedureManualPrintPayload) {
         <AssemblyProcedureCropView pageUrl={print.pageUrl} crop={print.crop} overlay={
           <AssemblyProcedureOverlayLayer elements={print.overlays} crop={print.crop} assets={print.assets} />
         } />
-        <div className="procedure-print-watermark">{print.watermark}</div>
       </div>
       <footer className="procedure-print-band">
         <BandText text={print.informationLabel} grow />
