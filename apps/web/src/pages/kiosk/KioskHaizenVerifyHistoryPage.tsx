@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useHaizenShelves } from '../../api/hooks/haizen-overview';
 import { useHaizenVerifyRecords } from '../../api/hooks/haizen-records';
 import { timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
+import { effectiveVerifyResult, RecheckBadge, verifyResults } from '../../features/kiosk/haizen/haizenVerifyResult';
 import { TrailIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { invButton, invButtonGhost, invCard, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
@@ -12,12 +13,8 @@ import type { HaizenVerifyRecord } from '../../features/kiosk/haizen/haizenRecor
 
 const time = (value: number | string) => new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
 const dateTime = (value: string) => `${new Date(value).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })} ${time(value)}`;
-const results = {
-  match: { mark: '✓', label: '一致', color: 'text-inv-green', background: 'bg-inv-green/10' },
-  mismatch: { mark: '×', label: '不一致', color: 'text-inv-red', background: 'bg-inv-red/10' },
-  not_found: { mark: '?', label: '未登録', color: 'text-inv-amber', background: 'bg-inv-amber/10' },
-  error: { mark: '!', label: '照合できませんでした', color: 'text-inv-muted', background: 'bg-inv-muted/10' }
-};
+const results = verifyResults;
+const recheckTime = (value: string) => { const d = new Date(value); return `${d.getMonth() + 1}/${d.getDate()} ${time(value)}`; };
 
 export function KioskHaizenVerifyHistoryPage() {
   const [days, setDays] = useState<1 | 7 | 30>(7);
@@ -30,7 +27,7 @@ export function KioskHaizenVerifyHistoryPage() {
   const all = records.data?.records ?? [];
   const devices = [...new Set(all.map(record => record.deviceName))];
   const base = all.filter(record => (!device || record.deviceName === device) && [record.transfer.orderNo, record.actual.slipNo, record.transfer.fseiban, record.actual.fseiban, record.transfer.partNo, record.actual.partNo].some(value => value?.includes(text.trim())));
-  const rows = base.filter(record => result === 'all' || record.result === result).sort((a, b) => b.verifiedAt.localeCompare(a.verifiedAt));
+  const rows = base.filter(record => result === 'all' || effectiveVerifyResult(record) === result).sort((a, b) => b.verifiedAt.localeCompare(a.verifiedAt));
   const selected = rows.find(record => record.id === selectedId) ?? rows[0];
   const shelfLabel = (code: string) => master.data?.shelves.find(shelf => shelf.shelfCodeRaw === code)?.displayLabel || code;
   const now = Date.now();
@@ -52,7 +49,7 @@ export function KioskHaizenVerifyHistoryPage() {
     </div>
     <div className="flex shrink-0 flex-wrap gap-2">
       <div role="group" aria-label="結果" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
-        {(['all', 'match', 'mismatch', 'not_found', 'error'] as const).map(value => <button key={value} type="button" aria-pressed={result === value} className={`h-11 px-4 text-[15px] font-bold ${result === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'bg-inv-s2 text-inv-muted'}`} onClick={() => setResult(value)}>{value === 'all' ? '全部' : value === 'error' ? '照合できず' : results[value].label} {base.filter(record => value === 'all' || record.result === value).length}</button>)}
+        {(['all', 'match', 'mismatch', 'not_found', 'error'] as const).map(value => <button key={value} type="button" aria-pressed={result === value} className={`h-11 px-4 text-[15px] font-bold ${result === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'bg-inv-s2 text-inv-muted'}`} onClick={() => setResult(value)}>{value === 'all' ? '全部' : value === 'error' ? '照合できず' : results[value].label} {base.filter(record => value === 'all' || effectiveVerifyResult(record) === value).length}</button>)}
       </div>
       <div role="group" aria-label="端末" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
         {[null, ...devices].map(value => <button key={value ?? 'all'} type="button" aria-pressed={device === value} className={`h-11 px-4 text-[15px] font-bold ${device === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'bg-inv-s2 text-inv-muted'}`} onClick={() => setDevice(value)}>{value ?? '全端末'}</button>)}
@@ -64,7 +61,7 @@ export function KioskHaizenVerifyHistoryPage() {
         {rows.length === 0 ? <p className="py-12 text-center text-inv-muted">{records.isPending ? '読込中…' : '記録はありません'}</p> : <table aria-label="照合の記録" className="w-full border-collapse text-left tabular-nums">
           <thead className="sticky top-0 z-10 bg-inv-s2 text-[15px] text-inv-muted"><tr>{['結果', '照合した日時', '製造オーダー', '品名', '製番', '現品票', '端末', '置いた棚'].map(label => <th key={label} scope="col" className={`whitespace-nowrap px-3.5 py-3 ${label === '照合した日時' ? 'text-right' : ''}`}>{label}</th>)}</tr></thead>
           <tbody>{rows.map(record => <tr key={record.id} onClick={() => setSelectedId(record.id)} className={`cursor-pointer border-t border-inv-line hover:bg-inv-cyan/10 ${record.id === selected?.id ? 'bg-inv-cyan/10' : ''}`}>
-            <td className="px-3.5 py-3"><button type="button" aria-label={`${results[record.result].label} ${record.transfer.orderNo}`} onClick={() => setSelectedId(record.id)} className={`flex h-9 w-9 items-center justify-center rounded-full text-xl font-bold ${results[record.result].color} ${results[record.result].background}`}>{results[record.result].mark}</button></td>
+            <td className="px-3.5 py-3"><div className="relative inline-block"><button type="button" aria-label={`${results[record.result].label} ${record.transfer.orderNo}`} onClick={() => setSelectedId(record.id)} className={`flex h-9 w-9 items-center justify-center rounded-full text-xl font-bold ${results[record.result].color} ${results[record.result].background}`}>{results[record.result].mark}</button><RecheckBadge outcome={record.recheckOutcome} size="sm" /></div></td>
             <td className="whitespace-nowrap px-3.5 py-3 text-right text-sm text-inv-muted"><strong className="text-2xl text-inv-text">{timeSincePlaced(record.verifiedAt, now)}</strong><br /><time dateTime={record.verifiedAt}>{dateTime(record.verifiedAt)}</time></td>
             <td className="px-3.5 py-3 font-mono text-[19px] font-bold">{record.transfer.orderNo}</td>
             <td className="px-3.5 py-3 text-[22px] font-black">{record.fhinmei || '—'}</td>
@@ -77,9 +74,15 @@ export function KioskHaizenVerifyHistoryPage() {
       </div>
       {selected && <div className={`${invPanel} flex min-w-0 flex-col gap-4 p-4 lg:sticky lg:top-0`}>
         <div className="flex items-center gap-3">
-          <span className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full text-[28px] font-bold ${results[selected.result].color} ${results[selected.result].background}`}>{results[selected.result].mark}</span>
+          <div className="relative shrink-0"><span className={`flex h-[52px] w-[52px] items-center justify-center rounded-full text-[28px] font-bold ${results[selected.result].color} ${results[selected.result].background}`}>{results[selected.result].mark}</span><RecheckBadge outcome={selected.recheckOutcome} size="lg" /></div>
           <div><h2 className={`text-2xl font-black ${results[selected.result].color}`}>{results[selected.result].label}</h2><p className="text-sm text-inv-muted">{dateTime(selected.verifiedAt)} ・ {selected.deviceName}</p></div>
         </div>
+        {selected.recheckOutcome && selected.recheckedAt && <div data-testid="recheck-line" className={`flex items-center gap-3 rounded-xl px-3 py-2 ${results[selected.recheckOutcome].background} ${results[selected.recheckOutcome].color}`}>
+          <span className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[15px] font-bold leading-none ${results[selected.recheckOutcome].solid}`}>{results[selected.recheckOutcome].mark}</span>
+          <strong className="text-base font-bold">{results[selected.recheckOutcome].label}</strong>
+          <span className="flex-1" />
+          <time dateTime={selected.recheckedAt} className="text-sm text-inv-muted">{recheckTime(selected.recheckedAt)}</time>
+        </div>}
         {selected.reason && <p className={`text-xl font-bold ${results[selected.result].color}`}>{selected.reason}</p>}
         {(selected.fhinmei || selected.machineName) && <h3 className="text-[22px] font-black">{selected.fhinmei} <span className="font-mono text-xl text-inv-muted">{normalizeMachineName(selected.machineName)}</span></h3>}
         <div className="grid grid-cols-2 gap-3">

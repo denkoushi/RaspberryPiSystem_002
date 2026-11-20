@@ -4,6 +4,9 @@ export type HaizenVerifyRecord = {
   deviceName: string;
   result: 'match' | 'mismatch' | 'not_found' | 'error';
   reason: string | null;
+  recheckOutcome: 'match' | 'mismatch' | 'not_found' | 'error' | null;
+  recheckReason: string | null;
+  recheckedAt: string | null;
   transfer: { orderNo: string; partNo: string | null; fseiban: string | null };
   actual: { slipNo: string | null; partNo: string | null; fseiban: string | null };
   mismatch: 'fseiban' | 'part' | null;

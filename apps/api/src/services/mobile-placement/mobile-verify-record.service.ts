@@ -83,6 +83,7 @@ export async function listMobileVerifyRecords(query: z.infer<typeof verifyRecord
     return {
       id: row.id, verifiedAt: row.verifiedAt.toISOString(), deviceName: row.clientDevice.name,
       result: row.outcome, reason: row.reason,
+      recheckOutcome: row.recheckOutcome ?? null, recheckReason: row.recheckReason ?? null, recheckedAt: row.recheckedAt?.toISOString() ?? null,
       transfer: { orderNo: row.transferOrderBarcodeRaw, partNo: row.transferPartRaw || row.expectedFhincd || field(scheduleRow, 'FHINCD'), fseiban: row.expectedFseiban || field(scheduleRow, 'FSEIBAN') },
       actual: { slipNo: row.actualOrderBarcodeRaw || null, partNo: row.actualPartRaw || row.actualPartCode || null, fseiban: row.actualResolvedFseiban || row.actualFseibanRaw || null },
       mismatch: row.reason === 'different_seiban' ? 'fseiban' as const : row.reason === 'different_part' ? 'part' as const : null,

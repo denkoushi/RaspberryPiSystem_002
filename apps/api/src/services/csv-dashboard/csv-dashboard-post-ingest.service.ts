@@ -29,6 +29,7 @@ import {
   PurchaseOrderLookupSyncService,
   type PurchaseOrderLookupSyncResult,
 } from '../purchase-order-lookup/purchase-order-lookup-sync.service.js';
+import { recheckUnresolvedSlipVerifyRecords } from '../mobile-placement/mobile-verify-recheck.service.js';
 import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../rigging/constants.js';
 import {
   RiggingInspectionProjectionService,
@@ -67,7 +68,8 @@ export class CsvDashboardPostIngestService {
     private readonly riggingInspectionProjectionService: RiggingInspectionProjectionService = new RiggingInspectionProjectionService(),
     private readonly scawStfutekigoSyncService: ScawStfutekigoSyncService = new ScawStfutekigoSyncService(),
     private readonly appendRawRowPruneService: CsvDashboardAppendRawRowPruneService = new CsvDashboardAppendRawRowPruneService(),
-    private readonly fkobainoAgePruneService: CsvDashboardFkobainoAgePruneService = new CsvDashboardFkobainoAgePruneService()
+    private readonly fkobainoAgePruneService: CsvDashboardFkobainoAgePruneService = new CsvDashboardFkobainoAgePruneService(),
+    private readonly slipVerifyRecheck: () => Promise<unknown> = () => recheckUnresolvedSlipVerifyRecords()
   ) {}
 
   private static readonly appendRawRowPruneInFlight = new Set<string>();
@@ -108,6 +110,16 @@ export class CsvDashboardPostIngestService {
     logger.info({ dashboardId, ...pruneResult }, '[CsvDashboardPostIngestService] fkobaino age prune completed');
   }
 
+  private async runSlipVerifyRecheck(dashboardId: string): Promise<void> {
+    try {
+      const result = await this.slipVerifyRecheck();
+      logger.info({ dashboardId, result }, '[CsvDashboardPostIngestService] slip verify recheck completed');
+    } catch (error) {
+      // Best-effort: a recheck failure must not fail the ingest.
+      logger.error({ err: error, dashboardId }, '[CsvDashboardPostIngestService] slip verify recheck failed');
+    }
+  }
+
   async runAfterSuccessfulIngest(params: {
     dashboardId: string;
     ingestSource: CsvDashboardIngestSource;
@@ -121,6 +133,7 @@ export class CsvDashboardPostIngestService {
     let purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null = null;
     let riggingInspectionSync: RiggingInspectionSyncResult | null = null;
     let scawStfutekigoSync: ScawStfutekigoSyncResult | null = null;
+    let needsSlipVerifyRecheck = false;
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID) {
       orderSupplementSync = await this.orderSupplementSyncService.syncFromSupplementDashboard();
@@ -163,6 +176,7 @@ export class CsvDashboardPostIngestService {
       );
       resetMachineNameFseibanMatchCaches();
       resetSelfInspectionMachineBoardScheduleRowCaches();
+      needsSlipVerifyRecheck = true;
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID) {
@@ -221,6 +235,7 @@ export class CsvDashboardPostIngestService {
       );
       // Housekeeping must not hold the upload response or ingest scheduler.
       void this.runFkobainoAgePrune(params.dashboardId, params.ingestRunId);
+      needsSlipVerifyRecheck = true;
     }
 
     if (params.dashboardId === RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID) {
@@ -257,6 +272,10 @@ export class CsvDashboardPostIngestService {
         },
         '[CsvDashboardPostIngestService] scawSTFUTEKIGO sync completed'
       );
+    }
+
+    if (needsSlipVerifyRecheck) {
+      await this.runSlipVerifyRecheck(params.dashboardId);
     }
 
     if ((APPEND_RAW_ROW_PRUNE_DASHBOARD_IDS as readonly string[]).includes(params.dashboardId)) {

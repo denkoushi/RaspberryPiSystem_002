@@ -568,4 +568,28 @@ describe('FKOBAINO age pruning after successful sync', () => {
     await expect(service.runAfterSuccessfulIngest({ dashboardId, ingestSource: 'manual' })).rejects.toThrow('ingestRunId is required');
     expect(agePrune).not.toHaveBeenCalled();
   });
+
+  describe('slip verify recheck', () => {
+    it.each([
+      ['production schedule', PRODUCTION_SCHEDULE_DASHBOARD_ID, 1],
+      ['purchase order lookup', PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID, 1],
+      ['other dashboard', '00000000-0000-0000-0000-000000000001', 0],
+    ])('runs once for %s', async (_name, dashboardId, calls) => {
+      const recheck = vi.fn().mockResolvedValue({ checked: 0, matched: 0, mismatched: 0 });
+      const svc = new CsvDashboardPostIngestService(
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, recheck
+      );
+      await svc.runAfterSuccessfulIngest({ dashboardId, ingestSource: 'gmail', ingestRunId: 'run-recheck' });
+      expect(recheck).toHaveBeenCalledTimes(calls);
+    });
+
+    it('does not fail the ingest when the recheck throws', async () => {
+      const recheck = vi.fn().mockRejectedValue(new Error('recheck failed'));
+      const svc = new CsvDashboardPostIngestService(
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, recheck
+      );
+      await expect(svc.runAfterSuccessfulIngest({ dashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, ingestSource: 'gmail' })).resolves.toBeDefined();
+      expect(logError).toHaveBeenCalled();
+    });
+  });
 });

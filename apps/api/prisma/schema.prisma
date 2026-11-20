@@ -6533,6 +6533,9 @@ model MobileSlipVerifyRecord {
   actualPartCode          String?
   matchedBy               String?
   clientRecordId          String?
+  recheckOutcome          MobileSlipVerifyOutcome?
+  recheckReason           String?
+  recheckedAt             DateTime?
   createdAt               DateTime @default(now())
 
   clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
