@@ -1,11 +1,11 @@
-import { deriveProcedureManualKanaRow, normalizeProcedureManualCommonSubject, PROCEDURE_MANUAL_KANA_ROWS } from '@raspi-system/shared-types';
 import { useEffect, useRef, useState } from 'react';
 
 import { renameProcedureManualCommonTarget } from '../../../api/client';
 import { Dialog } from '../../../components/ui/Dialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { procedureManualButtonBase, procedureManualButtonUnselected, procedureManualDialogAction, procedureManualDialogChip, procedureManualDialogInput, procedureManualKanaSelected } from './procedure-manual-button-styles';
+import { procedureManualButtonUnselected, procedureManualDialogAction, procedureManualDialogChip, procedureManualDialogInput } from './procedure-manual-button-styles';
+import { ProcedureManualKanaRowPicker, resolveProcedureManualCommonReading } from './ProcedureManualKanaRowPicker';
 
 import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualCommonCatalogDto } from '../types';
 
@@ -21,9 +21,7 @@ export function ProcedureManualCommonRenameDialog({ item, catalog, onClose, onSa
   const [error, setError] = useState<string | null>(null);
   const targetRef = useRef<HTMLInputElement>(null);
   const trimmed = target.trim();
-  const key = normalizeProcedureManualCommonSubject(trimmed);
-  const known = catalog.subjects.find(row => row.key === key);
-  const needsReading = Boolean(key) && !deriveProcedureManualKanaRow(trimmed) && !known?.kanaRow;
+  const { key, needsReading } = resolveProcedureManualCommonReading(trimmed, catalog);
   const tooLong = trimmed.length > 179 || `${trimmed}_${label}`.length > 200;
   const canSave = !busy && Boolean(key) && trimmed !== original && (!needsReading || Boolean(reading)) && !tooLong;
   useEffect(() => { targetRef.current?.select(); }, []);
@@ -50,7 +48,7 @@ export function ProcedureManualCommonRenameDialog({ item, catalog, onClose, onSa
       <label className="grid gap-1.5 text-base font-bold text-[#9fadb9]">対象
         <input ref={targetRef} value={target} maxLength={179} disabled={busy} onChange={event => { setTarget(event.target.value); setReading(''); }} className={procedureManualDialogInput} />
       </label>
-      {needsReading ? <section aria-label="よみ" className="grid gap-2"><h3 className="text-base text-[#9fadb9]">よみ</h3><div className="grid grid-cols-10 gap-1.5">{PROCEDURE_MANUAL_KANA_ROWS.map(row => <button key={row} type="button" disabled={busy} aria-pressed={reading === row} className={`${procedureManualButtonBase} h-[52px] text-xl ${reading === row ? procedureManualKanaSelected : procedureManualButtonUnselected}`} onClick={() => setReading(row)}>{row}</button>)}</div></section> : null}
+      {needsReading ? <ProcedureManualKanaRowPicker value={reading} onChange={setReading} disabled={busy} /> : null}
       {error ? <p role="alert" className="text-red-400">{error}</p> : null}
       {tooLong ? <p role="alert" className="text-red-400">名前は200文字以内にしてください</p> : null}
       <div className="flex justify-end gap-2.5 border-t border-[#27313b] pt-4">

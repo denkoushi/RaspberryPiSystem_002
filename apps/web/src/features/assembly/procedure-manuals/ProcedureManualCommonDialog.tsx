@@ -1,4 +1,3 @@
-import { deriveProcedureManualKanaRow, normalizeProcedureManualCommonSubject, PROCEDURE_MANUAL_KANA_ROWS } from '@raspi-system/shared-types';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -7,8 +6,9 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
-import { procedureManualButtonBase, procedureManualButtonUnselected, procedureManualCommonChip, procedureManualCommonInput, procedureManualKanaSelected } from './procedure-manual-button-styles';
+import { procedureManualButtonBase, procedureManualButtonUnselected, procedureManualCommonChip, procedureManualCommonInput } from './procedure-manual-button-styles';
 import { ProcedureManualCommonChoiceEditor } from './ProcedureManualCommonChoiceEditor';
+import { ProcedureManualKanaRowPicker, resolveProcedureManualCommonReading } from './ProcedureManualKanaRowPicker';
 
 import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualCommonCatalogDto } from '../types';
 
@@ -25,9 +25,9 @@ export function ProcedureManualCommonDialog({ catalog, items, categoryId, onClos
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busy = creating || actionBusy;
-  const key = normalizeProcedureManualCommonSubject(target);
-  const known = catalog.subjects.find(row => row.key === key);
-  const kanaRow = deriveProcedureManualKanaRow(target) ?? known?.kanaRow ?? reading;
+  const resolved = resolveProcedureManualCommonReading(target, catalog);
+  const key = resolved.key;
+  const kanaRow = resolved.kanaRow ?? reading;
   const action = catalog.actions.find(row => row.id === actionId);
   const duplicate = items.find(row => row.processId === categoryId && row.modelCodeKey === key && row.label === action?.name);
   const similar = key ? items.filter(row => row.modelCodeKey.includes(key) || key.includes(row.modelCodeKey)) : categoryId ? items.filter(row => row.processId === categoryId) : [];
@@ -51,7 +51,7 @@ export function ProcedureManualCommonDialog({ catalog, items, categoryId, onClos
           <h3 className="text-base font-semibold tracking-wider text-[#9fadb9]">対象</h3>
           <input aria-label="対象" placeholder="工具・設備の名前" maxLength={179} value={target} className={procedureManualCommonInput} onChange={event => { setTarget(event.target.value); setReading(''); }} />
           <div className="flex max-h-[112px] flex-wrap gap-2 overflow-auto">{catalog.subjects.filter(row => !categoryId || row.categoryIds.includes(categoryId)).map(row => <button key={row.key} type="button" aria-pressed={key === row.key} className={procedureManualCommonChip(key === row.key)} onClick={() => { setTarget(row.name); setReading(''); }}>{row.name}</button>)}</div>
-          {key && !deriveProcedureManualKanaRow(target) && !known?.kanaRow ? <section aria-label="よみ" className="grid gap-2"><h3 className="text-base text-[#9fadb9]">よみ</h3><div className="grid grid-cols-10 gap-1.5">{PROCEDURE_MANUAL_KANA_ROWS.map(row => <button key={row} type="button" aria-pressed={reading === row} className={`${procedureManualButtonBase} h-[52px] text-xl ${reading === row ? procedureManualKanaSelected : procedureManualButtonUnselected}`} onClick={() => setReading(row)}>{row}</button>)}</div></section> : null}
+          {resolved.needsReading ? <ProcedureManualKanaRowPicker value={reading} onChange={setReading} /> : null}
           <ProcedureManualCommonChoiceEditor kind="actions" choices={catalog.actions} beforeMutation={beforeMutation} onChanged={onChanged}
             onDeleted={id => setActionId(current => current === id ? '' : current)} onEditingChange={setEditingAction} onBusyChange={setActionBusy} disabled={busy}>
             <div className="flex max-h-[160px] flex-wrap gap-2 overflow-auto">{catalog.actions.map(row => (
