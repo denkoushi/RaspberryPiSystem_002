@@ -4,7 +4,10 @@ import { api } from '../../api/client';
 
 const MAX_CACHE_ENTRIES = 30;
 
-const ALLOWED_DERIVATIVE_WIDTHS = [1280, 1920, 2560] as const;
+const ALLOWED_DERIVATIVE_WIDTHS = [1280, 1920, 2560, 4096] as const;
+
+/** 図面作成・改訂エディタ用。最大ズーム(2.5倍)でも寸法文字が読める解像度の派生画像。 */
+export const KIOSK_DRAWING_EDITOR_DISPLAY_WIDTH = 4096;
 
 export type PartMeasurementDrawingBlobUrlOptions = {
   displayWidth?: number;
@@ -30,13 +33,13 @@ export function resolveKioskDrawingDisplayWidth(): number {
 
 /** @internal test helper */
 export function snapDisplayWidthToDerivativeWidth(displayWidth: number): number {
-  const capped = Math.min(2560, Math.ceil(displayWidth));
+  const capped = Math.min(4096, Math.ceil(displayWidth));
   for (const width of ALLOWED_DERIVATIVE_WIDTHS) {
     if (capped <= width) {
       return width;
     }
   }
-  return 2560;
+  return 4096;
 }
 
 /**

@@ -73,7 +73,9 @@ describe('usePartMeasurementDrawingBlobUrl', () => {
     expect(snapDisplayWidthToDerivativeWidth(800)).toBe(1280);
     expect(snapDisplayWidthToDerivativeWidth(1280)).toBe(1280);
     expect(snapDisplayWidthToDerivativeWidth(1500)).toBe(1920);
-    expect(snapDisplayWidthToDerivativeWidth(3000)).toBe(2560);
+    expect(snapDisplayWidthToDerivativeWidth(2000)).toBe(2560);
+    expect(snapDisplayWidthToDerivativeWidth(3000)).toBe(4096);
+    expect(snapDisplayWidthToDerivativeWidth(5000)).toBe(4096);
   });
 
   it('reuses cache on remount so fetch runs only once', async () => {

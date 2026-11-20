@@ -66,6 +66,7 @@ vi.mock('../../api/domains/part-measurement-placement', () => ({
 }));
 
 vi.mock('../../features/part-measurement/usePartMeasurementDrawingBlobUrl', () => ({
+  KIOSK_DRAWING_EDITOR_DISPLAY_WIDTH: 4096,
   usePartMeasurementDrawingBlobUrl: (path: string | null) => ({
     blobUrl: path ? 'blob:test-drawing' : null,
     error: null

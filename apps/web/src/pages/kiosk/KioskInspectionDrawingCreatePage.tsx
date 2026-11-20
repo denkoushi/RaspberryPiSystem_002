@@ -86,7 +86,10 @@ import {
   mapTemplateFixedCountToFormString,
   buildSelfInspectionTemplateApiBody
 } from '../../features/part-measurement/selfInspectionTemplateForm';
-import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
+import {
+  KIOSK_DRAWING_EDITOR_DISPLAY_WIDTH,
+  usePartMeasurementDrawingBlobUrl
+} from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { usePartMeasurementDrawingLocalPreview } from '../../features/part-measurement/usePartMeasurementDrawingLocalPreview';
 
 import { runInspectionDrawingCreateSave } from './kioskInspectionDrawingCreateSave';
@@ -255,7 +258,9 @@ export function KioskInspectionDrawingCreatePage() {
 
   const blobFetchPath = inspectionDrawingBlobFetchPath(serverDrawingPath, hasLocalRenderablePreview);
   const { blobUrl: serverDrawingBlobUrl, error: drawingLoadError } =
-    usePartMeasurementDrawingBlobUrl(blobFetchPath);
+    usePartMeasurementDrawingBlobUrl(blobFetchPath, {
+      displayWidth: KIOSK_DRAWING_EDITOR_DISPLAY_WIDTH
+    });
 
   const canvasImageUrl = inspectionDrawingCanvasImageUrl(localPreviewUrl, serverDrawingBlobUrl);
   const hasDrawingImage = inspectionDrawingHasImageSource(

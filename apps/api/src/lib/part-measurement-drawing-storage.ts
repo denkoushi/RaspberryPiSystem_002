@@ -54,7 +54,7 @@ function assertDrawingSourceKey(storageKey: string): string {
   return storageKey;
 }
 
-export const ALLOWED_DERIVATIVE_WIDTHS = [1280, 1920, 2560] as const;
+export const ALLOWED_DERIVATIVE_WIDTHS = [1280, 1920, 2560, 4096] as const;
 export type DerivativeWidth = (typeof ALLOWED_DERIVATIVE_WIDTHS)[number];
 
 const DERIVATIVE_WEBP_QUALITY = 80;
