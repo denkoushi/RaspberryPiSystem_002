@@ -1,6 +1,7 @@
 """Closed, secret-free Ansible failure diagnostics for durable release status."""
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Mapping
 
@@ -145,8 +146,14 @@ def valid_projected_diagnostic(value: Any, run_id: str) -> bool:
     ) and valid_diagnostic(diagnostic)
 
 
-def summarize_release_journal(raw: str) -> list[str]:
-    """Return closed progress summaries, never raw journal commands or payloads."""
+def summarize_release_journal(
+    raw: str, optional_hosts: frozenset[tuple[str, str]] = frozenset(),
+) -> list[str]:
+    """Return closed progress summaries, never raw journal commands or payloads.
+
+    ``optional_hosts`` holds the inventory's (host, profile) pairs for Pi4/Pi3;
+    only those names may appear in the excluded-host summary.
+    """
     summaries: list[str] = []
     for line in raw.splitlines():
         # Only Ansible's stdout/stderr process, never sudo's command/continuation log.
@@ -156,6 +163,11 @@ def summarize_release_journal(raw: str) -> list[str]:
         message = match.group(1)
         if message.startswith("TASK ["):
             summaries.append("TASK [details omitted]")
+        elif message.startswith('{"event": "optional-host-preflight"'):
+            excluded = _excluded_offline_hosts(message, optional_hosts)
+            summary = "excluded offline hosts: " + " ".join(excluded)
+            if excluded and summary not in summaries:
+                summaries.append(summary)
         elif re.fullmatch(r"(?:ok|changed|skipping): \[[A-Za-z0-9_.-]+\]", message):
             summaries.append(message.split(":", 1)[0])
         elif message.startswith(("fatal:", "failed:")):
@@ -172,3 +184,28 @@ def summarize_release_journal(raw: str) -> list[str]:
             if recap:
                 summaries.append(" ".join(recap.group(1).split()))
     return summaries
+
+
+def _excluded_offline_hosts(
+    message: str, optional_hosts: frozenset[tuple[str, str]],
+) -> list[str]:
+    """Return inventory host/profile pairs skipped as offline, dropping anything else."""
+    try:
+        event = json.loads(message)
+    except (ValueError, RecursionError):
+        return []
+    if not isinstance(event, dict) or event.get("event") != "optional-host-preflight":
+        return []
+    entries = event.get("excluded")
+    if not isinstance(entries, list):
+        return []
+    hosts: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("reason") != "tcp-unreachable":
+            continue
+        pair = (entry.get("host"), entry.get("profile"))
+        if all(isinstance(item, str) for item in pair) and pair in optional_hosts:
+            summary = f"{pair[0]}({pair[1]})"
+            if summary not in hosts:
+                hosts.append(summary)
+    return hosts

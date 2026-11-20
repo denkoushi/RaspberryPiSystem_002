@@ -1449,21 +1449,19 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         raise RuntimeError("first-install requires every explicitly selected kiosk to be reachable")
     if torque_cutover and excluded:
         raise RuntimeError("torque cutover requires every selected torque kiosk to be reachable before quiesce")
-    print(
-        json.dumps(
-            {
-                "event": "optional-host-preflight",
-                "reachable": [
-                    {"profile": profile, "hosts": list(hosts)}
-                    for profile, hosts in reachable_selection
-                ],
-                "excluded": list(excluded),
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        ),
-        flush=True,
+    preflight_event = json.dumps(
+        {
+            "event": "optional-host-preflight",
+            "reachable": [
+                {"profile": profile, "hosts": list(hosts)}
+                for profile, hosts in reachable_selection
+            ],
+            "excluded": list(excluded),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
     )
+    print(preflight_event, flush=True)
     if not reachable_selection:
         raise RuntimeError("all selected optional hosts are offline; no mutation was run")
     profiles = tuple(profile for profile, _hosts in reachable_selection)
@@ -1508,12 +1506,21 @@ def execute_standard_route(args: argparse.Namespace) -> int:
             flush=True,
         )
     command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
-    return execute_ansible_with_cleanup(
-        command, args.run_id,
-        failure_cleanup_command=pi4_failure_cleanup_argv(
-            relative, effective_limit, profiles, args.run_id, torque_cutover=torque_cutover,
-        ),
-    )
+    try:
+        return execute_ansible_with_cleanup(
+            command, args.run_id,
+            failure_cleanup_command=pi4_failure_cleanup_argv(
+                relative, effective_limit, profiles, args.run_id, torque_cutover=torque_cutover,
+            ),
+        )
+    finally:
+        if excluded:
+            # --status reads only the journal tail; repeat the skipped hosts after Ansible.
+            try:
+                print(preflight_event, flush=True)
+            except (OSError, ValueError):
+                # Drop the unwritable stream so interpreter shutdown keeps the exit code.
+                sys.stdout = None
 
 
 def execute_ansible_with_cleanup(
@@ -1540,15 +1547,29 @@ def execute_ansible_with_cleanup(
             print(f"WARNING: deploy-status remove-run failed: {error}", file=sys.stderr, flush=True)
 
 
+def status_optional_hosts(document: dict[str, Any]) -> frozenset[tuple[str, str]]:
+    """Pi4/Pi3 inventory names --status may print; other groups never block --status."""
+    pairs: set[tuple[str, str]] = set()
+    for profile in ("pi4", "pi3"):
+        group = document.get(PROFILE_GROUP[profile])
+        hosts = group.get("hosts") if isinstance(group, dict) else None
+        for host in hosts if isinstance(hosts, list) else ():
+            if isinstance(host, str) and SAFE_INVENTORY_HOST.fullmatch(host):
+                pairs.add((host, profile))
+    return frozenset(pairs)
+
+
 def status(args: argparse.Namespace) -> int:
     inventory, _ = inventory_path(args.inventory)
-    host, user, port = server_connection(inventory_document(inventory))
+    document = inventory_document(inventory)
+    host, user, port = server_connection(document)
+    optional_hosts = status_optional_hosts(document)
     unit = unit_name(args.status)
     properties = ["LoadState", "ActiveState", "SubState", "Result", "ExecMainStatus"]
     show = run(ssh_argv(host, user, port, ["/usr/bin/sudo", "-n", "/usr/bin/systemctl", "show", "--no-pager", *[f"--property={item}" for item in properties], "--", unit]), check=False)
     journal = run(ssh_argv(host, user, port, ["/usr/bin/sudo", "-n", "/usr/bin/journalctl", "--unit", unit, "--lines=200", "--no-pager", "--output=short-iso"]), check=False)
     values = dict(line.split("=", 1) for line in show.stdout.splitlines() if "=" in line)
-    print(json.dumps({"runId": args.status, "unit": unit, "status": values, "journal": summarize_release_journal(journal.stdout)}, ensure_ascii=False))
+    print(json.dumps({"runId": args.status, "unit": unit, "status": values, "journal": summarize_release_journal(journal.stdout, optional_hosts)}, ensure_ascii=False))
     known = values.get("LoadState") == "loaded"
     healthy = values.get("ActiveState") != "failed" and values.get("Result") in {"", "success"}
     return 0 if show.returncode == 0 and known and healthy else 1
