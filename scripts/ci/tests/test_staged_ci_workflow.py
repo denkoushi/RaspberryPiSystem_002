@@ -39,6 +39,37 @@ def job_block(text: str, job: str) -> str:
 
 
 class StagedCiWorkflowTests(unittest.TestCase):
+    def test_non_pr_runs_are_grouped_per_commit_and_never_cancelled(self) -> None:
+        # GitHub keeps one running and one pending run per concurrency group.
+        # A ref-wide main group dropped queued pushes, so their SHA-tagged
+        # release artifacts and the exact-SHA CodeQL/Gitleaks checks that
+        # release-gates waits for were never produced.
+        # The event name keeps a schedule/manual run on the same commit from
+        # replacing a pending push run.
+        key = "${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}"
+        expected = {
+            "ci": (CI, "${{ github.workflow }}-" + key + "-v3"),
+            "codeql": (CODEQL, "codeql-${{ github.workflow }}-" + key),
+            "gitleaks": (GITLEAKS, "gitleaks-${{ github.workflow }}-" + key),
+        }
+        for name, (workflow, group) in expected.items():
+            with self.subTest(workflow=name):
+                block = re.search(r"^concurrency:\n((?:  .*\n)+)", workflow, re.MULTILINE)
+                self.assertIsNotNone(block)
+                lines = [line.strip() for line in block.group(1).splitlines() if not line.strip().startswith("#")]
+                self.assertEqual(
+                    lines,
+                    [f"group: {group}", "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"],
+                )
+
+    def test_concurrent_main_runs_never_fail_on_cache_export(self) -> None:
+        # Per-commit main runs may export the same cache scope at once; a cache
+        # write must never fail the release build.
+        for line in CI.splitlines():
+            if "cache-to:" in line:
+                with self.subTest(line=line.strip()):
+                    self.assertIn("ignore-error=true", line)
+
     def test_full_suite_events_and_jst_schedule_are_declared(self) -> None:
         for workflow in (CI, CODEQL, GITLEAKS):
             self.assertIn("  push:\n    branches: [main]", workflow)

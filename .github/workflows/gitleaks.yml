@@ -15,7 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: gitleaks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Per-commit for non-PR runs: release-gates waits for this check on the exact SHA.
+  group: gitleaks-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
