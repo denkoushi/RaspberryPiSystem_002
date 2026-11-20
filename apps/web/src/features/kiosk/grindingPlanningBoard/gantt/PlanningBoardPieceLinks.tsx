@@ -15,7 +15,7 @@ type Point = { x: number; y: number };
 type Gap = Point & { width: number; height: number };
 /** Scroll offset plus the pane's visible track area, both in container coordinates. */
 type PaneOffset = Point & { box: { left: number; top: number; right: number; bottom: number } };
-const pieceLinkWeight = () => (window.innerWidth >= 3000 ? 9 : 4.5) / pageZoom();
+const pieceLinkWeight = () => (window.innerWidth >= 3000 ? 4 : 2) / pageZoom();
 type Piece = { pane: number; resource: string; id: string; row: number; rowKey: string; part: string; rect: ChainBarPosition['first'] };
 type Pair = { from: Piece; to: Piece; color: string; depth: number; lane?: { side: LaneSide; level: number; rows: LaneRow[] } };
 
@@ -40,10 +40,11 @@ export function pieceLaneSides(pieces: readonly { part: string; pane: number; ro
 }
 
 export function pieceLaneY(row: LaneRow, side: LaneSide, level: number, weight: number) {
-  const step = weight * 1.6 * (level + 1);
+  // Lanes sit flush against the bar edge and against each other: each takes its outline's width (2 × weight).
+  const step = weight * (1 + 2 * level);
   return side === 'below'
-    ? Math.max(Math.min(row.barBottom + step, row.maxY), row.barBottom + weight / 2)
-    : Math.min(Math.max(row.barTop - step, row.minY), row.barTop - weight / 2);
+    ? Math.max(Math.min(row.barBottom + step, row.maxY), row.barBottom + weight)
+    : Math.min(Math.max(row.barTop - step, row.minY), row.barTop - weight);
 }
 
 /** Orthogonal route along the gap above or below the bars, wrapping row by row. Pure geometry. */
@@ -145,15 +146,15 @@ const PieceLink = memo(function PieceLink({ pair: { from, to, color, depth, lane
     const fromEdge = from.rect.top + (below ? from.rect.height : 0);
     const toEdge = to.rect.top + (below ? to.rect.height : 0);
     const { path, arrows } = pieceLanePath({ rows: lane.rows, side: lane.side, level: lane.level, weight, fromX, fromEdge, toX, toEdge });
-    const size = weight * 1.6;
+    const size = weight * 2.5;
     const heads = arrows.map(({ x, y }) => `M ${x - size} ${y - size} L ${x} ${y} L ${x - size} ${y + size}`).join(' ');
     return <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-      <path d={path} stroke="#020617" strokeWidth={weight * 5 / 3} />
-      {heads && <path d={heads} stroke="#020617" strokeWidth={weight * 5 / 3} />}
+      <path d={path} stroke="#020617" strokeWidth={weight * 2} />
+      {heads && <path d={heads} stroke="#020617" strokeWidth={weight * 2} />}
       <path data-testid={duplicate ? undefined : 'planning-gantt-normal-piece-link'} data-from-to={`${from.id}->${to.id}`} d={path} stroke={color} strokeWidth={weight} />
       {heads && <path d={heads} stroke={color} strokeWidth={weight} />}
-      <circle cx={fromX} cy={fromEdge} r={weight * 0.95} fill={color} stroke="#020617" strokeWidth={weight / 3} />
-      <circle cx={toX} cy={toEdge} r={weight * 0.95} fill={color} stroke="#020617" strokeWidth={weight / 3} />
+      <circle cx={fromX} cy={fromEdge} r={weight * 1.5} fill={color} stroke="#020617" strokeWidth={weight / 2} />
+      <circle cx={toX} cy={toEdge} r={weight * 1.5} fill={color} stroke="#020617" strokeWidth={weight / 2} />
     </g>;
   }
   const sameMachine = from.resource === to.resource;
