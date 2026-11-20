@@ -15,7 +15,7 @@ describe('forward vertical geometry', () => {
     const bar = bars[0]!;
     const base = ganttBarGeometry(bar, layout.start, 300, true)!;
     expect(ganttBarGeometry(bar, layout.start, 300, true, false, false, k)).toEqual({ ...base, top: 3 * k, height: 70 * k });
-    expect(ganttBarGeometry(bar, layout.start, 300, true, true, true, k)).toMatchObject({ top: 22 * k, height: 70 * k });
+    expect(ganttBarGeometry(bar, layout.start, 300, true, true, true, k)).toMatchObject({ top: 34 * k, height: 70 * k });
     expect(ganttBarGeometry(bar, layout.start, 300, false, false, false, k)).toEqual(ganttBarGeometry(bar, layout.start, 300, false));
   });
   it('uses each rendered row scale for both local and two-machine chain endpoints', () => {

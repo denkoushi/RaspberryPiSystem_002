@@ -359,7 +359,7 @@ it.each(['021', '022'])('does not scroll to a hidden item in %s, but scrolls to 
   expect(scroll).not.toHaveBeenCalled();
   act(() => { moved = ref.current!.scrollToItem(`visible-${resource}`); });
   expect(moved).toBe(true);
-  expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ top: 300 + 22 - 36, behavior: 'smooth' }));
+  expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ top: 300 + 34 - 36, behavior: 'smooth' }));
 });
 
 function InteractiveBoard({ start = '021', lanes = ['021', '022', '023', '024'], flags = { '021': true, '022': true, '023': true, '024': false }, selected = new Set<string>() }: {

@@ -15,14 +15,16 @@ type Point = { x: number; y: number };
 type Gap = Point & { width: number; height: number };
 /** Scroll offset plus the pane's visible track area, both in container coordinates. */
 type PaneOffset = Point & { box: { left: number; top: number; right: number; bottom: number } };
-const pieceLinkWeight = () => (window.innerWidth >= 3000 ? 4 : 2) / pageZoom();
+const pieceLinkWeight = () => (window.innerWidth >= 3000 ? 5 : 2.5) / pageZoom();
 type Piece = { pane: number; resource: string; id: string; row: number; rowKey: string; part: string; rect: ChainBarPosition['first'] };
 type Pair = { from: Piece; to: Piece; color: string; depth: number; lane?: { side: LaneSide; level: number; rows: LaneRow[] } };
 
 export type LaneSide = 'above' | 'below';
 /** One window row crossed by a link, in layer coordinates. min/max bound where lane lines may sit. */
 export type LaneRow = { left: number; right: number; barTop: number; barBottom: number; minY: number; maxY: number };
-export const PIECE_LANE_LEVELS = 4;
+export const PIECE_LANE_LEVELS = 2;
+/** Distance from the bar edge per level, like the approved sample: clear of the bar, so a line reads as leaving it. */
+const PIECE_LANE_OFFSETS = { below: [8, 15], above: [7, 13] } as const;
 
 /** Alternates parts below/above per pane, in order of their first piece, and staggers levels per side. */
 export function pieceLaneSides(pieces: readonly { part: string; pane: number; row: number; left: number }[]) {
@@ -40,11 +42,11 @@ export function pieceLaneSides(pieces: readonly { part: string; pane: number; ro
 }
 
 export function pieceLaneY(row: LaneRow, side: LaneSide, level: number, weight: number) {
-  // Lanes sit flush against the bar edge and against each other: each takes its outline's width (2 × weight).
-  const step = weight * (1 + 2 * level);
+  // The rows keep the same CSS height on large screens, so only the extra half of a thicker line is added.
+  const offset = PIECE_LANE_OFFSETS[side][Math.min(level, PIECE_LANE_LEVELS - 1)]! + Math.max(0, weight - 2.5) / 2;
   return side === 'below'
-    ? Math.max(Math.min(row.barBottom + step, row.maxY), row.barBottom + weight)
-    : Math.min(Math.max(row.barTop - step, row.minY), row.barTop - weight);
+    ? Math.max(Math.min(row.barBottom + offset, row.maxY), row.barBottom + weight)
+    : Math.min(Math.max(row.barTop - offset, row.minY), row.barTop - weight);
 }
 
 /** Orthogonal route along the gap above or below the bars, wrapping row by row. Pure geometry. */
