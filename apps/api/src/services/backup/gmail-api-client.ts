@@ -712,6 +712,9 @@ export class GmailApiClient {
     try {
       const response = await this.gateExecute('gmail.users.messages.send', async () => {
         options?.signal.throwIfAborted();
+        // google-auth-library cannot replay a stream upload after 401, so refresh the token on this read first.
+        const requestOptions = options ? { retry: false, timeout: options.timeoutMs, signal: options.signal } : this.requestOptions();
+        await this.gmail.users.getProfile({ userId: 'me', fields: 'emailAddress' }, requestOptions);
         await beforeSend?.();
         options?.signal.throwIfAborted();
         return this.gmail.users.messages.send({
@@ -719,7 +722,7 @@ export class GmailApiClient {
           // googleapis selects uploadType=multipart when media and metadata are both supplied.
           requestBody: {},
           media: { mimeType: 'message/rfc822', body: rawMime },
-        }, options ? { retry: false, timeout: options.timeoutMs, signal: options.signal } : this.requestOptions());
+        }, requestOptions);
       });
       const id = response.data.id;
       if (!id) throw new Error('Message id missing from Gmail API send response');
