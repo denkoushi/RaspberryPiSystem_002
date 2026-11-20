@@ -20,5 +20,4 @@ export type ProcedureManualPrintPayload = ProcedureManualPrintPage & {
   pageLabel: string;
   informationLabel: string;
   outputLabel: string;
-  watermark: string;
 };

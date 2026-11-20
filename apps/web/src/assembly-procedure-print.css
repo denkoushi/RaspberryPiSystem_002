@@ -41,14 +41,3 @@ footer.procedure-print-band {
   overflow: hidden;
 }
 
-.procedure-print-watermark {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotate(-28deg);
-  color: rgb(22 28 34 / 16%);
-  font-weight: 700;
-  font-size: 28pt;
-  white-space: nowrap;
-  pointer-events: none;
-}

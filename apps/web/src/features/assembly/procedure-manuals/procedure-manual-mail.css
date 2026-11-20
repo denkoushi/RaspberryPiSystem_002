@@ -220,16 +220,6 @@
   overflow: hidden;
 }
 
-.procedure-mail-watermark {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotate(-35deg);
-  color: #1b222821;
-  font-size: 7.6cqw;
-  font-weight: 700;
-  white-space: nowrap;
-}
 
 .procedure-mail-overlay .procedure-mail-expanded {
   display: block;

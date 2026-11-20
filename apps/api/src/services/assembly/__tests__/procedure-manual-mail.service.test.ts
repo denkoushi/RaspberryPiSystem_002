@@ -144,12 +144,11 @@ describe('ProcedureManualMailService', () => {
         pageUrl: path1, crop: null,
         informationLabel: '2026-11-19 00:07 時点の情報です。最新版はキオスクで確認してください。',
         outputLabel: '出力 2026-11-19 00:07 社員番号 00042 組立キオスク 山田 花子',
-        watermark: '控え 2026-11-19 社員番号 00042',
       }),
       expect.objectContaining({ pageUrl: path2, pageLabel: '2 / 2' }),
     ], { quality: 90, scale: 2 });
     expect(send).toHaveBeenCalledWith({
-      to: 'worker.001@example.com', subject: '要領書の控え 部品組立 第2版', filename: '部品組立 第2版.pdf', pdf,
+      to: 'worker.001@example.com', subject: '要領書の控え 部品組立 第2版', filename: '要領書の控え 部品組立 第2版.pdf', pdf,
     });
     expect(db.procedureManualMailDelivery.create).toHaveBeenCalledWith(expect.objectContaining({
       data: {
