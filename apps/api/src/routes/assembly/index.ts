@@ -4,6 +4,7 @@ import { registerProcedureMaterialRoutes } from './procedure-materials.js';
 import { registerProcedureManualRoutes } from './procedure-manuals.js';
 import { registerProcedureManualMailRoute } from './procedure-manual-mail.js';
 import { registerAssemblyProcedureDocumentRevisionRoutes } from './procedure-document-revisions.js';
+import { registerProcedureMeetingLiveRoutes } from './procedure-meeting-live.js';
 import { registerAssemblyProcedureDocumentEditLeaseRoutes } from './procedure-document-edit-leases.js';
 import { registerAssemblyProcedureDocumentRoutes } from './procedure-documents.js';
 import { authorizeRoles } from '../../lib/auth.js';
@@ -121,6 +122,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
     allowView,
     allowWriteKiosk
   });
+  registerProcedureMeetingLiveRoutes(app, { allowWriteKiosk });
   registerAssemblyProcedureDocumentEditLeaseRoutes(app, { allowWriteKiosk });
 
   registerAssemblyCandidateRoutes(app, { allowView, libraryFilterOptionsService, machineNameCandidatesService, seibanStartService, seibanLotQuantityService });

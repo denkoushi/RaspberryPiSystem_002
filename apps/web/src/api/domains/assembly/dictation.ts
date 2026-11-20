@@ -16,6 +16,13 @@ export async function getAssemblyProcedureMeetingAvailability(signal: AbortSigna
   return data.meetingAvailable === true;
 }
 
+export const ASSEMBLY_PROCEDURE_MEETING_LIVE_PATH = '/assembly/procedure-documents/meeting-live';
+
+export async function getAssemblyProcedureMeetingLiveAvailability(signal: AbortSignal) {
+  const { data } = await api.get<{ available: boolean }>(`${ASSEMBLY_PROCEDURE_MEETING_LIVE_PATH}/availability`, { signal, timeout: 5000 });
+  return data.available === true;
+}
+
 export async function submitAssemblyProcedureMeeting(audio: Blob, signal: AbortSignal) {
   const form = new FormData();
   form.append('audio', audio, 'meeting.webm');

@@ -23,6 +23,7 @@ import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTy
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 import { DocumentEditorMaterials } from './DocumentEditorMaterials';
 import { useMaterialDrag } from './useMaterialDrag';
+import { useProcedureLiveMeeting } from './useProcedureLiveMeeting';
 import { useProcedureMeetingInput } from './useProcedureVoiceInput';
 import { useRotationImagePreload } from './useRotationImagePreload';
 
@@ -83,6 +84,14 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     inlineEditingId,
     documentId: controller.document?.id,
     applyTranscript: controller.updateMeetingText,
+  });
+  const live = useProcedureLiveMeeting({
+    element: controller.selectedElement?.kind === 'TEXT' ? controller.selectedElement : null,
+    enabled: voiceInputEnabled && controller.accessGranted,
+    disabled: inlineEditingId === controller.selectedElement?.id || controller.busy || controller.readOnly,
+    onUpdate: controller.updateElement,
+    onBegin: controller.beginOverlayDrag,
+    onEnd: controller.endOverlayDrag,
   });
   const overlayLayerRef = useRef<HTMLDivElement>(null);
   const overlayInteractionActive = useRef(false);
@@ -363,6 +372,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onDuplicate={controller.duplicateSelectedOverlay}
           onUpdate={controller.updateElement}
           meeting={meeting}
+          live={live}
           onDelete={controller.deleteSelectedOverlay}
           onBringForward={controller.bringForward}
           onSendBackward={controller.sendBackward}
