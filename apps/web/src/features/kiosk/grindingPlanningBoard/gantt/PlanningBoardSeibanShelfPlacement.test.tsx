@@ -299,7 +299,10 @@ it.each(['grinding', 'cutting'] as const)('draws only repeated parts in distinct
   expect(paths.map(path => path.getAttribute('data-from-to'))).toEqual(['anchor->a', 'a->b', 'c->d']);
   expect(paths[0]).toHaveAttribute('stroke', paths[1]!.getAttribute('stroke'));
   expect(paths[0]!.getAttribute('stroke')).not.toBe(paths[2]!.getAttribute('stroke'));
+  const stripes = screen.getAllByTestId('planning-gantt-piece-end-stripe');
+  expect(stripes.map(stripe => stripe.getAttribute('fill'))).toEqual(paths.slice(1).flatMap(path => [path.getAttribute('stroke'), path.getAttribute('stroke')]));
   fireEvent.click(button);
+  expect(screen.queryByTestId('planning-gantt-piece-end-stripe')).not.toBeInTheDocument();
   expect(button).toHaveAttribute('aria-pressed', 'false');
   expect(screen.queryByTestId('planning-gantt-normal-piece-link')).not.toBeInTheDocument();
   expect(JSON.parse(localStorage.getItem(PIECE_LINKS_STORAGE_KEY)!)).toEqual({ schemaVersion: 1, enabled: false });

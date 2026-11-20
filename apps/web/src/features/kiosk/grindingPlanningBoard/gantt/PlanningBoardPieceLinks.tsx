@@ -143,7 +143,7 @@ const PieceEndStripes = memo(function PieceEndStripes({ pair: { from, to, color,
   return <g>{[from.rect, to.rect].map((rect, i) => {
     const stripe = Math.min(weight * 1.75, rect.height / 6);
     const inset = Math.min(weight, rect.width / 4);
-    return <rect key={i} x={rect.left + inset} y={below ? rect.top + rect.height - stripe - weight : rect.top + weight}
+    return <rect key={i} data-testid="planning-gantt-piece-end-stripe" x={rect.left + inset} y={below ? rect.top + rect.height - stripe - weight : rect.top + weight}
       width={Math.max(0, rect.width - inset * 2)} height={stripe} rx={stripe / 3}
       fill={color} stroke="#020617" strokeWidth={weight / 2} />;
   })}</g>;
