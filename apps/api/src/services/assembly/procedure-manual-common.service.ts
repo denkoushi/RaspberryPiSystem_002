@@ -11,6 +11,13 @@ import { COMMON_PARENT_ID, ensureProcedureManualCommonSeeded, ensureProcedureMan
 const commonAssignments = { process: { subjectKind: 'COMMON' as const } };
 const categoryWhere = { subjectKind: 'COMMON' as const, parentId: COMMON_PARENT_ID, active: true };
 
+function parseCommonTarget(raw: string) {
+  const target = raw.trim();
+  const key = procedureManualCommonKey(target);
+  if (!key || target.length > 179) throw new ApiError(400, '対象は1〜179文字で入力してください');
+  return { target, key };
+}
+
 export class ProcedureManualCommonService {
   constructor(private readonly documents = new AssemblyProcedureDocumentService()) {}
 
@@ -42,9 +49,7 @@ export class ProcedureManualCommonService {
   }
 
   async create(input: { categoryId: string; target: string; actionId: string; kanaRow?: string }) {
-    const target = input.target.trim();
-    const key = procedureManualCommonKey(target);
-    if (!key || target.length > 179) throw new ApiError(400, '対象は1〜179文字で入力してください');
+    const { target, key } = parseCommonTarget(input.target);
     await ensureProcedureManualCommonSeeded();
     let page: Awaited<ReturnType<typeof saveBlankProcedurePage>> | undefined;
     try {
@@ -70,9 +75,7 @@ export class ProcedureManualCommonService {
   }
 
   async renameTarget(assignmentId: string, input: { target: string; kanaRow?: string }) {
-    const target = input.target.trim();
-    const key = procedureManualCommonKey(target);
-    if (!key || target.length > 179) throw new ApiError(400, '対象は1〜179文字で入力してください');
+    const { target, key } = parseCommonTarget(input.target);
     await ensureProcedureManualCommonSeeded();
     return runAssemblyTransaction(async tx => {
       await lockProcedureManualCommon(tx);
