@@ -7,7 +7,8 @@ const PHRASES = [
   '字幕作成',
   'Thank you for watching'
 ];
-const EXACT = ['ありがとうございました', 'ありがとうございます', 'おやすみなさい', 'はい', 'ん', 'えー', 'あー'];
+const EXACT = ['ありがとうございました', 'ありがとうございます', 'おやすみなさい', 'えー', 'あー'];
+// Web 側の似た一覧: apps/web/src/features/voice/voiceTranscription.ts(用途が違うので別々に保つ)
 
 /** True for text Whisper commonly invents on silence or noise. */
 export function isHallucination(text: string): boolean {

@@ -1,4 +1,5 @@
 import type { TextChatMessage } from '../../inference/ports/text-completion.port.js';
+import { stripJsonFence } from '../../../lib/strip-json-fence.js';
 
 export type Organized = { topics: string[]; decisions: string[]; open: string[]; actions: string[]; next: string };
 export const EMPTY_ORGANIZED: Organized = { topics: [], decisions: [], open: [], actions: [], next: '' };
@@ -16,7 +17,7 @@ function strings(value: unknown): string[] {
 
 /** Parses the LLM answer defensively; returns null when it is not usable JSON. */
 export function parseOrganized(raw: string): Organized | null {
-  let text = raw.trim().replace(/^```(?:json)?\s*/iu, '').replace(/\s*```$/u, '');
+  let text = stripJsonFence(raw);
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -65,13 +66,14 @@ export function buildOrganizeMessages(transcript: string, previous: Organized | 
 export async function organizeTranscript(
   complete: CompleteFn, transcript: string, previous: Organized | null, timeoutMs = 60000
 ): Promise<Organized | null> {
+  // 失敗・読めない答えは null
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const raw = await complete(buildOrganizeMessages(transcript, previous), controller.signal);
-    return parseOrganized(raw) ?? previous;
+    return parseOrganized(raw);
   } catch {
-    return previous;
+    return null; // 失敗は null で返し、呼び出し側が整理し直す
   } finally {
     clearTimeout(timer);
   }

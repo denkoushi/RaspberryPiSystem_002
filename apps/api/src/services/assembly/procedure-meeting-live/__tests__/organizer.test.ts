@@ -19,10 +19,10 @@ describe('organizer', () => {
     expect(text).not.toContain('納期');
   });
 
-  it('keeps the previous result on failure and truncates the transcript', async () => {
+  it('returns null on failure and truncates the transcript', async () => {
     const prev = parseOrganized(json);
-    expect(await organizeTranscript(async () => 'oops', 'a', prev)).toBe(prev);
-    expect(await organizeTranscript(async () => { throw new Error('x'); }, 'a', prev)).toBe(prev);
+    expect(await organizeTranscript(async () => 'oops', 'a', prev)).toBeNull();
+    expect(await organizeTranscript(async () => { throw new Error('x'); }, 'a', prev)).toBeNull();
     const msgs = buildOrganizeMessages('x'.repeat(20000), prev);
     expect(msgs[1].content.length).toBeLessThan(13000);
     expect(msgs[1].content).toContain('前回の整理');

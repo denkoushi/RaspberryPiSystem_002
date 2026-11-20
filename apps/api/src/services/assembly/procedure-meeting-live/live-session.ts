@@ -84,7 +84,11 @@ export class LiveMeetingSession implements LiveSession {
     const previous = this.organized;
     this.organizing = (async () => {
       const result = await organizeTranscript(this.opts.complete, this.finals.join('\n'), previous, this.timeout);
-      if (result && result !== previous) {
+      if (!result) {
+        this.dirty = true; // 失敗・読めない答えは次の機会(または終了時)に整理し直す
+        return;
+      }
+      if (result !== previous) {
         this.organized = result;
         this.emit({ type: 'doc', text: renderOrganized(result), next: result.next });
       }
