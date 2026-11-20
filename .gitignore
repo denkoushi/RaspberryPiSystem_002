@@ -17,6 +17,9 @@ infrastructure/docker/.env
 infrastructure/ansible/.vault-pass
 infrastructure/ansible/group_vars/**/vault.yml
 infrastructure/ansible/host_vars/**/vault.yml
+# Local Vault backups (for example vault.yml.bak-20261112) must never be tracked.
+infrastructure/ansible/group_vars/**/vault.yml.bak*
+infrastructure/ansible/host_vars/**/vault.yml.bak*
 # Normal-factory host Vault ciphertext is intentionally tracked. The exact
 # allowlist prevents newly added hosts or plaintext Vault files from becoming
 # tracked without review. `.vault-pass` remains ignored above.
