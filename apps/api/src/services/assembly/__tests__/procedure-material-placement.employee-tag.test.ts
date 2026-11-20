@@ -140,3 +140,40 @@ describe('employee material list', () => {
     });
   });
 });
+
+describe('developer employee number 9999', () => {
+  const developer = { ...employee, employeeCode: '9999', nfcTagUid: 'developer' };
+  const developerMaterial = { ...material, appRef: { nameId: '9999' } };
+
+  it.each(['ACTIVE', 'INACTIVE', 'SUSPENDED'])('lists and places 9999 materials with a %s 9999 tag', async status => {
+    mocks.tx.employee.findFirst.mockResolvedValue({ ...developer, status });
+    mocks.tx.procedureMaterial.findMany.mockResolvedValue([developerMaterial, { ...material, id: 'other', appRef: { nameId: '1234' } }]);
+    mocks.tx.procedureMaterial.findUnique.mockResolvedValue(developerMaterial);
+
+    expect(await shelf().listByEmployeeTag('developer')).toMatchObject({
+      employee: { employeeCode: '9999' }, materials: [{ id: developerMaterial.id }],
+    });
+    expect((await shelf().listByEmployeeTag('developer')).materials).toHaveLength(1);
+    await expect(service().place({ ...params, employeeTagUid: 'developer' })).resolves.toMatchObject({ element: { kind: 'TEXT' } });
+  });
+
+  it.each(['INACTIVE', 'SUSPENDED'])('still stops a %s non-9999 tag on list and place', async status => {
+    mocks.tx.employee.findFirst.mockResolvedValue({ ...employee, status });
+    await expect(shelf().listByEmployeeTag('mine')).rejects.toMatchObject({ statusCode: 404, code: 'EMPLOYEE_TAG_NOT_FOUND' });
+    await expect(service().place({ ...params, employeeTagUid: 'mine' })).rejects.toMatchObject({ statusCode: 403, code: 'EMPLOYEE_TAG_MISMATCH' });
+    expect(mocks.tx.procedureMaterial.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not let the 9999 tag place another employee\'s material', async () => {
+    mocks.tx.employee.findFirst.mockResolvedValue({ ...developer, status: 'INACTIVE' });
+    await expect(service().place({ ...params, employeeTagUid: 'developer' })).rejects.toMatchObject({ statusCode: 403, code: 'EMPLOYEE_TAG_MISMATCH' });
+  });
+
+  it('does not let another tag place 9999 materials, and an unknown tag stays 404', async () => {
+    mocks.tx.procedureMaterial.findUnique.mockResolvedValue(developerMaterial);
+    await expect(service().place({ ...params, employeeTagUid: 'mine' })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(service().place(params)).rejects.toMatchObject({ statusCode: 403 });
+    mocks.tx.employee.findFirst.mockResolvedValue(null);
+    await expect(shelf().listByEmployeeTag('unknown')).rejects.toMatchObject({ statusCode: 404 });
+  });
+});

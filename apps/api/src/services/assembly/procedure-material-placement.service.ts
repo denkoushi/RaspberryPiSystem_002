@@ -1,5 +1,4 @@
-import { normalizeEmployeeNumber, materialAppText } from './procedure-material-employee-number.js';
-import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
+import { normalizeEmployeeNumber, materialAppText, resolveProcedureMaterialEmployeeTag } from './procedure-material-employee-number.js';
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -51,7 +50,7 @@ export class ProcedureMaterialPlacementService {
           if (!params.employeeTagUid) throw forbidden();
           let employee;
           try {
-            employee = await resolveActiveAssemblyOperatorNfcUid(tx, params.employeeTagUid);
+            employee = await resolveProcedureMaterialEmployeeTag(tx, params.employeeTagUid);
           } catch (error) {
             if (!(error instanceof ApiError) || ![403, 404].includes(error.statusCode)) throw error;
             throw forbidden();
