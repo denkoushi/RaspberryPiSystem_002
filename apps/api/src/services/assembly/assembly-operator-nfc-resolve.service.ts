@@ -14,7 +14,8 @@ export type AssemblyOperatorNfcResolveResult = {
 
 type AssemblyOperatorNfcDb = Pick<AssemblyTransactionClient, 'employee'>;
 
-async function findAssemblyOperatorNfcUid(
+/** 状態を問わず NFC UID の社員を探す。拒否の判断は呼び出し側で行う。 */
+export async function findAssemblyOperatorNfcUid(
   db: AssemblyOperatorNfcDb,
   rawUid: string
 ): Promise<(AssemblyOperatorNfcResolveResult & { status: EmployeeStatus }) | null> {

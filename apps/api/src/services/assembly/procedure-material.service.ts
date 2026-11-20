@@ -1,6 +1,5 @@
-import { normalizeEmployeeNumber, materialAppText } from './procedure-material-employee-number.js';
+import { normalizeEmployeeNumber, materialAppText, resolveProcedureMaterialEmployeeTag } from './procedure-material-employee-number.js';
 import { buildProcedureMaterialAppNote } from './procedure-material-app-note.js';
-import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
 import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
 
 import { Prisma, type ProcedureMaterialOrigin, type ProcedureMaterial } from '@prisma/client';
@@ -71,7 +70,7 @@ export class ProcedureMaterialService {
   async listByEmployeeTag(uid: string, limit = 500) {
     let employee;
     try {
-      employee = await resolveActiveAssemblyOperatorNfcUid(this.db, uid);
+      employee = await resolveProcedureMaterialEmployeeTag(this.db, uid);
     } catch (error) {
       if (!(error instanceof ApiError) || ![403, 404].includes(error.statusCode)) throw error;
       throw new ApiError(404, '社員タグが見つかりません', undefined, 'EMPLOYEE_TAG_NOT_FOUND');
