@@ -1117,7 +1117,7 @@ describe('two-machine chain links', () => {
     act(() => vi.advanceTimersByTime(20));
     expect(link()).not.toBe(initial);
     const clips = screen.getByTestId('planning-gantt-cross-pane-links').querySelectorAll('clipPath rect');
-    expect(clips[0]).toHaveAttribute('width', '832');
+    expect(clips[0]).toHaveAttribute('width', '880');
     expect(clips[1]).toHaveAttribute('height', '260');
   });
 
@@ -1130,8 +1130,8 @@ describe('two-machine chain links', () => {
     expect(clips).toHaveLength(3);
     expect(clips[2]).toHaveAttribute('y', '260');
     expect(clips[2]).toHaveAttribute('height', '4');
-    expect(clips[2]).toHaveAttribute('x', '168');
-    expect(clips[2]).toHaveAttribute('width', '832');
+    expect(clips[2]).toHaveAttribute('x', '120');
+    expect(clips[2]).toHaveAttribute('width', '880');
   });
 
   it('uses process dashes and a circle across panes after the last interval of a piece', () => {

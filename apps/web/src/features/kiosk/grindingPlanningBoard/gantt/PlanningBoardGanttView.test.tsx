@@ -1178,7 +1178,7 @@ describe('forward PlanningBoardGanttView', () => {
     const rows = document.querySelectorAll<HTMLElement>('[data-gantt-window-row]');
     expect(rows.length).toBeGreaterThanOrEqual(3);
     expect(new Set([...rows].map((row) => row.dataset.ganttWindowRow)).size).toBe(rows.length);
-    for (const row of rows) expect(row.querySelector('[data-gantt-track]')).toHaveStyle({ width: '952px' });
+    for (const row of rows) expect(row.querySelector('[data-gantt-track]')).toHaveStyle({ width: '1000px' });
     if (scale >= 2) expect(screen.getAllByTestId('planning-single-day-tick').length).toBeGreaterThan(0);
     else {
       expect(rows[1]!.querySelector('[data-gantt-decoration="offHourBands"]')).toBeInTheDocument();

@@ -13,7 +13,7 @@ import { findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
 import { forwardItemDetails } from './planningBoardForwardQueue';
 import { operationSplitGap } from './planningBoardGanttGeometry';
 import { dayLabel, dateToDay, workingPeriods } from './planningBoardGanttLayout';
-import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
+import { GANTT_FORWARD_LABEL_WIDTH, GANTT_SINGLE_RESOURCE_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import { PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
@@ -254,7 +254,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
   })), { ...CHIP_STRIP_FIT, maxLines: chipLayout.lines }), [chipLayout, verticalScale]);
   return <div ref={rowRef} data-gantt-vertical-scale={verticalScale} data-gantt-window-row={foldedWindow ? row.key : undefined}
     data-gantt-lane={foldedWindow ? '' : undefined} data-resource-code={foldedWindow ? row.label : undefined} className="flex border-b border-slate-600" style={{ minHeight: rowHeight }} data-testid={`planning-forward-lane-${row.key}`}>
-    <div data-gantt-lane-label className={clsx('sticky left-0 z-20 flex shrink-0 flex-col border-r border-slate-700 px-2 py-0.5 text-xs', foldedWindow && [0, 6].includes(weekday) ? 'bg-slate-800' : 'bg-slate-900', foldedWindow ? 'justify-start gap-1.5 pt-2' : 'justify-evenly')} style={{ width: GANTT_FORWARD_LABEL_WIDTH, fontSize: 12 * textScale, lineHeight: `${16 * textScale}px` }}>
+    <div data-gantt-lane-label className={clsx('sticky left-0 z-20 flex shrink-0 flex-col border-r border-slate-700 px-2 py-0.5 text-xs', foldedWindow && [0, 6].includes(weekday) ? 'bg-slate-800' : 'bg-slate-900', foldedWindow ? 'justify-start gap-1.5 pt-2' : 'justify-evenly')} style={{ width: foldedWindow ? GANTT_SINGLE_RESOURCE_LABEL_WIDTH : GANTT_FORWARD_LABEL_WIDTH, fontSize: 12 * textScale, lineHeight: `${16 * textScale}px` }}>
       {foldedWindow ? <>
         {firstOfDay && <div className="flex items-baseline gap-1.5 whitespace-nowrap">
           <b className={clsx('font-mono text-xl', day === currentDay && 'rounded bg-emerald-400 px-1 text-slate-950')}>{dayLabel(day)}</b>

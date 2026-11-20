@@ -25,7 +25,7 @@ import { PlanningBoardForwardLaterQueue } from './PlanningBoardForwardLaterQueue
 import { PlanningBoardForwardQueuePopover, type ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { isNormalGanttBar , dayLabel, dayToDate, jstDay, planningBoardVisibleBars, type NormalGanttBar, type GanttBar, type GanttLayout } from './planningBoardGanttLayout';
-import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow, type PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
+import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, GANTT_SINGLE_RESOURCE_LABEL_WIDTH, PlanningBoardGanttRow, type PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { PlanningBoardPieceLinks } from './PlanningBoardPieceLinks';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
@@ -198,7 +198,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const singlePauses = !runsThroughBreaks?.has(singleResourceCd ?? '');
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-  const labelWidth = forward ? GANTT_FORWARD_LABEL_WIDTH : GANTT_LABEL_WIDTH;
+  const labelWidth = singleGroup ? GANTT_SINGLE_RESOURCE_LABEL_WIDTH : forward ? GANTT_FORWARD_LABEL_WIDTH : GANTT_LABEL_WIDTH;
   const dayWidth = Math.max(1, viewportWidth - labelWidth) / (scale === 1 ? ONE_DAY_VISIBLE_DAYS : scale);
   const foldedWindows = useMemo(() => singleGroup ? buildSingleResourceWindows(layout.today,
     Math.min(layout.end, Math.max(layout.today + 3, ...singleGroup.rows.flatMap((row) => row.bars.map((bar) => Math.ceil(bar.end ?? layout.today) + 1)))),
