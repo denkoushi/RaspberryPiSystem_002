@@ -43,7 +43,7 @@ export interface BackupHistoryFilters {
 
 // CSVインポートターゲットの型定義
 export interface CsvImportTarget {
-  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours' | 'itemInventoryGmail' | 'machineSignalGmail' | 'procedureMaterialGmail';
+  type: 'employees' | 'items' | 'measuringInstruments' | 'riggingGears' | 'machines' | 'csvDashboards' | 'productionActualHours' | 'itemInventoryGmail' | 'machineSignalGmail' | 'procedureMaterialGmail' | 'dScheduleMinutesGmail';
   source: string; // Dropbox用: パス、Gmail用: 件名パターン、CSVダッシュボード用: ダッシュボードID
 }
 
@@ -209,6 +209,34 @@ export async function restoreDryRun(request: {
 // CSVインポートスケジュールAPI
 export async function getCsvImportSchedules(): Promise<CsvImportScheduleListResponse> {
   const { data } = await api.get<CsvImportScheduleListResponse>('/imports/schedule');
+  return data;
+}
+
+export interface DScheduleMinutesImportRun {
+  id: string;
+  kind: 'D_COMPANY' | 'INTERNAL';
+  filename: string;
+  meetingDate: string;
+  receivedAt: string;
+  createdAt: string;
+  status: string;
+  hasOriginalFile: boolean;
+}
+
+export interface DScheduleMinutesReimportResult {
+  id: string;
+  status: string;
+  warningCounts: Record<string, number>;
+  autoRegistrationSkipped?: 'STALE_FILE';
+}
+
+export async function getDScheduleMinutesImportRuns() {
+  const { data } = await api.get<{ runs: DScheduleMinutesImportRun[] }>('/imports/d-schedule-minutes/runs');
+  return data.runs;
+}
+
+export async function reimportDScheduleMinutesOriginal(id: string) {
+  const { data } = await api.post<DScheduleMinutesReimportResult>(`/imports/d-schedule-minutes/runs/${encodeURIComponent(id)}/reimport`, {}, { timeout: 180_000 });
   return data;
 }
 

@@ -60,6 +60,7 @@ export function CsvImportSchedulePage() {
               board={board}
               scheduleId={selectedSchedule.id}
               cron={selectedSchedule.schedule}
+              showDScheduleMinutesRuns={selectedSchedule.targets?.some(({ type }) => type === 'dScheduleMinutesGmail') ?? false}
               isRunning={run.runningScheduleIds.includes(selectedSchedule.id)}
               runDisabled={run.runningScheduleId !== null || run.runningScheduleIds.includes(selectedSchedule.id) || !selectedSchedule.enabled}
               runMessage={run.runMessage[selectedSchedule.id]}

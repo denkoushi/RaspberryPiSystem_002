@@ -2,6 +2,7 @@ import clsx from 'clsx';
 
 import { formatCsvImportError } from './csvImportError';
 import { CheckIcon, WarnIcon, boardButtonClassName } from './CsvImportScheduleBoard';
+import { DScheduleMinutesImportRuns } from './DScheduleMinutesImportRuns';
 import {
   ALL_DAYS,
   DAY_LABELS,
@@ -24,6 +25,7 @@ type CsvImportScheduleInspectorProps = {
   board: CsvImportScheduleBoardController;
   scheduleId: string;
   cron: string;
+  showDScheduleMinutesRuns: boolean;
   isRunning: boolean;
   runDisabled: boolean;
   runMessage?: string;
@@ -69,6 +71,7 @@ export function CsvImportScheduleInspector({
   board,
   scheduleId,
   cron,
+  showDScheduleMinutesRuns,
   isRunning,
   runDisabled,
   runMessage,
@@ -352,6 +355,7 @@ export function CsvImportScheduleInspector({
           </button>
         </div>
       </div>
+      {showDScheduleMinutesRuns && <DScheduleMinutesImportRuns isScheduleRunning={isRunning} />}
     </aside>
   );
 }
