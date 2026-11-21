@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 import { useLocalLlmAvailability } from '../../../api/hooks/local-llm';
 import { AiUnavailableBadge } from '../../../components/ui/AiUnavailableBadge';
 
@@ -25,6 +27,14 @@ export function ProcedureVoiceInput({ voice, meeting, live, empty, disabled }: {
   const activeLive = live && live.status !== 'idle' ? live : undefined;
   const activeMeeting = activeLive ?? (meeting && meeting.status !== 'idle' ? meeting : undefined);
   const status = activeMeeting?.status ?? voice.status;
+  const next = activeLive?.next ?? '';
+  const [fresh, setFresh] = useState(false);
+  useEffect(() => {
+    if (!next) return;
+    setFresh(true);
+    const timer = setTimeout(() => setFresh(false), 1500);
+    return () => clearTimeout(timer);
+  }, [next]);
   return <div className="grid gap-3">
     <div className="grid grid-cols-2 gap-2">
       {status === 'recording' ? <>
@@ -33,6 +43,7 @@ export function ProcedureVoiceInput({ voice, meeting, live, empty, disabled }: {
           {recordingTime(activeMeeting.elapsedSeconds)}{activeLive ? '' : ' / 60:00'}
         </div> : null}
         <button type="button" data-kiosk-sop-target="assembly-document-editor-voice-stop" disabled={disabled && !activeMeeting} onClick={activeMeeting?.stop ?? voice.stop} className={`${buttonClass} col-span-2 !border-[#ff8a80] !bg-[#ff8a80] !text-[#2a0b08]`}>止める</button>
+        {next ? <div role="status" data-testid="procedure-live-next" className={`col-span-2 rounded-lg border border-[#7cc4ff] px-4 py-3 text-[22px] font-bold leading-[1.45] text-[#eef3f6] transition-colors duration-500 motion-reduce:transition-none ${fresh ? 'bg-[#7cc4ff26]' : 'bg-transparent'}`}>{next}</div> : null}
       </> : status === 'processing' ? <>
           <div role="status" className="col-span-2 flex h-16 items-center justify-center text-lg text-[#f6b93b]">{activeMeeting ? '書き起こし中…' : '文にしています…'}</div>
           {activeMeeting ? meetingButton(true, () => {}) : null}
