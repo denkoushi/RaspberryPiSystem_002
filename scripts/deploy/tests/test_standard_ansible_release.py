@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1674,7 +1675,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertTrue(check[check.index("-i") + 2].endswith("release-agent-coverage-check.yml"))
         variables = json.loads(check[check.index("--extra-vars") + 1])
         self.assertEqual(variables["release_kiosk_agent_services"], [])
-        self.assertEqual(variables["release_allowed_missing_agents"], {})
+        self.assertEqual(json.loads(variables["release_allowed_missing_agents_json"]), {})
 
     def test_torque_print_plan_exposes_manifest_resolution_and_phase_boundaries(
         self,
@@ -2158,7 +2159,7 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0][calls[0].index("--limit") + 1], "pi4-a")
         variables = json.loads(calls[1][calls[1].index("--extra-vars") + 1])
-        self.assertEqual(variables["release_allowed_missing_agents"], {"pi4-a": ["barcode-agent"]})
+        self.assertEqual(json.loads(variables["release_allowed_missing_agents_json"]), {"pi4-a": ["barcode-agent"]})
         self.assertEqual(variables["release_kiosk_agent_services"], ["nfc-agent"])
 
     def test_reread_mismatches_stop_with_the_right_kind(self) -> None:
@@ -2201,7 +2202,7 @@ class AgentSkipGuardTests(unittest.TestCase):
         )
         self.assertEqual(calls[0][calls[0].index("--limit") + 1], "pi4-b")
         variables = json.loads(calls[1][calls[1].index("--extra-vars") + 1])
-        self.assertEqual(variables["release_allowed_missing_agents"], {"pi4-b": ["nfc-agent"]})
+        self.assertEqual(json.loads(variables["release_allowed_missing_agents_json"]), {"pi4-b": ["nfc-agent"]})
 
     def test_coverage_failures_map_to_kinds(self) -> None:
         def stop_kind(executor: object) -> tuple[str, int]:
@@ -2237,6 +2238,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             environment = MODULE.agent_guard_environment()
         self.assertNotIn("ANSIBLE_RUN_TAGS", environment)
         self.assertNotIn("ANSIBLE_SKIP_TAGS", environment)
+        self.assertEqual(environment["ANSIBLE_HASH_BEHAVIOUR"], "replace")
         errors = io.StringIO()
         with redirect_stdout(io.StringIO()) as out, redirect_stderr(errors):
             MODULE.emit_agent_guard_lines("a\nb", "c")
@@ -2269,7 +2271,7 @@ class AgentSkipGuardTests(unittest.TestCase):
     def test_agent_images_script_bounds_ansible_and_keeps_stdout_for_json(self) -> None:
         script = MODULE.agent_images_script(Path("/srv/repo"), MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b")
         self.assertIn("cd /srv/repo ||", script)
-        self.assertIn("ANSIBLE_CONFIG=/srv/repo/infrastructure/ansible/ansible.cfg timeout --kill-after=10 300 ansible-playbook", script)
+        self.assertIn("ANSIBLE_CONFIG=/srv/repo/infrastructure/ansible/ansible.cfg ANSIBLE_HASH_BEHAVIOUR=replace timeout --kill-after=10 300 ansible-playbook", script)
         self.assertIn(f"-i {MODULE.DEFAULT_INVENTORY} ", script)
         self.assertIn(str(MODULE.IMAGES_PLAYBOOK.relative_to(MODULE.ROOT)), script)
         self.assertIn("--limit pi4-a:pi4-b", script)
@@ -2367,6 +2369,25 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertEqual(lines[3:5], ["[agent-guard] first", "[agent-guard] second"])
         self.assertTrue(all(line.startswith("[agent-guard] ") for line in lines))
 
+    def test_guard_timeout_keeps_partial_output_when_the_second_wait_also_times_out(self) -> None:
+        process = mock.MagicMock(pid=1, returncode=None)
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired("ansible", 300, output=b"first-out", stderr=b"first-err"),
+            subprocess.TimeoutExpired("ansible", 15),
+        ]
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg"):
+            with self.assertRaises(MODULE.AgentGuardTimeout) as caught:
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        self.assertEqual((caught.exception.stdout, caught.exception.stderr), ("first-out", "first-err"))
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired("ansible", 300, output="a", stderr="b"),
+            subprocess.TimeoutExpired("ansible", 15, output="a2", stderr=None),
+        ]
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg"):
+            with self.assertRaises(MODULE.AgentGuardTimeout) as caught:
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        self.assertEqual((caught.exception.stdout, caught.exception.stderr), ("a2", "b"))
+
     def test_guard_timeout_keeps_stdout_and_stderr_apart_without_trailing_newlines(self) -> None:
         process = mock.MagicMock(pid=1, returncode=None)
         process.communicate.side_effect = [subprocess.TimeoutExpired("ansible", 300), ("out-no-newline", "err-no-newline")]
@@ -2413,7 +2434,7 @@ class AgentSkipGuardTests(unittest.TestCase):
         sent = json.loads(command[command.index("--extra-vars") + 1])
         directory = sent.pop("release_agent_guard_out_dir")
         self.assertTrue(directory)
-        self.assertEqual(sent, {**variables, "release_allowed_missing_agents": {}})
+        self.assertEqual(sent, {**variables, "release_allowed_missing_agents_json": "{}"})
         with mock.patch.object(
             MODULE, "run_agent_guard_command", side_effect=MODULE.AgentGuardTimeout("x")
         ), redirect_stderr(io.StringIO()):
@@ -2493,17 +2514,32 @@ class AgentSkipGuardTests(unittest.TestCase):
         # A random marker on the command line of both sleepers, so only this test's own processes are looked for
         # (another worktree running the same test on this machine cannot be mistaken for a leftover).
         marker = "guard-timeout-" + uuid.uuid4().hex
-        sleeper = f"python3 -c 'import time; time.sleep(60)' {marker}"
-        command = ["sh", "-c", f"{sleeper} & exec {sleeper}"]
+        ready = Path(tempfile.mkdtemp(prefix="guard-timeout-ready-")) / "pids"
+        self.addCleanup(shutil.rmtree, ready.parent, ignore_errors=True)
+        # The child starts a grandchild as a separate process, records both pids only after the grandchild
+        # exists, then sleeps itself. Neither is replaced by exec, so the group kill must reach both.
+        script = (
+            "import subprocess, sys, time\n"
+            "grandchild = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)', sys.argv[1]])\n"
+            "open(sys.argv[2] + '.tmp', 'w').write(f'{grandchild.pid}')\n"
+            "import os; os.rename(sys.argv[2] + '.tmp', sys.argv[2])\n"
+            "time.sleep(60)\n"
+        )
+        command = [sys.executable, "-c", script, marker, str(ready)]
 
         def alive() -> bool:
             return subprocess.run(["pgrep", "-f", marker], capture_output=True).returncode == 0
 
         self.assertFalse(alive())
-        with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 1):
+        with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 3):
             with self.assertRaises(MODULE.AgentGuardTimeout):
                 MODULE.run_agent_guard_command(command, os.environ.copy())
+        # The grandchild really started before the time-out, and both processes are gone now.
+        self.assertTrue(ready.exists(), "the grandchild never started within the time limit")
+        grandchild_pid = int(ready.read_text())
         time.sleep(0.3)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(grandchild_pid, 0)
         self.assertFalse(alive())
         for call in (
             lambda executor: MODULE.run_coverage_playbook(MODULE.DEFAULT_INVENTORY, "pi4-a", ("pi4-a",), {}, {}, executor),

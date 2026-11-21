@@ -37,7 +37,11 @@ class Fake:
     def __call__(self, command):
         command = list(command)
         self.commands.append(command)
-        done = lambda out="", code=0: subprocess.CompletedProcess(command, code, out, "")  # noqa: E731
+        # git diff --name-only -z separates paths with NUL; the tests write them one per line.
+        nul = "-z" in command
+        done = lambda out="", code=0: subprocess.CompletedProcess(  # noqa: E731
+            command, code, out.replace("\n", "\0") if nul else out, ""
+        )
         if command[:2] == ["git", "rev-parse"]:
             return done(self.o.get("head", S) + "\n")
         if command[:2] == ["git", "status"]:
@@ -156,7 +160,7 @@ class AgentSkipCheckTests(unittest.TestCase):
                     self.commands.append(command)
                     hit = "infrastructure/ansible/staging/group_vars" in command
                     return subprocess.CompletedProcess(
-                        command, 0, "infrastructure/ansible/staging/group_vars/staging.yml\n" if hit else "", ""
+                        command, 0, "infrastructure/ansible/staging/group_vars/staging.yml\0" if hit else "", ""
                     )
                 return super().__call__(command)
 
@@ -167,6 +171,42 @@ class AgentSkipCheckTests(unittest.TestCase):
         self.assertIn("infrastructure/ansible/staging/host_vars", diff)
         self.assertFalse(verdict.ok)
         self.assertIn("configuration changed", verdict.reason)
+
+    def test_playbook_directory_variables_are_part_of_the_config_diff(self) -> None:
+        for directory in ("group_vars", "host_vars"):
+            changed = f"infrastructure/ansible/playbooks/{directory}/all.yml"
+
+            class OnlyThisDirectory(Fake):
+                def __call__(self, command):
+                    command = list(command)
+                    if command[:3] == ["git", "diff", "--name-only"] and "--" in command:
+                        self.commands.append(command)
+                        hit = f"infrastructure/ansible/playbooks/{directory}" in command
+                        return subprocess.CompletedProcess(command, 0, changed + "\0" if hit else "", "")
+                    return super().__call__(command)
+
+            code, text = run_main(OnlyThisDirectory(), "pi4-a:barcode-agent")
+            self.assertEqual(code, 1, directory)
+            self.assertIn("configuration changed", text)
+            self.assertIn(changed, text)
+
+    def test_container_entries_that_are_not_objects_are_unreadable_not_an_exception(self) -> None:
+        for bad in ("text", 3, None, ["x"]):
+            document = report("pi4-a")
+            document["containers"]["barcode-agent"] = [bad]
+            self.assertIn("付けてはいけない", self._assert_refused(Fake(images=json.dumps({"hosts": [document]}))))
+        document = report("pi4-a")
+        document["containers"]["barcode-agent"] = 5
+        self.assertIn("付けてはいけない", self._assert_refused(Fake(images=json.dumps({"hosts": [document]}))))
+
+    def test_paths_with_spaces_are_kept_whole(self) -> None:
+        changed = "apps/web/src/barcode/my scanner.ts\nREADME.md\n"
+        code, text = run_main(Fake(changed=changed), "pi4-a:barcode-agent")
+        self.assertEqual(code, 0)
+        self.assertIn("step 5 candidate: apps/web/src/barcode/my scanner.ts", text)
+        text = self._assert_refused(Fake(config="infrastructure/ansible/group_vars/my file.yml\n"))
+        self.assertIn("infrastructure/ansible/group_vars/my file.yml", text)
+        self.assertEqual(MODULE.split_nul("a b\0c\0"), ["a b", "c"])
 
     def test_step5_candidates_ignore_case_and_a_failed_diff_fails_the_pair(self) -> None:
         code, text = run_main(Fake(changed="apps/web/src/Barcode/Scanner.ts\nNFC.md\n"), "pi4-a:barcode-agent")

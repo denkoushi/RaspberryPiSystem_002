@@ -108,7 +108,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             inventory or self._inventory(hosts, extra),
             {
                 "release_kiosk_agent_services": services,
-                "release_allowed_missing_agents": allowed if allowed is not None else {},
+                "release_allowed_missing_agents_json": json.dumps(allowed if allowed is not None else {}),
                 "release_kiosk_first_install": first_install,
                 "release_kiosk_service_allowlist": [],
                 "release_agent_guard_out_dir": str(out),
@@ -195,6 +195,38 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
                 module.run_agent_coverage_check(args, str(inventory), "k1", (("pi4", ("k1",)),), variables)
         self.assertEqual(caught.exception.kind, "check-failed")
 
+    SHA = "a" * 40
+
+    def _plan_with_inventory_allowance(self, allow: str | None, merge_env: str) -> str:
+        """Run the launcher's coverage check against an inventory that carries its own allowance dict."""
+        hosts = {"k1": self.NFC_BARCODE, "k2": self.NFC_BARCODE}
+        inventory = self._inventory(
+            hosts,
+            {
+                # Both the old dict name and the current JSON-string name: neither may widen the human's allowance.
+                "release_allowed_missing_agents": {"k1": ["barcode-agent"], "k2": ["barcode-agent"]},
+                "release_allowed_missing_agents_json": '{"k1":["barcode-agent"],"k2":["barcode-agent"]}',
+            },
+        )
+        module = self._launcher()
+        args = types_namespace(limit="k1:k2", first_install=False, torque_cutover=False, allow_agent_skip=allow)
+        variables = {"release_kiosk_agent_services": ["nfc-agent"], "release_kiosk_service_allowlist": []}
+        env = {"ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles"), "ANSIBLE_HASH_BEHAVIOUR": merge_env, "ANSIBLE_NOCOLOR": "1"}
+        with mock.patch.dict(os.environ, env):
+            try:
+                module.plan_agent_coverage_check(args, inventory, (("pi4", ("k1", "k2")),), variables)
+            except module.AgentGuardStop as stop:
+                return stop.kind
+        return "passed"
+
+    def test_inventory_allowance_dict_is_not_merged_into_the_human_allowance_under_merge_behaviour(self) -> None:
+        # The launcher forces replace itself; the outer environment asks for merge.
+        self.assertEqual(self._plan_with_inventory_allowance(None, "merge"), "check-failed")
+        partial = f"k1:barcode-agent:{self.SHA}:docker"
+        self.assertEqual(self._plan_with_inventory_allowance(partial, "merge"), "check-failed")
+        full = partial + f",k2:barcode-agent:{self.SHA}:docker"
+        self.assertEqual(self._plan_with_inventory_allowance(full, "merge"), "passed")
+
     def test_enabled_flag_that_depends_on_an_extra_var_reaches_the_same_conclusion_as_the_body(self) -> None:
         hosts = {"k1": {**self.NFC, "barcode_agent_enabled": "{{ release_sha == 'on' }}"}}
         inventory = self._inventory(hosts)
@@ -261,7 +293,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
     def test_undefined_output_directory_fails(self) -> None:
         result = self._run(
             COVERAGE, self._inventory({"k1": self.NFC}),
-            {"release_kiosk_agent_services": ["nfc-agent"], "release_allowed_missing_agents": {}},
+            {"release_kiosk_agent_services": ["nfc-agent"], "release_allowed_missing_agents_json": "{}"},
         )
         self.assertNotEqual(result.returncode, 0)
 
@@ -290,7 +322,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             "barcode-agent c2 ghcr.io/o/raspisys-barcode-agent:" + "b" * 40 + " exited docker",
             "barcode-agent c3 ghcr.io/o/raspisys-barcode-agent:" + "c" * 40 + " running docker",
         ]
-        result, out, log = self._images(rows, {"k1": {"ansible_connection": "local"}})
+        result, out, log = self._images(rows, {"k1": {"ansible_connection": "local", "ansible_become": False}})
         self.assertEqual(result.returncode, 0, self._text(result))
         report = json.loads((out / "k1.json").read_text())
         self.assertEqual(report["host"], "k1")
@@ -313,9 +345,13 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             self.assertEqual(call[2], "{{.Config.Image}} {{.State.Status}}")
             self.assertEqual(len(call), 4)
 
+    def test_read_playbook_asks_for_root_on_the_pi4_itself(self) -> None:
+        play = yaml.safe_load(IMAGES.read_text(encoding="utf-8"))[0]
+        self.assertIs(play["become"], True)
+
     def test_read_playbook_uses_the_inventory_project(self) -> None:
         rows = ["nfc-agent c9 ghcr.io/o/raspisys-nfc-agent:" + "d" * 40 + " running staging-x"]
-        hosts = {"k1": {"ansible_connection": "local", "release_kiosk_compose_project": "staging-x"}}
+        hosts = {"k1": {"ansible_connection": "local", "ansible_become": False, "release_kiosk_compose_project": "staging-x"}}
         result, out, log = self._images(rows, hosts)
         self.assertEqual(result.returncode, 0, self._text(result))
         self.assertIn("label=com.docker.compose.project=staging-x", [item for call in calls_of(log.read_text()) for item in call])
@@ -331,6 +367,8 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
                         "ansible_connection": "ssh",
                         "ansible_host": "192.0.2.1",
                         "ansible_python_interpreter": "/nonexistent/python",
+                        "ansible_become": True,
+                        "ansible_become_method": "sudo",
                     }
                 },
                 "children": {"kiosk": {"hosts": hosts}},
@@ -357,7 +395,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
         out = self.directory / "images-out"
         out.mkdir()
-        inventory = self._inventory_with_ssh_localhost({"k1": {"ansible_connection": "local"}})
+        inventory = self._inventory_with_ssh_localhost({"k1": {"ansible_connection": "local", "ansible_become": False}})
         document = yaml.safe_load(inventory.read_text())
         document["all"]["vars"] = {"raspisys_github_owner": "owner"}
         inventory.write_text(yaml.safe_dump(document), encoding="utf-8")

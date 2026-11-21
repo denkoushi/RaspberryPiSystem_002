@@ -5,6 +5,8 @@
   hosts: kiosk
   gather_facts: false
   any_errors_fatal: false
+  # docker ps/inspect run as root on the Pi4; not left to ansible.cfg.
+  become: true
   tasks:
     - name: Read agent images for this Pi4
       ansible.builtin.import_role:

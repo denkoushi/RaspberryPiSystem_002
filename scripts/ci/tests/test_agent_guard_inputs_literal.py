@@ -36,9 +36,14 @@ IMAGE_INPUTS = {"release_kiosk_nfc_image", "release_kiosk_barcode_image", "relea
 ALWAYS_LITERAL = AGENT_INPUTS | {"release_kiosk_compose_project"}
 INPUTS = ALWAYS_LITERAL | IMAGE_INPUTS
 ROLE_DEFAULTS = "infrastructure/ansible/roles/release_kiosk/defaults/main.yml"
-NO_DEFINITION_FILES = (
+BODY_PLAYBOOK = "infrastructure/ansible/playbooks/deploy-release-standard.yml"
+ROLE_MODULES = {
+    f"{prefix}{name}" for prefix in ("", "ansible.builtin.", "ansible.legacy.") for name in ("import_role", "include_role")
+}
+ROLE_DIRECTORIES = {"vars", "defaults", "tasks", "handlers", "meta"}
+_STATIC_NO_DEFINITION_FILES = (
     "infrastructure/ansible/roles/release_kiosk/",
-    "infrastructure/ansible/playbooks/deploy-release-standard.yml",
+    BODY_PLAYBOOK,
     "infrastructure/ansible/playbooks/release-agent-coverage-check.yml",
     "infrastructure/ansible/playbooks/release-agent-images-read.yml",
 )
@@ -64,7 +69,13 @@ def _is_variable_file(path: Path) -> bool:
         return False
     if path.suffix in {".yml", ".yaml", ".json"}:
         return True
-    return path.suffix == "" and ("group_vars" in path.parts or "host_vars" in path.parts)
+    if path.suffix != "":
+        return False
+    # Ansible also reads extensionless files: group_vars/host_vars, and a role's vars/defaults/tasks/... main.
+    return (
+        "group_vars" in path.parts or "host_vars" in path.parts
+        or ("roles" in path.parts and bool(ROLE_DIRECTORIES & set(path.parts)))
+    )
 
 
 def _tracked_files() -> list[Path]:
@@ -155,17 +166,69 @@ def literal_problems(files: list[Path], root: Path) -> list[str]:
     return problems
 
 
-def definition_problems(files: list[Path], root: Path) -> list[str]:
-    """The release role and guard playbooks must not define the inputs (role defaults excepted)."""
+def _role_references(value):
+    """Role names used by import_role/include_role/roles anywhere in a play or task list."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in ROLE_MODULES and isinstance(item, dict) and isinstance(item.get("name"), str):
+                yield item["name"]
+            elif key == "roles" and isinstance(item, list):
+                for entry in item:
+                    if isinstance(entry, str):
+                        yield entry
+                    elif isinstance(entry, dict):
+                        name = entry.get("role", entry.get("name"))
+                        if isinstance(name, str):
+                            yield name
+            elif key == "dependencies" and isinstance(item, list):
+                for entry in item:
+                    name = entry if isinstance(entry, str) else (entry.get("role", entry.get("name")) if isinstance(entry, dict) else None)
+                    if isinstance(name, str):
+                        yield name
+            yield from _role_references(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _role_references(item)
+
+
+def body_pi4_role_prefixes(root: Path = ROOT) -> tuple[str, ...]:
+    """Roles read by the body's Pi4 (hosts: kiosk) plays, with their role dependencies."""
+    plays = _load(root / BODY_PLAYBOOK)
+    pending = [
+        name for play in plays if isinstance(play, dict) and "kiosk" in str(play.get("hosts", ""))
+        for name in _role_references(play)
+    ]
+    seen: list[str] = []
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.append(name)
+        for meta in ("main.yml", "main.yaml", "main"):
+            path = root / "infrastructure/ansible/roles" / name / "meta" / meta
+            if path.is_file():
+                pending.extend(_role_references(_load(path)))
+    return tuple(f"infrastructure/ansible/roles/{name}/" for name in sorted(seen))
+
+
+def no_definition_prefixes(root: Path = ROOT) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*_STATIC_NO_DEFINITION_FILES, *body_pi4_role_prefixes(root))))
+
+
+def definition_problems(files: list[Path], root: Path, prefixes: tuple[str, ...] | None = None) -> list[str]:
+    """The release role, the body's Pi4 roles and guard playbooks must not define the inputs (role defaults excepted)."""
+    prefixes = prefixes if prefixes is not None else no_definition_prefixes()
     problems: list[str] = []
     for path in files:
         rel = path.relative_to(root).as_posix()
-        if rel == ROLE_DEFAULTS or not rel.startswith(NO_DEFINITION_FILES):
+        if rel == ROLE_DEFAULTS or not rel.startswith(prefixes):
             continue
         document = _load(path)
         keys = set(map(str, _keys(document)))
         for name in sorted(keys & INPUTS):
             problems.append(f"{rel}: defines {name}")
+        for name in sorted(set(_registered(document)) & INPUTS):
+            problems.append(f"{rel}: registers {name}")
         for name in sorted(keys & INCLUDE_VARS):
             problems.append(f"{rel}: uses {name}")
     return problems
@@ -184,6 +247,18 @@ class AgentGuardInputsAreLiteral(unittest.TestCase):
 
     def test_inputs_are_not_defined_by_the_release_role_or_guard_playbooks(self) -> None:
         self.assertEqual(definition_problems(_tracked_files(), ROOT), [])
+
+    def test_the_body_pi4_roles_are_discovered_from_the_playbook(self) -> None:
+        prefixes = body_pi4_role_prefixes()
+        self.assertIn("infrastructure/ansible/roles/common/", prefixes)
+        self.assertIn("infrastructure/ansible/roles/release_kiosk/", prefixes)
+        # Pi5-only roles are not part of the Pi4 plays.
+        self.assertNotIn("infrastructure/ansible/roles/release_pi5/", prefixes)
+        covered = {
+            path.relative_to(ROOT).as_posix() for path in _tracked_files()
+            if path.relative_to(ROOT).as_posix().startswith(prefixes)
+        }
+        self.assertTrue(any(name.startswith("infrastructure/ansible/roles/common/") for name in covered))
 
     def test_enabled_agent_expression_reads_only_the_three_inputs(self) -> None:
         text = (ANSIBLE / "roles/release_kiosk/vars/main.yml").read_text(encoding="utf-8")
@@ -269,6 +344,35 @@ class TheChecksActuallyFail(unittest.TestCase):
         self.assertEqual(
             len(self._problems("infrastructure/ansible/playbooks/release-agent-coverage-check.yml", text, definition_problems)), 1
         )
+
+    def test_registering_an_input_name_is_rejected(self) -> None:
+        text = "- ansible.builtin.command: id\n  register: barcode_agent_enabled\n"
+        problems = self._problems("infrastructure/ansible/roles/release_kiosk/tasks/x.yml", text, definition_problems)
+        self.assertEqual(problems, ["infrastructure/ansible/roles/release_kiosk/tasks/x.yml: registers barcode_agent_enabled"])
+
+    def test_defining_an_input_in_a_role_of_the_body_pi4_play_is_rejected(self) -> None:
+        text = "- ansible.builtin.set_fact:\n    nfc_agent_client_id: x\n"
+        problems = self._problems("infrastructure/ansible/roles/common/tasks/x.yml", text, definition_problems)
+        self.assertEqual(problems, ["infrastructure/ansible/roles/common/tasks/x.yml: defines nfc_agent_client_id"])
+        # A role that no Pi4 play reads is outside the check.
+        self.assertEqual(self._problems("infrastructure/ansible/roles/release_pi5/tasks/x.yml", text, definition_problems), [])
+
+    def test_extensionless_role_variable_files_are_checked(self) -> None:
+        for relative in (
+            "infrastructure/ansible/roles/common/vars/main", "infrastructure/ansible/roles/common/defaults/main",
+        ):
+            self.assertTrue(_is_variable_file(Path(relative)), relative)
+            problems = self._problems(relative, "torque_agent_enabled: true\n", definition_problems)
+            self.assertEqual(problems, [f"{relative}: defines torque_agent_enabled"])
+            self.assertEqual(len(self._problems(relative, "torque_agent_enabled: '{{ x }}'\n", literal_problems)), 1)
+        self.assertFalse(_is_variable_file(Path("infrastructure/ansible/roles/common/templates/x")))
+
+    def test_role_references_are_found_in_every_form(self) -> None:
+        document = yaml.safe_load(
+            "- hosts: kiosk\n  roles:\n    - a\n    - role: b\n  tasks:\n    - block:\n"
+            "        - ansible.builtin.include_role: {name: c}\n        - import_role: {name: d}\n"
+        )
+        self.assertEqual(set(_role_references(document)), {"a", "b", "c", "d"})
 
     def test_jinja_names_are_parsed_not_matched(self) -> None:
         self.assertEqual(jinja_names("{{ a | default(b) }} {% if c %}{{ d }}{% endif %}"), {"a", "b", "c", "d"})

@@ -1593,6 +1593,8 @@ def agent_guard_environment() -> dict[str, str]:
     environment = ansible_environment()
     for name in ("ANSIBLE_RUN_TAGS", "ANSIBLE_SKIP_TAGS"):
         environment.pop(name, None)
+    # An inventory dict of the same name must never be merged into the human's allowance.
+    environment["ANSIBLE_HASH_BEHAVIOUR"] = "replace"
     return environment
 
 
@@ -1605,6 +1607,12 @@ def emit_agent_guard_lines(*streams: str) -> None:
 def emit_agent_guard_stop(stop: AgentGuardStop) -> None:
     emit_agent_guard_lines(str(stop))
     print(AGENT_GUARD_PREFIX + "stop " + json.dumps({"kind": stop.kind}), file=sys.stderr, flush=True)
+
+
+def _text(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value or ""
 
 
 def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -1635,10 +1643,13 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
         stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:
         kill_group()
-        out = err = ""
+        # Partial output captured before the first time-out; the second wait may add to it or fail too.
+        out, err = _text(error.stdout), _text(error.stderr)
         try:
             try:
                 out, err = process.communicate(timeout=15)
+            except subprocess.TimeoutExpired as second:
+                out, err = _text(second.stdout) or out, _text(second.stderr) or err
             except (OSError, subprocess.SubprocessError):
                 pass
         finally:
@@ -1683,7 +1694,11 @@ def read_guard_results(directory: Path) -> dict[str, Any]:
 
 def coverage_variables(base: dict[str, Any], allowed: dict[str, list[str]], directory: str) -> dict[str, Any]:
     """The body's extra vars plus the guard-only ones."""
-    return {**base, "release_allowed_missing_agents": allowed, "release_agent_guard_out_dir": directory}
+    return {
+        **base,
+        "release_allowed_missing_agents_json": json.dumps(allowed, sort_keys=True, separators=(",", ":")),
+        "release_agent_guard_out_dir": directory,
+    }
 
 
 def agent_coverage_argv(inventory: str, limit: str, variables: dict[str, Any]) -> list[str]:
@@ -1822,7 +1837,7 @@ def agent_images_script(remote_root: Path, relative: str, limit: str) -> str:
         f"cd {root} || exit 1",
         'd="$(mktemp -d)" || exit 1',
         "trap 'rm -rf \"$d\"' EXIT",
-        f"ANSIBLE_CONFIG={config} timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
+        f"ANSIBLE_CONFIG={config} ANSIBLE_HASH_BEHAVIOUR=replace timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
         f"ansible-playbook -i {shlex.quote(relative)} {playbook} --limit {shlex.quote(limit)} "
         '-e release_agent_guard_out_dir="$d" >&2',
         "code=$?",

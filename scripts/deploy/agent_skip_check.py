@@ -18,7 +18,10 @@ ROOT = Path(__file__).resolve().parents[2]
 AGENTS = ("nfc-agent", "barcode-agent", "torque-agent")
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
 SAFE_PROJECT = re.compile(r"[a-z0-9][a-z0-9_-]*")
-CONFIG_PATHS = ("infrastructure/ansible/group_vars", "infrastructure/ansible/host_vars", "infrastructure/ansible/roles/client_server_cert_pin")
+CONFIG_PATHS = (
+    "infrastructure/ansible/group_vars", "infrastructure/ansible/host_vars", "infrastructure/ansible/roles/client_server_cert_pin",
+    "infrastructure/ansible/playbooks/group_vars", "infrastructure/ansible/playbooks/host_vars",
+)
 
 Runner = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
 
@@ -42,6 +45,11 @@ class Verdict(NamedTuple):
 
 def default_runner(command: Sequence[str]) -> "subprocess.CompletedProcess[str]":
     return subprocess.run(list(command), cwd=ROOT, text=True, capture_output=True, check=False)
+
+
+def split_nul(text: str) -> list[str]:
+    """Paths of ``git diff --name-only -z`` (a path may contain spaces)."""
+    return [item for item in text.split("\0") if item]
 
 
 def parse_pairs(values: Sequence[str]) -> tuple[Pair, ...]:
@@ -107,10 +115,14 @@ def tag_of(report: dict | None, pair: Pair) -> tuple[str, str, str]:
         project = str(report["project"])  # type: ignore[index]
         expected = str(report["expectedImages"][pair.agent])  # type: ignore[index]
         containers = report["containers"][pair.agent]  # type: ignore[index]
-    except (KeyError, TypeError):
+    except (KeyError, TypeError, IndexError):
         return "", "", "the agent containers could not be read from the host"
+    if not isinstance(containers, list):
+        return "", project, "the agent containers could not be read from the host"
     if len(containers) != 1:
         return "", project, f"{len(containers)} containers found; exactly one is required"
+    if not isinstance(containers[0], dict):
+        return "", project, "the agent containers could not be read from the host"
     image, status = str(containers[0].get("image")), str(containers[0].get("status"))
     if status != "running":
         return "", project, f"the container is {status}, not running"
@@ -151,16 +163,16 @@ def judge(pair: Pair, tag: str, project: str, sha: str, inventory: str, run: Run
             return fail(f"the inventory {inventory} is not tracked by git at {ref[:12]}, so its changes cannot be compared")
     inventory_dir = Path(inventory).parent.as_posix()
     config_paths = tuple(dict.fromkeys((*CONFIG_PATHS, f"{inventory_dir}/group_vars", f"{inventory_dir}/host_vars")))
-    diff = run(["git", "diff", "--name-only", tag, sha, "--", inventory, *config_paths])
+    diff = run(["git", "diff", "--name-only", "-z", tag, sha, "--", inventory, *config_paths])
     if diff.returncode != 0:
         return fail("the configuration diff could not be taken")
-    if diff.stdout.strip():
-        return fail("configuration changed between the two versions: " + ", ".join(diff.stdout.split()))
-    changed = run(["git", "diff", "--name-only", tag, sha])
+    if split_nul(diff.stdout):
+        return fail("configuration changed between the two versions: " + ", ".join(split_nul(diff.stdout)))
+    changed = run(["git", "diff", "--name-only", "-z", tag, sha])
     name = pair.agent.removesuffix("-agent")
     if changed.returncode != 0:
         return fail("差分が取れない (the list of changed files could not be taken)")
-    candidates = tuple(path for path in changed.stdout.split() if name in path.lower())
+    candidates = tuple(path for path in split_nul(changed.stdout) if name in path.lower())
     return Verdict(pair, tag, project, "", candidates)
 
 
