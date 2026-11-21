@@ -134,6 +134,23 @@ describe('live meeting input', () => {
     expect(latestText).toBe('前の文');
   });
 
+  it('shows the suggested next topic while recording and hides it after stopping', async () => {
+    render(<Harness />);
+    await startLive();
+    expect(screen.queryByTestId('procedure-live-next')).toBeNull();
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '納期を決めましょう。' });
+    expect(screen.getByTestId('procedure-live-next').textContent).toBe('納期を決めましょう。');
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '担当を決めましょう。' });
+    expect(screen.getByTestId('procedure-live-next').textContent).toBe('担当を決めましょう。');
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '' });
+    expect(screen.queryByTestId('procedure-live-next')).toBeNull();
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '納期を決めましょう。' });
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    expect(screen.queryByTestId('procedure-live-next')).toBeNull();
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '遅れて届いた案' });
+    expect(screen.queryByTestId('procedure-live-next')).toBeNull();
+  });
+
   it('drops the oldest raw lines first when the text gets too long', async () => {
     render(<Harness />);
     await startLive();
