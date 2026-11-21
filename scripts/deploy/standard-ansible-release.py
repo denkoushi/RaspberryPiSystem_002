@@ -69,6 +69,8 @@ TORQUE_BLUETOOTH_UNIQ = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
 TORQUE_URL = re.compile(r"^https?://[^\s{}]+$")
 TORQUE_URL_VARIABLE = re.compile(r"^\{\{\s*[A-Za-z_][A-Za-z0-9_.]*\s*\}\}$")
 OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
+# A host name that becomes "<name>.json" in a temporary directory: no separator, no leading dot, no "..".
+SAFE_GUARD_RESULT_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 SAFE_COMPOSE_PROJECT = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 AGENT_GUARD_PREFIX = "[agent-guard] "
 # Copied Ansible output must never look like the launcher's own "[agent-guard] stop {...}" line.
@@ -1746,6 +1748,13 @@ def agent_images_argv(inventory: str, hosts: Sequence[str], directory: str) -> l
     ]
 
 
+def require_safe_result_hosts(hosts: Sequence[str], kind: str) -> None:
+    """Refuse before any path is built from a host name (the same constraint the playbook tasks assert)."""
+    for host in hosts:
+        if not isinstance(host, str) or not SAFE_GUARD_RESULT_HOST.fullmatch(host) or ".." in host:
+            raise AgentGuardStop(kind, f"host name {host!r} is not usable for the agent guard result files")
+
+
 def run_coverage_playbook(
     inventory: str,
     limit: str,
@@ -1754,6 +1763,7 @@ def run_coverage_playbook(
     allowed: dict[str, list[str]],
     executor: Any,
 ) -> None:
+    require_safe_result_hosts(hosts, "check-launch-failed")
     directory = tempfile.mkdtemp(prefix="agent-coverage-")
     try:
         command = agent_coverage_argv(inventory, limit, coverage_variables(variables, allowed, directory))
@@ -1761,7 +1771,7 @@ def run_coverage_playbook(
         if result.returncode != 0:
             raise AgentGuardStop(
                 "check-failed",
-                f"agent coverage check failed (exit {result.returncode}); see the Ansible assert message above for the "
+                f"agent coverage check failed (exit {result.returncode}); see the Ansible output above for the "
                 "cause (an enabled Pi4 agent missing from the release set is one). "
                 "Run --print-plan with the same --limit to see the host and agents.",
                 result.returncode,
@@ -1778,6 +1788,7 @@ def run_coverage_playbook(
 
 def reread_agent_images(inventory: str, pairs: Sequence[AgentSkip], executor: Any) -> None:
     """Confirm, inside the Pi5 lock, that each allowed agent still runs exactly version T."""
+    require_safe_result_hosts([pair.host for pair in pairs], "reread-unreadable")
     directory = tempfile.mkdtemp(prefix="agent-images-")
     try:
         result = run_guarded(
@@ -1895,6 +1906,8 @@ def agent_images(args: argparse.Namespace) -> int:
     inventory, relative = inventory_path(args.inventory)
     document = inventory_document(inventory, timeout=AGENT_IMAGES_INVENTORY_SECONDS)
     names = re.split(r"[:,]", args.limit)
+    if any(not SAFE_GUARD_RESULT_HOST.fullmatch(name) or ".." in name for name in names):
+        raise UsageError("--agent-images --limit must list Pi4 kiosk host names of the inventory")
     # Direct members of the kiosk group only: the same reading as selected_profiles.
     kiosks = document.get("kiosk", {}).get("hosts", [])
     if not isinstance(kiosks, list) or any(name not in kiosks or name in document for name in names):

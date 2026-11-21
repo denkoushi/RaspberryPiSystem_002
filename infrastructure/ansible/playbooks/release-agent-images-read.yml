@@ -3,11 +3,14 @@
 # result file per host into release_agent_guard_out_dir. Changes nothing.
 # The guard forces ansible_ssh_args (no multiplexing), but Ansible appends ansible_ssh_common_args and
 # ansible_ssh_extra_args after it, and OpenSSH lets "-S path" or an earlier ControlPath/ControlMaster/ControlPersist
-# win. Refuse such arguments before any host is contacted (every task here is controller-local).
+# win. Refuse such arguments before any host is contacted (every task here is controller-local). Quotes and
+# backslashes are refused too, so the arguments can be checked token by token.
 - name: Refuse SSH multiplexing options in the connection arguments
   hosts: kiosk
   gather_facts: false
   any_errors_fatal: true
+  # Never free: a refused host must stop every host before any other task runs.
+  strategy: linear
   tasks:
     - name: No -S, ControlPath, ControlMaster or ControlPersist in the SSH arguments of this host
       ansible.builtin.assert:
@@ -18,6 +21,8 @@
           the agent guard cannot run with them. Remove them from the inventory
           (ansible_ssh_common_args / ansible_ssh_extra_args).
         quiet: true
+      tags:
+        - always
       delegate_to: localhost
       become: false
       vars:
@@ -26,8 +31,13 @@
         agent_guard_ssh_sources:
           ansible_ssh_common_args: "{{ hostvars[inventory_hostname].ansible_ssh_common_args | default('') | string }}"
           ansible_ssh_extra_args: "{{ hostvars[inventory_hostname].ansible_ssh_extra_args | default('') | string }}"
+        # Quotes and backslashes are refused outright (the value is then not split on whitespace the way ssh reads it).
+        # \x5c is written twice: the class stays valid whether or not the string escapes are decoded.
         agent_guard_ssh_flagged: >-
           {{ (agent_guard_ssh_sources | dict2items
+                | selectattr('value', 'search', '[\x22\x27\x5c\x5c]')
+                | map(attribute='key') | map('regex_replace', '$', ' (quote or backslash)') | list)
+             + (agent_guard_ssh_sources | dict2items
                 | selectattr('value', 'search', '(^|[ \t])-[^- \toiplFEeBbcDIJLOQRWwm]*S')
                 | map(attribute='key') | map('regex_replace', '$', ' (-S)') | list)
              + (agent_guard_ssh_sources | dict2items
@@ -48,6 +58,8 @@
           - (ansible_play_hosts_all | sort) == (release_agent_images_expected_hosts_json | from_json | sort)
         fail_msg: the selected hosts differ from the named kiosks
       run_once: true
+      tags:
+        - always
     - name: Read agent images for this Pi4
       ansible.builtin.import_role:
         name: release_kiosk

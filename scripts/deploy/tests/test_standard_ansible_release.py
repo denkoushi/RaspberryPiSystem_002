@@ -2754,8 +2754,27 @@ class AgentSkipGuardTests(unittest.TestCase):
             self.assertEqual(body[key], value, key)
         extra = set(body) - set(guard)
         self.assertLessEqual(extra, {"release_signage_artifact_image", "release_signage_artifact_sha256", "release_pi5_answer_cache_image"} | {k for k in extra if k.startswith("release_torque")})
-        self.assertNotIn("release_allowed_missing_agents", body)
+        self.assertEqual([key for key in body if key.startswith("release_allowed_missing_agents")], [])
         self.assertNotIn("release_agent_guard_out_dir", body)
+
+    def test_host_names_that_are_not_plain_names_stop_before_any_path_or_command(self) -> None:
+        import tempfile
+
+        parent = Path(tempfile.gettempdir())
+        before = sorted(path.name for path in parent.glob("agent-*"))
+        for name in ("a/../x", "../evil", "a..b", ".hidden", "-x", ""):
+            executor = mock.Mock()
+            with self.assertRaises(MODULE.AgentGuardStop) as caught:
+                MODULE.run_coverage_playbook(MODULE.DEFAULT_INVENTORY, name, (name,), {}, {}, executor)
+            self.assertEqual(caught.exception.kind, "check-launch-failed", name)
+            executor.assert_not_called()
+        executor = mock.Mock()
+        pair = MODULE.AgentSkip("../evil", "nfc-agent", "a" * 40, "proj")
+        with self.assertRaises(MODULE.AgentGuardStop) as caught:
+            MODULE.reread_agent_images(MODULE.DEFAULT_INVENTORY, (pair,), executor)
+        self.assertEqual(caught.exception.kind, "reread-unreadable")
+        executor.assert_not_called()
+        self.assertEqual(sorted(path.name for path in parent.glob("agent-*")), before)
 
     def test_route_stops_when_the_guard_raises_something_unexpected(self) -> None:
         helper = StandardAnsibleReleaseTests()

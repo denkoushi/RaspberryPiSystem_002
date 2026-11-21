@@ -25,6 +25,22 @@
   tags:
     - always
 
+- name: The host name must be usable as a result file name
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+      - "'..' not in inventory_hostname"
+    fail_msg: the host name {{ inventory_hostname }} is not usable for the agent guard result files
+    quiet: true
+  delegate_to: localhost
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    ansible_become: false
+  become: false
+  tags:
+    - always
+
 - name: Write the agent container report on the controller
   ansible.builtin.copy:
     content: >-

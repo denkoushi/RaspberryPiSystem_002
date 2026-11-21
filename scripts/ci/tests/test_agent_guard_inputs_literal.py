@@ -290,11 +290,15 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path) -> str | None:
         candidates = [f"{posixpath.dirname(origin)}/{expression}"]
         if role:
             candidates.append(f"{ROLES_REL}/{role}/tasks/{expression}")
+    found: list[str] = []
     for candidate in candidates:
         normalized = posixpath.normpath(candidate)
-        if normalized.startswith(ANSIBLE_REL + "/") and (root / normalized).is_file():
-            return normalized
-    return None
+        if normalized.startswith(ANSIBLE_REL + "/") and (root / normalized).is_file() and normalized not in found:
+            found.append(normalized)
+    if len(found) > 1:
+        # Ansible picks one by its own search order; a different file than this check follows must not be possible.
+        raise ValueError(f"ambiguous include {expression!r}: both {found[0]} and {found[1]} exist")
+    return found[0] if found else None
 
 
 # Plays of the body whose hosts can never include a Pi4 (the Pi5 and the Pi3 signage). Every other play is followed.
@@ -383,7 +387,11 @@ def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
             if kind == "role":
                 add_role(value, origin)
             elif kind == "tasks":
-                target = _resolve_tasks_file(value, origin, root)
+                try:
+                    target = _resolve_tasks_file(value, origin, root)
+                except ValueError as error:
+                    problems.append(f"{origin}: {error}")
+                    continue
                 if target is None:
                     problems.append(f"{origin}: unresolved include {value!r}")
                 else:
@@ -814,6 +822,22 @@ class TheChecksActuallyFail(unittest.TestCase):
                     "infrastructure/ansible/roles/top/tasks/main.yml": body,
                 })
                 self.assertEqual(len(closure_problems(root)), 1, body)
+
+    def test_an_include_that_exists_both_next_to_the_caller_and_under_the_role_tasks_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            roles = "infrastructure/ansible/roles"
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/sub/a.yml": "- ansible.builtin.include_tasks: x.yml\n",
+                f"{roles}/top/tasks/main.yml": "- ansible.builtin.include_tasks: sub/a.yml\n",
+                f"{roles}/top/tasks/sub/x.yml": "- ansible.builtin.debug: {msg: near}\n",
+            })
+            self.assertEqual(closure_problems(root), [])
+            self._tree(root, {f"{roles}/top/tasks/x.yml": "- ansible.builtin.debug: {msg: far}\n"})
+            problems = closure_problems(root)
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn("ambiguous include", problems[0])
 
     def test_a_role_path_include_from_a_shared_file_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

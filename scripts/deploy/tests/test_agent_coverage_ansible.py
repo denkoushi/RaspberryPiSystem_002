@@ -536,7 +536,9 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
     def _ssh_run(self, playbook: Path, host: dict, **options) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
         module = self._launcher()
         script, log = self._ssh_recorder()
-        inventory = self._inventory({"k1": {"ansible_host": "203.0.113.10", "ansible_ssh_executable": str(script), **host}})
+        base = {"ansible_host": "203.0.113.10", "ansible_ssh_executable": str(script)}
+        hosts = options.get("hosts") or {"k1": host}
+        inventory = self._inventory({name: {**base, **values} for name, values in hosts.items()})
         out = self.directory / f"ssh-out-{len(list(self.directory.glob('ssh-out-*')))}"
         out.mkdir()
         env = module.agent_guard_environment()
@@ -551,7 +553,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         }
         command = [
             "ansible-playbook", "-i", str(inventory), str(playbook), "--extra-vars", json.dumps(variables),
-            "--limit", "k1",
+            "--limit", ":".join(hosts),
         ]
         if options.get("guard_vars", True):
             command.extend(["--extra-vars", module.agent_guard_ssh_extra_vars()])
@@ -579,10 +581,51 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
                 self.assertIn(name, text)
                 self.assertEqual(calls, [], (name, value))
 
+    def test_quoted_or_backslashed_ssh_arguments_are_refused_before_any_connection(self) -> None:
+        bad = (
+            ("ansible_ssh_common_args", '-o "ControlPath=/tmp/x"'),
+            ("ansible_ssh_common_args", "-o 'ControlMaster=auto'"),
+            ("ansible_ssh_common_args", "\"-S\" '/tmp/x'"),
+            ("ansible_ssh_common_args", "-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/tmp/a\\ b"),
+            ("ansible_ssh_common_args", "-o ProxyCommand='ssh -W %h:%p jump'"),
+            ("ansible_ssh_extra_args", '-o "ControlPath=/tmp/x"'),
+        )
+        for playbook in (IMAGES, COVERAGE):
+            for name, value in bad:
+                result, calls = self._ssh_run(playbook, {name: value}, guard_vars=name != "ansible_ssh_extra_args")
+                text = self._text(result)
+                self.assertNotEqual(result.returncode, 0, (playbook.name, name, value, text))
+                self.assertIn("the agent guard cannot run with them", text, (name, value))
+                self.assertEqual(calls, [], (playbook.name, name, value))
+
+    def test_one_refused_host_stops_all_hosts_even_with_the_free_strategy(self) -> None:
+        hosts = {"k1": {}, "k2": {"ansible_ssh_common_args": "-o ControlPath=/tmp/x"}}
+        for playbook in (IMAGES, COVERAGE):
+            result, calls = self._ssh_run(playbook, {}, hosts=hosts, env={"ANSIBLE_STRATEGY": "free"})
+            self.assertNotEqual(result.returncode, 0, self._text(result))
+            self.assertIn("the agent guard cannot run with them", self._text(result))
+            self.assertEqual(calls, [], playbook.name)
+
+    def test_a_host_name_that_is_not_a_plain_name_writes_no_result_file(self) -> None:
+        local = {"ansible_connection": "local", "ansible_become": False}
+        for name in ("a..b", "x.."):
+            inventory = self._inventory({name: local}, {"raspisys_github_owner": "owner"})
+            out = self.directory / f"badname-out-{len(list(self.directory.glob('badname-out-*')))}"
+            out.mkdir()
+            env = self._fake_docker_env(["nfc-agent c1 ghcr.io/o/raspisys-nfc-agent:" + "a" * 40 + " running docker"])
+            result = self._run(
+                IMAGES, inventory,
+                {"release_agent_guard_out_dir": str(out), "release_agent_images_expected_hosts_json": json.dumps([name])},
+                env=env, limit=name,
+            )
+            self.assertNotEqual(result.returncode, 0, (name, self._text(result)))
+            self.assertIn("not usable for the agent guard result files", self._text(result))
+            self.assertEqual(list(out.iterdir()), [], name)
+
     def test_standard_inventory_style_ssh_arguments_pass_the_check_and_ssh_gets_no_multiplexing(self) -> None:
         common = (
             "-o UserKnownHostsFile=/home/u/.ssh/known_hosts -o HostKeyAlias=k1 "
-            "-o StrictHostKeyChecking=yes -o ProxyCommand='ssh -W %h:%p jump'"
+            "-o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes"
         )
         result, calls = self._ssh_run(IMAGES, {"ansible_ssh_common_args": common})
         self.assertNotIn("the agent guard cannot run with them", self._text(result))
