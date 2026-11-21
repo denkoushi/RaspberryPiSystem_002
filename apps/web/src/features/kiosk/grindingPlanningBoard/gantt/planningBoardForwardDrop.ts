@@ -46,6 +46,14 @@ function observeLayout(elements: readonly Element[]) {
   wanted.forEach((element) => { if (!observed.has(element)) { observer!.observe(element); observed.add(element); } });
 }
 
+const activityListeners = new Set<() => void>();
+/** True while a forward drag is in progress (between begin and end of the drop cache). */
+export const isForwardDragActive = () => cacheActive;
+export function subscribeForwardDragActivity(listener: () => void) {
+  activityListeners.add(listener);
+  return () => { activityListeners.delete(listener); };
+}
+
 export function invalidateForwardDropCache() { markDirty(); }
 export function beginForwardDropCache() {
   if (cacheActive) return;
@@ -53,6 +61,7 @@ export function beginForwardDropCache() {
   markDirty();
   window.addEventListener('scroll', markDirty, true);
   window.addEventListener('resize', markDirty);
+  activityListeners.forEach((listener) => listener());
 }
 export function endForwardDropCache() {
   if (!cacheActive) return;
@@ -64,6 +73,7 @@ export function endForwardDropCache() {
   observed.clear();
   window.removeEventListener('scroll', markDirty, true);
   window.removeEventListener('resize', markDirty);
+  activityListeners.forEach((listener) => listener());
 }
 
 const toBox = (rect: DOMRect): Box => ({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
