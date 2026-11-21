@@ -326,7 +326,15 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
 
-    def _images(self, rows: list[str], hosts: dict, extra: dict | None = None, env: dict[str, str] | None = None):
+    def _images(
+        self,
+        rows: list[str],
+        hosts: dict,
+        extra: dict | None = None,
+        env: dict[str, str] | None = None,
+        expected: list[str] | None = None,
+        limit: str = "",
+    ):
         table = self.directory / "table"
         table.write_text("\n".join(rows) + "\n", encoding="utf-8")
         log = self.directory / "docker.log"
@@ -340,8 +348,12 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         out.mkdir(exist_ok=True)
         result = self._run(
             IMAGES, self._inventory(hosts, {"raspisys_github_owner": "owner", **(extra or {})}),
-            {"release_agent_guard_out_dir": str(out)},
+            {
+                "release_agent_guard_out_dir": str(out),
+                "release_agent_images_expected_hosts_json": json.dumps(list(hosts) if expected is None else expected),
+            },
             env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_TABLE": str(table), "FAKE_LOG": str(log), **(env or {})},
+            limit=limit,
         )
         return result, out, log
 
@@ -402,6 +414,21 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, self._text(result))
         self.assertEqual(list(out.glob("*.json")), [])
 
+    def test_read_playbook_fails_before_reading_when_a_group_name_expands_to_other_hosts(self) -> None:
+        rows = ["nfc-agent c1 ghcr.io/o/raspisys-nfc-agent:" + "a" * 40 + " running docker"]
+        local = {"ansible_connection": "local", "ansible_become": False}
+        result, out, log = self._images(rows, {"k1": local, "k2": local}, expected=["kiosk"], limit="kiosk")
+        self.assertNotEqual(result.returncode, 0, self._text(result))
+        self.assertEqual(list(out.glob("*.json")), [])
+        self.assertEqual(log.read_text(), "")
+
+    def test_read_playbook_runs_when_the_selected_hosts_are_exactly_the_named_ones(self) -> None:
+        rows = ["nfc-agent c1 ghcr.io/o/raspisys-nfc-agent:" + "a" * 40 + " running docker"]
+        local = {"ansible_connection": "local", "ansible_become": False}
+        result, out, _log = self._images(rows, {"k1": local, "k2": local}, expected=["k2", "k1"], limit="k1:k2")
+        self.assertEqual(result.returncode, 0, self._text(result))
+        self.assertEqual(sorted(path.stem for path in out.glob("*.json")), ["k1", "k2"])
+
     def test_read_playbook_asks_for_root_on_the_pi4_itself(self) -> None:
         play = yaml.safe_load(IMAGES.read_text(encoding="utf-8"))[0]
         self.assertIs(play["become"], True)
@@ -457,7 +484,8 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         document["all"]["vars"] = {"raspisys_github_owner": "owner"}
         inventory.write_text(yaml.safe_dump(document), encoding="utf-8")
         result = self._run(
-            IMAGES, inventory, {"release_agent_guard_out_dir": str(out)},
+            IMAGES, inventory,
+            {"release_agent_guard_out_dir": str(out), "release_agent_images_expected_hosts_json": '["k1"]'},
             env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_TABLE": str(self.directory / "table"), "FAKE_LOG": str(log)},
         )
         self.assertEqual(result.returncode, 0, self._text(result))

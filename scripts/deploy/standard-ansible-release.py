@@ -1596,7 +1596,12 @@ def allowed_missing_agents(pairs: Sequence[AgentSkip], hosts: Sequence[str]) -> 
     return {host: sorted(agents) for host, agents in result.items()}
 
 
-AGENT_GUARD_SSH_ARGS = "-C -o ControlMaster=no -o ControlPersist=no"
+AGENT_GUARD_SSH_ARGS = "-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none"
+
+
+def agent_guard_ssh_extra_vars() -> str:
+    """Extra vars outrank an inventory ansible_ssh_args, which outranks the environment variable."""
+    return json.dumps({"ansible_ssh_args": AGENT_GUARD_SSH_ARGS}, separators=(",", ":"))
 
 
 def agent_guard_environment() -> dict[str, str]:
@@ -1717,6 +1722,7 @@ def agent_coverage_argv(inventory: str, limit: str, variables: dict[str, Any]) -
     command = [
         "ansible-playbook", "-i", inventory, str(COVERAGE_PLAYBOOK),
         "--extra-vars", json.dumps(variables, sort_keys=True, separators=(",", ":")),
+        "--extra-vars", agent_guard_ssh_extra_vars(),
     ]
     if limit:
         command.extend(["--limit", limit])
@@ -1727,6 +1733,7 @@ def agent_images_argv(inventory: str, limit: str, directory: str) -> list[str]:
     return [
         "ansible-playbook", "-i", inventory, str(IMAGES_PLAYBOOK), "--limit", limit,
         "--extra-vars", json.dumps({"release_agent_guard_out_dir": directory}, separators=(",", ":")),
+        "--extra-vars", agent_guard_ssh_extra_vars(),
     ]
 
 
@@ -1841,7 +1848,7 @@ def plan_agent_coverage_check(
     )
 
 
-def agent_images_script(remote_root: Path, relative: str, limit: str) -> str:
+def agent_images_script(remote_root: Path, relative: str, limit: str, expected_hosts: Sequence[str] = ()) -> str:
     root = shlex.quote(str(remote_root))
     config = shlex.quote(str(remote_root / "infrastructure/ansible/ansible.cfg"))
     playbook = shlex.quote(str(IMAGES_PLAYBOOK.relative_to(ROOT)))
@@ -1854,6 +1861,8 @@ def agent_images_script(remote_root: Path, relative: str, limit: str) -> str:
         f"ANSIBLE_CONFIG={config} ANSIBLE_HASH_BEHAVIOUR=replace ANSIBLE_SSH_ARGS={shlex.quote(AGENT_GUARD_SSH_ARGS)} "
         f"timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
         f"ansible-playbook -i {shlex.quote(relative)} {playbook} --limit {shlex.quote(limit)} "
+        f"-e {shlex.quote(agent_guard_ssh_extra_vars())} "
+        f"-e {shlex.quote(json.dumps({'release_agent_images_expected_hosts_json': json.dumps(list(expected_hosts or limit.split(':')), separators=(',', ':'))}, separators=(',', ':')))} "
         '-e release_agent_guard_out_dir="$d" >&2',
         "code=$?",
         "python3 - \"$d\" <<'PY'",
@@ -1880,7 +1889,7 @@ def agent_images(args: argparse.Namespace) -> int:
     if not isinstance(kiosks, list) or any(name not in kiosks or name in document for name in names):
         raise UsageError("--agent-images --limit must list Pi4 kiosk host names of the inventory")
     host, user, port = server_connection(document)
-    script = agent_images_script(server_release_root(document), relative, ":".join(names))
+    script = agent_images_script(server_release_root(document), relative, ":".join(names), names)
     command = ssh_argv(host, user, port, ["/bin/bash", "-lc", script])
     command[1:1] = ["-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"]
     try:

@@ -193,6 +193,7 @@ TASK_INCLUDE_MODULES = {
     f"{prefix}{name}" for prefix in ("", "ansible.builtin.", "ansible.legacy.") for name in ("include_tasks", "import_tasks")
 }
 ACTION_KEYS = {"action", "local_action"}
+IMPORT_PLAYBOOK = {f"{prefix}import_playbook" for prefix in ("", "ansible.builtin.", "ansible.legacy.")}
 SET_FACT = {f"{prefix}set_fact" for prefix in ("", "ansible.builtin.", "ansible.legacy.")}
 _JINJA = ("{{", "{%", "{#")
 _ROLE_PATH = re.compile(r"^\{\{\s*role_path\s*\}\}/(.+)$")
@@ -296,6 +297,50 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path) -> str | None:
     return None
 
 
+# Plays of the body whose hosts can never include a Pi4 (the Pi5 and the Pi3 signage). Every other play is followed.
+NON_PI4_HOSTS = ("server", "signage")
+# A play whose hosts is a template is followed only when it is exactly this one: the canary waves, whose list is
+# always built from groups['kiosk'] (the canary host intersected with the kiosk group, plus the kiosk group).
+FOLLOWED_TEMPLATED_HOSTS = (
+    "{{ 'kiosk' if (release_torque_cutover | default(false) | bool) else "
+    "(([release_pi4_canary_host | default('raspi4-kensaku-stonebase01')] | intersect(groups['kiosk'] | default([]))) "
+    "+ ['kiosk']) }}",
+)
+
+
+def body_pi4_plays(root: Path = ROOT) -> tuple[list[dict], list[str]]:
+    """Every play of the body except those with a known Pi4-free hosts; unknown or templated hosts are problems."""
+    plays: list[dict] = []
+    problems: list[str] = []
+    for play in _load(root / BODY_PLAYBOOK) or []:
+        if not isinstance(play, dict):
+            problems.append(f"{BODY_PLAYBOOK}: a play is not a mapping")
+        elif set(play) & IMPORT_PLAYBOOK:
+            problems.append(f"{BODY_PLAYBOOK}: import_playbook cannot be followed")
+        elif not isinstance(play.get("hosts"), str):
+            problems.append(f"{BODY_PLAYBOOK}: a play has no plain hosts value")
+        elif play["hosts"] in NON_PI4_HOSTS:
+            continue
+        elif _has_jinja(play["hosts"]) and play["hosts"] not in FOLLOWED_TEMPLATED_HOSTS:
+            problems.append(f"{BODY_PLAYBOOK}: hosts {play['hosts']!r} uses a variable that is not in the allowed list")
+        elif not _has_jinja(play["hosts"]) and play["hosts"] != "kiosk":
+            problems.append(f"{BODY_PLAYBOOK}: hosts {play['hosts']!r} is not in the known list")
+        else:
+            plays.append(play)
+    return plays, problems
+
+
+def foreign_load_problems(target: str, root: Path) -> list[str]:
+    """A file read through {{ role_path }}/../<other role>/ runs with the caller's role_path, so it may load nothing."""
+    document = _load(root / target)
+    problems = []
+    if any(True for _ in _references(document)):
+        problems.append(f"{target}: loaded through another role's role_path, so it must not include or import")
+    if any("role_path" in text for text in _strings(document)):
+        problems.append(f"{target}: loaded through another role's role_path, so it must not use role_path")
+    return problems
+
+
 def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
     """Roles, task files and unresolved references reached from the body's Pi4 plays and the two guard playbooks.
 
@@ -305,10 +350,12 @@ def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
     problems: list[str] = []
     queue: list[tuple[str, Any]] = []
 
-    def add_file(relative: str) -> None:
+    def add_file(relative: str, restricted: bool = False) -> None:
         if relative not in files:
             files.append(relative)
-            queue.append((relative, _load(root / relative)))
+            # A file loaded through another role's role_path is not followed any further (see foreign_load_problems).
+            if not restricted:
+                queue.append((relative, _load(root / relative)))
 
     def add_role(name: str, origin: str) -> None:
         if name in roles:
@@ -324,8 +371,9 @@ def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
                 if path.is_file() and path.suffix in {"", ".yml", ".yaml"}:
                     add_file(path.relative_to(root).as_posix())
 
-    plays = _load(root / BODY_PLAYBOOK)
-    queue += [(BODY_PLAYBOOK, play) for play in plays if isinstance(play, dict) and "kiosk" in str(play.get("hosts", ""))]
+    body_plays, body_problems = body_pi4_plays(root)
+    problems += body_problems
+    queue += [(BODY_PLAYBOOK, play) for play in body_plays]
     for relative in GUARD_PLAYBOOKS:
         if (root / relative).is_file():
             queue.append((relative, _load(root / relative)))
@@ -339,7 +387,10 @@ def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
                 if target is None:
                     problems.append(f"{origin}: unresolved include {value!r}")
                 else:
-                    add_file(target)
+                    foreign = _ROLE_PATH.match(value) is not None and _role_of(target) != _role_of(origin)
+                    if foreign:
+                        problems += foreign_load_problems(target, root)
+                    add_file(target, restricted=foreign)
             else:
                 problems.append(f"{origin}: unresolved reference {value}")
     return sorted(roles), sorted(files), sorted(dict.fromkeys(problems))
@@ -402,6 +453,31 @@ def string_set_facts(document) -> int:
     return count
 
 
+def templated_name_count(document) -> int:
+    """Variable names that are built with Jinja: set_fact/vars keys, include_vars name, register, loop variable names."""
+    count = 0
+    if isinstance(document, dict):
+        for key, item in document.items():
+            if key in SET_FACT and isinstance(item, dict):
+                count += sum(1 for name in item if _has_jinja(str(name)))
+            elif key in ACTION_KEYS and isinstance(item, dict) and _action_module(item) in SET_FACT:
+                count += sum(1 for name in item if name != "module" and _has_jinja(str(name)))
+            elif key == "vars":
+                if isinstance(item, dict):
+                    count += sum(1 for name in item if _has_jinja(str(name)))
+                elif isinstance(item, str) and _has_jinja(item):
+                    count += 1
+            elif key in INCLUDE_VARS and isinstance(item, dict) and _has_jinja(str(item.get("name", ""))):
+                count += 1
+            elif key in ("register", "loop_var", "index_var") and isinstance(item, str) and _has_jinja(item):
+                count += 1
+            count += templated_name_count(item)
+    elif isinstance(document, list):
+        for item in document:
+            count += templated_name_count(item)
+    return count
+
+
 def definition_problems(files: list[Path], root: Path, prefixes: tuple[str, ...] | None = None) -> list[str]:
     """The release role, the body's Pi4 roles and guard playbooks must not define the inputs (role defaults excepted)."""
     prefixes = prefixes if prefixes is not None else no_definition_prefixes()
@@ -427,6 +503,8 @@ def definition_problems(files: list[Path], root: Path, prefixes: tuple[str, ...]
             problems.append(f"{rel}: uses vars_files")
         if string_set_facts(document):
             problems.append(f"{rel}: uses string-form set_fact")
+        if templated_name_count(document):
+            problems.append(f"{rel}: builds a variable name with a template")
     return problems
 
 
@@ -439,10 +517,17 @@ class AgentGuardInputsAreLiteral(unittest.TestCase):
         self.assertFalse([name for name in names if "vault" in name])
 
     def test_inputs_have_no_jinja(self) -> None:
-        self.assertEqual(literal_problems(_tracked_files(), ROOT), [])
+        self.assertEqual(
+            literal_problems(_tracked_files(), ROOT), [],
+            "Write the agent inputs as plain literals (no {{ }}); compute them in the role vars only through the three inputs.",
+        )
 
     def test_inputs_are_not_defined_by_the_release_role_or_guard_playbooks(self) -> None:
-        self.assertEqual(definition_problems(_tracked_files(), ROOT), [])
+        self.assertEqual(
+            definition_problems(_tracked_files(), ROOT), [],
+            "Write set_fact and vars in mapping form, never reuse a guard input name as a key, "
+            "and give every variable a fixed name (no {{ }} in the name).",
+        )
 
     def test_allowed_include_vars_load_only_files_without_the_inputs(self) -> None:
         for task_file, (expression, loaded) in ALLOWED_INCLUDE_VARS.items():
@@ -453,7 +538,11 @@ class AgentGuardInputsAreLiteral(unittest.TestCase):
             self.assertEqual(set(map(str, _keys(_load(ROOT / loaded)))) & INPUTS, set(), loaded)
 
     def test_every_include_in_the_pi4_closure_is_resolved(self) -> None:
-        self.assertEqual(closure_problems(), [])
+        self.assertEqual(
+            closure_problems(), [],
+            "Write include_tasks/import_tasks/include_role names as fixed strings the check can resolve, "
+            "and list every Pi4 play of the body with a plain hosts value (see NON_PI4_HOSTS).",
+        )
         # Loaded through {{ role_path }}/../client/... from release_kiosk.
         _roles, files, _problems = closure()
         self.assertIn("infrastructure/ansible/roles/client/tasks/agents_hardened_group.yml", files)
@@ -720,6 +809,81 @@ class TheChecksActuallyFail(unittest.TestCase):
                 "infrastructure/ansible/tasks/a.yml": '- ansible.builtin.include_tasks: "{{ role_path }}/tasks/x.yml"\n',
             })
             self.assertEqual(len(closure_problems(root)), 1)
+
+    def test_a_templated_variable_name_is_rejected(self) -> None:
+        path = "infrastructure/ansible/roles/release_kiosk/tasks/x.yml"
+        bad = (
+            '- ansible.builtin.set_fact:\n    "{{ item.key }}": "{{ item.value }}"\n  loop: "{{ pairs }}"\n',
+            '- action: {module: set_fact, "{{ k }}": v}\n',
+            '- ansible.builtin.debug: {msg: x}\n  vars:\n    "{{ k }}": v\n',
+            '- ansible.builtin.debug: {msg: x}\n  vars: "{{ d }}"\n',
+            '- ansible.builtin.include_vars:\n    file: a.yml\n    name: "{{ target }}"\n',
+            '- ansible.builtin.command: id\n  register: "{{ target }}"\n',
+        )
+        for text in bad:
+            problems = self._problems(path, text, definition_problems)
+            self.assertIn(f"{path}: builds a variable name with a template", problems, text)
+        good = '- ansible.builtin.set_fact:\n    fixed_name: "{{ item.value }}"\n  vars:\n    other: "{{ x }}"\n'
+        self.assertEqual(self._problems(path, good, definition_problems), [])
+        # Guard playbooks are covered too.
+        self.assertTrue(self._problems(GUARD_PLAYBOOKS[0], "- hosts: kiosk\n  vars:\n    \"{{ k }}\": v\n", definition_problems))
+
+    def test_a_file_read_through_another_roles_role_path_may_not_include_anything(self) -> None:
+        roles = "infrastructure/ansible/roles"
+        bodies = (
+            "- ansible.builtin.include_tasks: next.yml\n",
+            "- ansible.builtin.import_tasks: next.yml\n",
+            "- ansible.builtin.include_role: {name: top}\n",
+            "- ansible.builtin.import_role: {name: top}\n",
+            '- ansible.builtin.include_tasks: "{{ role_path }}/tasks/x.yml"\n',
+            '- ansible.builtin.debug: {msg: "{{ role_path }}"}\n',
+        )
+        for body in bodies:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                self._tree(root, {
+                    BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                    f"{roles}/top/tasks/main.yml": '- ansible.builtin.include_tasks: "{{ role_path }}/../other/tasks/x.yml"\n',
+                    f"{roles}/other/tasks/x.yml": body,
+                    f"{roles}/other/tasks/next.yml": "- ansible.builtin.debug: {msg: x}\n",
+                })
+                self.assertTrue(closure_problems(root), body)
+        # The same include inside the role itself is still fine.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/main.yml": "- ansible.builtin.include_tasks: next.yml\n",
+                f"{roles}/top/tasks/next.yml": "- ansible.builtin.debug: {msg: x}\n",
+            })
+            self.assertEqual(closure_problems(root), [])
+
+    def test_body_plays_are_followed_unless_their_hosts_are_known_to_be_pi4_free(self) -> None:
+        roles = "infrastructure/ansible/roles"
+        leaf = {f"{roles}/top/tasks/main.yml": "- ansible.builtin.debug: {msg: x}\n"}
+        playbooks = {
+            "- hosts: server\n  roles: [top]\n- hosts: signage\n  roles: [top]\n": 0,
+            "- hosts: kiosk\n  roles: [top]\n": 0,
+            "- hosts: pi4_extra\n  roles: [top]\n": 1,
+            "- hosts: all\n  roles: [top]\n": 1,
+            "- hosts: \"{{ target }}\"\n  roles: [top]\n": 1,
+            "- hosts: \"{{ 'kiosk' }}\"\n  roles: [top]\n": 1,
+            "- hosts: [kiosk]\n  roles: [top]\n": 1,
+            "- roles: [top]\n": 1,
+            "- import_playbook: other.yml\n": 1,
+            "- ansible.builtin.import_playbook: other.yml\n": 1,
+        }
+        for text, expected in playbooks.items():
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                self._tree(root, {BODY_PLAYBOOK: text, **leaf})
+                self.assertEqual(len(closure_problems(root)), expected, text)
+        # A play that is not excluded is followed: its role is part of the closure and is checked.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._tree(root, {BODY_PLAYBOOK: "- hosts: kiosk\n  roles: [top]\n- hosts: server\n  roles: [skipped]\n", **leaf,
+                              f"{roles}/skipped/tasks/main.yml": "- ansible.builtin.debug: {msg: x}\n"})
+            self.assertEqual(closure(root)[0], ["top"])
 
     def test_every_include_vars_spelling_is_counted(self) -> None:
         relative = next(iter(ALLOWED_INCLUDE_VARS))

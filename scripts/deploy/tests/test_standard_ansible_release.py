@@ -1578,7 +1578,23 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         artifacts = MODULE.ReleaseArtifacts("api", "web", None, None, ("nfc-agent",))
         code, text, _errors = self._print_plan(artifacts, fake_run, "pi4-a")
         self.assertEqual(code, 0)
-        json.loads(text)
+        # Same keys and values as the plan printed at 34529e9a, before the agent guard existed.
+        self.assertEqual(json.loads(text), {
+            "schemaVersion": 1,
+            "branch": "main",
+            "releaseSha": SHA,
+            "releaseArtifactSha": SHA,
+            "inventory": MODULE.DEFAULT_INVENTORY,
+            "limit": "pi4-a",
+            "fullFleet": False,
+            "remoteRoot": "/opt/RaspberryPiSystem_002",
+            "agentServices": ["nfc-agent"],
+            "executionOrder": [
+                {"profile": "pi4", "hosts": ["pi4-a"], "images": [f"{GHCR_NAMESPACE}/raspisys-nfc-agent:{SHA}"]},
+            ],
+            "pi4ReleaseFiles": "staged with the listed agents",
+            "pi5GatewayRecreate": {"requested": False},
+        })
         args, _kwargs = self.plan_check.call_args
         variables = args[3]
         self.assertEqual(variables["release_sha"], SHA)
@@ -2209,6 +2225,19 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertEqual(json.loads(variables["release_allowed_missing_agents_json"]), {"pi4-a": ["barcode-agent"]})
         self.assertEqual(variables["release_kiosk_agent_services"], ["nfc-agent"])
 
+    def test_every_guard_ansible_call_forces_the_ssh_arguments_with_extra_vars(self) -> None:
+        image = f"ghcr.io/o/raspisys-barcode-agent:{'b' * 40}"
+        calls = self._check({"pi4-a": guard_report("pi4-a", "barcode-agent", image)})
+        self.assertEqual(len(calls), 2)
+        forced = {"ansible_ssh_args": MODULE.AGENT_GUARD_SSH_ARGS}
+        for command in calls:
+            values = [command[index + 1] for index, item in enumerate(command) if item == "--extra-vars"]
+            self.assertIn(json.dumps(forced, separators=(",", ":")), values)
+            self.assertEqual([json.loads(value).get("ansible_ssh_args") for value in values].count(MODULE.AGENT_GUARD_SSH_ARGS), 1)
+        script = MODULE.agent_images_script(Path("/srv/repo"), MODULE.DEFAULT_INVENTORY, "pi4-a", ("pi4-a",))
+        self.assertIn("-e '" + json.dumps(forced, separators=(",", ":")) + "'", script)
+        self.assertIn("ControlPath=none", MODULE.AGENT_GUARD_SSH_ARGS)
+
     def test_reread_mismatches_stop_with_the_right_kind(self) -> None:
         good = f"ghcr.io/o/raspisys-barcode-agent:{'b' * 40}"
         cases = {
@@ -2286,7 +2315,9 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertNotIn("ANSIBLE_RUN_TAGS", environment)
         self.assertNotIn("ANSIBLE_SKIP_TAGS", environment)
         self.assertEqual(environment["ANSIBLE_HASH_BEHAVIOUR"], "replace")
-        self.assertEqual(environment["ANSIBLE_SSH_ARGS"], "-C -o ControlMaster=no -o ControlPersist=no")
+        self.assertEqual(
+            environment["ANSIBLE_SSH_ARGS"], "-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none"
+        )
         errors = io.StringIO()
         with redirect_stdout(io.StringIO()) as out, redirect_stderr(errors):
             MODULE.emit_agent_guard_lines("a\nb", "c")
@@ -2317,11 +2348,19 @@ class AgentSkipGuardTests(unittest.TestCase):
         executor.assert_not_called()
 
     def test_agent_images_script_bounds_ansible_and_keeps_stdout_for_json(self) -> None:
-        script = MODULE.agent_images_script(Path("/srv/repo"), MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b")
+        script = MODULE.agent_images_script(Path("/srv/repo"), MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b", ("pi4-a", "pi4-b"))
         self.assertIn("cd /srv/repo ||", script)
+        # Extra vars outrank an inventory ansible_ssh_args; the value is one quoted shell word.
+        self.assertIn(
+            "-e '{\"ansible_ssh_args\":\"-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none\"}' ", script
+        )
+        expected = json.dumps(["pi4-a", "pi4-b"], separators=(",", ":"))
+        self.assertIn(
+            "-e '" + json.dumps({"release_agent_images_expected_hosts_json": expected}, separators=(",", ":")) + "' ", script
+        )
         self.assertIn(
             "ANSIBLE_CONFIG=/srv/repo/infrastructure/ansible/ansible.cfg ANSIBLE_HASH_BEHAVIOUR=replace "
-            "ANSIBLE_SSH_ARGS='-C -o ControlMaster=no -o ControlPersist=no' timeout --kill-after=10 300 ansible-playbook",
+            "ANSIBLE_SSH_ARGS='-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none' timeout --kill-after=10 300 ansible-playbook",
             script,
         )
         self.assertIn("unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS\n", script)

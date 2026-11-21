@@ -8,6 +8,13 @@
   # docker ps/inspect run as root on the Pi4; not left to ansible.cfg.
   become: true
   tasks:
+    # The Pi5 checkout inventory may expand a named group; read nothing unless the hosts are exactly the named ones.
+    - name: The selected hosts must be exactly the named kiosks
+      ansible.builtin.assert:
+        that:
+          - (ansible_play_hosts_all | sort) == (release_agent_images_expected_hosts_json | from_json | sort)
+        fail_msg: the selected hosts differ from the named kiosks
+      run_once: true
     - name: Read agent images for this Pi4
       ansible.builtin.import_role:
         name: release_kiosk
