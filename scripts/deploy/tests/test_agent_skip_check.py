@@ -4,11 +4,13 @@ import importlib.util
 import io
 import json
 import subprocess
+import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts/deploy"))
 SPEC = importlib.util.spec_from_file_location("agent_skip_check", ROOT / "scripts/deploy/agent_skip_check.py")
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)

@@ -8,16 +8,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Callable, NamedTuple, Sequence
 
+from release_artifact_contract import FULL_SHA_RE, PI4_AGENT_SERVICES, SAFE_COMPOSE_PROJECT_RE
+
 ROOT = Path(__file__).resolve().parents[2]
-AGENTS = ("nfc-agent", "barcode-agent", "torque-agent")
-FULL_SHA = re.compile(r"[0-9a-f]{40}")
-SAFE_PROJECT = re.compile(r"[a-z0-9][a-z0-9_-]*")
+AGENTS = PI4_AGENT_SERVICES
+FULL_SHA = FULL_SHA_RE
+SAFE_PROJECT = SAFE_COMPOSE_PROJECT_RE
 CONFIG_PATHS = (
     "infrastructure/ansible/group_vars", "infrastructure/ansible/host_vars", "infrastructure/ansible/roles/client_server_cert_pin",
     "infrastructure/ansible/playbooks/group_vars", "infrastructure/ansible/playbooks/host_vars",

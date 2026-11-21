@@ -25,6 +25,7 @@ from release_artifact_contract import (
     GHCR_NAMESPACE,
     SOURCE_REPOSITORY,
     PI4_AGENT_SERVICES,
+    SAFE_COMPOSE_PROJECT_RE,
     ReleaseSet,
     TORQUE_ADOPTION_PREDICATE_TYPE,
     TORQUE_PROTOCOL_VERSION,
@@ -72,7 +73,7 @@ TORQUE_URL_VARIABLE = re.compile(r"^\{\{\s*[A-Za-z_][A-Za-z0-9_.]*\s*\}\}$")
 OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
 # A host name that becomes "<name>.json" in a temporary directory: no separator, no leading dot, no "..".
 SAFE_GUARD_RESULT_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-SAFE_COMPOSE_PROJECT = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+SAFE_COMPOSE_PROJECT = SAFE_COMPOSE_PROJECT_RE
 AGENT_GUARD_PREFIX = "[agent-guard] "
 # Copied Ansible output must never look like the launcher's own "[agent-guard] stop {...}" line.
 AGENT_GUARD_COPY_PREFIX = AGENT_GUARD_PREFIX + "| "
