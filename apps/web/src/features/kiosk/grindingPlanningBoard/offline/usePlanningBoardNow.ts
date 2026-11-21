@@ -12,9 +12,12 @@ export function usePlanningBoardNow(): number {
   const sampledNowMs = useMemo(() => offline.enabled ? offline.now() : liveNowMs, [offline, liveNowMs]);
   useEffect(() => {
     // A tick that lands mid-drag is skipped and applied once when the drag ends.
+    // At most one tick is skipped, so a drag whose end is never reported cannot stop the clock.
     let missed = false;
     const interval = window.setInterval(() => {
-      if (isForwardDragActive()) missed = true; else setNowMs(Date.now());
+      if (isForwardDragActive() && !missed) { missed = true; return; }
+      missed = false;
+      setNowMs(Date.now());
     }, 30_000);
     const unsubscribe = subscribeForwardDragActivity(() => {
       if (!isForwardDragActive() && missed) { missed = false; setNowMs(Date.now()); }

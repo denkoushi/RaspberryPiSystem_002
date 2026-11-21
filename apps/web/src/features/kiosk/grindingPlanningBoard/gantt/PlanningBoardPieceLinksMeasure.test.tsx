@@ -90,17 +90,35 @@ describe('PlanningBoardPieceLinks resize observer', () => {
     render(<PlanningBoardPieceLinks panes={[pane]} />);
     expect(observed.length).toBeGreaterThan(1);
     const measured = () => contentCalls.mock.calls.length;
+    // jsdom lays nothing out, so the size seen at observe() is 0x0.
     const entry = (target: Element, width: number, height: number) =>
-      ({ target, contentRect: { width, height } }) as unknown as ResizeObserverEntry;
+      ({ target, borderBoxSize: [{ inlineSize: width, blockSize: height }] }) as unknown as ResizeObserverEntry;
     const before = measured();
 
-    act(() => notify(observed.map(target => entry(target, 700, 100)), {} as ResizeObserver));
+    act(() => notify(observed.map(target => entry(target, 0, 0)), {} as ResizeObserver));
     expect(measured()).toBe(before);
 
-    act(() => notify([entry(observed[1]!, 700, 100)], {} as ResizeObserver));
+    act(() => notify([entry(observed[1]!, 0, 0)], {} as ResizeObserver));
     expect(measured()).toBe(before);
 
     act(() => notify([entry(observed[1]!, 700, 140)], {} as ResizeObserver));
     expect(measured()).toBeGreaterThan(before);
+  });
+
+  it('measures again when the first notification already reports a changed size', () => {
+    let notify: ResizeObserverCallback = () => {};
+    const observed: Element[] = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { notify = callback; }
+      observe(element: Element) { observed.push(element); }
+      unobserve() {}
+      disconnect() {}
+    });
+    const pane = buildPane(6, 2);
+    const contentCalls = vi.spyOn(pane.content.current!, 'getBoundingClientRect');
+    render(<PlanningBoardPieceLinks panes={[pane]} />);
+    const before = contentCalls.mock.calls.length;
+    act(() => notify([{ target: observed[1]!, borderBoxSize: [{ inlineSize: 700, blockSize: 140 }] } as unknown as ResizeObserverEntry], {} as ResizeObserver));
+    expect(contentCalls.mock.calls.length).toBeGreaterThan(before);
   });
 });

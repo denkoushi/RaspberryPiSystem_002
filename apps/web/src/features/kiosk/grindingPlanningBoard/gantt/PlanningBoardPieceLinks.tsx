@@ -243,21 +243,24 @@ export const PlanningBoardPieceLinks = memo(function PlanningBoardPieceLinks({ p
       return measured.length;
     };
     if (!measure()) return;
-    // The first notification after observe() only reports the current size, so only a changed size measures again.
+    // The first notification after observe() reports the size at that moment. Compare it with the size seen
+    // when measuring, so only a real change measures again, including one made before that first notification.
     const seen = new Map<Element, string>();
+    const sizeOf = (element: HTMLElement) => `${element.offsetWidth}x${element.offsetHeight}`;
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver((entries) => {
       let changed = false;
-      for (const { target, contentRect } of entries) {
-        const size = `${contentRect.width}x${contentRect.height}`;
-        const previous = seen.get(target);
+      for (const { target, borderBoxSize } of entries) {
+        const box = borderBoxSize?.[0];
+        const size = box ? `${Math.round(box.inlineSize)}x${Math.round(box.blockSize)}` : sizeOf(target as HTMLElement);
+        if (seen.get(target) !== size) changed = true;
         seen.set(target, size);
-        if (previous !== undefined && previous !== size) changed = true;
       }
       if (changed) measure();
     });
+    const observe = (element: HTMLElement) => { seen.set(element, sizeOf(element)); observer?.observe(element); };
     for (const pane of panes) {
-      if (pane.content.current) observer?.observe(pane.content.current);
-      for (const row of pane.rowElements.current.values()) observer?.observe(row);
+      if (pane.content.current) observe(pane.content.current);
+      for (const row of pane.rowElements.current.values()) observe(row);
     }
     window.addEventListener('resize', measure);
     return () => {

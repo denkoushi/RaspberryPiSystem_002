@@ -24,21 +24,31 @@ describe('usePlanningBoardNow', () => {
     const now = renderHook(() => usePlanningBoardNow());
     const drag = renderHook(() => usePlanningBoardDragPreview());
     act(() => drag.result.current[1](preview));
-    act(() => { vi.advanceTimersByTime(90_000); });
+    act(() => { vi.advanceTimersByTime(30_000); });
     expect(now.result.current).toBe(START);
     act(() => drag.result.current[1](null));
-    expect(now.result.current).toBe(START + 90_000);
+    expect(now.result.current).toBe(START + 30_000);
     act(() => { vi.advanceTimersByTime(30_000); });
-    expect(now.result.current).toBe(START + 120_000);
+    expect(now.result.current).toBe(START + 60_000);
+  });
+
+  it('skips at most one tick, so a drag whose end is never reported cannot stop the clock', () => {
+    const now = renderHook(() => usePlanningBoardNow());
+    const drag = renderHook(() => usePlanningBoardDragPreview());
+    act(() => drag.result.current[1](preview));
+    act(() => { vi.advanceTimersByTime(30_000); });
+    expect(now.result.current).toBe(START);
+    act(() => { vi.advanceTimersByTime(30_000); });
+    expect(now.result.current).toBe(START + 60_000);
   });
 
   it('applies the latest value when the drag owner unmounts mid-drag', () => {
     const now = renderHook(() => usePlanningBoardNow());
     const drag = renderHook(() => usePlanningBoardDragPreview());
     act(() => drag.result.current[1](preview));
-    act(() => { vi.advanceTimersByTime(60_000); });
+    act(() => { vi.advanceTimersByTime(30_000); });
     expect(now.result.current).toBe(START);
     drag.unmount();
-    expect(now.result.current).toBe(START + 60_000);
+    expect(now.result.current).toBe(START + 30_000);
   });
 });
