@@ -57,7 +57,7 @@ Pi4 を選んだデプロイは、有効な Pi4 agent（nfc / barcode / torque�
 - `--allow-agent-skip HOST:AGENT:T:PROJECT[,...]` は、その端末の AGENT を今回は更新せず今の版のまま残す、という指定。T は今動いている版の 40 桁 SHA、PROJECT は Compose の project 名（`[a-z0-9][a-z0-9_-]*`）。
 - `--allow-agent-skip-sha` には今回のリリース SHA を渡す。両方がそろわないと拒否される。`--full-fleet`、`--first-install`、`--torque-cutover`、Hermes の保守指定、`--status` とは併用できない。`--limit` は端末名の列挙だけにし、グループやパターンは使えない。
 - 実行時は Pi5 がロックの中で、指定した各組が「その project で、止まっていない 1 つのコンテナだけが `raspisys-<名前>:T`」であることを読み直す。違えば止まる。応答しない端末が外れたときは、残った端末の組だけを読み直す。
-- 指定で通しても外した agent のコンテナは動き続ける。`/etc/raspi-release/client-compose.yml` は今回のセットの agent だけで書き直されるので、外した agent はそのセットからは作り直せない。その agent を含むセットを次にデプロイすると戻る。
+- 指定で通しても外した agent のコンテナは動き続ける。`/etc/raspi-release/client-compose.yml` は今回のセットの agent だけで書き直されるので、外した agent はそのセットからは作り直せない。書き直すのは、その端末で更新する agent が 1 件以上のときだけで、全件を許可で残す場合は既存のファイルをそのまま使う。その agent を含むセットを次にデプロイすると戻る。
 - 初回導入では指定は効かず、止まる。
 
 指定を付けてよいかの確認は次のとおり。手順 1〜4 は `python3 scripts/deploy/agent_skip_check.py --sha SHA --inventory INVENTORY HOST:AGENT...` が判定する（手元の HEAD が SHA で作業ツリーが空のときだけ）。

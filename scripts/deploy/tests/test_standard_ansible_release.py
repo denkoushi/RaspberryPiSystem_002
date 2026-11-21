@@ -1581,6 +1581,43 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertEqual(text, "")
         self.assertIn('[agent-guard] stop {"kind": "check-failed"}', errors)
 
+    def test_status_summary_ignores_copied_output_shaped_like_a_stop_line(self) -> None:
+        prefix = "2026-11-21T10:00:00+09:00 raspberrypi bash[456]: "
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            MODULE.emit_agent_guard_lines('stop {"kind": "reread-mismatch"}', '[agent-guard] stop {"kind": "timeout"}')
+        copied = [prefix + line for line in errors.getvalue().splitlines()]
+        self.assertEqual(len(copied), 2)
+        self.assertEqual(MODULE.summarize_release_journal("\n".join(copied)), [])
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            MODULE.emit_agent_guard_stop(MODULE.AgentGuardStop("timeout", "slow"))
+        lines = [prefix + line for line in errors.getvalue().splitlines()]
+        self.assertEqual(MODULE.summarize_release_journal("\n".join(lines)), ["agent guard stopped the release: timeout"])
+
+    def test_guard_ansible_is_started_without_stdin(self) -> None:
+        process = mock.MagicMock(pid=1, returncode=0)
+        process.communicate.return_value = ("", "")
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process) as popen:
+            MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        self.assertIs(popen.call_args.kwargs["stdin"], MODULE.subprocess.DEVNULL)
+
+    def test_agent_images_bounds_the_inventory_read_and_never_starts_ssh_on_a_timeout(self) -> None:
+        args = MODULE.parse_arguments(["--agent-images", "--limit", "pi4-a:pi4-b"])
+        with mock.patch.object(MODULE, "inventory_path", return_value=(Path("inv.yml"), MODULE.DEFAULT_INVENTORY)), mock.patch.object(
+            MODULE.subprocess, "run", side_effect=subprocess.TimeoutExpired("ansible-inventory", 60)
+        ) as runner:
+            with self.assertRaisesRegex(RuntimeError, "inventory exceeded 60 seconds"):
+                MODULE.agent_images(args)
+        self.assertEqual(runner.call_count, 1)
+        self.assertEqual(runner.call_args.args[0][0], "ansible-inventory")
+        self.assertEqual(runner.call_args.kwargs["timeout"], MODULE.AGENT_IMAGES_INVENTORY_SECONDS)
+        self.assertEqual(MODULE.AGENT_IMAGES_INVENTORY_SECONDS, 60)
+        # Other callers keep the unbounded read.
+        with mock.patch.object(MODULE.subprocess, "run", return_value=completed(["x"], "{}")) as runner:
+            MODULE.inventory_document(Path("inv.yml"))
+        self.assertIsNone(runner.call_args.kwargs["timeout"])
+
     def test_status_summary_shows_the_agent_guard_stop_line_only(self) -> None:
         prefix = "2026-11-21T10:00:00+09:00 raspberrypi bash[456]: "
         lines = [
@@ -2245,7 +2282,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             MODULE.emit_agent_guard_stop(MODULE.AgentGuardStop("timeout", "slow"))
         self.assertEqual(out.getvalue(), "")
         lines = errors.getvalue().splitlines()
-        self.assertEqual(lines[:3], ["[agent-guard] a", "[agent-guard] b", "[agent-guard] c"])
+        self.assertEqual(lines[:3], ["[agent-guard] | a", "[agent-guard] | b", "[agent-guard] | c"])
         self.assertEqual(lines[-1], '[agent-guard] stop {"kind": "timeout"}')
 
     def test_guard_runner_kills_the_process_group_on_timeout(self) -> None:
@@ -2337,6 +2374,14 @@ class AgentSkipGuardTests(unittest.TestCase):
         image = f"ghcr.io/o/raspisys-barcode-agent:{'b' * 40}"
         report = guard_report("pi4-a", "barcode-agent", image)
 
+        def reread_exit_code(returncode: int) -> int:
+            with self.assertRaises(MODULE.AgentGuardStop) as caught:
+                MODULE.reread_agent_images(
+                    MODULE.DEFAULT_INVENTORY, MODULE.agent_skip_pairs(agent_args()),
+                    lambda command, env: completed(command, returncode=returncode),
+                )
+            return caught.exception.exit_code
+
         def run_reread(returncode: int, body: dict[str, object]) -> str:
             def executor(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
                 directory = Path(json.loads(command[command.index("--extra-vars") + 1])["release_agent_guard_out_dir"])
@@ -2349,6 +2394,8 @@ class AgentSkipGuardTests(unittest.TestCase):
             return caught.exception.kind
 
         self.assertEqual(run_reread(2, {"pi4-a.json": report}), "reread-unreadable")
+        self.assertEqual(reread_exit_code(2), 1)
+        self.assertEqual(reread_exit_code(137), 1)
         self.assertEqual(run_reread(0, {"pi4-a.json": {**report, "host": "pi4-b"}}), "reread-unreadable")
 
     def test_guard_timeout_emits_captured_output_with_the_prefix(self) -> None:
@@ -2365,8 +2412,8 @@ class AgentSkipGuardTests(unittest.TestCase):
             MODULE.emit_agent_guard_stop(MODULE.AgentGuardStop("check-failed", "first\nsecond"))
         self.assertEqual(stop.exception.kind, "timeout")
         lines = errors.getvalue().splitlines()
-        self.assertEqual(lines[:3], ["[agent-guard] line1", "[agent-guard] line2", "[agent-guard] err1"])
-        self.assertEqual(lines[3:5], ["[agent-guard] first", "[agent-guard] second"])
+        self.assertEqual(lines[:3], ["[agent-guard] | line1", "[agent-guard] | line2", "[agent-guard] | err1"])
+        self.assertEqual(lines[3:5], ["[agent-guard] | first", "[agent-guard] | second"])
         self.assertTrue(all(line.startswith("[agent-guard] ") for line in lines))
 
     def test_guard_timeout_keeps_partial_output_when_the_second_wait_also_times_out(self) -> None:
@@ -2399,7 +2446,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             with self.assertRaises(MODULE.AgentGuardStop):
                 MODULE.run_guarded(["x"], mock.Mock(side_effect=caught.exception), "check-launch-failed")
         self.assertEqual(
-            errors.getvalue().splitlines(), ["[agent-guard] out-no-newline", "[agent-guard] err-no-newline"]
+            errors.getvalue().splitlines(), ["[agent-guard] | out-no-newline", "[agent-guard] | err-no-newline"]
         )
 
     def test_guard_runner_reaps_when_interrupted_during_the_second_wait(self) -> None:

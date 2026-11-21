@@ -12,7 +12,9 @@
         --filter "label=com.docker.compose.service=${service}" \
         --quiet)"
       for container_id in ${container_ids}; do
-        printf '%s %s\n' "${service}" "$(docker inspect --format "${inspect_format}" "${container_id}")"
+        # Assign first: a failing docker inspect inside a command substitution argument would not stop set -e.
+        inspected="$(docker inspect --format "${inspect_format}" "${container_id}")"
+        printf '%s %s\n' "${service}" "${inspected}"
       done
     done
   args:

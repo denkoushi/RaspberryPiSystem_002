@@ -28,6 +28,7 @@
           {{ ('To allow after confirming: --allow-agent-skip-sha <SHA> --allow-agent-skip '
               ~ inventory_hostname ~ ':<agent>:<T>:<project>') if not (release_kiosk_first_install | default(false) | bool) else '' }}
         quiet: true
+      register: release_kiosk_agent_assert
       tags:
         - always
 
@@ -54,5 +55,10 @@
         ansible_become: false
       become: false
       changed_when: false
+      # The result file is proof only if the assert really ran and passed (never when it was skipped).
+      when:
+        - release_kiosk_agent_assert is defined
+        - release_kiosk_agent_assert is succeeded
+        - release_kiosk_agent_assert is not skipped
       tags:
         - always

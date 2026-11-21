@@ -71,7 +71,10 @@ TORQUE_URL_VARIABLE = re.compile(r"^\{\{\s*[A-Za-z_][A-Za-z0-9_.]*\s*\}\}$")
 OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
 SAFE_COMPOSE_PROJECT = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 AGENT_GUARD_PREFIX = "[agent-guard] "
+# Copied Ansible output must never look like the launcher's own "[agent-guard] stop {...}" line.
+AGENT_GUARD_COPY_PREFIX = AGENT_GUARD_PREFIX + "| "
 AGENT_GUARD_TIMEOUT_SECONDS = 300
+AGENT_IMAGES_INVENTORY_SECONDS = 60
 AGENT_IMAGES_CLEANUP_SECONDS = 40  # kill-after 10 plus ssh and cleanup margin
 SAFE_INVENTORY_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
 OPTIONAL_ADDRESS_ALIASES = {
@@ -145,8 +148,10 @@ class Parser(argparse.ArgumentParser):
         raise UsageError(message)
 
 
-def run(command: Sequence[str], *, check: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, check=False)
+def run(
+    command: Sequence[str], *, check: bool = True, env: dict[str, str] | None = None, timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, check=False, timeout=timeout)
     if check and result.returncode:
         raise RuntimeError((result.stderr or result.stdout or f"command failed: {command[0]}").strip())
     return result
@@ -288,12 +293,14 @@ def ansible_environment() -> dict[str, str]:
     return environment
 
 
-def inventory_document(path: Path, limit: str = "") -> dict[str, Any]:
+def inventory_document(path: Path, limit: str = "", timeout: float | None = None) -> dict[str, Any]:
     command = ["ansible-inventory", "-i", str(path), "--list"]
     if limit:
         command.extend(["--limit", limit])
     try:
-        value = json.loads(run(command, env=ansible_environment()).stdout)
+        value = json.loads(run(command, env=ansible_environment(), timeout=timeout).stdout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"reading the inventory exceeded {timeout:g} seconds") from None
     except json.JSONDecodeError as error:
         raise RuntimeError("ansible-inventory returned malformed JSON") from error
     if not isinstance(value, dict):
@@ -1601,7 +1608,7 @@ def agent_guard_environment() -> dict[str, str]:
 def emit_agent_guard_lines(*streams: str) -> None:
     for stream in streams:
         for line in stream.splitlines():
-            print(AGENT_GUARD_PREFIX + line, file=sys.stderr, flush=True)
+            print(AGENT_GUARD_COPY_PREFIX + line, file=sys.stderr, flush=True)
 
 
 def emit_agent_guard_stop(stop: AgentGuardStop) -> None:
@@ -1619,7 +1626,7 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
     """Run a guard Ansible with an upper time limit; the whole process group is killed on overrun."""
     process = subprocess.Popen(
         list(command), env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        start_new_session=True, cwd=ROOT,
+        start_new_session=True, cwd=ROOT, stdin=subprocess.DEVNULL,
     )
     def kill_group() -> None:
         try:
@@ -1757,7 +1764,6 @@ def reread_agent_images(inventory: str, pairs: Sequence[AgentSkip], executor: An
             raise AgentGuardStop(
                 "reread-unreadable",
                 f"could not read the running agents (exit {result.returncode}); confirm the versions again",
-                result.returncode,
             )
         reports = read_guard_results(Path(directory))
         for pair in pairs:
@@ -1858,8 +1864,9 @@ def agent_images_script(remote_root: Path, relative: str, limit: str) -> str:
 def agent_images(args: argparse.Namespace) -> int:
     """Read-only: print the agent containers of the named Pi4 kiosks (through Pi5)."""
     inventory, relative = inventory_path(args.inventory)
-    document = inventory_document(inventory)
+    document = inventory_document(inventory, timeout=AGENT_IMAGES_INVENTORY_SECONDS)
     names = re.split(r"[:,]", args.limit)
+    # Direct members of the kiosk group only: the same reading as selected_profiles.
     kiosks = document.get("kiosk", {}).get("hosts", [])
     if not isinstance(kiosks, list) or any(name not in kiosks or name in document for name in names):
         raise UsageError("--agent-images --limit must list Pi4 kiosk host names of the inventory")

@@ -38,6 +38,8 @@ if args[0] == "ps":
         if row[0] == service and row[4] == project:
             print(row[1])
 elif args[0] == "inspect":
+    if os.environ.get("FAKE_INSPECT_FAIL"):
+        sys.exit(1)
     for row in rows:
         if row[1] == args[-1]:
             print(row[2], row[3])
@@ -219,8 +221,11 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
                 return stop.kind
         return "passed"
 
-    def test_inventory_allowance_dict_is_not_merged_into_the_human_allowance_under_merge_behaviour(self) -> None:
-        # The launcher forces replace itself; the outer environment asks for merge.
+    def test_inventory_allowance_in_both_names_never_widens_the_human_allowance(self) -> None:
+        # The inventory carries the allowance as a dict and as a JSON string. The role reads only the JSON
+        # string passed as an extra var (which beats the inventory value, so nothing is combined with it);
+        # the launcher also forces replace, which the environment tests check. Here the outer environment
+        # asks for merge and the human's allowance must still decide alone.
         self.assertEqual(self._plan_with_inventory_allowance(None, "merge"), "check-failed")
         partial = f"k1:barcode-agent:{self.SHA}:docker"
         self.assertEqual(self._plan_with_inventory_allowance(partial, "merge"), "check-failed")
@@ -246,6 +251,26 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         # the guard must receive the body's variables rather than a reduced set.
         result, _ = self._check(hosts, ["nfc-agent"])
         self.assertEqual(result.returncode, 0, self._text(result))
+
+    def test_a_skipped_assert_never_leaves_a_result_file_and_the_launcher_stops(self) -> None:
+        roles = self.directory / "roles-copy"
+        shutil.copytree(ANSIBLE / "roles", roles)
+        task_file = roles / "release_kiosk/tasks/agent_coverage.yml"
+        text = task_file.read_text(encoding="utf-8")
+        marker = "      register: release_kiosk_agent_assert\n"
+        self.assertEqual(text.count(marker), 1)
+        task_file.write_text(text.replace(marker, marker + "      when: false\n"), encoding="utf-8")
+        hosts = {"k1": self.NFC_BARCODE}
+        result, out = self._check(hosts, ["nfc-agent"], env={"ANSIBLE_ROLES_PATH": str(roles)})
+        self.assertEqual(result.returncode, 0, self._text(result))
+        self.assertEqual(list(out.glob("*.json")), [])
+        module = self._launcher()
+        args = types_namespace(limit="k1", first_install=False, torque_cutover=False)
+        variables = {"release_kiosk_agent_services": ["nfc-agent"], "release_kiosk_service_allowlist": []}
+        with mock.patch.dict(os.environ, {"ANSIBLE_ROLES_PATH": str(roles)}):
+            with self.assertRaises(module.AgentGuardStop) as caught:
+                module.run_agent_coverage_check(args, str(self._inventory(hosts)), "k1", (("pi4", ("k1",)),), variables)
+        self.assertEqual(caught.exception.kind, "check-result-missing")
 
     def test_empty_release_set_stops_only_hosts_with_enabled_agents(self) -> None:
         result, _ = self._check({"k1": self.NFC}, [])
@@ -297,7 +322,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
 
-    def _images(self, rows: list[str], hosts: dict, extra: dict | None = None):
+    def _images(self, rows: list[str], hosts: dict, extra: dict | None = None, env: dict[str, str] | None = None):
         table = self.directory / "table"
         table.write_text("\n".join(rows) + "\n", encoding="utf-8")
         log = self.directory / "docker.log"
@@ -312,7 +337,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         result = self._run(
             IMAGES, self._inventory(hosts, {"raspisys_github_owner": "owner", **(extra or {})}),
             {"release_agent_guard_out_dir": str(out)},
-            env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_TABLE": str(table), "FAKE_LOG": str(log)},
+            env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_TABLE": str(table), "FAKE_LOG": str(log), **(env or {})},
         )
         return result, out, log
 
@@ -344,6 +369,14 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             self.assertEqual(call[1], "--format")
             self.assertEqual(call[2], "{{.Config.Image}} {{.State.Status}}")
             self.assertEqual(len(call), 4)
+
+    def test_a_failing_docker_inspect_fails_the_task_and_writes_no_report(self) -> None:
+        rows = ["nfc-agent c1 ghcr.io/o/raspisys-nfc-agent:" + "a" * 40 + " running docker"]
+        result, out, _log = self._images(
+            rows, {"k1": {"ansible_connection": "local", "ansible_become": False}}, env={"FAKE_INSPECT_FAIL": "1"}
+        )
+        self.assertNotEqual(result.returncode, 0, self._text(result))
+        self.assertEqual(list(out.glob("*.json")), [])
 
     def test_read_playbook_asks_for_root_on_the_pi4_itself(self) -> None:
         play = yaml.safe_load(IMAGES.read_text(encoding="utf-8"))[0]
