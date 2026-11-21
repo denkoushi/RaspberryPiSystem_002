@@ -151,6 +151,18 @@ describe('live meeting input', () => {
     expect(screen.queryByTestId('procedure-live-next')).toBeNull();
   });
 
+  it('keeps the text box read-only from start until the meeting is done', async () => {
+    render(<Harness />);
+    const box = () => document.querySelector<HTMLTextAreaElement>('[data-kiosk-sop-target="assembly-document-editor-text-value"]')!;
+    expect(box().readOnly).toBe(false);
+    await startLive();
+    expect(box().readOnly).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    expect(box().readOnly).toBe(true);
+    await send({ type: 'done' });
+    expect(box().readOnly).toBe(false);
+  });
+
   it('drops the oldest raw lines first when the text gets too long', async () => {
     render(<Harness />);
     await startLive();
