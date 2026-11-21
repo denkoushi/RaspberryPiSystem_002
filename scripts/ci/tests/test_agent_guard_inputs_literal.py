@@ -297,6 +297,10 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path, context_role: 
         # role_path is the folder of the role that holds the including file.
         candidates = [f"{ROLES_REL}/{role}/{match.group(1)}"] if role else []
     elif not _has_jinja(expression) and not expression.startswith("/"):
+        if posixpath.normpath(expression).startswith(".."):
+            # A plain relative path that climbs out is resolved against several bases by Ansible; fix it to
+            # {{ playbook_dir }} or {{ role_path }} instead.
+            raise ValueError(f"ambiguous include {expression!r}: a relative path above the caller; start it from playbook_dir or role_path")
         candidates = [f"{posixpath.dirname(origin)}/{expression}"]
         if role:
             candidates.append(f"{ROLES_REL}/{role}/tasks/{expression}")
@@ -323,6 +327,9 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path, context_role: 
     if len(found) > 1:
         # Ansible picks one by its own search order; a different file than this check follows must not be possible.
         raise ValueError(f"ambiguous include {expression!r}: both {found[0]} and {found[1]} exist")
+    if found and not found[0].startswith(ANSIBLE_REL + "/"):
+        # The definition checks read only files under infrastructure/ansible.
+        raise ValueError(f"ambiguous include {expression!r}: resolves to {found[0]} outside {ANSIBLE_REL}")
     return found[0] if found else None
 
 
@@ -942,6 +949,33 @@ class TheChecksActuallyFail(unittest.TestCase):
             self.assertEqual(len(problems), 1, problems)
             self.assertIn("ambiguous include", problems[0])
 
+    def test_a_plain_relative_include_that_climbs_above_the_caller_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            roles = "infrastructure/ansible/roles"
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/main.yml": "- ansible.builtin.include_tasks: sub/a.yml\n",
+                f"{roles}/top/tasks/sub/a.yml": "- ansible.builtin.include_tasks: ../x.yml\n",
+                f"{roles}/top/tasks/x.yml": "- ansible.builtin.debug: {msg: only one}\n",
+            })
+            problems = closure_problems(root)
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn("ambiguous include", problems[0])
+
+    def test_an_include_found_only_outside_the_ansible_tree_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            roles = "infrastructure/ansible/roles"
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/main.yml": "- ansible.builtin.include_tasks: outside.yml\n",
+                "tasks/outside.yml": "- ansible.builtin.debug: {msg: repository root}\n",
+            })
+            problems = closure_problems(root)
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn("ambiguous include", problems[0])
+
     def test_an_include_that_also_exists_elsewhere_in_the_same_role_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1028,15 +1062,17 @@ class TheChecksActuallyFail(unittest.TestCase):
                         f"{roles}/other/tasks/next.yml": "- ansible.builtin.debug: {msg: x}\n",
                     })
                     self.assertTrue(closure_problems(root), (include, body))
-        # A relative path that stays inside the role is unchanged.
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            self._tree(root, {
-                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
-                f"{roles}/top/tasks/main.yml": "- ansible.builtin.include_tasks: ../tasks/x.yml\n",
-                f"{roles}/top/tasks/x.yml": '- ansible.builtin.debug: {msg: "{{ role_path }}"}\n',
-            })
-            self.assertEqual(closure_problems(root), [])
+        # A path that stays inside the role passes when it starts from role_path; the same path written as a plain
+        # relative one that climbs out is rejected, since Ansible resolves that against several bases.
+        for include, accepted in (("{{ role_path }}/tasks/x.yml", True), ("../tasks/x.yml", False)):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                self._tree(root, {
+                    BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                    f"{roles}/top/tasks/main.yml": f'- ansible.builtin.include_tasks: "{include}"\n',
+                    f"{roles}/top/tasks/x.yml": '- ansible.builtin.debug: {msg: "{{ role_path }}"}\n',
+                })
+                self.assertEqual(closure_problems(root) == [], accepted, include)
 
     def test_a_loop_variable_named_like_an_input_is_rejected(self) -> None:
         path = "infrastructure/ansible/roles/release_kiosk/tasks/x.yml"

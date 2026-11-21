@@ -236,7 +236,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         full = partial + f",k2:barcode-agent:{self.SHA}:docker"
         self.assertEqual(self._plan_with_inventory_allowance(full, "merge"), "passed")
 
-    def test_enabled_flag_that_depends_on_an_extra_var_reaches_the_same_conclusion_as_the_body(self) -> None:
+    def test_the_check_evaluates_the_enabled_flag_with_the_body_extra_vars(self) -> None:
         hosts = {"k1": {**self.NFC, "barcode_agent_enabled": "{{ release_sha == 'on' }}"}}
         inventory = self._inventory(hosts)
         module = self._launcher()

@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1652,16 +1653,28 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
         except OSError:
             pass
 
-    def terminate_group() -> None:
-        # Ansible workers call setsid(), so only Ansible's own SIGTERM handling reaches them; SIGKILL follows after a grace.
+    def stop_group() -> BaseException | None:
+        """SIGTERM, a bounded grace, then SIGKILL. Returns an interrupt that arrived during the grace, if any.
+
+        Ansible workers call setsid(), so only Ansible's own SIGTERM handling reaches them. A further Ctrl-C during the
+        grace does not cut it short; the grace stays bounded and SIGKILL always follows."""
+        interrupted: BaseException | None = None
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except OSError:
-            return
-        try:
-            process.wait(timeout=AGENT_GUARD_TERM_GRACE_SECONDS)
-        except (OSError, subprocess.SubprocessError):
             pass
+        else:
+            deadline = time.monotonic() + AGENT_GUARD_TERM_GRACE_SECONDS
+            while (remaining := deadline - time.monotonic()) > 0:
+                try:
+                    process.wait(timeout=remaining)
+                    break
+                except KeyboardInterrupt as error:
+                    interrupted = error
+                except (OSError, subprocess.SubprocessError):
+                    break
+        kill_group()
+        return interrupted
 
     def reap() -> None:
         for stream in (process.stdout, process.stderr):
@@ -1678,14 +1691,11 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
     try:
         stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:
-        try:
-            terminate_group()
-        except BaseException:
-            # Interrupted during the grace (Ctrl-C): stop and reap the group before passing the interrupt on.
-            kill_group()
+        interrupted = stop_group()
+        if interrupted is not None:
+            # Ctrl-C during the grace: the group is stopped; reap it before passing the interrupt on.
             reap()
-            raise
-        kill_group()
+            raise interrupted
         # Partial output captured before the first time-out; the second wait may add to it or fail too.
         out, err = _text(error.stdout), _text(error.stderr)
         try:
@@ -1699,6 +1709,11 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
             # Also on KeyboardInterrupt in the second wait: the group is already killed, so always reap.
             reap()
         raise AgentGuardTimeout(out or "", err or "") from error
+    except KeyboardInterrupt:
+        # Ctrl-C while Ansible runs: the same SIGTERM, grace and SIGKILL as a time-out, so setsid workers stop too.
+        stop_group()
+        reap()
+        raise
     except BaseException:
         kill_group()
         reap()

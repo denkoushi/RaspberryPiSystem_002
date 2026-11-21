@@ -75,7 +75,7 @@ Pi4 を選んだデプロイは、有効な Pi4 agent（nfc / barcode / torque�
 
 `--agent-images --limit HOST[:HOST...]` は読み取り専用で、Pi5 を通して各 Pi4 の agent コンテナ（イメージ名、状態、project）を JSON で出す。何も変更せず、Mac から Pi4 への直接接続もしないので、下の「失敗時」の Pi4 agent 操作の禁止の対象外である。Pi5 の読み直しは、指定した端末名・エージェントについて、project が指定どおりで、通常のサービスコンテナ（`docker compose run` の一時コンテナは数えない）がちょうど 1 つ、その状態が running、イメージが `raspisys-<名前>:T` であることを比べ、1 つでも違えば実行側で止まる。計画・読み取り・実行は同じ inventory を使う前提である。`--agent-images` は Pi5 に今あるチェックアウトの判定用 playbook を使うので、この変更が Pi5 に入るまでは使えない。Pi5 のチェックアウトがこの変更を含む SHA になってから使うこと（古い SHA では playbook が無く読めない）。指定した名前が inventory でグループ名などに広がって別の端末を読むことになる場合は、読み取りの前に失敗する。
 
-`--full-fleet` で部品のそろわない SHA を流すと Pi5 と Pi3 も本体の前で止まる（指定は `--full-fleet` と併用できない）。そのときは `--limit` で Pi5 と Pi3 だけを選ぶ。判定は、止まる前に Ansible の出力を `[agent-guard]` 付きで出し、止めた理由を 1 行の JSON で出す。`--status` にはその 1 行だけが出る。
+`--full-fleet` で部品のそろわない SHA を流すと Pi5 と Pi3 も本体の前で止まる（指定は `--full-fleet` と併用できない）。そのときは `--limit` で Pi5 と Pi3 だけを選ぶ。判定は、止まる前に Ansible の出力を `[agent-guard]` 付きで出し、止めた理由を 1 行の JSON(`[agent-guard] stop {"kind": ...}`)で出す。`--status` の `journal` には、その行が `agent guard stopped the release: <種別>` の形で出る。種別は次のとおり。`check-failed`(有効なエージェントがリリースセットに無い、または判定が失敗した)、`check-result-missing`(判定の結果ファイルが端末の組とそろわない)、`check-launch-failed`(判定を始められない)、`reread-unreadable`(指定付きの実行で Pi4 のエージェントを読み直せない)、`reread-mismatch`(読み直した状態が指定と違う)、`timeout`(判定の Ansible が上限時間を超えた)。止まったとき、Pi5 のチェックアウトは既にその SHA に替わっているが、本体は流れず、Pi4 と Pi3 には何も起きない。run の記録は消すことを試みる。
 
 判定の Ansible の呼び出しは 1 回ごとに 300 秒で止め始める。止めるときは先に終了を頼み、最大 10 秒待ってから強制終了し、出力の回収と後片付けにさらに数十秒かかり得る。指定付きの実行では読み直しと判定の 2 回を流すため、合計で約 600 秒を超えることがある。
 

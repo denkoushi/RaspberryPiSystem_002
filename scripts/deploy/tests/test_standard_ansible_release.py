@@ -2515,14 +2515,15 @@ class AgentSkipGuardTests(unittest.TestCase):
     def test_guard_runner_kills_and_reaps_when_interrupted_during_the_sigterm_grace(self) -> None:
         process = mock.MagicMock(pid=79, returncode=None)
         process.communicate.side_effect = [subprocess.TimeoutExpired("a", 1)]
-        process.wait.side_effect = [KeyboardInterrupt(), None]
+        # The interrupt does not cut the grace short: the wait goes on, then SIGKILL, the reap, and the interrupt.
+        process.wait.side_effect = [KeyboardInterrupt(), None, None]
         with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg") as killpg:
             with self.assertRaises(KeyboardInterrupt):
                 MODULE.run_agent_guard_command(["ansible-playbook"], {})
         self.assertEqual([c.args for c in killpg.call_args_list], [(79, MODULE.signal.SIGTERM), (79, MODULE.signal.SIGKILL)])
         process.stdout.close.assert_called_once()
         process.stderr.close.assert_called_once()
-        self.assertEqual(process.wait.call_count, 2)
+        self.assertEqual(process.wait.call_count, 3)
 
     def test_guard_runner_reaps_when_interrupted_during_the_second_wait(self) -> None:
         process = mock.MagicMock(pid=79, returncode=None)
@@ -2671,14 +2672,18 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertIn("fatal: pi4-c unreachable", stderr.getvalue())
         self.assertNotIn("fatal", out.getvalue())
 
-    def test_guard_runner_kills_the_group_on_keyboard_interrupt_and_reaps_after_a_failed_second_wait(self) -> None:
+    def test_guard_runner_stops_the_group_on_keyboard_interrupt_and_reaps_after_a_failed_second_wait(self) -> None:
         process = mock.MagicMock(pid=77, returncode=None)
         process.communicate.side_effect = KeyboardInterrupt()
         with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg") as killpg:
             with self.assertRaises(KeyboardInterrupt):
                 MODULE.run_agent_guard_command(["ansible-playbook"], {})
-        killpg.assert_called_once_with(77, MODULE.signal.SIGKILL)
-        process.wait.assert_called_once()
+        # Ctrl-C goes through the same SIGTERM, grace and SIGKILL as a time-out.
+        self.assertEqual([c.args for c in killpg.call_args_list], [(77, MODULE.signal.SIGTERM), (77, MODULE.signal.SIGKILL)])
+        process.stdout.close.assert_called_once()
+        process.stderr.close.assert_called_once()
+        # One wait for the SIGTERM grace, one in the final reap.
+        self.assertEqual(process.wait.call_count, 2)
         process = mock.MagicMock(pid=78, returncode=None)
         process.communicate.side_effect = [subprocess.TimeoutExpired("a", 1), subprocess.TimeoutExpired("a", 15)]
         with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg"):
@@ -2708,6 +2713,43 @@ class AgentSkipGuardTests(unittest.TestCase):
             with self.assertRaises(MODULE.AgentGuardTimeout):
                 MODULE.run_agent_guard_command([sys.executable, "-c", script, str(pid_file)], os.environ.copy())
         self.assertTrue(pid_file.exists(), "the worker never started within the time limit")
+        worker_pid = int(pid_file.read_text())
+        time.sleep(0.3)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(worker_pid, 0)
+
+    def test_keyboard_interrupt_sends_sigterm_first_so_setsid_workers_are_stopped(self) -> None:
+        # Same Ansible-like parent as above, but the launcher is interrupted (Ctrl-C) while the worker runs.
+        tmp = Path(tempfile.mkdtemp(prefix="guard-int-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        pid_file = tmp / "worker.pid"
+        script = (
+            "import os, signal, subprocess, sys, time\n"
+            "worker = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True)\n"
+            "open(sys.argv[1] + '.tmp', 'w').write(str(worker.pid)); os.rename(sys.argv[1] + '.tmp', sys.argv[1])\n"
+            "def stop(*_):\n"
+            "    worker.kill(); worker.wait(); os._exit(0)\n"
+            "signal.signal(signal.SIGTERM, stop)\n"
+            "time.sleep(60)\n"
+        )
+        real_popen = subprocess.Popen
+
+        def interrupted_popen(*args, **kwargs):  # type: ignore[no-untyped-def]
+            process = real_popen(*args, **kwargs)
+
+            def communicate(timeout=None):  # type: ignore[no-untyped-def]
+                deadline = time.monotonic() + 20
+                while not pid_file.exists() and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                raise KeyboardInterrupt()
+
+            process.communicate = communicate  # type: ignore[method-assign]
+            return process
+
+        with mock.patch.object(MODULE.subprocess, "Popen", side_effect=interrupted_popen), mock.patch.object(MODULE, "AGENT_GUARD_TERM_GRACE_SECONDS", 3):
+            with self.assertRaises(KeyboardInterrupt):
+                MODULE.run_agent_guard_command([sys.executable, "-c", script, str(pid_file)], os.environ.copy())
+        self.assertTrue(pid_file.exists(), "the worker never started")
         worker_pid = int(pid_file.read_text())
         time.sleep(0.3)
         with self.assertRaises(ProcessLookupError):
