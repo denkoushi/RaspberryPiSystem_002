@@ -1601,26 +1601,12 @@ def allowed_missing_agents(pairs: Sequence[AgentSkip], hosts: Sequence[str]) -> 
     return {host: sorted(agents) for host, agents in result.items()}
 
 
-AGENT_GUARD_SSH_ARGS = "-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none"
-
-
-def agent_guard_ssh_extra_vars() -> str:
-    """Extra vars outrank an inventory ansible_ssh_args, which outranks the environment variable."""
-    # ansible_ssh_common_args (host key checks) stays; ansible_ssh_extra_args is appended after ansible_ssh_args, and a
-    # "-S path" or ControlPath there would beat ControlPath=none, so it is emptied. The playbooks refuse a
-    # multiplexing option left in the common or extra args.
-    return json.dumps({"ansible_ssh_args": AGENT_GUARD_SSH_ARGS, "ansible_ssh_extra_args": ""}, separators=(",", ":"))
-
-
 def agent_guard_environment() -> dict[str, str]:
     environment = ansible_environment()
-    # The SSH argument variables are dropped too: the playbooks check the inventory values, not the environment.
-    for name in ("ANSIBLE_RUN_TAGS", "ANSIBLE_SKIP_TAGS", "ANSIBLE_SSH_COMMON_ARGS", "ANSIBLE_SSH_EXTRA_ARGS"):
+    for name in ("ANSIBLE_RUN_TAGS", "ANSIBLE_SKIP_TAGS"):
         environment.pop(name, None)
     # An inventory dict of the same name must never be merged into the human's allowance.
     environment["ANSIBLE_HASH_BEHAVIOUR"] = "replace"
-    # No SSH multiplexing: a ControlPersist master would outlive a killed process group by up to 60 seconds.
-    environment["ANSIBLE_SSH_ARGS"] = AGENT_GUARD_SSH_ARGS
     return environment
 
 
@@ -1641,90 +1627,33 @@ def _text(value: Any) -> str:
     return value or ""
 
 
-class _InterruptLatch:
-    """Ctrl-C while a guard Ansible runs, recorded from before the start until the group is stopped and reaped.
-
-    The handler raises KeyboardInterrupt only while armed, which is only around the wait for Ansible, and disarms
-    itself when it does. Any other Ctrl-C is recorded and passed on after the cleanup, so none can skip SIGTERM,
-    SIGKILL or the reap. A Python handler is reset by exec, so Ansible keeps the default. Installed only over the
-    default handler in the main thread; an ignored SIGINT stays ignored."""
-
-    def __init__(self) -> None:
-        self.armed = False
-        self.pending = False
-        self.raised = False
-        self.previous: Any = None
-
-    def _handle(self, signum: int, frame: Any) -> None:
-        self.pending = True
-        if self.armed:
-            self.armed = False
-            self.raised = True
-            raise KeyboardInterrupt
-
-    def install(self) -> None:
-        try:
-            if signal.getsignal(signal.SIGINT) is signal.default_int_handler:
-                self.previous = signal.signal(signal.SIGINT, self._handle)
-        except ValueError:  # not the main thread
-            self.previous = None
-
-    def restore(self) -> None:
-        if self.previous is not None:
-            signal.signal(signal.SIGINT, self.previous)
-            self.previous = None
-
-
 def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    """Run a guard Ansible with an upper time limit; the whole process group is stopped on overrun or Ctrl-C."""
-    latch = _InterruptLatch()
-    latch.install()
-    try:
-        return _run_agent_guard_process(command, env, latch)
-    finally:
-        latch.restore()
-        if latch.pending and not latch.raised:
-            # A Ctrl-C recorded while the group was started, stopped or reaped: pass it on now that it is gone.
-            latch.raised = True
-            raise KeyboardInterrupt
-
-
-def _run_agent_guard_process(
-    command: Sequence[str], env: dict[str, str], latch: _InterruptLatch,
-) -> subprocess.CompletedProcess[str]:
+    """Run a guard Ansible with an upper time limit; the whole process group is stopped on overrun or any exception."""
     # Undecodable output (a multibyte character cut by a kill) must not turn a time-out into another stop kind.
     process = subprocess.Popen(
         list(command), env=env, text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, cwd=ROOT, stdin=subprocess.DEVNULL,
     )
+
     def kill_group() -> None:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except OSError:
             pass
 
-    def stop_group() -> BaseException | None:
-        """SIGTERM, a bounded grace, then SIGKILL. Returns an interrupt that arrived during the grace, if any.
-
-        Ansible workers call setsid(), so only Ansible's own SIGTERM handling reaches them. The latch is disarmed
-        here, so a further Ctrl-C is only recorded; an interrupt raised by other means still cannot cut the grace."""
-        interrupted: BaseException | None = None
+    def stop_group() -> None:
+        """SIGTERM, a bounded grace, then SIGKILL. Ansible workers call setsid(), so only Ansible's own SIGTERM
+        handling reaches them."""
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except OSError:
             pass
         else:
-            deadline = time.monotonic() + AGENT_GUARD_TERM_GRACE_SECONDS
-            while (remaining := deadline - time.monotonic()) > 0:
-                try:
-                    process.wait(timeout=remaining)
-                    break
-                except KeyboardInterrupt as error:
-                    interrupted = error
-                except (OSError, subprocess.SubprocessError):
-                    break
+            try:
+                process.wait(timeout=AGENT_GUARD_TERM_GRACE_SECONDS)
+            except (OSError, subprocess.SubprocessError):
+                pass
         kill_group()
-        return interrupted
 
     def reap() -> None:
         for stream in (process.stdout, process.stderr):
@@ -1739,28 +1668,10 @@ def _run_agent_guard_process(
             pass
 
     try:
-        try:
-            latch.armed = True
-            if latch.pending:
-                # Ctrl-C between the start of Ansible and here.
-                latch.armed = False
-                latch.raised = True
-                raise KeyboardInterrupt
-            stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
-        finally:
-            # A Ctrl-C up to this point raises here at the latest, and is caught below.
-            latch.armed = False
+        stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:
         stopped = _stop_after_timeout(error, stop_group, reap, process)
         raise AgentGuardTimeout(*stopped) from error
-    except KeyboardInterrupt:
-        # Ctrl-C while Ansible runs: the same SIGTERM, grace and SIGKILL as a time-out, so setsid workers stop too.
-        latch.raised = True
-        try:
-            stop_group()
-        finally:
-            reap()
-        raise
     except BaseException:
         kill_group()
         reap()
@@ -1771,11 +1682,7 @@ def _run_agent_guard_process(
 
 def _stop_after_timeout(error: subprocess.TimeoutExpired, stop_group: Any, reap: Any, process: Any) -> tuple[str, str]:
     """Stop and reap the group after the time limit; returns the output captured so far."""
-    interrupted = stop_group()
-    if interrupted is not None:
-        # Ctrl-C during the grace: the group is stopped; reap it before passing the interrupt on.
-        reap()
-        raise interrupted
+    stop_group()
     # Partial output captured before the first time-out; the second wait may add to it or fail too.
     out, err = _text(error.stdout), _text(error.stderr)
     try:
@@ -1832,7 +1739,6 @@ def agent_coverage_argv(inventory: str, limit: str, variables: dict[str, Any]) -
     command = [
         "ansible-playbook", "-i", inventory, str(COVERAGE_PLAYBOOK),
         "--extra-vars", json.dumps(variables, sort_keys=True, separators=(",", ":")),
-        "--extra-vars", agent_guard_ssh_extra_vars(),
     ]
     if limit:
         command.extend(["--limit", limit])
@@ -1848,7 +1754,6 @@ def agent_images_argv(inventory: str, hosts: Sequence[str], directory: str) -> l
             {"release_agent_guard_out_dir": directory, "release_agent_images_expected_hosts_json": expected},
             separators=(",", ":"),
         ),
-        "--extra-vars", agent_guard_ssh_extra_vars(),
     ]
 
 
@@ -1983,11 +1888,10 @@ def agent_images_script(remote_root: Path, relative: str, limit: str, expected_h
         f"cd {root} || exit 1",
         'd="$(mktemp -d)" || exit 1',
         "trap 'rm -rf \"$d\"' EXIT",
-        "unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS ANSIBLE_SSH_COMMON_ARGS ANSIBLE_SSH_EXTRA_ARGS",
-        f"ANSIBLE_CONFIG={config} ANSIBLE_HASH_BEHAVIOUR=replace ANSIBLE_SSH_ARGS={shlex.quote(AGENT_GUARD_SSH_ARGS)} "
+        "unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS",
+        f"ANSIBLE_CONFIG={config} ANSIBLE_HASH_BEHAVIOUR=replace "
         f"timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
         f"ansible-playbook -i {shlex.quote(relative)} {playbook} --limit {shlex.quote(limit)} "
-        f"-e {shlex.quote(agent_guard_ssh_extra_vars())} "
         f"-e {shlex.quote(json.dumps({'release_agent_images_expected_hosts_json': json.dumps(list(expected_hosts or limit.split(':')), separators=(',', ':'))}, separators=(',', ':')))} "
         '-e release_agent_guard_out_dir="$d" >&2',
         "code=$?",

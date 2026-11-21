@@ -555,67 +555,8 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             "ansible-playbook", "-i", str(inventory), str(playbook), "--extra-vars", json.dumps(variables),
             "--limit", ":".join(hosts),
         ]
-        if options.get("guard_vars", True):
-            command.extend(["--extra-vars", module.agent_guard_ssh_extra_vars()])
         result = subprocess.run(command, cwd=self.directory, env=env, capture_output=True, text=True, check=False)
         return result, [json.loads(line) for line in log.read_text().splitlines() if line]
-
-    def test_multiplexing_options_in_the_ssh_arguments_stop_before_any_connection(self) -> None:
-        bad = (
-            ("ansible_ssh_common_args", "-S /tmp/x"),
-            ("ansible_ssh_common_args", "-o ControlPath=/tmp/y"),
-            ("ansible_ssh_common_args", "-oControlPath=/tmp/y"),
-            ("ansible_ssh_common_args", "-o controlmaster=auto"),
-            ("ansible_ssh_common_args", "-o StrictHostKeyChecking=yes -oControlPersist=60s"),
-            ("ansible_ssh_common_args", "-CS/tmp/z"),
-            ("ansible_ssh_extra_args", "-S /tmp/x"),
-        )
-        for playbook in (IMAGES,):
-            for name, value in bad:
-                # Without the guard's extra vars (which empty the extra args) the playbook check sees the inventory.
-                result, calls = self._ssh_run(playbook, {name: value}, guard_vars=name != "ansible_ssh_extra_args")
-                text = self._text(result)
-                self.assertNotEqual(result.returncode, 0, (playbook.name, name, value, text))
-                self.assertIn("the agent guard cannot run with them", text, (name, value))
-                self.assertIn("k1", text)
-                self.assertIn(name, text)
-                self.assertEqual(calls, [], (name, value))
-
-    def test_quoted_or_backslashed_ssh_arguments_are_refused_before_any_connection(self) -> None:
-        bad = (
-            ("ansible_ssh_common_args", '-o "ControlPath=/tmp/x"'),
-            ("ansible_ssh_common_args", "-o 'ControlMaster=auto'"),
-            ("ansible_ssh_common_args", "\"-S\" '/tmp/x'"),
-            ("ansible_ssh_common_args", "-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/tmp/a\\ b"),
-            ("ansible_ssh_common_args", "-o ProxyCommand='ssh -W %h:%p jump'"),
-            ("ansible_ssh_extra_args", '-o "ControlPath=/tmp/x"'),
-            ("ansible_ssh_common_args", "-o StrictHostKeyChecking=yes\n-S /tmp/x"),
-            ("ansible_ssh_common_args", "-o A=b\r\n-oControlPath=/tmp/x"),
-            ("ansible_ssh_common_args", "-o A=b\x0b-S /tmp/x"),
-            ("ansible_ssh_common_args", "-o A=b\x0c-S /tmp/x"),
-            ("ansible_ssh_extra_args", "-o StrictHostKeyChecking=yes\n-S /tmp/x"),
-        )
-        for playbook in (IMAGES,):
-            for name, value in bad:
-                result, calls = self._ssh_run(playbook, {name: value}, guard_vars=name != "ansible_ssh_extra_args")
-                text = self._text(result)
-                self.assertNotEqual(result.returncode, 0, (playbook.name, name, value, text))
-                self.assertIn("the agent guard cannot run with them", text, (name, value))
-                self.assertEqual(calls, [], (playbook.name, name, value))
-
-    def test_one_refused_host_stops_all_hosts_even_with_the_free_strategy(self) -> None:
-        # Control: the same two hosts without a refused value do reach ssh, so the test can see SSH.
-        free = {"ANSIBLE_STRATEGY": "free"}
-        result, calls = self._ssh_run(IMAGES, {}, hosts={"k1": {}, "k2": {}}, env=free)
-        self.assertNotIn("the agent guard cannot run with them", self._text(result))
-        self.assertTrue(calls, self._text(result))
-        hosts = {"k1": {}, "k2": {"ansible_ssh_common_args": "-o ControlPath=/tmp/x"}}
-        result, calls = self._ssh_run(IMAGES, {}, hosts=hosts, env=free)
-        self.assertNotEqual(result.returncode, 0, self._text(result))
-        self.assertIn("the agent guard cannot run with them", self._text(result))
-        self.assertEqual(calls, [])
-        out = max(self.directory.glob("ssh-out-*"), key=lambda path: int(path.name.rsplit("-", 1)[1]))
-        self.assertEqual(list(out.iterdir()), [])
 
     def test_the_coverage_playbook_never_opens_ssh_whatever_the_ssh_arguments_are(self) -> None:
         for value in (
@@ -673,32 +614,6 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         result, calls = self._ssh_run(IMAGES, {"ansible_ssh_common_args": common})
         self.assertNotIn("the agent guard cannot run with them", self._text(result))
         self.assertNotEqual(calls, [], self._text(result))
-
-    def test_standard_inventory_style_ssh_arguments_pass_the_check_and_ssh_gets_no_multiplexing(self) -> None:
-        common = (
-            "-o UserKnownHostsFile=/home/u/.ssh/known_hosts -o HostKeyAlias=k1 "
-            "-o GlobalKnownHostsFile=/dev/null -o StrictHostKeyChecking=yes"
-        )
-        result, calls = self._ssh_run(IMAGES, {"ansible_ssh_common_args": common})
-        self.assertNotIn("the agent guard cannot run with them", self._text(result))
-        # The fake ssh was reached (it exits 255), so the check let the host through.
-        self.assertTrue(calls, self._text(result))
-        argv = calls[0]
-        joined = " ".join(argv)
-        self.assertIn("ControlPath=none", joined)
-        self.assertIn("ControlMaster=no", joined)
-        self.assertNotIn("-S", argv)
-        self.assertIn("HostKeyAlias=k1", joined)
-        # An inventory extra-args value cannot reach ssh: the guard's extra vars empty it.
-        result, calls = self._ssh_run(IMAGES, {"ansible_ssh_common_args": common, "ansible_ssh_extra_args": "-v"})
-        self.assertNotIn("the agent guard cannot run with them", self._text(result))
-        self.assertTrue(calls)
-        self.assertNotIn("-v", calls[0])
-        # The launcher's extra vars empty ansible_ssh_extra_args, so even "-S" there never reaches ssh.
-        result, calls = self._ssh_run(IMAGES, {"ansible_ssh_extra_args": "-S /tmp/x"})
-        self.assertTrue(calls, self._text(result))
-        self.assertNotIn("-S", calls[0])
-        self.assertEqual(json.loads(self._launcher().agent_guard_ssh_extra_vars())["ansible_ssh_extra_args"], "")
 
 
 if __name__ == "__main__":
