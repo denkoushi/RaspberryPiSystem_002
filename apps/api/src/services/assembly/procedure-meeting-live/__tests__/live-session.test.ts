@@ -102,6 +102,30 @@ describe('LiveMeetingSession organize timing', () => {
     expect(messages.some((m) => m.type === 'doc')).toBe(false);
   });
 
+  it('D: waits for slow transcription past the budget and keeps the speech, skipping only the organize', async () => {
+    const messages: LiveMessage[] = [];
+    let organizeCalls = 0;
+    const session = new LiveMeetingSession({
+      transcribe: () => new Promise<string>((resolve) => { setTimeout(() => resolve('砥石を交換します'), 50000); }),
+      complete: () => { organizeCalls += 1; return new Promise<string>(() => {}); },
+      emit: (m) => messages.push(m),
+      organizeIntervalMs: 0,
+      endOrganizeBudgetMs: 45000,
+      segmenter: { partialIntervalMs: 1_000_000 }
+    });
+    session.push(pcm(300, 0)); session.push(pcm(1000, 4000)); session.push(pcm(1000, 0));
+    const ending = session.end();
+    await vi.advanceTimersByTimeAsync(45001);
+    expect(messages.some((m) => m.type === 'done')).toBe(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    await ending;
+    const types = messages.map((m) => m.type);
+    expect(types.filter((t) => t === 'final')).toHaveLength(1);
+    expect(types.at(-1)).toBe('done');
+    expect(types.filter((t) => t === 'done')).toHaveLength(1);
+    expect(organizeCalls).toBe(0);
+  });
+
   it('C: after a failed organize the next final retries immediately', async () => {
     const { session, messages, say, calls } = setup({ latency: 3000, failFirst: true, interval: 20000 });
     await vi.advanceTimersByTimeAsync(20000);

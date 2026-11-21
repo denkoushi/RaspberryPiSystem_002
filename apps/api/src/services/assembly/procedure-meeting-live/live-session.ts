@@ -16,7 +16,7 @@ export type LiveSessionOptions = {
   terms?: string;
   organizeIntervalMs?: number;
   organizeTimeoutMs?: number;
-  /** end() から done までの上限(ms)。取り切りと整理の両方を含めて数える。超えたら整理を捨てて done を出す(画面は60秒で諦めるため)。 */
+  /** end() からの整理の上限(ms)。end() の時点から数え、超えたら整理を捨てて done を出す(画面は60秒で諦めるため)。書き起こしの取り切りは切らずに待つ。 */
   endOrganizeBudgetMs?: number;
   segmenter?: { silenceMs?: number; maxUtteranceMs?: number; minSpeechMs?: number; partialIntervalMs?: number };
 };
@@ -74,19 +74,24 @@ export class LiveMeetingSession implements LiveSession {
 
   async end(): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const budget = new Promise<void>((resolve) => { timer = setTimeout(resolve, this.endBudget); });
-    const work = (async () => {
-      await this.segmenter.end();
-      // 実行中の整理が古い文字しか見ていないなら捨て、全発言で今すぐやり直す(2回分待たない)
-      if (this.organizing && this.dirty) this.abortCurrent();
-      if (this.organizing) await this.organizing;
-      if (this.dirty) {
-        this.startOrganize();
-        await this.organizing;
-      }
-    })();
+    // 予算を過ぎたら整理だけを諦める。書き起こしの取り切りは切らない(発言を落とさないため)
+    const budget = new Promise<void>((resolve) => {
+      timer = setTimeout(() => { this.gaveUp = true; this.abortCurrent(); resolve(); }, this.endBudget);
+    });
     try {
-      await Promise.race([work, budget.then(() => { this.gaveUp = true; this.abortCurrent(); })]);
+      await this.segmenter.end();
+      if (!this.gaveUp) {
+        // 実行中の整理が古い文字しか見ていないなら捨て、全発言で今すぐやり直す(2回分待たない)
+        if (this.organizing && this.dirty) this.abortCurrent();
+        const work = (async () => {
+          if (this.organizing) await this.organizing;
+          if (this.dirty) {
+            this.startOrganize();
+            await this.organizing;
+          }
+        })();
+        await Promise.race([work, budget]);
+      }
     } finally {
       clearTimeout(timer);
       this.abortCurrent();

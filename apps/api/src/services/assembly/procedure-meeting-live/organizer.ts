@@ -71,18 +71,12 @@ export async function organizeTranscript(
   complete: CompleteFn, transcript: string, previous: Organized | null, timeoutMs = 60000, terms = '', externalSignal?: AbortSignal
 ): Promise<Organized | null> {
   // 失敗・読めない答えは null
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const onExternalAbort = () => controller.abort();
-  if (externalSignal?.aborted) controller.abort();
-  else externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const signal = externalSignal ? AbortSignal.any([externalSignal, timeout]) : timeout;
   try {
-    const raw = await complete(buildOrganizeMessages(transcript, previous, terms), controller.signal);
+    const raw = await complete(buildOrganizeMessages(transcript, previous, terms), signal);
     return parseOrganized(raw);
   } catch {
     return null; // 失敗は null で返し、呼び出し側が整理し直す
-  } finally {
-    clearTimeout(timer);
-    externalSignal?.removeEventListener('abort', onExternalAbort);
   }
 }
