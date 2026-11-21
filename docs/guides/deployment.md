@@ -59,6 +59,7 @@ Pi4 を選んだデプロイは、有効な Pi4 agent（nfc / barcode / torque�
 - 実行時は Pi5 がロックの中で、指定した各組が「その project で、止まっていない 1 つのコンテナだけが `raspisys-<名前>:T`」であることを読み直す。違えば止まる。応答しない端末が外れたときは、残った端末の組だけを読み直す。
 - 指定で通しても外した agent のコンテナは動き続ける。`/etc/raspi-release/client-compose.yml` は今回のセットの agent だけで書き直されるので、外した agent はそのセットからは作り直せない。書き直すのは、その端末で更新する agent が 1 件以上のときだけで、全件を許可で残す場合は既存のファイルをそのまま使う。その agent を含むセットを次にデプロイすると戻る。
 - 初回導入では指定は効かず、止まる。
+- torque-agent が digest 指定（`--torque-cutover` の直後）や rollback イメージ（`raspi-standard-rollback:...`）で動いている Pi4 では、その agent に対して許可指定は通らない。その agent を含む SHA をデプロイする。
 - 読み直し（端末に SSH で接続する手順）の SSH は、多重接続を使わない設定に固定される。inventory の `ansible_ssh_common_args` / `ansible_ssh_extra_args` に `-S`、`ControlPath`、`ControlMaster`、`ControlPersist` があると、端末に接続する前に止まる（取り除いてから再実行する）。標準の経路では `ansible_ssh_extra_args` は空の値で上書きされる。また SSH の引数に引用符（`'` `"`）、バックスラッシュ、改行があるときも止まる。この拒否は読み直しだけに適用され、接続しない確認の手順（agent の網羅確認）には適用されない。
 
 指定を付けてよいかの確認は次のとおり。手順 1〜4 は `python3 scripts/deploy/agent_skip_check.py --sha SHA --inventory INVENTORY HOST:AGENT...` が判定する（手元の HEAD が SHA で作業ツリーが空のときだけ）。

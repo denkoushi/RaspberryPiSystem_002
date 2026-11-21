@@ -20,6 +20,9 @@
     done
   args:
     executable: /bin/bash
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
   register: release_agent_images_read
   changed_when: false
   tags:

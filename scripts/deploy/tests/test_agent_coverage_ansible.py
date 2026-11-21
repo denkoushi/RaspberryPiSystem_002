@@ -631,8 +631,9 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
     def test_the_coverage_playbook_accepts_the_standard_inventory_expression_in_a_path_with_a_space(self) -> None:
         directory = self.directory / "path with space"
         directory.mkdir()
+        script, log = self._ssh_recorder()
         document = {"all": {"children": {"kiosk": {"hosts": {"k1": {
-            "ansible_host": "203.0.113.10", **self.NFC,
+            "ansible_host": "203.0.113.10", "ansible_ssh_executable": str(script), **self.NFC,
             "ansible_ssh_common_args": (
                 "-o UserKnownHostsFile={{ (inventory_dir ~ '/known_hosts') | quote }} -o GlobalKnownHostsFile=/dev/null "
                 "-o HostKeyAlias={{ inventory_hostname }} -o StrictHostKeyChecking=yes"
@@ -640,11 +641,12 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         }}}}}}
         inventory = directory / "inventory.yml"
         inventory.write_text(yaml.safe_dump(document), encoding="utf-8")
-        script, log = self._ssh_recorder()
-        result, _ = self._check({}, ["nfc-agent"], inventory=inventory, env={"SSH_LOG": str(log)})
+        result, out = self._check({}, ["nfc-agent"], inventory=inventory, env={"SSH_LOG": str(log)})
         self.assertEqual(result.returncode, 0, self._text(result))
         self.assertNotIn("the agent guard cannot run with them", self._text(result))
         self.assertEqual(log.read_text(), "")
+        # The check ran (not skipped): its result file exists.
+        self.assertEqual([path.stem for path in out.glob("*.json")], ["k1"])
 
     def test_a_host_name_that_is_not_a_plain_name_writes_no_result_file(self) -> None:
         local = {"ansible_connection": "local", "ansible_become": False}
