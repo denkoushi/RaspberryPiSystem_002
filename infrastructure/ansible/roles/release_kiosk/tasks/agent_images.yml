@@ -1,5 +1,5 @@
 ---
-# Read-only: list the agent containers of this Pi4 (running or stopped) with the
+# Read-only: list the agent service containers (not one-off `docker compose run` containers) of this Pi4 (running or stopped) with the
 # image name they were created from, and write the result as JSON on the
 # controller. Nothing on the Pi4 changes.
 - name: Read the Pi4 agent containers of this Compose project
@@ -10,6 +10,7 @@
       container_ids="$(docker ps --all \
         --filter {{ ('label=com.docker.compose.project=' ~ release_kiosk_compose_project) | quote }} \
         --filter "label=com.docker.compose.service=${service}" \
+        --filter "label=com.docker.compose.oneoff=False" \
         --quiet)"
       for container_id in ${container_ids}; do
         # Assign first: a failing docker inspect inside a command substitution argument would not stop set -e.

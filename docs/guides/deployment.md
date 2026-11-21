@@ -71,7 +71,7 @@ Pi4 を選んだデプロイは、有効な Pi4 agent（nfc / barcode / torque�
 
 全部の組が合格のときだけ、スクリプトは付ける指定を 1 行で出す。不合格が 1 つでもあれば「付けてはいけない」と出し、指定の行は出さない。
 
-`--agent-images --limit HOST[:HOST...]` は読み取り専用で、Pi5 を通して各 Pi4 の agent コンテナ（イメージ名、状態、project）を JSON で出す。何も変更せず、Mac から Pi4 への直接接続もしないので、下の「失敗時」の Pi4 agent 操作の禁止の対象外である。どちらも S の inventory を使う前提で、違えば実行側で止まる。`--agent-images` は Pi5 に今あるチェックアウトの判定用 playbook を使うので、この変更が Pi5 に入るまでは使えない。
+`--agent-images --limit HOST[:HOST...]` は読み取り専用で、Pi5 を通して各 Pi4 の agent コンテナ（イメージ名、状態、project）を JSON で出す。何も変更せず、Mac から Pi4 への直接接続もしないので、下の「失敗時」の Pi4 agent 操作の禁止の対象外である。Pi5 の読み直しは、指定した端末名・エージェントについて、project が指定どおりで、通常のサービスコンテナ（`docker compose run` の一時コンテナは数えない）がちょうど 1 つ、その状態が running、イメージが `raspisys-<名前>:T` であることを比べ、1 つでも違えば実行側で止まる。計画・読み取り・実行は同じ inventory を使う前提である。`--agent-images` は Pi5 に今あるチェックアウトの判定用 playbook を使うので、この変更が Pi5 に入るまでは使えない。
 
 `--full-fleet` で部品のそろわない SHA を流すと Pi5 と Pi3 も本体の前で止まる（指定は `--full-fleet` と併用できない）。そのときは `--limit` で Pi5 と Pi3 だけを選ぶ。判定は、止まる前に Ansible の出力を `[agent-guard]` 付きで出し、止めた理由を 1 行の JSON で出す。`--status` にはその 1 行だけが出る。
 

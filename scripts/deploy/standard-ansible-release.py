@@ -1829,6 +1829,8 @@ def plan_agent_coverage_check(
     if not hosts:
         return
 
+    # args.limit is passed as is, and an all-hosts run adds no --limit: this assumes the kiosk group has no child
+    # groups (the same reading as selected_profiles). Adding child groups makes this stop (the safe side).
     run_coverage_playbook(
         str(inventory), args.limit, hosts, variables, allowed_missing_agents(agent_skip_pairs(args), hosts), executor,
     )

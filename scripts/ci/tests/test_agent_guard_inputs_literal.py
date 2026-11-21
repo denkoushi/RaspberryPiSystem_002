@@ -20,6 +20,7 @@ and the body could disagree. This test covers:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -34,7 +35,10 @@ ANSIBLE = ROOT / "infrastructure" / "ansible"
 AGENT_INPUTS = {"nfc_agent_client_id", "barcode_agent_enabled", "torque_agent_enabled"}
 IMAGE_INPUTS = {"release_kiosk_nfc_image", "release_kiosk_barcode_image", "release_kiosk_torque_image"}
 ALWAYS_LITERAL = AGENT_INPUTS | {"release_kiosk_compose_project"}
-INPUTS = ALWAYS_LITERAL | IMAGE_INPUTS
+# release_kiosk_enabled_agent_services is derived from the three agent inputs; only the role's vars/main.yml defines it.
+ENABLED_SERVICES = "release_kiosk_enabled_agent_services"
+ROLE_VARS = "infrastructure/ansible/roles/release_kiosk/vars/main.yml"
+INPUTS = ALWAYS_LITERAL | IMAGE_INPUTS | {ENABLED_SERVICES}
 ROLE_DEFAULTS = "infrastructure/ansible/roles/release_kiosk/defaults/main.yml"
 BODY_PLAYBOOK = "infrastructure/ansible/playbooks/deploy-release-standard.yml"
 ROLE_MODULES = {
@@ -48,9 +52,13 @@ _STATIC_NO_DEFINITION_FILES = (
     "infrastructure/ansible/playbooks/release-agent-images-read.yml",
 )
 INCLUDE_VARS = {"include_vars", "ansible.builtin.include_vars", "ansible.legacy.include_vars"}
-# include_vars calls that are allowed, each loading one fixed, tracked file that must not define the inputs.
+# include_vars calls that are allowed: the task file must contain exactly one include_vars (at any depth,
+# block/rescue/always included), and its file expression must match exactly. Value: (expression, loaded file).
 ALLOWED_INCLUDE_VARS = {
-    "infrastructure/ansible/roles/pi5_storage/tasks/main.yml": "infrastructure/ansible/vars/pi5-storage-contract.yml",
+    "infrastructure/ansible/roles/pi5_storage/tasks/main.yml": (
+        "{{ role_path }}/../../vars/pi5-storage-contract.yml",
+        "infrastructure/ansible/vars/pi5-storage-contract.yml",
+    ),
 }
 # Names that Jinja or Ansible provide without any variable file.
 BUILTINS = {"inventory_hostname", "ansible_playbook_python", "namespace", "range", "dict", "lipsum", "cycler", "joiner"}
@@ -161,6 +169,8 @@ def literal_problems(files: list[Path], root: Path) -> list[str]:
             where = f"{rel}:{'.'.join(key_path)}"
             if key_path[-1] in IMAGE_INPUTS and rel == ROLE_DEFAULTS:
                 continue
+            if key_path[-1] == ENABLED_SERVICES and rel == ROLE_VARS:
+                continue
             if isinstance(value, bool) or isinstance(value, int):
                 continue
             if not isinstance(value, str):
@@ -217,8 +227,64 @@ def body_pi4_role_prefixes(root: Path = ROOT) -> tuple[str, ...]:
     return tuple(f"infrastructure/ansible/roles/{name}/" for name in sorted(seen))
 
 
+_EXTERNAL_TASKS = re.compile(r"^\{\{\s*playbook_dir\s*\}\}/\.\./tasks/(.+)$")
+TASK_INCLUDE_MODULES = {
+    f"{prefix}{name}" for prefix in ("", "ansible.builtin.", "ansible.legacy.") for name in ("include_tasks", "import_tasks")
+}
+
+
+def _task_includes(value):
+    """File names given to include_tasks/import_tasks anywhere in a value."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in TASK_INCLUDE_MODULES:
+                if isinstance(item, str):
+                    yield item
+                elif isinstance(item, dict) and isinstance(item.get("file"), str):
+                    yield item["file"]
+            yield from _task_includes(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _task_includes(item)
+
+
+def external_task_files(root: Path = ROOT) -> tuple[str, ...]:
+    """Task files outside the roles (infrastructure/ansible/tasks) that the body's Pi4 plays or roles load."""
+    plays = _load(root / BODY_PLAYBOOK)
+    documents = [play for play in plays if isinstance(play, dict) and "kiosk" in str(play.get("hosts", ""))]
+    for prefix in body_pi4_role_prefixes(root):
+        for subdirectory in ("tasks", "handlers"):
+            directory = root / prefix / subdirectory
+            if directory.is_dir():
+                documents += [_load(path) for path in sorted(directory.rglob("*")) if path.is_file() and path.suffix in {"", ".yml", ".yaml"}]
+    seen: list[str] = []
+    pending = [document for document in documents]
+    while pending:
+        for name in _task_includes(pending.pop()):
+            match = _EXTERNAL_TASKS.match(name)
+            relative = f"infrastructure/ansible/tasks/{match.group(1)}" if match else None
+            if relative and relative not in seen and (root / relative).is_file():
+                seen.append(relative)
+                pending.append(_load(root / relative))
+    return tuple(sorted(seen))
+
+
 def no_definition_prefixes(root: Path = ROOT) -> tuple[str, ...]:
-    return tuple(dict.fromkeys((*_STATIC_NO_DEFINITION_FILES, *body_pi4_role_prefixes(root))))
+    return tuple(dict.fromkeys((*_STATIC_NO_DEFINITION_FILES, *body_pi4_role_prefixes(root), *external_task_files(root))))
+
+
+def include_vars_files(document) -> list:
+    """The file argument of every include_vars at any depth (block, rescue, always included)."""
+    found: list = []
+    if isinstance(document, dict):
+        for key, item in document.items():
+            if key in INCLUDE_VARS:
+                found.append(item.get("file") if isinstance(item, dict) else item)
+            found += include_vars_files(item)
+    elif isinstance(document, list):
+        for item in document:
+            found += include_vars_files(item)
+    return found
 
 
 def definition_problems(files: list[Path], root: Path, prefixes: tuple[str, ...] | None = None) -> list[str]:
@@ -232,13 +298,15 @@ def definition_problems(files: list[Path], root: Path, prefixes: tuple[str, ...]
         document = _load(path)
         keys = set(map(str, _keys(document)))
         for name in sorted(keys & INPUTS):
+            if name == ENABLED_SERVICES and rel == ROLE_VARS:
+                continue
             problems.append(f"{rel}: defines {name}")
         for name in sorted(set(_registered(document)) & INPUTS):
             problems.append(f"{rel}: registers {name}")
-        for name in sorted(keys & INCLUDE_VARS):
-            if rel in ALLOWED_INCLUDE_VARS:
-                continue
-            problems.append(f"{rel}: uses {name}")
+        if keys & INCLUDE_VARS:
+            allowed = ALLOWED_INCLUDE_VARS.get(rel)
+            if allowed is None or include_vars_files(document) != [allowed[0]]:
+                problems.append(f"{rel}: uses include_vars")
     return problems
 
 
@@ -257,14 +325,11 @@ class AgentGuardInputsAreLiteral(unittest.TestCase):
         self.assertEqual(definition_problems(_tracked_files(), ROOT), [])
 
     def test_allowed_include_vars_load_only_files_without_the_inputs(self) -> None:
-        for task_file, loaded in ALLOWED_INCLUDE_VARS.items():
-            tasks = _load(ROOT / task_file)
-            files = [
-                step[name]["file"] for step in tasks if isinstance(step, dict)
-                for name in INCLUDE_VARS if name in step
-            ]
-            self.assertEqual(len(files), 1, task_file)
-            self.assertTrue(files[0].endswith("/vars/" + Path(loaded).name), files[0])
+        for task_file, (expression, loaded) in ALLOWED_INCLUDE_VARS.items():
+            self.assertEqual(include_vars_files(_load(ROOT / task_file)), [expression], task_file)
+            role_path = (ROOT / task_file).parents[1]
+            resolved = (Path(expression.replace("{{ role_path }}", str(role_path)))).resolve()
+            self.assertEqual(resolved, (ROOT / loaded).resolve(), task_file)
             self.assertEqual(set(map(str, _keys(_load(ROOT / loaded)))) & INPUTS, set(), loaded)
 
     def test_the_body_pi4_roles_are_discovered_from_the_playbook(self) -> None:
@@ -365,6 +430,47 @@ class TheChecksActuallyFail(unittest.TestCase):
         self.assertEqual(
             len(self._problems("infrastructure/ansible/playbooks/release-agent-coverage-check.yml", text, definition_problems)), 1
         )
+
+    def test_the_allowed_include_vars_must_be_exactly_one_with_the_exact_expression(self) -> None:
+        relative = next(iter(ALLOWED_INCLUDE_VARS))
+        expression = ALLOWED_INCLUDE_VARS[relative][0]
+        exact = f"- ansible.builtin.include_vars:\n    file: \"{expression}\"\n"
+        self.assertEqual(self._problems(relative, exact, definition_problems), [])
+        second = exact + "- block:\n    - ansible.builtin.include_vars:\n        file: other.yml\n"
+        self.assertEqual(self._problems(relative, second, definition_problems), [f"{relative}: uses include_vars"])
+        rescue = exact + "- block: []\n  rescue:\n    - include_vars: {file: other.yml}\n"
+        self.assertEqual(self._problems(relative, rescue, definition_problems), [f"{relative}: uses include_vars"])
+        other = f"- ansible.builtin.include_vars:\n    file: \"{expression}.evil.yml\"\n"
+        self.assertEqual(self._problems(relative, other, definition_problems), [f"{relative}: uses include_vars"])
+        nested = f"- block:\n    - ansible.builtin.include_vars:\n        file: \"{expression}\"\n"
+        self.assertEqual(self._problems(relative, nested, definition_problems), [])
+
+    def test_enabled_services_is_defined_only_in_the_role_vars(self) -> None:
+        text = "release_kiosk_enabled_agent_services: []\n"
+        self.assertEqual(self._problems(ROLE_VARS, text, definition_problems), [])
+        problems = self._problems("infrastructure/ansible/roles/release_kiosk/tasks/x.yml", text, definition_problems)
+        self.assertEqual(problems, ["infrastructure/ansible/roles/release_kiosk/tasks/x.yml: defines release_kiosk_enabled_agent_services"])
+
+    def test_task_files_outside_the_roles_are_found_and_checked(self) -> None:
+        found = external_task_files()
+        self.assertIn("infrastructure/ansible/tasks/kiosk-gui-session-config.yml", found)
+        self.assertNotIn("infrastructure/ansible/tasks/preflight-signage.yml", found)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "infrastructure/ansible/playbooks").mkdir(parents=True)
+            (root / "infrastructure/ansible/tasks").mkdir(parents=True)
+            (root / BODY_PLAYBOOK).write_text(
+                "- hosts: kiosk\n  tasks:\n    - ansible.builtin.import_tasks: \"{{ playbook_dir }}/../tasks/a.yml\"\n", encoding="utf-8"
+            )
+            (root / "infrastructure/ansible/tasks/a.yml").write_text(
+                "- ansible.builtin.include_tasks: \"{{ playbook_dir }}/../tasks/b.yml\"\n", encoding="utf-8"
+            )
+            bad = root / "infrastructure/ansible/tasks/b.yml"
+            bad.write_text("- ansible.builtin.set_fact:\n    torque_agent_enabled: true\n", encoding="utf-8")
+            self.assertEqual(
+                definition_problems([bad], root, no_definition_prefixes(root)),
+                ["infrastructure/ansible/tasks/b.yml: defines torque_agent_enabled"],
+            )
 
     def test_registering_an_input_name_is_rejected(self) -> None:
         text = "- ansible.builtin.command: id\n  register: barcode_agent_enabled\n"

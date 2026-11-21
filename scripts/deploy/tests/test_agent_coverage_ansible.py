@@ -34,7 +34,11 @@ if args[0] == "ps":
     labels = [item for item in args if item.startswith("label=com.docker.compose.")]
     service = [item.split("=", 2)[2] for item in labels if item.startswith("label=com.docker.compose.service=")][0]
     project = [item.split("=", 2)[2] for item in labels if item.startswith("label=com.docker.compose.project=")][0]
+    oneoff = [item.split("=", 2)[2] for item in labels if item.startswith("label=com.docker.compose.oneoff=")]
     for row in rows:
+        row_oneoff = row[5] if len(row) > 5 else "False"
+        if oneoff and row_oneoff != oneoff[0]:
+            continue
         if row[0] == service and row[4] == project:
             print(row[1])
 elif args[0] == "inspect":
@@ -369,6 +373,26 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             self.assertEqual(call[1], "--format")
             self.assertEqual(call[2], "{{.Config.Image}} {{.State.Status}}")
             self.assertEqual(len(call), 4)
+
+    def test_one_off_containers_are_not_counted(self) -> None:
+        image = "ghcr.io/o/raspisys-nfc-agent:" + "a" * 40
+        hosts = {"k1": {"ansible_connection": "local", "ansible_become": False}}
+        result, out, log = self._images([f"nfc-agent c1 {image} running docker True"], hosts)
+        self.assertEqual(result.returncode, 0, self._text(result))
+        self.assertEqual(json.loads((out / "k1.json").read_text())["containers"]["nfc-agent"], [])
+        self.assertIn("label=com.docker.compose.oneoff=False", [item for call in calls_of(log.read_text()) for item in call])
+
+    def test_a_mix_of_one_off_and_regular_containers_reports_only_the_regular_ones(self) -> None:
+        image = "ghcr.io/o/raspisys-nfc-agent:"
+        rows = [
+            f"nfc-agent c1 {image}{'a' * 40} exited docker False",
+            f"nfc-agent c2 {image}{'b' * 40} running docker True",
+        ]
+        hosts = {"k1": {"ansible_connection": "local", "ansible_become": False}}
+        result, out, _log = self._images(rows, hosts)
+        self.assertEqual(result.returncode, 0, self._text(result))
+        containers = json.loads((out / "k1.json").read_text())["containers"]["nfc-agent"]
+        self.assertEqual(containers, [{"image": image + "a" * 40, "status": "exited"}])
 
     def test_a_failing_docker_inspect_fails_the_task_and_writes_no_report(self) -> None:
         rows = ["nfc-agent c1 ghcr.io/o/raspisys-nfc-agent:" + "a" * 40 + " running docker"]

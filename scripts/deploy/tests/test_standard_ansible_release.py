@@ -1071,6 +1071,16 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             ["excluded offline hosts: pi3-offline(pi3)"],
         )
 
+    def test_standard_route_passes_the_reachable_selection_and_limit_to_the_coverage_check(self) -> None:
+        result, execute, _, _ = self._run_route_with_offline_pi3(io.StringIO())
+        self.assertEqual(result, 1)
+        self.coverage.assert_called_once()
+        call = self.coverage.call_args.args
+        self.assertEqual(call[2], "pi5:pi4-online")
+        self.assertEqual(call[3], (("pi5", ("pi5",)), ("pi4", ("pi4-online",))))
+        self.assertNotIn("pi3-offline", call[2])
+        self.assertEqual(execute.call_args.args[0][-2:], ["--limit", call[2]])
+
     def test_standard_route_keeps_ansible_result_when_repeat_cannot_be_written(self) -> None:
         class ClosedAfterFirstEvent(io.StringIO):
             def write(self, text: str) -> int:
@@ -2539,6 +2549,42 @@ class AgentSkipGuardTests(unittest.TestCase):
             )
         lines = [json.loads(line) for line in result.stdout.splitlines()]
         self.assertEqual(lines, [{"host": "pi4-a"}, {"ansibleExitCode": 0}])
+
+    def test_pi5_script_prints_valid_reports_and_the_exit_code_when_ansible_fails_and_cleans_up(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "infrastructure/ansible").mkdir(parents=True)
+            (root / "infrastructure/ansible/ansible.cfg").write_text("")
+            scratch = root / "scratch"
+            scratch.mkdir()
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            (bin_dir / "timeout").write_text('#!/bin/sh\nshift 2\nexec "$@"\n')
+            (bin_dir / "ansible-playbook").write_text(
+                '#!/bin/sh\nfor a; do case "$a" in release_agent_guard_out_dir=*) d="${a#*=}";; esac; done\n'
+                'echo \'{"host":"pi4-a"}\' > "$d/pi4-a.json"\n'
+                'echo \'{"host":"pi4-b"}\' > "$d/pi4-b.json"\n'
+                'echo "fatal: pi4-c unreachable" >&2\n'
+                'echo "TASK failed" \n'
+                'exit 3\n'
+            )
+            for name in ("timeout", "ansible-playbook"):
+                (bin_dir / name).chmod(0o755)
+            script = MODULE.agent_images_script(root, MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b")
+            result = subprocess.run(
+                ["/bin/bash", "-c", script], text=True, capture_output=True, check=False,
+                env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(scratch)},
+            )
+            leftovers = list(scratch.iterdir())
+        lines = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(lines, [{"host": "pi4-a"}, {"host": "pi4-b"}, {"ansibleExitCode": 3}])
+        self.assertIn("fatal: pi4-c unreachable", result.stderr)
+        self.assertNotIn("fatal", result.stdout)
+        self.assertNotIn("TASK failed", result.stdout)
+        self.assertEqual(leftovers, [])
+        # The script reports Ansible's non-zero exit code as data; the Mac side turns it into a failure.
+        code, _ = self._run_agent_images("\n".join(result.stdout.splitlines()) + "\n")
+        self.assertEqual(code, 1)
 
     def test_guard_runner_kills_the_group_on_keyboard_interrupt_and_reaps_after_a_failed_second_wait(self) -> None:
         process = mock.MagicMock(pid=77, returncode=None)
