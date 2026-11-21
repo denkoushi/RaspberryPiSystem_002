@@ -17,7 +17,7 @@ export { palletVizMobileTenkeyTokens } from './palletVizMobileTenkeyTokens';
 export { PalletVizMachineHeader } from './PalletVizMachineHeader';
 export type { PalletVizMachineHeaderProps } from './PalletVizMachineHeader';
 export { PalletVizPalletNumberGrid } from './PalletVizPalletNumberGrid';
-export { DEFAULT_KIOSK_PALLET_COUNT, PALLET_GRID_COLS, DEFAULT_KIOSK_PALLET_COUNT as PALLET_COUNT } from './palletVizNumberGridConfig';
+export { DEFAULT_KIOSK_PALLET_COUNT, DEFAULT_KIOSK_PALLET_COUNT as PALLET_COUNT } from './palletVizNumberGridConfig';
 export { pushPalletTenkeyDigit } from './pushPalletTenkeyDigit';
 export { resolvePalletNoFromTenkeyDigits } from './resolvePalletNoFromTenkeyDigits';
 export type { TenkeyPalletResolveResult } from './resolvePalletNoFromTenkeyDigits';

@@ -46,8 +46,8 @@ export function createPalletOutboxRunner(store: PalletOfflineQueueStore, send = 
   };
   return {
     refresh,
-    async submit(input: PalletRequest, readAt = new Date().toISOString()) {
-      const request = { ...input, body: { ...input.body, eventKey: crypto.randomUUID(), readAt: new Date(readAt).toISOString() } } as PalletQueueRequest;
+    async submit(input: PalletRequest) {
+      const request = { ...input, body: { ...input.body, eventKey: crypto.randomUUID(), readAt: new Date().toISOString() } } as PalletQueueRequest;
       await store.add(request);
       await refresh();
       await flush();

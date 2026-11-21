@@ -342,7 +342,7 @@ export class ProcedureVideoService {
   }
 
   async regenerateAutoEdit(id: string) {
-    if (!env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED) throw new ApiError(409, '自動編集は無効です');
+    this.assertAutoEditEnabled();
     return runAssemblyTransaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "ProcedureVideo" WHERE "id" = ${id} FOR UPDATE`;
       const video = await tx.procedureVideo.findUnique({ where: { id } });
