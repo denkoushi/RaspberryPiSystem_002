@@ -12,9 +12,6 @@ export const GANTT_DEFAULT_CAPACITY_MINUTES = GANTT_EIGHT_HOURS_MINUTES;
 /** 設定可能な基準時間の下限（分）。 */
 export const GANTT_MIN_CAPACITY_MINUTES = 60;
 
-/** 可変スケール未確定時のフォールバック（8H = 96px 相当） */
-export const GANTT_FALLBACK_PX_PER_MINUTE = GANTT_MIN_ROW_HEIGHT_PX / GANTT_EIGHT_HOURS_MINUTES;
-
 /** ResizeObserver 未確定時の本文高さ見積 */
 export const GANTT_FALLBACK_AVAILABLE_WORK_HEIGHT_PX = 480;
 
