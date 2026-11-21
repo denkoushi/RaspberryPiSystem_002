@@ -68,11 +68,21 @@ export function pieceLanePath({ rows, side, level, weight, fromX, fromEdge, toX,
   return { path: `${path} M ${rows[last]!.left} ${ys[last]} L ${toX} ${ys[last]} L ${toX} ${toEdge}`, arrows, ys };
 }
 
-function laneRows(pane: Pane, from: Piece, to: Piece, bounds: DOMRect, zoom: number): LaneRow[] | null {
+/** One measurement pass: each element's rectangle is read from the DOM once. */
+type RectOf = (element: Element) => DOMRect;
+const rectReader = (): RectOf => {
+  const rects = new Map<Element, DOMRect>();
+  return (element) => {
+    let rect = rects.get(element);
+    if (!rect) { rect = element.getBoundingClientRect(); rects.set(element, rect); }
+    return rect;
+  };
+};
+
+function laneRows(pane: Pane, from: Piece, to: Piece, bounds: DOMRect, zoom: number, rect: RectOf, bottomMostOf: () => number): LaneRow[] | null {
   const start = pane.rowElements.current.get(from.rowKey);
   const end = pane.rowElements.current.get(to.rowKey);
   if (!start || !end) return null;
-  const rect = (element: Element) => element.getBoundingClientRect();
   const topOf = (element: Element) => (rect(element).top - bounds.top) / zoom;
   const startTop = topOf(start);
   const endTop = topOf(end);
@@ -84,11 +94,11 @@ function laneRows(pane: Pane, from: Piece, to: Piece, bounds: DOMRect, zoom: num
     chain = [start, ...between.sort((a, b) => topOf(a) - topOf(b)), end];
   }
   const barOffset = from.rect.top - startTop;
-  const bottomMost = Math.max(...[...pane.rowElements.current.values()].map(topOf));
+  const bottomMost = bottomMostOf();
   return chain.map(row => {
     const top = topOf(row);
     const track = row.querySelector('[data-gantt-track]');
-    const right = ((track ? rect(track) : rect(row)).right - bounds.left) / zoom;
+    const right = (rect(track ?? row).right - bounds.left) / zoom;
     const bottom = (rect(row).bottom - bounds.top) / zoom;
     const barTop = top + barOffset;
     // Only the pane's last row may spill below it, into the extra SVG height.
@@ -97,7 +107,7 @@ function laneRows(pane: Pane, from: Piece, to: Piece, bounds: DOMRect, zoom: num
   });
 }
 
-function measurePairs(panes: readonly Pane[]): Pair[] {
+export function measurePairs(panes: readonly Pane[]): Pair[] {
   const parts = new Map<string, Map<string, Piece>>();
   panes.forEach((pane, index) => {
     const rows = new Map<string, number>();
@@ -121,6 +131,9 @@ function measurePairs(panes: readonly Pane[]): Pair[] {
   const sides = pieceLaneSides(linked.flatMap(key => [...parts.get(key)!.values()].map(p => ({ part: key, pane: p.pane, row: p.row, left: p.rect.left }))));
   const zoom = pageZoom();
   const bounds = panes.map(pane => pane.content.current?.getBoundingClientRect());
+  const rect = rectReader();
+  // The pane's lowest row top is the same for every pair, so it is computed once per pane.
+  const bottomMosts = new Map<number, number>();
   return linked.flatMap((key, index) => {
     const pieces = [...parts.get(key)!.values()];
     pieces.sort((a, b) => a.pane - b.pane || a.row - b.row || a.rect.left - b.rect.left);
@@ -130,7 +143,16 @@ function measurePairs(panes: readonly Pane[]): Pair[] {
       const side = sides.get(`${from.pane}|${key}`);
       const box = bounds[from.pane];
       if (from.pane === to.pane && from.resource === to.resource && side && box) {
-        const rows = laneRows(panes[from.pane]!, from, to, box, zoom);
+        const pane = panes[from.pane]!;
+        const bottomMostOf = () => {
+          let value = bottomMosts.get(from.pane);
+          if (value === undefined) {
+            value = Math.max(...[...pane.rowElements.current.values()].map(row => (rect(row).top - box.top) / zoom));
+            bottomMosts.set(from.pane, value);
+          }
+          return value;
+        };
+        const rows = laneRows(pane, from, to, box, zoom, rect, bottomMostOf);
         if (rows) pair.lane = { ...side, rows };
       }
       return pair;
@@ -221,7 +243,18 @@ export const PlanningBoardPieceLinks = memo(function PlanningBoardPieceLinks({ p
       return measured.length;
     };
     if (!measure()) return;
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    // The first notification after observe() only reports the current size, so only a changed size measures again.
+    const seen = new Map<Element, string>();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver((entries) => {
+      let changed = false;
+      for (const { target, contentRect } of entries) {
+        const size = `${contentRect.width}x${contentRect.height}`;
+        const previous = seen.get(target);
+        seen.set(target, size);
+        if (previous !== undefined && previous !== size) changed = true;
+      }
+      if (changed) measure();
+    });
     for (const pane of panes) {
       if (pane.content.current) observer?.observe(pane.content.current);
       for (const row of pane.rowElements.current.values()) observer?.observe(row);
