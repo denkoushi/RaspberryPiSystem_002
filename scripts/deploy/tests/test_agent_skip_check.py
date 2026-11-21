@@ -228,6 +228,20 @@ class AgentSkipCheckTests(unittest.TestCase):
             self.assertIn("付けてはいけない", text, key)
             self.assertIn("could not be read", text, key)
 
+    def test_a_classification_value_of_the_wrong_type_is_refused_as_unreadable(self) -> None:
+        for key, value in (("failClosedReasons", None), ("pi4AgentServices", 3), ("torqueComposition", "false")):
+            text = self._assert_refused(Fake(classify={key: value}))
+            self.assertIn("付けてはいけない", text, key)
+            self.assertIn("could not be read", text, key)
+
+    def test_a_command_that_does_not_return_in_time_counts_as_failed(self) -> None:
+        original = MODULE.COMMAND_TIMEOUT_SECONDS
+        MODULE.COMMAND_TIMEOUT_SECONDS = 0.2
+        self.addCleanup(setattr, MODULE, "COMMAND_TIMEOUT_SECONDS", original)
+        result = MODULE.default_runner(["sleep", "5"])
+        self.assertEqual(result.returncode, 124)
+        self.assertEqual(result.stdout, "")
+
     def test_one_failing_pair_withholds_the_spec_line(self) -> None:
         images = json.dumps({"hosts": [report("pi4-a"), report("pi4-b", "nfc-agent", status="exited")]})
         text = self._assert_refused(Fake(images=images), "pi4-a:barcode-agent", "pi4-b:nfc-agent")

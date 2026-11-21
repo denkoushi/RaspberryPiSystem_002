@@ -43,8 +43,18 @@ class Verdict(NamedTuple):
         return not self.reason
 
 
+# Longer than the launcher's own bound on the agent image read (two guard calls of 300 s plus cleanup).
+COMMAND_TIMEOUT_SECONDS = 900
+
+
 def default_runner(command: Sequence[str]) -> "subprocess.CompletedProcess[str]":
-    return subprocess.run(list(command), cwd=ROOT, text=True, capture_output=True, check=False)
+    """Run a command; a command that does not return in time counts as failed (exit 124)."""
+    try:
+        return subprocess.run(
+            list(command), cwd=ROOT, text=True, capture_output=True, check=False, timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(list(command), 124, "", f"timed out after {COMMAND_TIMEOUT_SECONDS} s")
 
 
 def split_nul(text: str) -> list[str]:
@@ -149,8 +159,10 @@ def judge(pair: Pair, tag: str, project: str, sha: str, inventory: str, run: Run
         classification = json.loads(classify.stdout)
         reasons = classification["failClosedReasons"]
         services = classification["pi4AgentServices"]
-        composition = bool(classification["torqueComposition"])
+        composition = classification["torqueComposition"]
     except (ValueError, KeyError, TypeError):
+        return fail("the change classification could not be read")
+    if not isinstance(reasons, list) or not isinstance(services, list) or not isinstance(composition, bool):
         return fail("the change classification could not be read")
     if classify.returncode != 0 or reasons:
         return fail("the change classification fails closed: " + ", ".join(map(str, reasons)))
