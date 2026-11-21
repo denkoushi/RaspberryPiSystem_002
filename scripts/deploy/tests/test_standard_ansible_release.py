@@ -2229,11 +2229,13 @@ class AgentSkipGuardTests(unittest.TestCase):
         image = f"ghcr.io/o/raspisys-barcode-agent:{'b' * 40}"
         calls = self._check({"pi4-a": guard_report("pi4-a", "barcode-agent", image)})
         self.assertEqual(len(calls), 2)
-        forced = {"ansible_ssh_args": MODULE.AGENT_GUARD_SSH_ARGS}
+        forced = {"ansible_ssh_args": MODULE.AGENT_GUARD_SSH_ARGS, "ansible_ssh_extra_args": ""}
         for command in calls:
             values = [command[index + 1] for index, item in enumerate(command) if item == "--extra-vars"]
             self.assertIn(json.dumps(forced, separators=(",", ":")), values)
             self.assertEqual([json.loads(value).get("ansible_ssh_args") for value in values].count(MODULE.AGENT_GUARD_SSH_ARGS), 1)
+            # An inventory ansible_ssh_extra_args (appended after ansible_ssh_args) is always emptied.
+            self.assertEqual([json.loads(value).get("ansible_ssh_extra_args") for value in values].count(""), 1)
         script = MODULE.agent_images_script(Path("/srv/repo"), MODULE.DEFAULT_INVENTORY, "pi4-a", ("pi4-a",))
         self.assertIn("-e '" + json.dumps(forced, separators=(",", ":")) + "'", script)
         self.assertIn("ControlPath=none", MODULE.AGENT_GUARD_SSH_ARGS)
@@ -2310,10 +2312,15 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertEqual(stop_kind(slow), ("timeout", 1))
 
     def test_guard_environment_drops_tag_selection_and_lines_are_prefixed(self) -> None:
-        with mock.patch.dict(os.environ, {"ANSIBLE_RUN_TAGS": "x", "ANSIBLE_SKIP_TAGS": "always"}):
+        with mock.patch.dict(os.environ, {
+            "ANSIBLE_RUN_TAGS": "x", "ANSIBLE_SKIP_TAGS": "always",
+            "ANSIBLE_SSH_COMMON_ARGS": "-S /tmp/x", "ANSIBLE_SSH_EXTRA_ARGS": "-S /tmp/y",
+        }):
             environment = MODULE.agent_guard_environment()
         self.assertNotIn("ANSIBLE_RUN_TAGS", environment)
         self.assertNotIn("ANSIBLE_SKIP_TAGS", environment)
+        self.assertNotIn("ANSIBLE_SSH_COMMON_ARGS", environment)
+        self.assertNotIn("ANSIBLE_SSH_EXTRA_ARGS", environment)
         self.assertEqual(environment["ANSIBLE_HASH_BEHAVIOUR"], "replace")
         self.assertEqual(
             environment["ANSIBLE_SSH_ARGS"], "-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none"
@@ -2352,7 +2359,7 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertIn("cd /srv/repo ||", script)
         # Extra vars outrank an inventory ansible_ssh_args; the value is one quoted shell word.
         self.assertIn(
-            "-e '{\"ansible_ssh_args\":\"-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none\"}' ", script
+            "-e '{\"ansible_ssh_args\":\"-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none\",\"ansible_ssh_extra_args\":\"\"}' ", script
         )
         expected = json.dumps(["pi4-a", "pi4-b"], separators=(",", ":"))
         self.assertIn(
@@ -2363,7 +2370,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             "ANSIBLE_SSH_ARGS='-C -o ControlMaster=no -o ControlPersist=no -o ControlPath=none' timeout --kill-after=10 300 ansible-playbook",
             script,
         )
-        self.assertIn("unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS\n", script)
+        self.assertIn("unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS ANSIBLE_SSH_COMMON_ARGS ANSIBLE_SSH_EXTRA_ARGS\n", script)
         self.assertLess(script.index("unset ANSIBLE_RUN_TAGS"), script.index("ansible-playbook"))
         self.assertIn(f"-i {MODULE.DEFAULT_INVENTORY} ", script)
         self.assertIn(str(MODULE.IMAGES_PLAYBOOK.relative_to(MODULE.ROOT)), script)

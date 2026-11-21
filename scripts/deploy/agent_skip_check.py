@@ -149,7 +149,7 @@ def judge(pair: Pair, tag: str, project: str, sha: str, inventory: str, run: Run
         classification = json.loads(classify.stdout)
         reasons = classification["failClosedReasons"]
         services = classification["pi4AgentServices"]
-        composition = bool(classification.get("torqueComposition"))
+        composition = bool(classification["torqueComposition"])
     except (ValueError, KeyError, TypeError):
         return fail("the change classification could not be read")
     if classify.returncode != 0 or reasons:

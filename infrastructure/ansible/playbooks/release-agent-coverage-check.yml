@@ -2,6 +2,39 @@
 # Read-only gate run by the standard launcher before the release playbook.
 # It never connects to a host: every task is local to the controller. It is a
 # separate playbook so the release playbook's plays, tags and cleanup stay as is.
+# The guard forces ansible_ssh_args (no multiplexing), but Ansible appends ansible_ssh_common_args and
+# ansible_ssh_extra_args after it, and OpenSSH lets "-S path" or an earlier ControlPath/ControlMaster/ControlPersist
+# win. Refuse such arguments before any host is contacted (every task here is controller-local).
+- name: Refuse SSH multiplexing options in the connection arguments
+  hosts: kiosk
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: No -S, ControlPath, ControlMaster or ControlPersist in the SSH arguments of this host
+      ansible.builtin.assert:
+        that:
+          - agent_guard_ssh_flagged | length == 0
+        fail_msg: >-
+          Pi4 {{ inventory_hostname }} has SSH multiplexing options in {{ agent_guard_ssh_flagged | join(', ') }};
+          the agent guard cannot run with them. Remove them from the inventory
+          (ansible_ssh_common_args / ansible_ssh_extra_args).
+        quiet: true
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+        agent_guard_ssh_sources:
+          ansible_ssh_common_args: "{{ hostvars[inventory_hostname].ansible_ssh_common_args | default('') | string }}"
+          ansible_ssh_extra_args: "{{ hostvars[inventory_hostname].ansible_ssh_extra_args | default('') | string }}"
+        agent_guard_ssh_flagged: >-
+          {{ (agent_guard_ssh_sources | dict2items
+                | selectattr('value', 'search', '(^|[ \t])-[^- \toiplFEeBbcDIJLOQRWwm]*S')
+                | map(attribute='key') | map('regex_replace', '$', ' (-S)') | list)
+             + (agent_guard_ssh_sources | dict2items
+                | selectattr('value', 'search', '(?i)control(path|master|persist)')
+                | map(attribute='key') | map('regex_replace', '$', ' (ControlPath/ControlMaster/ControlPersist)') | list) }}
+
 - name: Check Pi4 agent coverage of the release set
   hosts: kiosk
   gather_facts: false

@@ -57,7 +57,8 @@ class Fake:
             return done(code=self.o.get("ancestor", 0))
         if command[1].endswith("classify_event_changes.py"):
             base = {"pi4AgentServices": [], "failClosedReasons": [], "torqueComposition": False}
-            return done(json.dumps({**base, **self.o.get("classify", {})}))
+            merged = {**base, **self.o.get("classify", {})}
+            return done(json.dumps({k: v for k, v in merged.items() if k not in self.o.get("drop", ())}))
         if command[:3] == ["git", "diff", "--name-only"] and "--" in command:
             return done(self.o.get("config", ""), self.o.get("config_code", 0))
         if command[:3] == ["git", "diff", "--name-only"]:
@@ -220,6 +221,12 @@ class AgentSkipCheckTests(unittest.TestCase):
         self.assertIn("torque", self._assert_refused(Fake(images=images, classify={"torqueComposition": True}), "pi4-a:torque-agent"))
         code, _ = run_main(Fake(classify={"torqueComposition": True}), "pi4-a:barcode-agent")
         self.assertEqual(code, 0)
+
+    def test_a_classification_missing_a_key_is_refused_as_unreadable(self) -> None:
+        for key in ("torqueComposition", "failClosedReasons", "pi4AgentServices"):
+            text = self._assert_refused(Fake(drop=(key,)))
+            self.assertIn("付けてはいけない", text, key)
+            self.assertIn("could not be read", text, key)
 
     def test_one_failing_pair_withholds_the_spec_line(self) -> None:
         images = json.dumps({"hosts": [report("pi4-a"), report("pi4-b", "nfc-agent", status="exited")]})

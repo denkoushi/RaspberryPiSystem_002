@@ -331,7 +331,7 @@ def body_pi4_plays(root: Path = ROOT) -> tuple[list[dict], list[str]]:
 
 
 def foreign_load_problems(target: str, root: Path) -> list[str]:
-    """A file read through {{ role_path }}/../<other role>/ runs with the caller's role_path, so it may load nothing."""
+    """A file of another role, however it was reached, runs with the caller's role_path, so it may load nothing."""
     document = _load(root / target)
     problems = []
     if any(True for _ in _references(document)):
@@ -387,7 +387,10 @@ def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
                 if target is None:
                     problems.append(f"{origin}: unresolved include {value!r}")
                 else:
-                    foreign = _ROLE_PATH.match(value) is not None and _role_of(target) != _role_of(origin)
+                    # However the path is written ({{ role_path }}/../x/, a plain ../x/ or a playbook_dir path), a file of
+                    # another role runs with the caller's role_path.
+                    target_role = _role_of(target)
+                    foreign = target_role is not None and target_role != _role_of(origin)
                     if foreign:
                         problems += foreign_load_problems(target, root)
                     add_file(target, restricted=foreign)
@@ -578,10 +581,21 @@ class AgentGuardInputsAreLiteral(unittest.TestCase):
             {"raspisys_github_owner", "release_sha"},
         )
         allowed = set(defaults) | BUILTINS | {"release_agent_guard_out_dir"}
+        # The SSH multiplexing refusal play reads only the two SSH argument variables of the host through hostvars.
+        ssh_check = {"hostvars", "agent_guard_ssh_sources", "agent_guard_ssh_flagged"}
         for relative in ("roles/release_kiosk/tasks/agent_images.yml", "playbooks/release-agent-images-read.yml"):
-            document = yaml.safe_load((ANSIBLE / relative).read_text(encoding="utf-8"))
+            text = (ANSIBLE / relative).read_text(encoding="utf-8")
+            hostvars_reads = set(re.findall(r"hostvars\[[^\]]*\][.\w]*", text))
+            self.assertLessEqual(
+                hostvars_reads,
+                {"hostvars[inventory_hostname].ansible_ssh_common_args",
+                 "hostvars[inventory_hostname].ansible_ssh_extra_args"},
+                relative,
+            )
+            allowed_here = allowed | ssh_check if hostvars_reads else allowed
+            document = yaml.safe_load(text)
             registered = {item for item in _registered(document)}
-            unexpected = jinja_names(document) - allowed - registered
+            unexpected = jinja_names(document) - allowed_here - registered
             self.assertEqual(unexpected, set(), relative)
             # Only the project and image names (not the release or its derived values) feed the read.
             read = jinja_names(document) & {name for name in defaults if name.startswith("release_")}
@@ -592,7 +606,7 @@ def _registered(document) -> list[str]:
     found: list[str] = []
     if isinstance(document, dict):
         for key, item in document.items():
-            if key == "register" and isinstance(item, str):
+            if key in ("register", "loop_var", "index_var") and isinstance(item, str):
                 found.append(item)
             found += _registered(item)
     elif isinstance(document, list):
@@ -857,6 +871,37 @@ class TheChecksActuallyFail(unittest.TestCase):
                 f"{roles}/top/tasks/next.yml": "- ansible.builtin.debug: {msg: x}\n",
             })
             self.assertEqual(closure_problems(root), [])
+
+    def test_a_fixed_relative_path_into_another_role_is_restricted_like_role_path(self) -> None:
+        roles = "infrastructure/ansible/roles"
+        # The target runs with top's role_path, so a role_path use or a further include there is rejected.
+        for body in ('- ansible.builtin.debug: {msg: "{{ role_path }}"}\n', "- ansible.builtin.include_tasks: next.yml\n"):
+            for include in ("../../other/tasks/x.yml", "{{ playbook_dir }}/../roles/other/tasks/x.yml"):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    self._tree(root, {
+                        BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                        f"{roles}/top/tasks/main.yml": f'- ansible.builtin.include_tasks: "{include}"\n',
+                        f"{roles}/other/tasks/x.yml": body,
+                        f"{roles}/other/tasks/next.yml": "- ansible.builtin.debug: {msg: x}\n",
+                    })
+                    self.assertTrue(closure_problems(root), (include, body))
+        # A relative path that stays inside the role is unchanged.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/main.yml": "- ansible.builtin.include_tasks: ../tasks/x.yml\n",
+                f"{roles}/top/tasks/x.yml": '- ansible.builtin.debug: {msg: "{{ role_path }}"}\n',
+            })
+            self.assertEqual(closure_problems(root), [])
+
+    def test_a_loop_variable_named_like_an_input_is_rejected(self) -> None:
+        path = "infrastructure/ansible/roles/release_kiosk/tasks/x.yml"
+        for key in ("loop_var", "index_var"):
+            text = f"- ansible.builtin.debug: {{msg: x}}\n  loop: [1]\n  loop_control:\n    {key}: torque_agent_enabled\n"
+            problems = self._problems(path, text, definition_problems)
+            self.assertEqual(problems, [f"{path}: registers torque_agent_enabled"], key)
 
     def test_body_plays_are_followed_unless_their_hosts_are_known_to_be_pi4_free(self) -> None:
         roles = "infrastructure/ansible/roles"

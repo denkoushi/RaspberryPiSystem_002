@@ -430,7 +430,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         self.assertEqual(sorted(path.stem for path in out.glob("*.json")), ["k1", "k2"])
 
     def test_read_playbook_asks_for_root_on_the_pi4_itself(self) -> None:
-        play = yaml.safe_load(IMAGES.read_text(encoding="utf-8"))[0]
+        play = yaml.safe_load(IMAGES.read_text(encoding="utf-8"))[-1]
         self.assertIs(play["become"], True)
 
     def test_read_playbook_uses_the_inventory_project(self) -> None:
@@ -490,6 +490,120 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, self._text(result))
         self.assertEqual([path.stem for path in out.glob("*.json")], ["k1"])
+
+    def _fake_docker_env(self, rows: list[str]) -> dict[str, str]:
+        table = self.directory / "table"
+        table.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        log = self.directory / "docker.log"
+        log.write_text("", encoding="utf-8")
+        bin_dir = self.directory / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        docker = bin_dir / "docker"
+        docker.write_text(FAKE_DOCKER, encoding="utf-8")
+        docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
+        return {"PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_TABLE": str(table), "FAKE_LOG": str(log)}
+
+    def test_the_launcher_reread_argv_runs_the_read_playbook_as_is(self) -> None:
+        # The argv of the Pi5-side re-read, passed to real ansible-playbook without adding any variable by hand.
+        module = self._launcher()
+        local = {"ansible_connection": "local", "ansible_become": False}
+        inventory = self._inventory({"k1": local, "k2": local, "k3": local}, {"raspisys_github_owner": "owner"})
+        out = self.directory / "reread-out"
+        out.mkdir()
+        argv = module.agent_images_argv(str(inventory), ["k2", "k1", "k2"], str(out))
+        self.assertEqual(argv[argv.index("--limit") + 1], "k2:k1")
+        env = module.agent_guard_environment()
+        env.update(
+            ANSIBLE_ROLES_PATH=str(ANSIBLE / "roles"), ANSIBLE_PYTHON_INTERPRETER="auto_silent", ANSIBLE_NOCOLOR="1",
+            **self._fake_docker_env(["nfc-agent c1 ghcr.io/o/raspisys-nfc-agent:" + "a" * 40 + " running docker"]),
+        )
+        result = subprocess.run(argv, cwd=self.directory, env=env, capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, self._text(result))
+        self.assertEqual(sorted(path.stem for path in out.glob("*.json")), ["k1", "k2"])
+
+    def _ssh_recorder(self) -> tuple[Path, Path]:
+        log = self.directory / "ssh.log"
+        log.write_text("", encoding="utf-8")
+        script = self.directory / "fake-ssh"
+        script.write_text(
+            "#!/usr/bin/env python3\nimport json, os, sys\n"
+            "open(os.environ['SSH_LOG'], 'a').write(json.dumps(sys.argv[1:]) + '\\n')\nsys.exit(255)\n",
+            encoding="utf-8",
+        )
+        script.chmod(script.stat().st_mode | stat.S_IXUSR)
+        return script, log
+
+    def _ssh_run(self, playbook: Path, host: dict, **options) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
+        module = self._launcher()
+        script, log = self._ssh_recorder()
+        inventory = self._inventory({"k1": {"ansible_host": "203.0.113.10", "ansible_ssh_executable": str(script), **host}})
+        out = self.directory / f"ssh-out-{len(list(self.directory.glob('ssh-out-*')))}"
+        out.mkdir()
+        env = module.agent_guard_environment()
+        env.update(
+            ANSIBLE_ROLES_PATH=str(ANSIBLE / "roles"), ANSIBLE_NOCOLOR="1", SSH_LOG=str(log),
+            ANSIBLE_HOST_KEY_CHECKING="false", **options.get("env", {}),
+        )
+        variables = {
+            "release_agent_guard_out_dir": str(out), "release_agent_images_expected_hosts_json": '["k1"]',
+            "release_kiosk_agent_services": ["nfc-agent"], "release_allowed_missing_agents_json": "{}",
+            "release_kiosk_service_allowlist": [],
+        }
+        command = [
+            "ansible-playbook", "-i", str(inventory), str(playbook), "--extra-vars", json.dumps(variables),
+            "--limit", "k1",
+        ]
+        if options.get("guard_vars", True):
+            command.extend(["--extra-vars", module.agent_guard_ssh_extra_vars()])
+        result = subprocess.run(command, cwd=self.directory, env=env, capture_output=True, text=True, check=False)
+        return result, [json.loads(line) for line in log.read_text().splitlines() if line]
+
+    def test_multiplexing_options_in_the_ssh_arguments_stop_before_any_connection(self) -> None:
+        bad = (
+            ("ansible_ssh_common_args", "-S /tmp/x"),
+            ("ansible_ssh_common_args", "-o ControlPath=/tmp/y"),
+            ("ansible_ssh_common_args", "-oControlPath=/tmp/y"),
+            ("ansible_ssh_common_args", "-o controlmaster=auto"),
+            ("ansible_ssh_common_args", "-o StrictHostKeyChecking=yes -oControlPersist=60s"),
+            ("ansible_ssh_common_args", "-CS/tmp/z"),
+            ("ansible_ssh_extra_args", "-S /tmp/x"),
+        )
+        for playbook in (IMAGES, COVERAGE):
+            for name, value in bad:
+                # Without the guard's extra vars (which empty the extra args) the playbook check sees the inventory.
+                result, calls = self._ssh_run(playbook, {name: value}, guard_vars=name != "ansible_ssh_extra_args")
+                text = self._text(result)
+                self.assertNotEqual(result.returncode, 0, (playbook.name, name, value, text))
+                self.assertIn("the agent guard cannot run with them", text, (name, value))
+                self.assertIn("k1", text)
+                self.assertIn(name, text)
+                self.assertEqual(calls, [], (name, value))
+
+    def test_standard_inventory_style_ssh_arguments_pass_the_check_and_ssh_gets_no_multiplexing(self) -> None:
+        common = (
+            "-o UserKnownHostsFile=/home/u/.ssh/known_hosts -o HostKeyAlias=k1 "
+            "-o StrictHostKeyChecking=yes -o ProxyCommand='ssh -W %h:%p jump'"
+        )
+        result, calls = self._ssh_run(IMAGES, {"ansible_ssh_common_args": common})
+        self.assertNotIn("the agent guard cannot run with them", self._text(result))
+        # The fake ssh was reached (it exits 255), so the check let the host through.
+        self.assertTrue(calls, self._text(result))
+        argv = calls[0]
+        joined = " ".join(argv)
+        self.assertIn("ControlPath=none", joined)
+        self.assertIn("ControlMaster=no", joined)
+        self.assertNotIn("-S", argv)
+        self.assertIn("HostKeyAlias=k1", joined)
+        # An inventory extra-args value cannot reach ssh: the guard's extra vars empty it.
+        result, calls = self._ssh_run(IMAGES, {"ansible_ssh_common_args": common, "ansible_ssh_extra_args": "-v"})
+        self.assertNotIn("the agent guard cannot run with them", self._text(result))
+        self.assertTrue(calls)
+        self.assertNotIn("-v", calls[0])
+        # The launcher's extra vars empty ansible_ssh_extra_args, so even "-S" there never reaches ssh.
+        result, calls = self._ssh_run(IMAGES, {"ansible_ssh_extra_args": "-S /tmp/x"})
+        self.assertTrue(calls, self._text(result))
+        self.assertNotIn("-S", calls[0])
+        self.assertEqual(json.loads(self._launcher().agent_guard_ssh_extra_vars())["ansible_ssh_extra_args"], "")
 
 
 if __name__ == "__main__":

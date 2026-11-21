@@ -1601,12 +1601,16 @@ AGENT_GUARD_SSH_ARGS = "-C -o ControlMaster=no -o ControlPersist=no -o ControlPa
 
 def agent_guard_ssh_extra_vars() -> str:
     """Extra vars outrank an inventory ansible_ssh_args, which outranks the environment variable."""
-    return json.dumps({"ansible_ssh_args": AGENT_GUARD_SSH_ARGS}, separators=(",", ":"))
+    # ansible_ssh_common_args (host key checks) stays; ansible_ssh_extra_args is appended after ansible_ssh_args, and a
+    # "-S path" or ControlPath there would beat ControlPath=none, so it is emptied. The playbooks refuse a
+    # multiplexing option left in the common or extra args.
+    return json.dumps({"ansible_ssh_args": AGENT_GUARD_SSH_ARGS, "ansible_ssh_extra_args": ""}, separators=(",", ":"))
 
 
 def agent_guard_environment() -> dict[str, str]:
     environment = ansible_environment()
-    for name in ("ANSIBLE_RUN_TAGS", "ANSIBLE_SKIP_TAGS"):
+    # The SSH argument variables are dropped too: the playbooks check the inventory values, not the environment.
+    for name in ("ANSIBLE_RUN_TAGS", "ANSIBLE_SKIP_TAGS", "ANSIBLE_SSH_COMMON_ARGS", "ANSIBLE_SSH_EXTRA_ARGS"):
         environment.pop(name, None)
     # An inventory dict of the same name must never be merged into the human's allowance.
     environment["ANSIBLE_HASH_BEHAVIOUR"] = "replace"
@@ -1729,10 +1733,15 @@ def agent_coverage_argv(inventory: str, limit: str, variables: dict[str, Any]) -
     return command
 
 
-def agent_images_argv(inventory: str, limit: str, directory: str) -> list[str]:
+def agent_images_argv(inventory: str, hosts: Sequence[str], directory: str) -> list[str]:
+    names = list(dict.fromkeys(hosts))
+    expected = json.dumps(names, separators=(",", ":"))
     return [
-        "ansible-playbook", "-i", inventory, str(IMAGES_PLAYBOOK), "--limit", limit,
-        "--extra-vars", json.dumps({"release_agent_guard_out_dir": directory}, separators=(",", ":")),
+        "ansible-playbook", "-i", inventory, str(IMAGES_PLAYBOOK), "--limit", ":".join(names),
+        "--extra-vars", json.dumps(
+            {"release_agent_guard_out_dir": directory, "release_agent_images_expected_hosts_json": expected},
+            separators=(",", ":"),
+        ),
         "--extra-vars", agent_guard_ssh_extra_vars(),
     ]
 
@@ -1752,7 +1761,8 @@ def run_coverage_playbook(
         if result.returncode != 0:
             raise AgentGuardStop(
                 "check-failed",
-                f"agent coverage check failed (exit {result.returncode}); an enabled Pi4 agent is not in the release set. "
+                f"agent coverage check failed (exit {result.returncode}); see the Ansible assert message above for the "
+                "cause (an enabled Pi4 agent missing from the release set is one). "
                 "Run --print-plan with the same --limit to see the host and agents.",
                 result.returncode,
             )
@@ -1770,8 +1780,9 @@ def reread_agent_images(inventory: str, pairs: Sequence[AgentSkip], executor: An
     """Confirm, inside the Pi5 lock, that each allowed agent still runs exactly version T."""
     directory = tempfile.mkdtemp(prefix="agent-images-")
     try:
-        limit = ":".join(dict.fromkeys(pair.host for pair in pairs))
-        result = run_guarded(agent_images_argv(inventory, limit, directory), executor, "reread-unreadable")
+        result = run_guarded(
+            agent_images_argv(inventory, [pair.host for pair in pairs], directory), executor, "reread-unreadable",
+        )
         if result.returncode != 0:
             raise AgentGuardStop(
                 "reread-unreadable",
@@ -1857,7 +1868,7 @@ def agent_images_script(remote_root: Path, relative: str, limit: str, expected_h
         f"cd {root} || exit 1",
         'd="$(mktemp -d)" || exit 1',
         "trap 'rm -rf \"$d\"' EXIT",
-        "unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS",
+        "unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS ANSIBLE_SSH_COMMON_ARGS ANSIBLE_SSH_EXTRA_ARGS",
         f"ANSIBLE_CONFIG={config} ANSIBLE_HASH_BEHAVIOUR=replace ANSIBLE_SSH_ARGS={shlex.quote(AGENT_GUARD_SSH_ARGS)} "
         f"timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
         f"ansible-playbook -i {shlex.quote(relative)} {playbook} --limit {shlex.quote(limit)} "
