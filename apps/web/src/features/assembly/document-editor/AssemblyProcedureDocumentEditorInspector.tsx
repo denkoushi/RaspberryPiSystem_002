@@ -117,7 +117,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
           <legend>文章</legend>
           <textarea
             data-kiosk-sop-target="assembly-document-editor-text-value"
-            readOnly={textReadOnly}
+            readOnly={textReadOnly || (live !== undefined && live.status !== 'idle')}
             value={element.text}
             onChange={(event) => { voice.manualEdit(); patch({ text: event.target.value }); }}
             className="min-h-24 min-w-0 rounded border border-slate-500 bg-white px-2 py-2 text-lg text-slate-900"
