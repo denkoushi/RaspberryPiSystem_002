@@ -40,8 +40,11 @@ class ImageBudgetResult:
     largest_layer_bytes: int
 
 
+# CI measured 1,132,205,931 bytes after the Debian apt layer was refreshed
+# (APT_CACHE_BUST 2026-11-22, #3007); the prior main build was 1,114,721,086.
+# The budget tracks that measurement with ~1.6% headroom, as in #2436.
 API_IMAGE_BUDGET = ImageBudget(
-    max_total_bytes=1_125_000_000,
+    max_total_bytes=1_150_000_000,
     max_layer_bytes=700_000_000,
     max_layers=40,
 )
