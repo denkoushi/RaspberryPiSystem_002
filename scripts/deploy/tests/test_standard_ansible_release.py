@@ -2343,7 +2343,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             with self.assertRaises(MODULE.AgentGuardTimeout):
                 MODULE.run_agent_guard_command(["ansible-playbook"], {})
         self.assertTrue(popen.call_args.kwargs["start_new_session"])
-        killpg.assert_called_once_with(4242, MODULE.signal.SIGKILL)
+        self.assertEqual([c.args for c in killpg.call_args_list], [(4242, MODULE.signal.SIGTERM), (4242, MODULE.signal.SIGKILL)])
         self.assertEqual(MODULE.AGENT_GUARD_TIMEOUT_SECONDS, 300)
 
     def test_torque_cutover_skips_the_guard(self) -> None:
@@ -2518,10 +2518,10 @@ class AgentSkipGuardTests(unittest.TestCase):
         with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg") as killpg:
             with self.assertRaises(KeyboardInterrupt):
                 MODULE.run_agent_guard_command(["ansible-playbook"], {})
-        killpg.assert_called_once_with(79, MODULE.signal.SIGKILL)
+        self.assertEqual([c.args for c in killpg.call_args_list], [(79, MODULE.signal.SIGTERM), (79, MODULE.signal.SIGKILL)])
         process.stdout.close.assert_called_once()
         process.stderr.close.assert_called_once()
-        process.wait.assert_called_once()
+        self.assertEqual(process.wait.call_count, 2)
 
     def test_plan_guard_runs_through_the_process_group_runner_with_the_plan_variables(self) -> None:
         calls: list[list[str]] = []
@@ -2673,7 +2673,32 @@ class AgentSkipGuardTests(unittest.TestCase):
                 MODULE.run_agent_guard_command(["ansible-playbook"], {})
         process.stdout.close.assert_called_once()
         process.stderr.close.assert_called_once()
-        process.wait.assert_called_once()
+        # One wait for the SIGTERM grace, one in the final reap.
+        self.assertEqual(process.wait.call_count, 2)
+
+    def test_timeout_sends_sigterm_first_so_setsid_workers_are_stopped(self) -> None:
+        # Mimics Ansible: a worker in its own session (never reached by a group signal) that only the parent's
+        # SIGTERM handler stops. A SIGKILL-only launcher would leave the worker behind.
+        tmp = Path(tempfile.mkdtemp(prefix="guard-term-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        pid_file = tmp / "worker.pid"
+        script = (
+            "import os, signal, subprocess, sys, time\n"
+            "worker = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True)\n"
+            "open(sys.argv[1] + '.tmp', 'w').write(str(worker.pid)); os.rename(sys.argv[1] + '.tmp', sys.argv[1])\n"
+            "def stop(*_):\n"
+            "    worker.kill(); worker.wait(); os._exit(0)\n"
+            "signal.signal(signal.SIGTERM, stop)\n"
+            "time.sleep(60)\n"
+        )
+        with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 2), mock.patch.object(MODULE, "AGENT_GUARD_TERM_GRACE_SECONDS", 3):
+            with self.assertRaises(MODULE.AgentGuardTimeout):
+                MODULE.run_agent_guard_command([sys.executable, "-c", script, str(pid_file)], os.environ.copy())
+        self.assertTrue(pid_file.exists(), "the worker never started within the time limit")
+        worker_pid = int(pid_file.read_text())
+        time.sleep(0.3)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(worker_pid, 0)
 
     def test_real_timeout_kills_children_and_grandchildren_and_removes_temporary_folders(self) -> None:
         # A random marker on the command line of both sleepers, so only this test's own processes are looked for
@@ -2711,16 +2736,22 @@ class AgentSkipGuardTests(unittest.TestCase):
             lambda executor: MODULE.reread_agent_images(MODULE.DEFAULT_INVENTORY, MODULE.agent_skip_pairs(agent_args()), executor),
         ):
             created: list[str] = []
+            existed: list[bool] = []
 
             def executor(cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-                created.append(json.loads(cmd[cmd.index("--extra-vars") + 1]).get("release_agent_guard_out_dir", ""))
+                path = json.loads(cmd[cmd.index("--extra-vars") + 1]).get("release_agent_guard_out_dir", "")
+                created.append(path)
+                existed.append(bool(path) and Path(path).exists())
                 return MODULE.run_agent_guard_command(command, env)
 
             with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 1), redirect_stderr(io.StringIO()):
                 with self.assertRaises(MODULE.AgentGuardStop) as caught:
                     call(executor)
             self.assertEqual(caught.exception.kind, "timeout")
-            self.assertFalse(any(Path(path).exists() for path in created if path))
+            self.assertEqual(len(created), 1)
+            self.assertTrue(created[0], "release_agent_guard_out_dir was not captured")
+            self.assertEqual(existed, [True], "the temporary folder did not exist during the run")
+            self.assertFalse(Path(created[0]).exists())
         time.sleep(0.3)
         self.assertFalse(alive())
 

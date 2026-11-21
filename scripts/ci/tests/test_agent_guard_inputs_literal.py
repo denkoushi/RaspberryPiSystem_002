@@ -277,9 +277,12 @@ def _role_of(relative: str) -> str | None:
     return None
 
 
-def _resolve_tasks_file(expression: str, origin: str, root: Path) -> str | None:
-    """Repository-relative path of a task file named by an include, or None when it cannot be resolved."""
-    role = _role_of(origin)
+def _resolve_tasks_file(expression: str, origin: str, root: Path, context_role: str | None = None) -> str | None:
+    """Repository-relative path of a task file named by an include, or None when it cannot be resolved.
+
+    context_role is the nearest role on the include chain: a shared file outside the roles keeps the role of the
+    caller, so its relative includes are searched under that role's tree too."""
+    role = _role_of(origin) or context_role
     candidates: list[str] = []
     # Ansible's relative search for a file inside a role walks several folders of that role and of the playbook
     # directory (caller folder, role tasks/, role root, playbooks/, playbooks/tasks/, ...). Instead of copying that
@@ -366,14 +369,18 @@ def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
     roles: list[str] = []
     files: list[str] = []
     problems: list[str] = []
-    queue: list[tuple[str, Any]] = []
+    queue: list[tuple[str, Any, str | None]] = []
+    followed: set[tuple[str, str | None]] = set()
 
-    def add_file(relative: str, restricted: bool = False) -> None:
+    def add_file(relative: str, restricted: bool = False, context_role: str | None = None) -> None:
         if relative not in files:
             files.append(relative)
-            # A file loaded through another role's role_path is not followed any further (see foreign_load_problems).
-            if not restricted:
-                queue.append((relative, _load(root / relative)))
+        # A file loaded through another role's role_path is not followed any further (see foreign_load_problems).
+        # A shared file is followed once per role context it is reached from.
+        key = (relative, None if _role_of(relative) else context_role)
+        if not restricted and key not in followed:
+            followed.add(key)
+            queue.append((relative, _load(root / relative), context_role))
 
     def add_role(name: str, origin: str) -> None:
         if name in roles:
@@ -391,18 +398,19 @@ def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
 
     body_plays, body_problems = body_pi4_plays(root)
     problems += body_problems
-    queue += [(BODY_PLAYBOOK, play) for play in body_plays]
+    queue += [(BODY_PLAYBOOK, play, None) for play in body_plays]
     for relative in GUARD_PLAYBOOKS:
         if (root / relative).is_file():
-            queue.append((relative, _load(root / relative)))
+            queue.append((relative, _load(root / relative), None))
     while queue:
-        origin, document = queue.pop()
+        origin, document, context_role = queue.pop()
+        caller_role = _role_of(origin) or context_role
         for kind, value in _references(document):
             if kind == "role":
                 add_role(value, origin)
             elif kind == "tasks":
                 try:
-                    target = _resolve_tasks_file(value, origin, root)
+                    target = _resolve_tasks_file(value, origin, root, caller_role)
                 except ValueError as error:
                     problems.append(f"{origin}: {error}")
                     continue
@@ -412,10 +420,10 @@ def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
                     # However the path is written ({{ role_path }}/../x/, a plain ../x/ or a playbook_dir path), a file of
                     # another role runs with the caller's role_path.
                     target_role = _role_of(target)
-                    foreign = target_role is not None and target_role != _role_of(origin)
+                    foreign = target_role is not None and target_role != caller_role
                     if foreign:
                         problems += foreign_load_problems(target, root)
-                    add_file(target, restricted=foreign)
+                    add_file(target, restricted=foreign, context_role=caller_role)
             else:
                 problems.append(f"{origin}: unresolved reference {value}")
     return sorted(roles), sorted(files), sorted(dict.fromkeys(problems))
@@ -852,6 +860,24 @@ class TheChecksActuallyFail(unittest.TestCase):
             problems = closure_problems(root)
             self.assertEqual(len(problems), 1, problems)
             self.assertIn("ambiguous include", problems[0])
+
+    def test_a_relative_include_inside_a_shared_file_keeps_the_callers_role_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            roles = "infrastructure/ansible/roles"
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/main.yml": '- ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/shared.yml"\n',
+                "infrastructure/ansible/tasks/shared.yml": "- ansible.builtin.import_tasks: w.yml\n",
+                "infrastructure/ansible/tasks/w.yml": "- ansible.builtin.debug: {msg: shared}\n",
+            })
+            self.assertEqual(closure_problems(root), [])
+            for extra in (f"{roles}/top/tasks/w.yml", f"{roles}/top/tasks/tasks/w.yml"):
+                self._tree(root, {extra: "- ansible.builtin.debug: {msg: role}\n"})
+                problems = closure_problems(root)
+                self.assertEqual(len(problems), 1, (extra, problems))
+                self.assertIn("ambiguous include", problems[0])
+                (root / extra).unlink()
 
     def test_an_include_that_also_exists_in_the_playbook_directory_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

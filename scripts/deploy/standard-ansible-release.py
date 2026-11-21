@@ -76,6 +76,8 @@ AGENT_GUARD_PREFIX = "[agent-guard] "
 # Copied Ansible output must never look like the launcher's own "[agent-guard] stop {...}" line.
 AGENT_GUARD_COPY_PREFIX = AGENT_GUARD_PREFIX + "| "
 AGENT_GUARD_TIMEOUT_SECONDS = 300
+# Grace between SIGTERM and SIGKILL on time-out: Ansible's own SIGTERM handling stops its setsid() workers.
+AGENT_GUARD_TERM_GRACE_SECONDS = 10
 AGENT_IMAGES_INVENTORY_SECONDS = 60
 AGENT_IMAGES_CLEANUP_SECONDS = 40  # kill-after 10 plus ssh and cleanup margin
 SAFE_INVENTORY_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
@@ -1650,6 +1652,17 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
         except OSError:
             pass
 
+    def terminate_group() -> None:
+        # Ansible workers call setsid(), so only Ansible's own SIGTERM handling reaches them; SIGKILL follows after a grace.
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except OSError:
+            return
+        try:
+            process.wait(timeout=AGENT_GUARD_TERM_GRACE_SECONDS)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
     def reap() -> None:
         for stream in (process.stdout, process.stderr):
             try:
@@ -1665,6 +1678,7 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
     try:
         stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:
+        terminate_group()
         kill_group()
         # Partial output captured before the first time-out; the second wait may add to it or fail too.
         out, err = _text(error.stdout), _text(error.stderr)
