@@ -27,12 +27,7 @@
 
 - name: Select agents enabled for this Pi4
   ansible.builtin.set_fact:
-    release_kiosk_enabled_services: >-
-      {{
-        (['nfc-agent'] if (nfc_agent_client_id | default('') | string | length > 0) else [])
-        + (['barcode-agent'] if (barcode_agent_enabled | default(false) | bool) else [])
-        + (['torque-agent'] if (torque_agent_enabled | default(false) | bool) else [])
-      }}
+    release_kiosk_enabled_services: "{{ release_kiosk_enabled_agent_services }}"
     release_kiosk_requested_services: "{{ release_kiosk_agent_services | list }}"
     release_kiosk_switch_attempted: false
     release_kiosk_healthy: false

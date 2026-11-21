@@ -1,0 +1,49 @@
+---
+# Read-only: list the agent containers of this Pi4 (running or stopped) with the
+# image name they were created from, and write the result as JSON on the
+# controller. Nothing on the Pi4 changes.
+- name: Read the Pi4 agent containers of this Compose project
+  ansible.builtin.shell: |
+    set -euo pipefail
+    inspect_format=$'\173\173.Config.Image\175\175 \173\173.State.Status\175\175'
+    for service in nfc-agent barcode-agent torque-agent; do
+      container_ids="$(docker ps --all \
+        --filter {{ ('label=com.docker.compose.project=' ~ release_kiosk_compose_project) | quote }} \
+        --filter "label=com.docker.compose.service=${service}" \
+        --quiet)"
+      for container_id in ${container_ids}; do
+        printf '%s %s\n' "${service}" "$(docker inspect --format "${inspect_format}" "${container_id}")"
+      done
+    done
+  args:
+    executable: /bin/bash
+  register: release_agent_images_read
+  changed_when: false
+  tags:
+    - always
+
+- name: Write the agent container report on the controller
+  ansible.builtin.copy:
+    content: >-
+      {% set report = namespace(containers={'nfc-agent': [], 'barcode-agent': [], 'torque-agent': []}) %}
+      {% for line in release_agent_images_read.stdout_lines %}
+      {% set fields = line.split(' ') %}
+      {% set _ = report.containers[fields[0]].append({'image': fields[1], 'status': fields[2]}) %}
+      {% endfor %}
+      {{ {
+        'host': inventory_hostname,
+        'project': release_kiosk_compose_project,
+        'expectedImages': {
+          'nfc-agent': release_kiosk_nfc_image | regex_replace(':[^:/]*$', ''),
+          'barcode-agent': release_kiosk_barcode_image | regex_replace(':[^:/]*$', ''),
+          'torque-agent': release_kiosk_torque_image | regex_replace(':[^:/]*$', '')
+        },
+        'containers': report.containers
+      } | to_json }}
+    dest: "{{ release_agent_guard_out_dir }}/{{ inventory_hostname }}.json"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  tags:
+    - always

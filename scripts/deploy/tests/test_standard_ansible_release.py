@@ -38,6 +38,17 @@ def completed(command: list[str], stdout: str = "", returncode: int = 0) -> subp
     return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr="")
 
 
+def write_coverage_results(command: list[str]) -> None:
+    """Stand in for the coverage playbook: write one passing result file per limited host."""
+    if not any(str(item).endswith("release-agent-coverage-check.yml") for item in command):
+        return
+    variables = json.loads(command[command.index("--extra-vars") + 1])
+    for host in command[command.index("--limit") + 1].split(":"):
+        (Path(variables["release_agent_guard_out_dir"]) / f"{host}.json").write_text(
+            json.dumps({"host": host, "agentsNotUpdated": []}), encoding="utf-8"
+        )
+
+
 def torque_capable_host(serial: str = "702902S") -> dict[str, object]:
     link_name = f"bluetooth-TOHNICHI_{serial}-event-kbd"
     return {
@@ -961,7 +972,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                     self.assertEqual(port, 22)
 
     def _run_route_with_offline_pi3(
-        self, stdout: io.TextIOBase, ansible: Any = 1, *, offline: bool = True,
+        self, stdout: io.TextIOBase, ansible: Any = 1, *, offline: bool = True, coverage_error: BaseException | None = None,
     ) -> tuple[int, Any, Any, tuple[dict[str, str], ...]]:
         args = argparse.Namespace(
             inventory=MODULE.DEFAULT_INVENTORY,
@@ -1013,8 +1024,12 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         ), mock.patch.object(
             MODULE, "signage_identity"
         ) as signage_identity, mock.patch.object(
+            MODULE, "run_agent_coverage_check"
+        ) as coverage, mock.patch.object(
             MODULE, "execute_ansible_with_cleanup"
         ) as execute, redirect_stdout(stdout):
+            self.coverage = coverage
+            coverage.side_effect = coverage_error
             def run_ansible(*_: object, **__: object) -> int:
                 stdout.lines_at_ansible = len(stdout.getvalue().splitlines())  # type: ignore[attr-defined]
                 if isinstance(ansible, BaseException):
@@ -1502,7 +1517,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         # The torque cutover placeholder is not a registry reference.
         self.assertEqual(len(inspected), 2)
 
-    def _print_plan(self, artifacts: object, fake_run: object, limit: str) -> tuple[int, str]:
+    def _print_plan(self, artifacts: object, fake_run: object, limit: str, coverage_error: BaseException | None = None) -> tuple[int, str, str]:
         inventory = {
             "server": {"hosts": ["pi5"]},
             "kiosk": {"hosts": ["pi4-a"]},
@@ -1520,13 +1535,16 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             MODULE, "inventory_document", side_effect=[inventory, selected_inventory]
         ), mock.patch.object(
             MODULE, "release_set_artifacts", return_value=artifacts
-        ), mock.patch.object(MODULE, "run", side_effect=fake_run), redirect_stdout(
+        ), mock.patch.object(MODULE, "run", side_effect=fake_run), mock.patch.object(
+            MODULE, "plan_agent_coverage_check", side_effect=coverage_error
+        ) as plan_check, redirect_stdout(
             io.StringIO()
         ) as output, redirect_stderr(io.StringIO()) as errors:
             code = MODULE.main(
                 ["--branch", "main", "--inventory", MODULE.DEFAULT_INVENTORY, "--limit", limit, "--print-plan"]
             )
-        return code, output.getvalue() + errors.getvalue()
+        self.plan_check = plan_check
+        return code, output.getvalue(), errors.getvalue()
 
     def test_print_plan_fails_before_any_release_when_an_agent_tag_is_missing(self) -> None:
         artifacts = MODULE.ReleaseArtifacts("api", "web", None, None, ("nfc-agent",))
@@ -1540,17 +1558,49 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         ):
             self._print_plan(artifacts, fake_run, "pi4-a")
 
+    def test_print_plan_stops_without_json_when_the_agent_check_fails(self) -> None:
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            return completed(command)
+
+        artifacts = MODULE.ReleaseArtifacts("api", "web", None, None, ("nfc-agent",))
+        code, text, _errors = self._print_plan(artifacts, fake_run, "pi4-a")
+        self.assertEqual(code, 0)
+        json.loads(text)
+        args, _kwargs = self.plan_check.call_args
+        variables = args[3]
+        self.assertEqual(variables["release_sha"], SHA)
+        self.assertEqual(variables["release_kiosk_agent_services"], ["nfc-agent"])
+        self.assertNotIn("release_kiosk_first_install", variables)
+        code, text, errors = self._print_plan(
+            artifacts, fake_run, "pi4-a", MODULE.AgentGuardStop("check-failed", "not updated", 2)
+        )
+        self.assertEqual(code, 2)
+        self.assertEqual(text, "")
+        self.assertIn('[agent-guard] stop {"kind": "check-failed"}', errors)
+
+    def test_status_summary_shows_the_agent_guard_stop_line_only(self) -> None:
+        prefix = "2026-11-21T10:00:00+09:00 raspberrypi bash[456]: "
+        lines = [
+            prefix + "[agent-guard] fatal: [pi4-a]: FAILED! secret-detail",
+            prefix + '[agent-guard] stop {"kind": "reread-mismatch"}',
+            prefix + '[agent-guard] stop {"kind": "made-up"}',
+            prefix + '[agent-guard] stop {"kind": "timeout", "extra": 1}',
+            prefix + "[agent-guard] pi4-a : ok=1 changed=0 unreachable=0 failed=1 skipped=0 rescued=0 ignored=0",
+        ]
+        summaries = MODULE.summarize_release_journal("\n".join(lines))
+        self.assertEqual(summaries, ["agent guard stopped the release: reread-mismatch"])
+
     def test_print_plan_says_when_kiosk_files_will_not_be_delivered(self) -> None:
         def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
             return completed(command)
 
-        code, text = self._print_plan(
+        code, text, _errors = self._print_plan(
             MODULE.ReleaseArtifacts("api", "web", None, None, ()), fake_run, "pi4-a"
         )
         self.assertEqual(code, 0)
         self.assertTrue(json.loads(text)["pi4ReleaseFiles"].startswith("skipped:"))
 
-        code, text = self._print_plan(
+        code, text, _errors = self._print_plan(
             MODULE.ReleaseArtifacts("api", "web", None, None, ("nfc-agent",)), fake_run, "pi4-a"
         )
         self.assertEqual(code, 0)
@@ -1571,6 +1621,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
 
         def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
             commands.append(command)
+            write_coverage_results(command)
             return completed(command)
 
         with mock.patch.object(
@@ -1587,6 +1638,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             MODULE, "release_set_artifacts", return_value=artifacts
         ) as release_set, mock.patch.object(
             MODULE, "run", side_effect=fake_run
+        ), mock.patch.object(
+            MODULE, "run_agent_guard_command", side_effect=lambda command, env: fake_run(command)
         ), redirect_stdout(io.StringIO()) as output:
             self.assertEqual(
                 MODULE.main(
@@ -1614,7 +1667,12 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             document["executionOrder"],
             [{"profile": "pi4", "hosts": ["pi4-a"], "images": []}],
         )
-        self.assertEqual(len(commands), 2)
+        self.assertEqual(len(commands), 3)
+        check = commands[2]
+        self.assertTrue(check[check.index("-i") + 2].endswith("release-agent-coverage-check.yml"))
+        variables = json.loads(check[check.index("--extra-vars") + 1])
+        self.assertEqual(variables["release_kiosk_agent_services"], [])
+        self.assertEqual(variables["release_allowed_missing_agents"], {})
 
     def test_torque_print_plan_exposes_manifest_resolution_and_phase_boundaries(
         self,
@@ -1977,6 +2035,433 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         )
         self.assertEqual(calls[0][-2], "pi@100.106.158.2")
 
+
+PAIR = f"pi4-a:barcode-agent:{'b' * 40}:docker"
+DOC = {
+    "server": {"hosts": ["pi5"]},
+    "kiosk": {"hosts": ["pi4-a", "pi4-b"]},
+    "_meta": {"hostvars": {"pi5": {}, "pi4-a": {}, "pi4-b": {}}},
+}
+
+
+def agent_args(**overrides: object) -> argparse.Namespace:
+    values: dict[str, object] = dict(
+        inventory=MODULE.DEFAULT_INVENTORY, limit="pi5:pi4-a", first_install=False, torque_cutover=False,
+        allow_agent_skip=PAIR, allow_agent_skip_sha=SHA,
+    )
+    values.update(overrides)
+    return argparse.Namespace(**values)
+
+
+def guard_report(host: str, agent: str, image: str, status: str = "running", project: str = "docker") -> dict[str, object]:
+    containers: dict[str, list[dict[str, str]]] = {"nfc-agent": [], "barcode-agent": [], "torque-agent": []}
+    containers[agent] = [{"image": image, "status": status}] if image else []
+    return {
+        "host": host, "project": project, "containers": containers,
+        "expectedImages": {name: f"ghcr.io/o/raspisys-{name}" for name in containers},
+    }
+
+
+BASE_VARIABLES = {
+    "release_sha": SHA, "release_kiosk_agent_services": ["nfc-agent"], "release_kiosk_service_allowlist": [],
+}
+
+
+class AgentSkipGuardTests(unittest.TestCase):
+    def test_option_parsing_and_rejected_combinations(self) -> None:
+        base = ["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi5:pi4-a"]
+        given = ["--allow-agent-skip", PAIR, "--allow-agent-skip-sha", SHA]
+        args = MODULE.parse_arguments(base + given)
+        self.assertEqual(args.allow_agent_skip, PAIR)
+        for argv in (
+            base + given[:2], base + given[2:],
+            base + ["--allow-agent-skip", "pi4-a:nfc-agent:short:docker", "--allow-agent-skip-sha", SHA],
+            base + ["--allow-agent-skip", f"pi4-a:other-agent:{SHA}:docker", "--allow-agent-skip-sha", SHA],
+            base + ["--allow-agent-skip", f"pi4-a:nfc-agent:{SHA}:Bad Project", "--allow-agent-skip-sha", SHA],
+            base + ["--allow-agent-skip", f"pi4-a:nfc-agent:{SHA}:", "--allow-agent-skip-sha", SHA],
+            base + ["--allow-agent-skip", f"{PAIR},{PAIR}", "--allow-agent-skip-sha", SHA],
+            base + given + ["--first-install"], base + given + ["--torque-cutover"],
+            ["main", MODULE.DEFAULT_INVENTORY, "--full-fleet"] + given,
+            ["--status", RUN_ID] + given,
+        ):
+            with self.assertRaises(MODULE.UsageError, msg=argv):
+                MODULE.parse_arguments(argv)
+        self.assertEqual(len(MODULE.parse_agent_skip(f"{PAIR},pi4-b:nfc-agent:{SHA}:staging_x-1")), 2)
+
+    def test_selection_must_be_host_names_of_selected_pi4(self) -> None:
+        def limited(*hosts: str) -> dict[str, object]:
+            return {
+                "server": {"hosts": [h for h in hosts if h == "pi5"]},
+                "kiosk": {"hosts": [h for h in hosts if h.startswith("pi4")]},
+                "_meta": {"hostvars": {h: {} for h in hosts}},
+            }
+
+        document = limited("pi5", "pi4-a")
+        MODULE.validate_agent_skip_selection(agent_args(), document, MODULE.selected_profiles(document), SHA)
+        for overrides, hosts in (
+            ({"limit": "kiosk"}, ("pi5", "pi4-a", "pi4-b")),
+            ({"limit": "pi5"}, ("pi5",)),
+            ({"limit": "pi5:pi4-b"}, ("pi5", "pi4-b")),
+            ({"allow_agent_skip_sha": "c" * 40}, ("pi5", "pi4-a")),
+            ({"allow_agent_skip_sha": None}, ("pi5", "pi4-a")),
+        ):
+            document = limited(*hosts)
+            with self.assertRaises(MODULE.UsageError, msg=overrides):
+                MODULE.validate_agent_skip_selection(
+                    agent_args(**overrides), document, MODULE.selected_profiles(document), SHA
+                )
+        document = limited("pi5", "pi4-a")
+        MODULE.validate_agent_skip_selection(
+            agent_args(allow_agent_skip=None, allow_agent_skip_sha=None), document, MODULE.selected_profiles(document), SHA
+        )
+
+    def test_remote_script_forwards_both_options_before_limit(self) -> None:
+        script = MODULE.remote_script(
+            argparse.Namespace(branch="main", limit="pi5:pi4-a", allow_agent_skip=PAIR, allow_agent_skip_sha=SHA),
+            SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi5", "pi4"),
+        )
+        self.assertIn("--allow-agent-skip " + PAIR, script)
+        self.assertLess(script.index("--allow-agent-skip-sha"), script.index("--limit"))
+        plain = MODULE.remote_script(
+            argparse.Namespace(branch="main", limit="pi4-a"), SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",)
+        )
+        self.assertNotIn("allow-agent-skip", plain)
+
+    def _check(self, reports: dict[str, object], *, args: argparse.Namespace | None = None, hosts: tuple[str, ...] = ("pi4-a",), write_coverage: bool = True) -> list[list[str]]:
+        calls: list[list[str]] = []
+
+        def executor(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(command))
+            variables = json.loads(command[command.index("--extra-vars") + 1])
+            directory = Path(variables["release_agent_guard_out_dir"])
+            if command[3].endswith("release-agent-images-read.yml"):
+                for host, report in reports.items():
+                    (directory / f"{host}.json").write_text(
+                        report if isinstance(report, str) else json.dumps(report), encoding="utf-8"
+                    )
+            elif write_coverage:
+                for host in hosts:
+                    (directory / f"{host}.json").write_text(json.dumps({"host": host, "agentsNotUpdated": []}), encoding="utf-8")
+            return completed(command)
+
+        MODULE.run_agent_coverage_check(
+            args or agent_args(), MODULE.DEFAULT_INVENTORY, "pi5:pi4-a",
+            (("pi5", ("pi5",)), ("pi4", hosts)), dict(BASE_VARIABLES), executor,
+        )
+        return calls
+
+    def test_matching_single_running_container_passes_and_allows_only_that_agent(self) -> None:
+        image = f"ghcr.io/o/raspisys-barcode-agent:{'b' * 40}"
+        calls = self._check({"pi4-a": guard_report("pi4-a", "barcode-agent", image)})
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][calls[0].index("--limit") + 1], "pi4-a")
+        variables = json.loads(calls[1][calls[1].index("--extra-vars") + 1])
+        self.assertEqual(variables["release_allowed_missing_agents"], {"pi4-a": ["barcode-agent"]})
+        self.assertEqual(variables["release_kiosk_agent_services"], ["nfc-agent"])
+
+    def test_reread_mismatches_stop_with_the_right_kind(self) -> None:
+        good = f"ghcr.io/o/raspisys-barcode-agent:{'b' * 40}"
+        cases = {
+            "reread-mismatch": [
+                guard_report("pi4-a", "barcode-agent", f"ghcr.io/o/raspisys-barcode-agent:{'c' * 40}"),
+                guard_report("pi4-a", "barcode-agent", good, project="other"),
+                guard_report("pi4-a", "barcode-agent", good, status="exited"),
+                guard_report("pi4-a", "barcode-agent", ""),
+                {**guard_report("pi4-a", "barcode-agent", good),
+                 "containers": {"nfc-agent": [], "torque-agent": [],
+                                "barcode-agent": [{"image": good, "status": "running"}] * 2}},
+            ],
+            "reread-unreadable": [{}, {"pi4-a": "not json"}],
+        }
+        for kind, variants in cases.items():
+            for variant in variants:
+                reports = {"pi4-a": variant} if kind == "reread-mismatch" else variant
+                with self.assertRaises(MODULE.AgentGuardStop, msg=variant) as caught:
+                    self._check(reports)
+                self.assertEqual(caught.exception.kind, kind)
+
+    def test_only_pairs_on_remaining_hosts_are_reread(self) -> None:
+        args = agent_args(limit="pi5:pi4-a:pi4-b", allow_agent_skip=PAIR + f",pi4-b:nfc-agent:{'b' * 40}:docker")
+        image = f"ghcr.io/o/raspisys-nfc-agent:{'b' * 40}"
+        calls: list[list[str]] = []
+
+        def executor(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(command))
+            directory = Path(json.loads(command[command.index("--extra-vars") + 1])["release_agent_guard_out_dir"])
+            if command[3].endswith("release-agent-images-read.yml"):
+                (directory / "pi4-b.json").write_text(json.dumps(guard_report("pi4-b", "nfc-agent", image)), encoding="utf-8")
+            else:
+                (directory / "pi4-b.json").write_text(json.dumps({"host": "pi4-b"}), encoding="utf-8")
+            return completed(command)
+
+        MODULE.run_agent_coverage_check(
+            args, MODULE.DEFAULT_INVENTORY, "pi5:pi4-b", (("pi5", ("pi5",)), ("pi4", ("pi4-b",))), dict(BASE_VARIABLES), executor,
+        )
+        self.assertEqual(calls[0][calls[0].index("--limit") + 1], "pi4-b")
+        variables = json.loads(calls[1][calls[1].index("--extra-vars") + 1])
+        self.assertEqual(variables["release_allowed_missing_agents"], {"pi4-b": ["nfc-agent"]})
+
+    def test_coverage_failures_map_to_kinds(self) -> None:
+        def stop_kind(executor: object) -> tuple[str, int]:
+            with self.assertRaises(MODULE.AgentGuardStop) as caught:
+                MODULE.run_agent_coverage_check(
+                    agent_args(allow_agent_skip=None, allow_agent_skip_sha=None), MODULE.DEFAULT_INVENTORY, "pi5:pi4-a",
+                    (("pi5", ("pi5",)), ("pi4", ("pi4-a",))), dict(BASE_VARIABLES), executor,
+                )
+            return caught.exception.kind, caught.exception.exit_code
+
+        self.assertEqual(stop_kind(lambda c, e: completed(c, returncode=2)), ("check-failed", 2))
+        self.assertEqual(stop_kind(lambda c, e: completed(c)), ("check-result-missing", 1))
+
+        def other_host(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            directory = Path(json.loads(command[command.index("--extra-vars") + 1])["release_agent_guard_out_dir"])
+            (directory / "pi4-z.json").write_text(json.dumps({"host": "pi4-z"}), encoding="utf-8")
+            return completed(command)
+
+        self.assertEqual(stop_kind(other_host), ("check-result-missing", 1))
+
+        def refuse(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            raise FileNotFoundError("ansible-playbook")
+
+        self.assertEqual(stop_kind(refuse), ("check-launch-failed", 1))
+
+        def slow(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            raise MODULE.AgentGuardTimeout()
+
+        self.assertEqual(stop_kind(slow), ("timeout", 1))
+
+    def test_guard_environment_drops_tag_selection_and_lines_are_prefixed(self) -> None:
+        with mock.patch.dict(os.environ, {"ANSIBLE_RUN_TAGS": "x", "ANSIBLE_SKIP_TAGS": "always"}):
+            environment = MODULE.agent_guard_environment()
+        self.assertNotIn("ANSIBLE_RUN_TAGS", environment)
+        self.assertNotIn("ANSIBLE_SKIP_TAGS", environment)
+        errors = io.StringIO()
+        with redirect_stdout(io.StringIO()) as out, redirect_stderr(errors):
+            MODULE.emit_agent_guard_lines("a\nb", "c")
+            MODULE.emit_agent_guard_stop(MODULE.AgentGuardStop("timeout", "slow"))
+        self.assertEqual(out.getvalue(), "")
+        lines = errors.getvalue().splitlines()
+        self.assertEqual(lines[:3], ["[agent-guard] a", "[agent-guard] b", "[agent-guard] c"])
+        self.assertEqual(lines[-1], '[agent-guard] stop {"kind": "timeout"}')
+
+    def test_guard_runner_kills_the_process_group_on_timeout(self) -> None:
+        process = mock.MagicMock(pid=4242, returncode=None)
+        process.communicate.side_effect = [subprocess.TimeoutExpired("ansible", 300), ("", "")]
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process) as popen, mock.patch.object(
+            MODULE.os, "killpg"
+        ) as killpg:
+            with self.assertRaises(MODULE.AgentGuardTimeout):
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        killpg.assert_called_once_with(4242, MODULE.signal.SIGKILL)
+        self.assertEqual(MODULE.AGENT_GUARD_TIMEOUT_SECONDS, 300)
+
+    def test_torque_cutover_skips_the_guard(self) -> None:
+        executor = mock.Mock()
+        MODULE.run_agent_coverage_check(
+            agent_args(torque_cutover=True), MODULE.DEFAULT_INVENTORY, "pi5:pi4-a",
+            (("pi5", ("pi5",)), ("pi4", ("pi4-a",))), {}, executor,
+        )
+        executor.assert_not_called()
+
+    def test_agent_images_script_bounds_ansible_and_keeps_stdout_for_json(self) -> None:
+        script = MODULE.agent_images_script(Path("/srv/repo"), MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b")
+        self.assertIn("cd /srv/repo ||", script)
+        self.assertIn("ANSIBLE_CONFIG=/srv/repo/infrastructure/ansible/ansible.cfg timeout --kill-after=10 300 ansible-playbook", script)
+        self.assertIn(f"-i {MODULE.DEFAULT_INVENTORY} ", script)
+        self.assertIn(str(MODULE.IMAGES_PLAYBOOK.relative_to(MODULE.ROOT)), script)
+        self.assertIn("--limit pi4-a:pi4-b", script)
+        self.assertIn(">&2", script)
+        self.assertIn("ansibleExitCode", script)
+
+    def test_agent_images_reports_unreadable_hosts_without_mixing_ansible_output(self) -> None:
+        report = guard_report("pi4-a", "nfc-agent", "img:" + "a" * 40)
+        remote = (
+            "PLAY noise\n" + json.dumps(report) + "\n" + json.dumps({"ansibleExitCode": 2}) + "\n"
+        )
+        args = MODULE.parse_arguments(["--agent-images", "--limit", "pi4-a:pi4-b"])
+        self.assertEqual(args.inventory, MODULE.DEFAULT_INVENTORY)
+        with mock.patch.object(MODULE, "inventory_path", return_value=(Path("inv.yml"), MODULE.DEFAULT_INVENTORY)), mock.patch.object(
+            MODULE, "inventory_document", return_value={**DOC, "_meta": {"hostvars": {}}}
+        ), mock.patch.object(MODULE, "server_connection", return_value=("h", "u", 22)), mock.patch.object(
+            MODULE.subprocess, "run", return_value=completed(["ssh"], remote)
+        ) as ssh, redirect_stdout(io.StringIO()) as out:
+            code = MODULE.agent_images(args)
+        self.assertEqual(code, 1)
+        argv = ssh.call_args.args[0]
+        self.assertIn("ServerAliveInterval=15", argv)
+        self.assertIn("ServerAliveCountMax=4", argv)
+        self.assertGreater(ssh.call_args.kwargs["timeout"], MODULE.AGENT_GUARD_TIMEOUT_SECONDS + 10)
+        with mock.patch.object(MODULE, "inventory_path", return_value=(Path("inv.yml"), MODULE.DEFAULT_INVENTORY)), mock.patch.object(
+            MODULE, "inventory_document", return_value={**DOC, "_meta": {"hostvars": {}}}
+        ), mock.patch.object(MODULE, "server_connection", return_value=("h", "u", 22)), mock.patch.object(
+            MODULE.subprocess, "run", side_effect=subprocess.TimeoutExpired("ssh", 340)
+        ):
+            with self.assertRaisesRegex(RuntimeError, "time limit"):
+                MODULE.agent_images(args)
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["hosts"][0]["host"], "pi4-a")
+        self.assertEqual(payload["hosts"][1], {"host": "pi4-b", "readable": False})
+        for argv in (["--agent-images"], ["--agent-images", "--limit", "kiosk", "--full-fleet"], ["--agent-images", "--limit", "a:a"]):
+            with self.assertRaises(MODULE.UsageError, msg=argv):
+                MODULE.parse_arguments(argv)
+
+    def test_result_files_count_only_when_they_name_their_own_host(self) -> None:
+        def stop_kind(content: dict[str, str]) -> str:
+            def executor(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+                directory = Path(json.loads(command[command.index("--extra-vars") + 1])["release_agent_guard_out_dir"])
+                for name, text in content.items():
+                    (directory / name).write_text(text, encoding="utf-8")
+                return completed(command)
+
+            with self.assertRaises(MODULE.AgentGuardStop) as caught:
+                MODULE.run_agent_coverage_check(
+                    agent_args(allow_agent_skip=None, allow_agent_skip_sha=None), MODULE.DEFAULT_INVENTORY, "pi5:pi4-a",
+                    (("pi5", ("pi5",)), ("pi4", ("pi4-a",))), dict(BASE_VARIABLES), executor,
+                )
+            return caught.exception.kind
+
+        self.assertEqual(stop_kind({"pi4-a.json": "{}"}), "check-result-missing")
+        self.assertEqual(stop_kind({"pi4-a.json": "not json"}), "check-result-missing")
+        self.assertEqual(stop_kind({"pi4-a.json": json.dumps({"host": "pi4-b"})}), "check-result-missing")
+        self.assertEqual(stop_kind({"pi4-a.json": "[]"}), "check-result-missing")
+        # A valid file for the host plus a stray one for another host is not the exact selection.
+        extra = {"pi4-a.json": json.dumps({"host": "pi4-a"}), "pi4-z.json": json.dumps({"host": "pi4-z"})}
+        self.assertEqual(stop_kind(extra), "check-result-missing")
+
+    def test_reread_stops_on_a_failed_ansible_run_or_a_report_for_another_host(self) -> None:
+        image = f"ghcr.io/o/raspisys-barcode-agent:{'b' * 40}"
+        report = guard_report("pi4-a", "barcode-agent", image)
+
+        def run_reread(returncode: int, body: dict[str, object]) -> str:
+            def executor(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+                directory = Path(json.loads(command[command.index("--extra-vars") + 1])["release_agent_guard_out_dir"])
+                for name, value in body.items():
+                    (directory / name).write_text(json.dumps(value), encoding="utf-8")
+                return completed(command, returncode=returncode)
+
+            with self.assertRaises(MODULE.AgentGuardStop) as caught:
+                MODULE.reread_agent_images(MODULE.DEFAULT_INVENTORY, MODULE.agent_skip_pairs(agent_args()), executor)
+            return caught.exception.kind
+
+        self.assertEqual(run_reread(2, {"pi4-a.json": report}), "reread-unreadable")
+        self.assertEqual(run_reread(0, {"pi4-a.json": {**report, "host": "pi4-b"}}), "reread-unreadable")
+
+    def test_guard_timeout_emits_captured_output_with_the_prefix(self) -> None:
+        process = mock.MagicMock(pid=1, returncode=None)
+        process.communicate.side_effect = [subprocess.TimeoutExpired("ansible", 300), ("line1\nline2\n", "err1\n")]
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg"):
+            with self.assertRaises(MODULE.AgentGuardTimeout) as caught:
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        self.assertEqual(caught.exception.output, "line1\nline2\nerr1\n")
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            with self.assertRaises(MODULE.AgentGuardStop) as stop:
+                MODULE.run_guarded(["x"], mock.Mock(side_effect=caught.exception), "check-launch-failed")
+            MODULE.emit_agent_guard_stop(MODULE.AgentGuardStop("check-failed", "first\nsecond"))
+        self.assertEqual(stop.exception.kind, "timeout")
+        lines = errors.getvalue().splitlines()
+        self.assertEqual(lines[:3], ["[agent-guard] line1", "[agent-guard] line2", "[agent-guard] err1"])
+        self.assertEqual(lines[3:5], ["[agent-guard] first", "[agent-guard] second"])
+        self.assertTrue(all(line.startswith("[agent-guard] ") for line in lines))
+
+    def test_plan_guard_runs_through_the_process_group_runner_with_the_plan_variables(self) -> None:
+        calls: list[list[str]] = []
+
+        def runner(command: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            calls.append(list(command))
+            write_coverage_results(command)
+            return completed(command)
+
+        variables = {**BASE_VARIABLES, "release_kiosk_first_install": True}
+        with mock.patch.object(MODULE, "run_agent_guard_command", side_effect=runner), mock.patch.object(
+            MODULE, "run", side_effect=AssertionError("the plan guard must not use run()")
+        ):
+            MODULE.plan_agent_coverage_check(
+                agent_args(allow_agent_skip=None, allow_agent_skip_sha=None, limit="pi4-a"),
+                Path("infrastructure/ansible/inventory.yml"), (("pi4", ("pi4-a",)),), variables,
+            )
+        command = calls[0]
+        self.assertEqual(command[command.index("--limit") + 1], "pi4-a")
+        sent = json.loads(command[command.index("--extra-vars") + 1])
+        directory = sent.pop("release_agent_guard_out_dir")
+        self.assertTrue(directory)
+        self.assertEqual(sent, {**variables, "release_allowed_missing_agents": {}})
+        with mock.patch.object(
+            MODULE, "run_agent_guard_command", side_effect=MODULE.AgentGuardTimeout("x")
+        ), redirect_stderr(io.StringIO()):
+            with self.assertRaises(MODULE.AgentGuardStop) as caught:
+                MODULE.plan_agent_coverage_check(
+                    agent_args(allow_agent_skip=None, allow_agent_skip_sha=None, limit="pi4-a"),
+                    Path("infrastructure/ansible/inventory.yml"), (("pi4", ("pi4-a",)),), variables,
+                )
+        self.assertEqual(caught.exception.kind, "timeout")
+
+    def test_release_variables_follow_the_body_conditions(self) -> None:
+        def build(**flags: object) -> dict[str, object]:
+            return MODULE.release_variables(
+                argparse.Namespace(**flags), sha=SHA, artifact_sha=SHA, run_id=RUN_ID, api="api", web="web",
+                pi4_hosts=["pi4-a"], torque_cutover=False, agent_services=("nfc-agent",),
+            )
+
+        plain = build(first_install=False, skip_kiosk_notice=False)
+        self.assertNotIn("release_kiosk_first_install", plain)
+        self.assertNotIn("release_kiosk_notice_enabled", plain)
+        self.assertEqual(plain["release_sha"], SHA)
+        self.assertEqual(plain["release_kiosk_agent_services"], ["nfc-agent"])
+        self.assertTrue(build(first_install=True, skip_kiosk_notice=False)["release_kiosk_first_install"])
+        self.assertFalse(build(first_install=False, skip_kiosk_notice=True)["release_kiosk_notice_enabled"])
+
+    def test_route_guard_receives_the_variables_the_body_runs_with(self) -> None:
+        helper = StandardAnsibleReleaseTests()
+        result, execute, _signage, _excluded = helper._run_route_with_offline_pi3(io.StringIO(), ansible=0)
+        self.assertEqual(result, 0)
+        guard_args = helper.coverage.call_args.args
+        self.assertEqual(guard_args[3], (("pi5", ("pi5",)), ("pi4", ("pi4-online",))))
+        self.assertEqual(guard_args[2], "pi5:pi4-online")
+        guard = guard_args[4]
+        command = execute.call_args.args[0]
+        body = json.loads(command[command.index("--extra-vars") + 1])
+        self.assertEqual(guard["release_sha"], SHA)
+        for key, value in guard.items():
+            self.assertEqual(body[key], value, key)
+        extra = set(body) - set(guard)
+        self.assertLessEqual(extra, {"release_signage_artifact_image", "release_signage_artifact_sha256", "release_pi5_answer_cache_image"} | {k for k in extra if k.startswith("release_torque")})
+        self.assertNotIn("release_allowed_missing_agents", body)
+        self.assertNotIn("release_agent_guard_out_dir", body)
+
+    def test_route_stops_when_the_guard_raises_something_unexpected(self) -> None:
+        helper = StandardAnsibleReleaseTests()
+        errors = io.StringIO()
+        with mock.patch.object(MODULE, "remove_deploy_status_run") as remove, redirect_stderr(errors):
+            result, execute, signage, _ = helper._run_route_with_offline_pi3(
+                io.StringIO(), coverage_error=ValueError("boom\nsecond line")
+            )
+        self.assertEqual(result, 1)
+        execute.assert_not_called()
+        signage.assert_not_called()
+        remove.assert_called_once_with(RUN_ID)
+        lines = errors.getvalue().splitlines()
+        self.assertTrue(all(line.startswith("[agent-guard] ") for line in lines), lines)
+        self.assertIn('[agent-guard] stop {"kind": "check-launch-failed"}', lines)
+
+    def test_stop_in_the_route_runs_nothing_and_cleans_the_run(self) -> None:
+        for failure in (
+            MODULE.AgentGuardStop("check-failed", "no", 2), MODULE.AgentGuardStop("timeout", "slow"),
+            MODULE.AgentGuardStop("check-launch-failed", "x"),
+        ):
+            helper = StandardAnsibleReleaseTests()
+            output = io.StringIO()
+            errors = io.StringIO()
+            with mock.patch.object(MODULE, "remove_deploy_status_run") as remove, redirect_stderr(errors):
+                result, execute, signage, _ = helper._run_route_with_offline_pi3(output, coverage_error=failure)
+            self.assertEqual(result, failure.exit_code)
+            execute.assert_not_called()
+            signage.assert_not_called()
+            remove.assert_called_once_with(RUN_ID)
+            self.assertIn(f'[agent-guard] stop {{"kind": "{failure.kind}"}}', errors.getvalue())
+            # The excluded-host line is printed before the check and again after the stop.
+            self.assertEqual(len(output.getvalue().splitlines()), 2)
 
 if __name__ == "__main__":
     unittest.main()

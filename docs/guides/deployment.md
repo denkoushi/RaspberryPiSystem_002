@@ -42,9 +42,40 @@ scripts/update-all-clients.sh <branch> <inventory> --print-plan [--limit PATTERN
 scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
 scripts/update-all-clients.sh <branch> <inventory> --limit HOST[:HOST...] --first-install [--print-plan | --detach]
 scripts/update-all-clients.sh <branch> <inventory> --limit PATTERN --skip-kiosk-notice [--detach]
+scripts/update-all-clients.sh <branch> <inventory> --limit HOST[:HOST...] --allow-agent-skip HOST:AGENT:T:PROJECT[,...] --allow-agent-skip-sha SHA [--print-plan | --detach]
+scripts/update-all-clients.sh --agent-images --limit HOST[:HOST...] [--inventory INVENTORY]
 ```
 
 `--first-install` は[空のPi4キオスクへの初回導入](#空のpi4キオスクへの初回導入)、`--skip-kiosk-notice` は[Pi4 キオスクの更新予告](#pi4-キオスクの更新予告)を省く緊急時だけに使う。
+
+### Pi4 agent の更新漏れの停止
+
+Pi4 を選んだデプロイは、有効な Pi4 agent（nfc / barcode / torque）が今回のリリースセットの `agentServices` に入っていないと、Pi5 の本体を始める前に止まる。止まるのは、有効な agent が古いまま残るのを防ぐため。Web だけの SHA で Pi4 を更新するときは、agent の入った SHA を待つ（現行の決まり: Pi4 は部品入りのコミットが最新のときにデプロイする）。`--print-plan` は同じ判定を端末へ接続せずに行い、止まる場合は JSON を出さず終了コードが 0 以外になる。計画と実行には同じ `--limit` を使い、計画の終了コードも見る。
+
+人が版を確かめたうえで、止まる agent だけを通す指定がある。
+
+- `--allow-agent-skip HOST:AGENT:T:PROJECT[,...]` は、その端末の AGENT を今回は更新せず今の版のまま残す、という指定。T は今動いている版の 40 桁 SHA、PROJECT は Compose の project 名（`[a-z0-9][a-z0-9_-]*`）。
+- `--allow-agent-skip-sha` には今回のリリース SHA を渡す。両方がそろわないと拒否される。`--full-fleet`、`--first-install`、`--torque-cutover`、Hermes の保守指定、`--status` とは併用できない。`--limit` は端末名の列挙だけにし、グループやパターンは使えない。
+- 実行時は Pi5 がロックの中で、指定した各組が「その project で、止まっていない 1 つのコンテナだけが `raspisys-<名前>:T`」であることを読み直す。違えば止まる。応答しない端末が外れたときは、残った端末の組だけを読み直す。
+- 指定で通しても外した agent のコンテナは動き続ける。`/etc/raspi-release/client-compose.yml` は今回のセットの agent だけで書き直されるので、外した agent はそのセットからは作り直せない。その agent を含むセットを次にデプロイすると戻る。
+- 初回導入では指定は効かず、止まる。
+
+指定を付けてよいかの確認は次のとおり。手順 1〜4 は `python3 scripts/deploy/agent_skip_check.py --sha SHA --inventory INVENTORY HOST:AGENT...` が判定する（手元の HEAD が SHA で作業ツリーが空のときだけ）。
+
+1. 端末の agent のイメージ版 T を `--agent-images` で読む。コンテナが止まっているものを含めてちょうど 1 つで、動いていて、タグが 40 桁の SHA のときだけ T とする。
+2. T が SHA の祖先である。
+3. CI の分類で、T から SHA までにその agent を作り直す変更が無い（`failClosedReasons` が空。torque は API 側の変更の `torqueComposition` が偽）。
+4. T から SHA までに、使う inventory と `group_vars`、`host_vars`、`roles/client_server_cert_pin` の変更が無い。無関係な端末の変更でも不合格になる（広く止める側）。
+5. Web と API の agent との通信の契約が変わっていないことを、人が差分で確かめる（スクリプトは名前を含む変更ファイルを候補として並べる）。迷えば付けない。
+6. git に無い鍵などを T のデプロイ後に替えていないことを人が確かめる。
+
+全部の組が合格のときだけ、スクリプトは付ける指定を 1 行で出す。不合格が 1 つでもあれば「付けてはいけない」と出し、指定の行は出さない。
+
+`--agent-images --limit HOST[:HOST...]` は読み取り専用で、Pi5 を通して各 Pi4 の agent コンテナ（イメージ名、状態、project）を JSON で出す。何も変更せず、Mac から Pi4 への直接接続もしないので、下の「失敗時」の Pi4 agent 操作の禁止の対象外である。どちらも S の inventory を使う前提で、違えば実行側で止まる。`--agent-images` は Pi5 に今あるチェックアウトの判定用 playbook を使うので、この変更が Pi5 に入るまでは使えない。
+
+`--full-fleet` で部品のそろわない SHA を流すと Pi5 と Pi3 も本体の前で止まる（指定は `--full-fleet` と併用できない）。そのときは `--limit` で Pi5 と Pi3 だけを選ぶ。判定は、止まる前に Ansible の出力を `[agent-guard]` 付きで出し、止めた理由を 1 行の JSON で出す。`--status` にはその 1 行だけが出る。
+
+PR6 より前のブランチはこの判定を持たない。
 
 トルクレンチ所有権契約をAPI/Webと既設agentへ同時に切り替える場合だけ、次の限定モードを使う。現在の本番対象は、torque設定が完成しているStoneBaseとAssembly-01の2台に限る。
 
@@ -64,7 +95,7 @@ wrapperはこのv2と参照証跡を一度だけ検証し、exact image、protoc
 
 - mutationにはexact `--limit`または明示的な`--full-fleet`が必須である。暗黙の全fleet更新は行わない。
 - 引数なしの通常実行はsystemd unitの終了まで待つ。`--detach`は`runId`を返し、`--status`はsystemd statusとjournalだけを読む。
-- `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`を実行し、必要な場合は公開署名済みrelease-setをローカルで検証して、選択host、profile、release SHA、GHCR tag、順序を表示する。remote host、runtime、database、inventoryは変更しない。
+- `--print-plan`は`ansible-inventory`と`ansible-playbook --list-hosts/--list-tasks`に加え、Pi4を選んだときは判定のplaybookを端末へ接続せずに実行し（上の「Pi4 agent の更新漏れの停止」）、必要な場合は公開署名済みrelease-setをローカルで検証して、選択host、profile、release SHA、GHCR tag、順序を表示する。remote host、runtime、database、inventoryは変更しない。
 - CLIの未文書化されたmutation/control引数はfail-closedで拒否される。
 - Pi5で公開release-setからAPI/Web digestを解決する。torque cutoverでは署名済みschema v2からtorque-agent digestとprotocol versionも解決し、署名済みadoption predicateと組合せtupleを検証する。Pi3は公開image labelから完成tarのSHA-256を一つだけ得る。Ansibleがprepare、switch、health、rescue rollbackを所有する。
 - mutation開始時にPi5 executorが選択済みPi4/Pi3のSSH portを各1回だけ確認する。3秒以内に接続できない任意端末は再試行せず `optional-host-preflight` に記録して除外する。Pi5を含む選択ではPi5を必ず実行し、任意端末だけの選択が全台offlineならmutation前に失敗する。

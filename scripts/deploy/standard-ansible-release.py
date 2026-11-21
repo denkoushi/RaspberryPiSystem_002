@@ -10,6 +10,7 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -44,6 +45,8 @@ from classify_changes import classify_changes, parse_name_status_z, requires_com
 
 ANSIBLE = ROOT / "infrastructure/ansible"
 PLAYBOOK = ANSIBLE / "playbooks/deploy-release-standard.yml"
+COVERAGE_PLAYBOOK = ANSIBLE / "playbooks/release-agent-coverage-check.yml"
+IMAGES_PLAYBOOK = ANSIBLE / "playbooks/release-agent-images-read.yml"
 REMOTE_ROOT = Path("/opt/RaspberryPiSystem_002")
 DEFAULT_INVENTORY = "infrastructure/ansible/inventory.yml"
 RELEASE_ARTIFACTS_CONFIG = ANSIBLE / "group_vars/server/release-artifacts.yml"
@@ -66,6 +69,10 @@ TORQUE_BLUETOOTH_UNIQ = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$")
 TORQUE_URL = re.compile(r"^https?://[^\s{}]+$")
 TORQUE_URL_VARIABLE = re.compile(r"^\{\{\s*[A-Za-z_][A-Za-z0-9_.]*\s*\}\}$")
 OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
+SAFE_COMPOSE_PROJECT = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+AGENT_GUARD_PREFIX = "[agent-guard] "
+AGENT_GUARD_TIMEOUT_SECONDS = 300
+AGENT_IMAGES_CLEANUP_SECONDS = 40  # kill-after 10 plus ssh and cleanup margin
 SAFE_INVENTORY_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
 OPTIONAL_ADDRESS_ALIASES = {
     "kiosk_ip": "raspberrypi4_ip",
@@ -159,6 +166,9 @@ def parser() -> Parser:
     value.add_argument("--torque-cutover", action="store_true")
     value.add_argument("--skip-kiosk-notice", action="store_true", help="emergency: restart Pi4 kiosk browsers without the save-work notice")
     value.add_argument("--hermes-search-trial-maintenance", choices=("on", "off"))
+    value.add_argument("--allow-agent-skip", help="HOST:AGENT:SHA:PROJECT,... Pi4 agents this release may leave at the confirmed running version")
+    value.add_argument("--allow-agent-skip-sha", help="the release SHA the confirmation was made for")
+    value.add_argument("--agent-images", action="store_true", help="read-only: show the agent containers of the --limit Pi4 kiosks")
     value.add_argument("--status")
     value.add_argument("--execute-standard-route", action="store_true", help=argparse.SUPPRESS)
     value.add_argument("--release-artifact-sha", help=argparse.SUPPRESS)
@@ -174,6 +184,21 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         if option in RETIRED:
             raise UsageError(f"{option} is unsupported by the standard Ansible route")
     args = parser().parse_args(argv)
+    if args.agent_images:
+        others = (
+            args.branch_positional, args.inventory_positional, args.branch, args.full_fleet, args.first_install,
+            args.print_plan, args.detach, args.torque_cutover, args.skip_kiosk_notice,
+            args.hermes_search_trial_maintenance, args.status, args.execute_standard_route,
+            args.release_artifact_sha, args.sha, args.run_id, args.profiles,
+            args.allow_agent_skip is not None, args.allow_agent_skip_sha is not None,
+        )
+        if any(others):
+            raise UsageError("--agent-images accepts only --limit and --inventory")
+        hosts = re.split(r"[:,]", args.limit) if args.limit else []
+        if not hosts or any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts) or len(set(hosts)) != len(hosts):
+            raise UsageError("--agent-images requires --limit with exact Pi4 kiosk host names")
+        args.inventory = args.inventory or DEFAULT_INVENTORY
+        return args
     for name in ("branch", "inventory"):
         positional = getattr(args, f"{name}_positional")
         explicit = getattr(args, name)
@@ -188,6 +213,17 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         hosts = re.split(r"[:,]", args.limit)
         if any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts) or len(set(hosts)) != len(hosts):
             raise UsageError("--first-install --limit must be an exact host or colon/comma-separated host list; patterns are forbidden")
+    if (args.allow_agent_skip is None) != (args.allow_agent_skip_sha is None):
+        raise UsageError("--allow-agent-skip and --allow-agent-skip-sha must be given together")
+    if args.allow_agent_skip is not None and not args.status:
+        if args.full_fleet or args.first_install or args.torque_cutover or args.hermes_search_trial_maintenance:
+            raise UsageError("--allow-agent-skip cannot be combined with --full-fleet, --first-install, --torque-cutover or Hermes maintenance")
+        names = re.split(r"[:,]", args.limit) if args.limit else []
+        if not names or any(not SAFE_INVENTORY_HOST.fullmatch(name) for name in names) or len(set(names)) != len(names):
+            raise UsageError("--allow-agent-skip requires --limit to be an exact host name list")
+        if not FULL_SHA.fullmatch(args.allow_agent_skip_sha):
+            raise UsageError("--allow-agent-skip-sha must be a full 40-hex SHA")
+        parse_agent_skip(args.allow_agent_skip)
     if args.hermes_search_trial_maintenance and args.limit != "raspberrypi5":
         raise UsageError("Hermes search trial maintenance requires an exact --limit raspberrypi5")
     if args.hermes_search_trial_maintenance and (args.full_fleet or args.torque_cutover):
@@ -197,7 +233,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     if args.release_artifact_sha is not None and (not args.execute_standard_route or not FULL_SHA.fullmatch(args.release_artifact_sha)):
         raise UsageError("--release-artifact-sha requires --execute-standard-route and a full 40-hex SHA")
     if args.status:
-        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.first_install, args.skip_kiosk_notice, args.hermes_search_trial_maintenance, args.execute_standard_route)):
+        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.first_install, args.skip_kiosk_notice, args.hermes_search_trial_maintenance, args.execute_standard_route, args.allow_agent_skip is not None, args.allow_agent_skip_sha is not None)):
             raise UsageError("--status accepts only RUN_ID and optional --inventory")
         if not RUN_ID.fullmatch(args.status):
             raise UsageError("run ID must use YYYYMMDD-HHMMSS-<6 lowercase hex>")
@@ -687,6 +723,41 @@ def unpublished_plan_images(document: Mapping[str, Any]) -> list[str]:
     return missing
 
 
+def release_variables(
+    args: argparse.Namespace,
+    *,
+    sha: str,
+    artifact_sha: str,
+    run_id: str,
+    api: str,
+    web: str,
+    pi4_hosts: Sequence[str],
+    torque_cutover: bool,
+    agent_services: Sequence[str],
+    signage: str | None = None,
+    signage_sha: str = "0" * 64,
+    maintenance: str = "",
+) -> dict[str, Any]:
+    """Extra vars shared by the plan, the agent guard and the release body (one source)."""
+    variables: dict[str, Any] = {
+        "release_pi5_image_sha": artifact_sha, "release_sha": sha, "release_run_id": run_id,
+        "release_pi5_api_image": api, "release_pi5_web_image": web,
+        "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover,
+        "release_torque_cutover_hosts": list(pi4_hosts),
+        "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [],
+        "release_kiosk_agent_services": list(agent_services),
+    }
+    if signage is not None:
+        variables["release_signage_artifact_image"] = signage
+    if getattr(args, "first_install", False):
+        variables["release_kiosk_first_install"] = True
+    if maintenance:
+        variables["release_pi5_trial_maintenance"] = maintenance
+    if getattr(args, "skip_kiosk_notice", False):
+        variables["release_kiosk_notice_enabled"] = False
+    return variables
+
+
 def plan(
     args: argparse.Namespace,
     sha: str,
@@ -695,6 +766,7 @@ def plan(
     selection: tuple[tuple[str, tuple[str, ...]], ...],
     remote_root: Path = REMOTE_ROOT,
     agent_services: Sequence[str] | None = None,
+    variables_out: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profiles = tuple(item[0] for item in selection)
     torque_cutover = bool(getattr(args, "torque_cutover", False))
@@ -714,11 +786,12 @@ def plan(
         else agent_services
     )
     pi4_hosts = list(dict(selection).get("pi4", ()))
-    variables = {"release_pi5_image_sha": artifact_sha, "release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(selected_agents)}
-    if getattr(args, "first_install", False):
-        variables["release_kiosk_first_install"] = True
-    if getattr(args, "hermes_search_trial_maintenance", None):
-        variables["release_pi5_trial_maintenance"] = args.hermes_search_trial_maintenance
+    pi5_images = images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])
+    variables = release_variables(
+        args, sha=sha, artifact_sha=artifact_sha, run_id="plan-preview", api=pi5_images[0], web=pi5_images[1],
+        pi4_hosts=pi4_hosts, torque_cutover=torque_cutover, agent_services=selected_agents,
+        maintenance=getattr(args, "hermes_search_trial_maintenance", None) or "",
+    )
     if torque_cutover:
         variables.update(
             {
@@ -728,6 +801,8 @@ def plan(
                 "release_torque_protocol_contract_version": 1,
             }
         )
+    if variables_out is not None:
+        variables_out.update(variables)
     for listing in ("--list-hosts", "--list-tasks"):
         run(ansible_argv(str(inventory), args.limit, profiles, variables, listing, torque_cutover=torque_cutover), env=ansible_environment())
     result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "releaseArtifactSha": artifact_sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "remoteRoot": str(remote_root), "agentServices": list(selected_agents), "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
@@ -781,6 +856,8 @@ def remote_script(
         internal.append("--first-install")
     if getattr(args, "skip_kiosk_notice", False):
         internal.append("--skip-kiosk-notice")
+    if getattr(args, "allow_agent_skip", None) is not None:
+        internal.extend(["--allow-agent-skip", args.allow_agent_skip, "--allow-agent-skip-sha", getattr(args, "allow_agent_skip_sha", None) or ""])
     internal.extend(["--limit", args.limit] if args.limit else ["--full-fleet"])
     return "\n".join(("set -euo pipefail", f"cd {shlex.quote(str(remote_root))}", "mkdir -p logs/deploy", "exec 9>>logs/deploy/fleet-release-state.lock", "/usr/bin/flock -n 9 || { echo 'another fleet release is running' >&2; exit 75; }", "test -z \"$(git status --porcelain)\"", f"git fetch --no-tags origin {shlex.quote(args.branch)}", f"test \"$(git rev-parse FETCH_HEAD)\" = {shlex.quote(sha)}", f"git checkout --detach {shlex.quote(sha)}", f"test \"$(git rev-parse HEAD)\" = {shlex.quote(sha)}", "test -z \"$(git status --porcelain)\"", f"exec {shlex.join(internal)}"))
 
@@ -1427,6 +1504,358 @@ def signage_identity(sha: str) -> tuple[str, str]:
     return reference, digest
 
 
+class AgentSkip(NamedTuple):
+    """One human-confirmed (Pi4, agent) pair that the release may leave as is."""
+
+    host: str
+    agent: str
+    sha: str
+    project: str
+
+
+class AgentGuardStop(RuntimeError):
+    """The agent guard stopped the release; ``kind`` is the closed journal vocabulary."""
+
+    def __init__(self, kind: str, message: str, exit_code: int = 1) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.exit_code = exit_code
+
+
+class AgentGuardTimeout(RuntimeError):
+    def __init__(self, output: str = "") -> None:
+        super().__init__("agent guard timed out")
+        self.output = output
+
+
+def parse_agent_skip(value: str) -> tuple[AgentSkip, ...]:
+    pairs: list[AgentSkip] = []
+    seen: set[tuple[str, str]] = set()
+    for item in value.split(","):
+        fields = item.split(":")
+        if len(fields) != 4:
+            raise UsageError("--allow-agent-skip entries must be HOST:AGENT:SHA:PROJECT")
+        host, agent, sha, project = fields
+        if not SAFE_INVENTORY_HOST.fullmatch(host):
+            raise UsageError("--allow-agent-skip host name is malformed")
+        if agent not in PI4_AGENT_SERVICES:
+            raise UsageError("--allow-agent-skip agent must be one of " + ", ".join(PI4_AGENT_SERVICES))
+        if not FULL_SHA.fullmatch(sha):
+            raise UsageError("--allow-agent-skip version must be a full 40-hex SHA")
+        if not SAFE_COMPOSE_PROJECT.fullmatch(project):
+            raise UsageError("--allow-agent-skip project must match [a-z0-9][a-z0-9_-]*")
+        if (host, agent) in seen:
+            raise UsageError("--allow-agent-skip names the same host and agent twice")
+        seen.add((host, agent))
+        pairs.append(AgentSkip(host, agent, sha, project))
+    return tuple(pairs)
+
+
+def agent_skip_pairs(args: argparse.Namespace) -> tuple[AgentSkip, ...]:
+    value = getattr(args, "allow_agent_skip", None)
+    return parse_agent_skip(value) if value is not None else ()
+
+
+def validate_agent_skip_selection(
+    args: argparse.Namespace,
+    document: dict[str, Any],
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+    sha: str,
+) -> None:
+    """Check the allowance against the resolved selection (Mac and Pi5 both call this)."""
+    pairs = agent_skip_pairs(args)
+    if not pairs:
+        return
+    if getattr(args, "allow_agent_skip_sha", None) != sha:
+        raise UsageError("--allow-agent-skip-sha differs from the release SHA; confirm the versions again")
+    names = re.split(r"[:,]", args.limit)
+    selected = {host for _profile, members in selection for host in members}
+    if set(names) != selected or any(name in document for name in names):
+        raise UsageError("--allow-agent-skip requires --limit to list inventory host names only, never groups or patterns")
+    pi4_hosts = set(dict(selection).get("pi4", ()))
+    if not pi4_hosts:
+        raise UsageError("--allow-agent-skip requires at least one selected Pi4 kiosk")
+    if any(pair.host not in pi4_hosts for pair in pairs):
+        raise UsageError("--allow-agent-skip names a host that is not a selected Pi4 kiosk")
+
+
+def allowed_missing_agents(pairs: Sequence[AgentSkip], hosts: Sequence[str]) -> dict[str, list[str]]:
+    """Host to allowed agents, only for hosts that remain in the selection."""
+    result: dict[str, list[str]] = {}
+    for pair in pairs:
+        if pair.host in hosts:
+            result.setdefault(pair.host, []).append(pair.agent)
+    return {host: sorted(agents) for host, agents in result.items()}
+
+
+def agent_guard_environment() -> dict[str, str]:
+    environment = ansible_environment()
+    for name in ("ANSIBLE_RUN_TAGS", "ANSIBLE_SKIP_TAGS"):
+        environment.pop(name, None)
+    return environment
+
+
+def emit_agent_guard_lines(*streams: str) -> None:
+    for stream in streams:
+        for line in stream.splitlines():
+            print(AGENT_GUARD_PREFIX + line, file=sys.stderr, flush=True)
+
+
+def emit_agent_guard_stop(stop: AgentGuardStop) -> None:
+    emit_agent_guard_lines(str(stop))
+    print(AGENT_GUARD_PREFIX + "stop " + json.dumps({"kind": stop.kind}), file=sys.stderr, flush=True)
+
+
+def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """Run a guard Ansible with an upper time limit; the whole process group is killed on overrun."""
+    process = subprocess.Popen(
+        list(command), env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        start_new_session=True, cwd=ROOT,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as error:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        captured = ""
+        try:
+            out, err = process.communicate(timeout=15)
+            captured = (out or "") + (err or "")
+        except (OSError, subprocess.SubprocessError):
+            pass
+        raise AgentGuardTimeout(captured) from error
+    code = process.returncode if process.returncode >= 0 else 128 - process.returncode
+    return subprocess.CompletedProcess(list(command), code, stdout, stderr)
+
+
+def run_guarded(
+    command: Sequence[str],
+    executor: Any,
+    launch_kind: str,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        result = executor(command, agent_guard_environment())
+    except AgentGuardTimeout as error:
+        emit_agent_guard_lines(error.output)
+        raise AgentGuardStop("timeout", f"agent guard Ansible exceeded {AGENT_GUARD_TIMEOUT_SECONDS} seconds") from error
+    except (OSError, subprocess.SubprocessError) as error:
+        raise AgentGuardStop(launch_kind, f"agent guard Ansible could not be started: {error}") from error
+    emit_agent_guard_lines(result.stdout or "", result.stderr or "")
+    return result
+
+
+def read_guard_results(directory: Path) -> dict[str, Any]:
+    """Host name to parsed JSON; a file that is unreadable, not an object, or names another host maps to None."""
+    results: dict[str, Any] = {}
+    for path in sorted(directory.glob("*.json")):
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            value = None
+        results[path.stem] = value if isinstance(value, dict) and value.get("host") == path.stem else None
+    return results
+
+
+def coverage_variables(base: dict[str, Any], allowed: dict[str, list[str]], directory: str) -> dict[str, Any]:
+    """The body's extra vars plus the guard-only ones."""
+    return {**base, "release_allowed_missing_agents": allowed, "release_agent_guard_out_dir": directory}
+
+
+def agent_coverage_argv(inventory: str, limit: str, variables: dict[str, Any]) -> list[str]:
+    command = [
+        "ansible-playbook", "-i", inventory, str(COVERAGE_PLAYBOOK),
+        "--extra-vars", json.dumps(variables, sort_keys=True, separators=(",", ":")),
+    ]
+    if limit:
+        command.extend(["--limit", limit])
+    return command
+
+
+def agent_images_argv(inventory: str, limit: str, directory: str) -> list[str]:
+    return [
+        "ansible-playbook", "-i", inventory, str(IMAGES_PLAYBOOK), "--limit", limit,
+        "--extra-vars", json.dumps({"release_agent_guard_out_dir": directory}, separators=(",", ":")),
+    ]
+
+
+def run_coverage_playbook(
+    inventory: str,
+    limit: str,
+    hosts: Sequence[str],
+    variables: dict[str, Any],
+    allowed: dict[str, list[str]],
+    executor: Any,
+) -> None:
+    directory = tempfile.mkdtemp(prefix="agent-coverage-")
+    try:
+        command = agent_coverage_argv(inventory, limit, coverage_variables(variables, allowed, directory))
+        result = run_guarded(command, executor, "check-launch-failed")
+        if result.returncode != 0:
+            raise AgentGuardStop(
+                "check-failed",
+                f"agent coverage check failed (exit {result.returncode}); an enabled Pi4 agent is not in the release set. "
+                "Run --print-plan with the same --limit to see the host and agents.",
+                result.returncode,
+            )
+        reports = read_guard_results(Path(directory))
+        if {host for host, value in reports.items() if value is not None} != set(hosts) or None in reports.values():
+            raise AgentGuardStop(
+                "check-result-missing",
+                "agent coverage check did not report exactly the selected Pi4 hosts",
+            )
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def reread_agent_images(inventory: str, pairs: Sequence[AgentSkip], executor: Any) -> None:
+    """Confirm, inside the Pi5 lock, that each allowed agent still runs exactly version T."""
+    directory = tempfile.mkdtemp(prefix="agent-images-")
+    try:
+        limit = ":".join(dict.fromkeys(pair.host for pair in pairs))
+        result = run_guarded(agent_images_argv(inventory, limit, directory), executor, "reread-unreadable")
+        if result.returncode != 0:
+            raise AgentGuardStop(
+                "reread-unreadable",
+                f"could not read the running agents (exit {result.returncode}); confirm the versions again",
+                result.returncode,
+            )
+        reports = read_guard_results(Path(directory))
+        for pair in pairs:
+            report = reports.get(pair.host)
+            try:
+                project = str(report["project"])
+                expected = str(report["expectedImages"][pair.agent])
+                containers = report["containers"][pair.agent]
+                found = [(str(item["image"]), str(item["status"])) for item in containers]
+            except (KeyError, TypeError, IndexError):
+                raise AgentGuardStop(
+                    "reread-unreadable",
+                    f"could not read the running {pair.agent} of {pair.host}",
+                ) from None
+            if (
+                project != pair.project
+                or len(found) != 1
+                or found[0][1] != "running"
+                or found[0][0] != f"{expected}:{pair.sha}"
+            ):
+                raise AgentGuardStop(
+                    "reread-mismatch",
+                    f"{pair.agent} on {pair.host} is not the single running container of project "
+                    f"{pair.project} at {pair.sha}; confirm the versions again",
+                )
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def run_agent_coverage_check(
+    args: argparse.Namespace,
+    relative: str,
+    effective_limit: str,
+    reachable_selection: tuple[tuple[str, tuple[str, ...]], ...],
+    variables: dict[str, Any],
+    executor: Any = None,
+) -> None:
+    """Pi5 side: stop before any mutation when an enabled Pi4 agent is not updated."""
+    executor = executor or run_agent_guard_command
+    if getattr(args, "torque_cutover", False):
+        return
+    hosts = tuple(dict(reachable_selection).get("pi4", ()))
+    if not hosts:
+        return
+    pairs = tuple(pair for pair in agent_skip_pairs(args) if pair.host in hosts)
+    if pairs:
+        reread_agent_images(relative, pairs, executor)
+    run_coverage_playbook(relative, effective_limit, hosts, variables, allowed_missing_agents(pairs, hosts), executor)
+
+
+def plan_agent_coverage_check(
+    args: argparse.Namespace,
+    inventory: Path,
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+    variables: dict[str, Any],
+    executor: Any = None,
+) -> None:
+    """Mac side (--print-plan): the same check, without the version re-read."""
+    executor = executor or run_agent_guard_command
+    if getattr(args, "torque_cutover", False):
+        return
+    hosts = tuple(dict(selection).get("pi4", ()))
+    if not hosts:
+        return
+
+    run_coverage_playbook(
+        str(inventory), args.limit, hosts, variables, allowed_missing_agents(agent_skip_pairs(args), hosts), executor,
+    )
+
+
+def agent_images_script(remote_root: Path, relative: str, limit: str) -> str:
+    root = shlex.quote(str(remote_root))
+    config = shlex.quote(str(remote_root / "infrastructure/ansible/ansible.cfg"))
+    playbook = shlex.quote(str(IMAGES_PLAYBOOK.relative_to(ROOT)))
+    return "\n".join((
+        "set -uo pipefail",
+        f"cd {root} || exit 1",
+        'd="$(mktemp -d)" || exit 1',
+        "trap 'rm -rf \"$d\"' EXIT",
+        f"ANSIBLE_CONFIG={config} timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
+        f"ansible-playbook -i {shlex.quote(relative)} {playbook} --limit {shlex.quote(limit)} "
+        '-e release_agent_guard_out_dir="$d" >&2',
+        "code=$?",
+        'for f in "$d"/*.json; do if [ -f "$f" ]; then cat "$f"; echo; fi; done',
+        'echo "{\\"ansibleExitCode\\": $code}"',
+    ))
+
+
+def agent_images(args: argparse.Namespace) -> int:
+    """Read-only: print the agent containers of the named Pi4 kiosks (through Pi5)."""
+    inventory, relative = inventory_path(args.inventory)
+    document = inventory_document(inventory)
+    names = re.split(r"[:,]", args.limit)
+    kiosks = document.get("kiosk", {}).get("hosts", [])
+    if not isinstance(kiosks, list) or any(name not in kiosks or name in document for name in names):
+        raise UsageError("--agent-images --limit must list Pi4 kiosk host names of the inventory")
+    host, user, port = server_connection(document)
+    script = agent_images_script(server_release_root(document), relative, ":".join(names))
+    command = ssh_argv(host, user, port, ["/bin/bash", "-lc", script])
+    command[1:1] = ["-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"]
+    try:
+        result = subprocess.run(
+            command, cwd=ROOT, text=True, capture_output=True, check=False,
+            timeout=AGENT_GUARD_TIMEOUT_SECONDS + AGENT_IMAGES_CLEANUP_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("reading the agent images through the Pi5 exceeded the time limit") from None
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    reports: dict[str, dict[str, Any]] = {}
+    exit_code: int | None = None
+    for line in result.stdout.splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and set(value) == {"ansibleExitCode"} and isinstance(value["ansibleExitCode"], int):
+            exit_code = value["ansibleExitCode"]
+        elif isinstance(value, dict) and isinstance(value.get("host"), str) and value["host"] in names:
+            reports[value["host"]] = value
+    if exit_code is None:
+        raise RuntimeError("could not read the agent images through the Pi5 release checkout")
+    hosts = [reports.get(name, {"host": name, "readable": False}) for name in names]
+    print(json.dumps({"schemaVersion": 1, "inventory": relative, "ansibleExitCode": exit_code, "hosts": hosts}, ensure_ascii=False, indent=2))
+    return 0 if exit_code == 0 and all(name in reports for name in names) else 1
+
+
+def remove_deploy_status_run(run_id: str) -> None:
+    try:
+        subprocess.run(["/usr/bin/python3", str(ROOT / "scripts/deploy/deploy-status-state.py"),
+                        "--file", str(ROOT / "config/deploy-status.json"),
+                        "remove-run", "--run-id", run_id], check=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"WARNING: deploy-status remove-run failed: {error}", file=sys.stderr, flush=True)
+
+
 def execute_standard_route(args: argparse.Namespace) -> int:
     gateway_recreate_environment()
     torque_cutover = bool(getattr(args, "torque_cutover", False))
@@ -1437,6 +1866,7 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     selected = inventory_document(inventory, args.limit) if args.limit else inventory_document(inventory)
     requested_selection = selected_profiles(selected)
     validate_first_install_selection(args, selected, requested_selection)
+    validate_agent_skip_selection(args, selected, requested_selection, args.sha)
     if torque_cutover:
         validate_torque_cutover_selection(selected, requested_selection)
     if tuple(profile for profile, _hosts in requested_selection) != declared_profiles:
@@ -1476,37 +1906,53 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         )
     )
     api, web = artifacts.api, artifacts.web
-    signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
-    pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
-    variables = {"release_pi5_image_sha": artifact_sha, "release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(artifacts.agent_services)}
-    if getattr(args, "first_install", False):
-        variables["release_kiosk_first_install"] = True
-    maintenance = os.environ.get("HERMES_SEARCH_TRIAL_MAINTENANCE", "")
-    if maintenance:
-        if maintenance not in {"on", "off"} or args.limit != "raspberrypi5" or requested_selection != (("pi5", ("raspberrypi5",)),):
-            raise RuntimeError("Hermes search trial maintenance launch is not Pi5-only")
-        variables["release_pi5_trial_maintenance"] = maintenance
-    if getattr(args, "skip_kiosk_notice", False):
-        print("WARNING: --skip-kiosk-notice: Pi4 kiosk browsers restart without the save-work notice", flush=True)
-        variables["release_kiosk_notice_enabled"] = False
-    cache_enabled = selected.get('_meta', {}).get('hostvars', {}).get('raspberrypi5', {}).get('business_hermes_answer_cache_enabled', False)
-    if 'pi5' in profiles and cache_enabled in (True, 'true'):
-        reference = f'{GHCR_NAMESPACE}/raspisys-hermes-answer-cache:{artifact_sha}'
-        run(['docker', 'image', 'pull', '--platform', 'linux/arm64', reference])
-        exact = _exact_repo_digest(reference)
-        verify_component_attestation(exact, artifact_sha)
-        variables['release_pi5_answer_cache_image'] = reference + '@' + exact.split('@')[1]
-    if torque_cutover:
-        cutover_plan = normalize_torque_cutover_plan(
-            args.sha, args.run_id, pi4_hosts, artifacts
-        )
-        variables.update(cutover_plan.ansible_variables())
-        print(
-            json.dumps(cutover_plan.journal_event(), ensure_ascii=False, sort_keys=True),
-            flush=True,
-        )
-    command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
     try:
+        pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
+        maintenance = os.environ.get("HERMES_SEARCH_TRIAL_MAINTENANCE", "")
+        if maintenance:
+            if maintenance not in {"on", "off"} or args.limit != "raspberrypi5" or requested_selection != (("pi5", ("raspberrypi5",)),):
+                raise RuntimeError("Hermes search trial maintenance launch is not Pi5-only")
+        # One source of extra vars for the guard and the body; the signage identity is
+        # resolved after the guard, so the guard sees the same placeholders as a Pi4-only body.
+        variables = release_variables(
+            args, sha=args.sha, artifact_sha=artifact_sha, run_id=args.run_id, api=api, web=web,
+            pi4_hosts=pi4_hosts, torque_cutover=torque_cutover, agent_services=artifacts.agent_services,
+            signage=f"unused-signage:{args.sha}", maintenance=maintenance,
+        )
+        try:
+            run_agent_coverage_check(args, relative, effective_limit, reachable_selection, dict(variables))
+        except AgentGuardStop as stop:
+            emit_agent_guard_stop(stop)
+            remove_deploy_status_run(args.run_id)
+            return stop.exit_code
+        except Exception as error:
+            stop = AgentGuardStop("check-launch-failed", f"agent coverage check could not run: {error}")
+            emit_agent_guard_stop(stop)
+            remove_deploy_status_run(args.run_id)
+            return stop.exit_code
+        if "pi3" in profiles:
+            signage, signage_sha = signage_identity(args.sha)
+            variables["release_signage_artifact_image"] = signage
+            variables["release_signage_artifact_sha256"] = signage_sha
+        if getattr(args, "skip_kiosk_notice", False):
+            print("WARNING: --skip-kiosk-notice: Pi4 kiosk browsers restart without the save-work notice", flush=True)
+        cache_enabled = selected.get('_meta', {}).get('hostvars', {}).get('raspberrypi5', {}).get('business_hermes_answer_cache_enabled', False)
+        if 'pi5' in profiles and cache_enabled in (True, 'true'):
+            reference = f'{GHCR_NAMESPACE}/raspisys-hermes-answer-cache:{artifact_sha}'
+            run(['docker', 'image', 'pull', '--platform', 'linux/arm64', reference])
+            exact = _exact_repo_digest(reference)
+            verify_component_attestation(exact, artifact_sha)
+            variables['release_pi5_answer_cache_image'] = reference + '@' + exact.split('@')[1]
+        if torque_cutover:
+            cutover_plan = normalize_torque_cutover_plan(
+                args.sha, args.run_id, pi4_hosts, artifacts
+            )
+            variables.update(cutover_plan.ansible_variables())
+            print(
+                json.dumps(cutover_plan.journal_event(), ensure_ascii=False, sort_keys=True),
+                flush=True,
+            )
+        command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
         return execute_ansible_with_cleanup(
             command, args.run_id,
             failure_cleanup_command=pi4_failure_cleanup_argv(
@@ -1539,12 +1985,7 @@ def execute_ansible_with_cleanup(
                 print(f"WARNING: Pi4 failure cleanup failed: {error}", file=sys.stderr, flush=True)
         return result.returncode if result.returncode >= 0 else 128 - result.returncode
     finally:
-        try:
-            subprocess.run(["/usr/bin/python3", str(ROOT / "scripts/deploy/deploy-status-state.py"),
-                            "--file", str(ROOT / "config/deploy-status.json"),
-                            "remove-run", "--run-id", run_id], check=True, timeout=15)
-        except (OSError, subprocess.SubprocessError) as error:
-            print(f"WARNING: deploy-status remove-run failed: {error}", file=sys.stderr, flush=True)
+        remove_deploy_status_run(run_id)
 
 
 def status_optional_hosts(document: dict[str, Any]) -> frozenset[tuple[str, str]]:
@@ -1581,6 +2022,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return execute_standard_route(args)
     if args.status:
         return status(args)
+    if getattr(args, "agent_images", False):
+        return agent_images(args)
     gateway_environment = gateway_recreate_environment()
     reject_unforwarded_hermes_flags(args)
     inventory, relative = inventory_path(args.inventory)
@@ -1589,6 +2032,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     selected = complete if not args.limit else inventory_document(inventory, args.limit)
     selection = selected_profiles(selected)
     validate_first_install_selection(args, complete, selection)
+    validate_agent_skip_selection(args, complete, selection, sha)
     remote_root = server_release_root(complete)
     run_id = "plan-preview" if args.print_plan else new_run_id()
     hermes_environment = hermes_trial_maintenance_configuration(args, selection)
@@ -1621,7 +2065,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 require_torque=getattr(args, "torque_cutover", False),
             ).agent_services
         args.agent_services = plan_agent_services
-        document = plan(args, sha, inventory, relative, selection, remote_root, plan_agent_services)
+        plan_variables: dict[str, Any] = {}
+        document = plan(args, sha, inventory, relative, selection, remote_root, plan_agent_services, variables_out=plan_variables)
+        try:
+            plan_agent_coverage_check(args, inventory, selection, plan_variables)
+        except AgentGuardStop as stop:
+            emit_agent_guard_stop(stop)
+            return stop.exit_code
         missing_images = unpublished_plan_images(document)
         if missing_images:
             raise RuntimeError(

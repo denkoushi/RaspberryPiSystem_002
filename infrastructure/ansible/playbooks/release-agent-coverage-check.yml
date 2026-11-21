@@ -1,0 +1,13 @@
+---
+# Read-only gate run by the standard launcher before the release playbook.
+# It never connects to a host: every task is local to the controller. It is a
+# separate playbook so the release playbook's plays, tags and cleanup stay as is.
+- name: Check Pi4 agent coverage of the release set
+  hosts: kiosk
+  gather_facts: false
+  any_errors_fatal: false
+  tasks:
+    - name: Check agent coverage for this Pi4
+      ansible.builtin.import_role:
+        name: release_kiosk
+        tasks_from: agent_coverage

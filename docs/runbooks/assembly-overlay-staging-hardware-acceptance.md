@@ -100,11 +100,18 @@ ansible-playbook -i infrastructure/ansible/inventory-staging.yml \
 
 ```bash
 mkdir -p "$EVIDENCE_DIR"
-scripts/update-all-clients.sh <approved-branch> "$STAGING_INVENTORY" \
-  --print-plan --limit "$STAGING_LIMIT" \
-  | tee "$EVIDENCE_DIR/print-plan.json"
-shasum -a 256 "$EVIDENCE_DIR/print-plan.json" > "$EVIDENCE_DIR/print-plan.sha256"
+# errexit が無い shell でも、planが失敗したらハッシュを作らず先へ進まない。
+if scripts/update-all-clients.sh <approved-branch> "$STAGING_INVENTORY" \
+  --print-plan --limit "$STAGING_LIMIT" > "$EVIDENCE_DIR/print-plan.json"; then
+  cat "$EVIDENCE_DIR/print-plan.json"
+  shasum -a 256 "$EVIDENCE_DIR/print-plan.json" > "$EVIDENCE_DIR/print-plan.sha256"
+else
+  echo "plan failed; do not approve or execute" >&2
+  rm -f "$EVIDENCE_DIR/print-plan.json" "$EVIDENCE_DIR/print-plan.sha256"
+fi
 ```
+
+Pi4を選ぶplanは、有効なagentがリリースセットに無いと判定のplaybookで止まり、JSONを出さず終了コードが0以外になる。その場合はハッシュを作らず、承認にも実行にも進まない。
 
 plan JSONの次を、CI artifact manifestと二人以上の承認者が照合する。
 
@@ -527,11 +534,20 @@ awk '/^VmRSS:|^VmHWM:/{print}' "/proc/${API_PID}/status"
 
 ```bash
 # 受入終了後にrollbackが必要な場合の承認前plan。
-scripts/update-all-clients.sh <approved-previous-branch> "$STAGING_INVENTORY" \
-  --print-plan --limit "$STAGING_LIMIT" \
-  | tee "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"
+# planが失敗(終了コードが0以外)したら、証拠ファイルを作らず承認にも実行にも進まない。
+# Pi4を選ぶplanは、判定のplaybookを端末へ接続せずに実行する。
+if scripts/update-all-clients.sh <approved-previous-branch> "$STAGING_INVENTORY" \
+  --print-plan --limit "$STAGING_LIMIT" > "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"; then
+  cat "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"
+else
+  echo "plan failed; do not approve or execute" >&2
+  rm -f "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"
+fi
+```
 
-# 別途承認後に一度だけ実行し、返却された同じrun IDを確認する。
+別途承認を得た後だけ、次を一度だけ実行し、返却された同じrun IDを確認する。
+
+```bash
 scripts/update-all-clients.sh <approved-previous-branch> "$STAGING_INVENTORY" \
   --limit "$STAGING_LIMIT" --detach
 scripts/update-all-clients.sh --status <rollback-run-id> --inventory "$STAGING_INVENTORY"

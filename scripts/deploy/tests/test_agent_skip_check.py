@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+import importlib.util
+import io
+import json
+import subprocess
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+SPEC = importlib.util.spec_from_file_location("agent_skip_check", ROOT / "scripts/deploy/agent_skip_check.py")
+assert SPEC and SPEC.loader
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+
+S = "a" * 40
+T = "b" * 40
+INV = "infrastructure/ansible/inventory.yml"
+
+
+def report(host: str, agent: str = "barcode-agent", tag: str = T, status: str = "running", count: int = 1) -> dict:
+    image = f"ghcr.io/o/raspisys-{agent}:{tag}"
+    containers = {name: [] for name in MODULE.AGENTS}
+    containers[agent] = [{"image": image, "status": status}] * count
+    return {
+        "host": host, "project": "docker", "containers": containers,
+        "expectedImages": {name: f"ghcr.io/o/raspisys-{name}" for name in MODULE.AGENTS},
+    }
+
+
+class Fake:
+    def __init__(self, **overrides: object) -> None:
+        self.o = overrides
+        self.commands: list[list[str]] = []
+
+    def __call__(self, command):
+        command = list(command)
+        self.commands.append(command)
+        done = lambda out="", code=0: subprocess.CompletedProcess(command, code, out, "")  # noqa: E731
+        if command[:2] == ["git", "rev-parse"]:
+            return done(self.o.get("head", S) + "\n")
+        if command[:2] == ["git", "status"]:
+            return done(self.o.get("status", ""))
+        if command[0].endswith("update-all-clients.sh"):
+            return done(self.o.get("images", json.dumps({"hosts": [report("pi4-a"), report("pi4-b", "nfc-agent")]})))
+        if command[:3] == ["git", "cat-file", "-e"]:
+            return done(code=1 if command[3].split(":")[0] in self.o.get("untracked_at", ()) else 0)
+        if command[:2] == ["git", "merge-base"]:
+            return done(code=self.o.get("ancestor", 0))
+        if command[1].endswith("classify_event_changes.py"):
+            base = {"pi4AgentServices": [], "failClosedReasons": [], "torqueComposition": False}
+            return done(json.dumps({**base, **self.o.get("classify", {})}))
+        if command[:3] == ["git", "diff", "--name-only"] and "--" in command:
+            return done(self.o.get("config", ""), self.o.get("config_code", 0))
+        if command[:3] == ["git", "diff", "--name-only"]:
+            if self.o.get("changed_code"):
+                return done("", self.o["changed_code"])
+            return done(self.o.get("changed", "apps/web/src/barcode/useBarcode.ts\napps/web/src/nfc/x.ts\nREADME.md\n"))
+        raise AssertionError(command)
+
+
+def run_main(fake: Fake, *pairs: str) -> tuple[int, str]:
+    out = io.StringIO()
+    with redirect_stdout(out), redirect_stderr(io.StringIO()):
+        code = MODULE.main(["--sha", S, "--inventory", INV, *pairs], fake)
+    return code, out.getvalue()
+
+
+class AgentSkipCheckTests(unittest.TestCase):
+    def test_pass_lists_candidates_and_one_spec_line_for_all_pairs(self) -> None:
+        code, text = run_main(Fake(), "pi4-a:barcode-agent", "pi4-b:nfc-agent")
+        self.assertEqual(code, 0)
+        self.assertIn("steps 5 and 6 await a human", text)
+        self.assertIn("step 5 candidate: apps/web/src/barcode/useBarcode.ts", text)
+        self.assertNotIn("README.md", text)
+        self.assertEqual(
+            text.splitlines()[-1],
+            f"--allow-agent-skip-sha {S} --allow-agent-skip pi4-a:barcode-agent:{T}:docker,pi4-b:nfc-agent:{T}:docker",
+        )
+
+    def _assert_refused(self, fake: Fake, *pairs: str, expect_pairs_only: bool = False) -> str:
+        code, text = run_main(fake, *(pairs or ("pi4-a:barcode-agent",)))
+        self.assertNotEqual(code, 0)
+        self.assertNotIn("--allow-agent-skip", text)
+        return text
+
+    def test_checkout_must_be_the_release_sha_and_clean(self) -> None:
+        self.assertIn("not judged", self._assert_refused(Fake(head="c" * 40)))
+        text = self._assert_refused(Fake(status=" M scripts/x.py\n?? stray.txt\n"))
+        self.assertIn("scripts/x.py", text)
+        self.assertIn("stray.txt", text)
+
+    def test_unreadable_or_unusable_containers_are_refused(self) -> None:
+        for images in (
+            "not json",
+            json.dumps({"hosts": [{"host": "pi4-a", "readable": False}]}),
+            json.dumps({"hosts": [report("pi4-a", count=2)]}),
+            json.dumps({"hosts": [report("pi4-a", count=0)]}),
+            json.dumps({"hosts": [report("pi4-a", status="exited")]}),
+            json.dumps({"hosts": [report("pi4-a", tag="latest")]}),
+        ):
+            self.assertIn("付けてはいけない", self._assert_refused(Fake(images=images)))
+
+    def test_history_and_classification_failures_are_refused(self) -> None:
+        for fake in (
+            Fake(ancestor=1),
+            Fake(classify={"pi4AgentServices": ["barcode-agent"]}),
+            Fake(classify={"failClosedReasons": ["ci.yml changed"]}),
+            Fake(config="infrastructure/ansible/group_vars/all.yml\n"),
+            Fake(config_code=128),
+        ):
+            self.assertIn("付けてはいけない", self._assert_refused(fake))
+
+    def test_inventory_is_normalized_like_the_launcher_and_must_be_tracked_at_both_versions(self) -> None:
+        fake = Fake()
+        code, _ = run_main(fake, "pi4-a:barcode-agent")
+        self.assertEqual(code, 0)
+        self.assertIn(["git", "cat-file", "-e", f"{T}:{INV}"], fake.commands)
+        self.assertIn(["git", "cat-file", "-e", f"{S}:{INV}"], fake.commands)
+        for missing in ({T}, {S}):
+            self.assertIn("付けてはいけない", self._assert_refused(Fake(untracked_at=missing)))
+        # An absolute path and a relative one name the same file; others are refused before any judgment.
+        fake = Fake()
+        out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            self.assertEqual(MODULE.main(["--sha", S, "--inventory", str(ROOT / INV), "pi4-a:barcode-agent"], fake), 0)
+        self.assertIn(INV, next(c for c in fake.commands if c[0].endswith("update-all-clients.sh")))
+        for bad in ("README.md", "infrastructure/ansible/missing.yml", "../etc/passwd.yml"):
+            fake = Fake()
+            with redirect_stdout(out), redirect_stderr(io.StringIO()):
+                self.assertEqual(MODULE.main(["--sha", S, "--inventory", bad, "pi4-a:barcode-agent"], fake), 2)
+            self.assertEqual(fake.commands, [])
+
+    def test_step5_candidates_ignore_case_and_a_failed_diff_fails_the_pair(self) -> None:
+        code, text = run_main(Fake(changed="apps/web/src/Barcode/Scanner.ts\nNFC.md\n"), "pi4-a:barcode-agent")
+        self.assertEqual(code, 0)
+        self.assertIn("step 5 candidate: apps/web/src/Barcode/Scanner.ts", text)
+        self.assertNotIn("NFC.md", text)
+        self.assertIn("差分が取れない", self._assert_refused(Fake(changed_code=128)))
+
+    def test_torque_composition_only_blocks_torque(self) -> None:
+        images = json.dumps({"hosts": [report("pi4-a", "torque-agent")]})
+        self.assertIn("torque", self._assert_refused(Fake(images=images, classify={"torqueComposition": True}), "pi4-a:torque-agent"))
+        code, _ = run_main(Fake(classify={"torqueComposition": True}), "pi4-a:barcode-agent")
+        self.assertEqual(code, 0)
+
+    def test_one_failing_pair_withholds_the_spec_line(self) -> None:
+        images = json.dumps({"hosts": [report("pi4-a"), report("pi4-b", "nfc-agent", status="exited")]})
+        text = self._assert_refused(Fake(images=images), "pi4-a:barcode-agent", "pi4-b:nfc-agent")
+        self.assertIn("pi4-a:barcode-agent: steps 1-4 pass", text)
+        self.assertIn("pi4-b:nfc-agent: 付けてはいけない", text)
+
+    def test_bad_input_is_rejected(self) -> None:
+        for argv in (["--sha", "abc", "--inventory", INV, "pi4-a:nfc-agent"], ["--sha", S, "--inventory", INV, "pi4-a:other"]):
+            out = io.StringIO()
+            with redirect_stdout(out), redirect_stderr(io.StringIO()):
+                self.assertEqual(MODULE.main(argv, Fake()), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

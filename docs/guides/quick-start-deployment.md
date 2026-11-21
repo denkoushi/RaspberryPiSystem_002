@@ -14,6 +14,8 @@ git status --short
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 ```
 
+Pi4を選ぶ場合、`--print-plan` は有効なPi4 agentがリリースセットに入っているかも判定する。入っていないとJSONなしで終了コードが0以外になるので、終了コードも見て、実行にも同じ `--limit` を使う。人が版を確かめた組だけを通す `--allow-agent-skip` と読み取り用の `--agent-images` は[デプロイガイド](deployment.md)を参照する。
+
 対象SHAの `ci-required`、`codeql`、`gitleaks` が成功し、plan後に選択host、profile、roleとAnsibleの`list-hosts`／`list-tasks`を確認した後、明示したscopeで実行する。
 
 ```bash

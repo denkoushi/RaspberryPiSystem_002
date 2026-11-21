@@ -1,0 +1,12 @@
+---
+# Read-only: report the agent containers of each selected Pi4 and write one
+# result file per host into release_agent_guard_out_dir. Changes nothing.
+- name: Read the agent containers of the selected Pi4 kiosks
+  hosts: kiosk
+  gather_facts: false
+  any_errors_fatal: false
+  tasks:
+    - name: Read agent images for this Pi4
+      ansible.builtin.import_role:
+        name: release_kiosk
+        tasks_from: agent_images

@@ -290,6 +290,14 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                         text=True,
                         check=False,
                     )
+                if any(str(item).endswith("release-agent-coverage-check.yml") for item in command):
+                    # Stand in for the coverage playbook: one passing result file per host.
+                    out_dir = json.loads(command[command.index("--extra-vars") + 1])[
+                        "release_agent_guard_out_dir"
+                    ]
+                    for host in command[command.index("--limit") + 1].split(":"):
+                        if host.startswith("staging-pi4"):
+                            (Path(out_dir) / f"{host}.json").write_text(json.dumps({"host": host}), encoding="utf-8")
                 return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
             args = launcher.parse_arguments(
@@ -321,6 +329,8 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                 launcher, "release_set_artifacts", return_value=signed_release_set
             ), mock.patch.object(launcher, "ansible_environment", return_value=environment), mock.patch.object(
                 launcher, "run", side_effect=fake_run
+            ), mock.patch.object(
+                launcher, "run_agent_guard_command", side_effect=lambda command, env: fake_run(command, env=env)
             ):
                 with mock.patch("sys.stdout") as stdout:
                     result = launcher.main(
