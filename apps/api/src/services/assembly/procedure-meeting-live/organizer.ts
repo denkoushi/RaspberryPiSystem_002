@@ -68,11 +68,14 @@ export function buildOrganizeMessages(transcript: string, previous: Organized | 
 
 /** Returns the new organised result, or null when the call or parse fails. */
 export async function organizeTranscript(
-  complete: CompleteFn, transcript: string, previous: Organized | null, timeoutMs = 60000, terms = ''
+  complete: CompleteFn, transcript: string, previous: Organized | null, timeoutMs = 60000, terms = '', externalSignal?: AbortSignal
 ): Promise<Organized | null> {
   // 失敗・読めない答えは null
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  else externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
   try {
     const raw = await complete(buildOrganizeMessages(transcript, previous, terms), controller.signal);
     return parseOrganized(raw);
@@ -80,5 +83,6 @@ export async function organizeTranscript(
     return null; // 失敗は null で返し、呼び出し側が整理し直す
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener('abort', onExternalAbort);
   }
 }
