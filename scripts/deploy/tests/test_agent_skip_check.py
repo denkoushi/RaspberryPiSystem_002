@@ -43,7 +43,10 @@ class Fake:
         if command[:2] == ["git", "status"]:
             return done(self.o.get("status", ""))
         if command[0].endswith("update-all-clients.sh"):
-            return done(self.o.get("images", json.dumps({"hosts": [report("pi4-a"), report("pi4-b", "nfc-agent")]})))
+            return done(
+                self.o.get("images", json.dumps({"hosts": [report("pi4-a"), report("pi4-b", "nfc-agent")]})),
+                self.o.get("images_code", 0),
+            )
         if command[:3] == ["git", "cat-file", "-e"]:
             return done(code=1 if command[3].split(":")[0] in self.o.get("untracked_at", ()) else 0)
         if command[:2] == ["git", "merge-base"]:
@@ -102,6 +105,11 @@ class AgentSkipCheckTests(unittest.TestCase):
         ):
             self.assertIn("付けてはいけない", self._assert_refused(Fake(images=images)))
 
+    def test_a_non_zero_image_read_is_refused_even_with_complete_json(self) -> None:
+        text = self._assert_refused(Fake(images_code=3))
+        self.assertIn("付けてはいけない", text)
+        self.assertIn("exited with code 3", text)
+
     def test_history_and_classification_failures_are_refused(self) -> None:
         for fake in (
             Fake(ancestor=1),
@@ -139,7 +147,20 @@ class AgentSkipCheckTests(unittest.TestCase):
             MODULE.main(["--sha", S, "--inventory", str(ROOT / INV), "pi4-a:barcode-agent"], fake)
         plain = next(c for c in fake.commands if c[:3] == ["git", "diff", "--name-only"] and "--" in c)
         self.assertEqual(plain[plain.index("--") + 1:], [INV, *MODULE.CONFIG_PATHS])
-        fake = Fake(config="infrastructure/ansible/staging/group_vars/staging.yml\n")
+        class NestedOnly(Fake):
+            """Report a changed file only when the diff names the nested group_vars directory."""
+
+            def __call__(self, command):
+                command = list(command)
+                if command[:3] == ["git", "diff", "--name-only"] and "--" in command:
+                    self.commands.append(command)
+                    hit = "infrastructure/ansible/staging/group_vars" in command
+                    return subprocess.CompletedProcess(
+                        command, 0, "infrastructure/ansible/staging/group_vars/staging.yml\n" if hit else "", ""
+                    )
+                return super().__call__(command)
+
+        fake = NestedOnly()
         verdict = MODULE.judge(MODULE.Pair("pi4-a", "barcode-agent"), T, "docker", S, nested, fake)
         diff = next(c for c in fake.commands if c[:3] == ["git", "diff", "--name-only"] and "--" in c)
         self.assertIn("infrastructure/ansible/staging/group_vars", diff)

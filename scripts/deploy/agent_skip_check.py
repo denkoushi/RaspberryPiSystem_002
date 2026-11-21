@@ -83,19 +83,22 @@ def check_checkout(sha: str, run: Runner) -> str:
     return ""
 
 
-def read_images(inventory: str, hosts: Sequence[str], run: Runner) -> dict[str, dict]:
+def read_images(inventory: str, hosts: Sequence[str], run: Runner) -> tuple[dict[str, dict], str]:
+    """Return (reports by host, problem); a non-zero exit is a failure even when the JSON looks complete."""
     result = run([
         "scripts/update-all-clients.sh", "--agent-images", "--inventory", inventory,
         "--limit", ":".join(dict.fromkeys(hosts)),
     ])
+    if result.returncode != 0:
+        return {}, f"the agent image read exited with code {result.returncode}"
     try:
         payload = json.loads(result.stdout)
     except ValueError:
-        return {}
+        return {}, ""
     reports = payload.get("hosts") if isinstance(payload, dict) else None
     if not isinstance(reports, list):
-        return {}
-    return {item["host"]: item for item in reports if isinstance(item, dict) and isinstance(item.get("host"), str)}
+        return {}, ""
+    return {item["host"]: item for item in reports if isinstance(item, dict) and isinstance(item.get("host"), str)}, ""
 
 
 def tag_of(report: dict | None, pair: Pair) -> tuple[str, str, str]:
@@ -184,10 +187,11 @@ def main(argv: Sequence[str] | None = None, run: Runner = default_runner) -> int
     if problem:
         print(f"not judged: {problem}")
         return 2
-    reports = read_images(args.inventory, [pair.host for pair in pairs], run)
+    reports, read_problem = read_images(args.inventory, [pair.host for pair in pairs], run)
     verdicts = []
     for pair in pairs:
         tag, project, reason = tag_of(reports.get(pair.host), pair)
+        reason = read_problem or reason
         verdicts.append(
             Verdict(pair, tag, project, reason, ()) if reason else judge(pair, tag, project, args.sha, args.inventory, run)
         )

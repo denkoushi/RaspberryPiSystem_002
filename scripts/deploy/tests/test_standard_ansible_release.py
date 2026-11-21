@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 import types
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -2354,7 +2355,7 @@ class AgentSkipGuardTests(unittest.TestCase):
         with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg"):
             with self.assertRaises(MODULE.AgentGuardTimeout) as caught:
                 MODULE.run_agent_guard_command(["ansible-playbook"], {})
-        self.assertEqual(caught.exception.output, "line1\nline2\nerr1\n")
+        self.assertEqual((caught.exception.stdout, caught.exception.stderr), ("line1\nline2\n", "err1\n"))
         errors = io.StringIO()
         with redirect_stderr(errors):
             with self.assertRaises(MODULE.AgentGuardStop) as stop:
@@ -2365,6 +2366,31 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertEqual(lines[:3], ["[agent-guard] line1", "[agent-guard] line2", "[agent-guard] err1"])
         self.assertEqual(lines[3:5], ["[agent-guard] first", "[agent-guard] second"])
         self.assertTrue(all(line.startswith("[agent-guard] ") for line in lines))
+
+    def test_guard_timeout_keeps_stdout_and_stderr_apart_without_trailing_newlines(self) -> None:
+        process = mock.MagicMock(pid=1, returncode=None)
+        process.communicate.side_effect = [subprocess.TimeoutExpired("ansible", 300), ("out-no-newline", "err-no-newline")]
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg"):
+            with self.assertRaises(MODULE.AgentGuardTimeout) as caught:
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            with self.assertRaises(MODULE.AgentGuardStop):
+                MODULE.run_guarded(["x"], mock.Mock(side_effect=caught.exception), "check-launch-failed")
+        self.assertEqual(
+            errors.getvalue().splitlines(), ["[agent-guard] out-no-newline", "[agent-guard] err-no-newline"]
+        )
+
+    def test_guard_runner_reaps_when_interrupted_during_the_second_wait(self) -> None:
+        process = mock.MagicMock(pid=79, returncode=None)
+        process.communicate.side_effect = [subprocess.TimeoutExpired("a", 1), KeyboardInterrupt()]
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg") as killpg:
+            with self.assertRaises(KeyboardInterrupt):
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        killpg.assert_called_once_with(79, MODULE.signal.SIGKILL)
+        process.stdout.close.assert_called_once()
+        process.stderr.close.assert_called_once()
+        process.wait.assert_called_once()
 
     def test_plan_guard_runs_through_the_process_group_runner_with_the_plan_variables(self) -> None:
         calls: list[list[str]] = []
@@ -2464,12 +2490,16 @@ class AgentSkipGuardTests(unittest.TestCase):
         process.wait.assert_called_once()
 
     def test_real_timeout_kills_children_and_grandchildren_and_removes_temporary_folders(self) -> None:
-        command = ["sh", "-c", "sleep 61 & exec sleep 62"]
+        # A random marker on the command line of both sleepers, so only this test's own processes are looked for
+        # (another worktree running the same test on this machine cannot be mistaken for a leftover).
+        marker = "guard-timeout-" + uuid.uuid4().hex
+        sleeper = f"python3 -c 'import time; time.sleep(60)' {marker}"
+        command = ["sh", "-c", f"{sleeper} & exec {sleeper}"]
 
         def alive() -> bool:
-            return subprocess.run(["pgrep", "-f", "sleep 6[12]"], capture_output=True).returncode == 0
+            return subprocess.run(["pgrep", "-f", marker], capture_output=True).returncode == 0
 
-        self.assertFalse(alive(), "unrelated sleep 61/62 is already running")
+        self.assertFalse(alive())
         with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 1):
             with self.assertRaises(MODULE.AgentGuardTimeout):
                 MODULE.run_agent_guard_command(command, os.environ.copy())
@@ -2483,7 +2513,7 @@ class AgentSkipGuardTests(unittest.TestCase):
 
             def executor(cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
                 created.append(json.loads(cmd[cmd.index("--extra-vars") + 1]).get("release_agent_guard_out_dir", ""))
-                return MODULE.run_agent_guard_command(["sh", "-c", "sleep 61 & exec sleep 62"], env)
+                return MODULE.run_agent_guard_command(command, env)
 
             with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 1), redirect_stderr(io.StringIO()):
                 with self.assertRaises(MODULE.AgentGuardStop) as caught:

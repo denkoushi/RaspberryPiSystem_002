@@ -323,6 +323,51 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
         self.assertEqual(report["project"], "staging-x")
         self.assertEqual(len(report["containers"]["nfc-agent"]), 1)
 
+    def _inventory_with_ssh_localhost(self, hosts: dict[str, dict]) -> Path:
+        document = {
+            "all": {
+                "hosts": {
+                    "localhost": {
+                        "ansible_connection": "ssh",
+                        "ansible_host": "192.0.2.1",
+                        "ansible_python_interpreter": "/nonexistent/python",
+                    }
+                },
+                "children": {"kiosk": {"hosts": hosts}},
+            }
+        }
+        path = self.directory / "inventory-ssh-localhost.yml"
+        path.write_text(yaml.safe_dump(document), encoding="utf-8")
+        return path
+
+    def test_result_is_written_on_the_controller_even_if_the_inventory_makes_localhost_an_ssh_host(self) -> None:
+        inventory = self._inventory_with_ssh_localhost({"k1": self.NFC})
+        result, out = self._check({}, ["nfc-agent"], inventory=inventory)
+        self.assertEqual(result.returncode, 0, self._text(result))
+        self.assertEqual([path.stem for path in out.glob("*.json")], ["k1"])
+
+    def test_image_report_is_written_on_the_controller_even_if_localhost_is_an_ssh_host(self) -> None:
+        bin_dir = self.directory / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        (self.directory / "table").write_text("\n", encoding="utf-8")
+        log = self.directory / "docker.log"
+        log.write_text("", encoding="utf-8")
+        docker = bin_dir / "docker"
+        docker.write_text(FAKE_DOCKER, encoding="utf-8")
+        docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
+        out = self.directory / "images-out"
+        out.mkdir()
+        inventory = self._inventory_with_ssh_localhost({"k1": {"ansible_connection": "local"}})
+        document = yaml.safe_load(inventory.read_text())
+        document["all"]["vars"] = {"raspisys_github_owner": "owner"}
+        inventory.write_text(yaml.safe_dump(document), encoding="utf-8")
+        result = self._run(
+            IMAGES, inventory, {"release_agent_guard_out_dir": str(out)},
+            env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_TABLE": str(self.directory / "table"), "FAKE_LOG": str(log)},
+        )
+        self.assertEqual(result.returncode, 0, self._text(result))
+        self.assertEqual([path.stem for path in out.glob("*.json")], ["k1"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1523,9 +1523,10 @@ class AgentGuardStop(RuntimeError):
 
 
 class AgentGuardTimeout(RuntimeError):
-    def __init__(self, output: str = "") -> None:
+    def __init__(self, stdout: str = "", stderr: str = "") -> None:
         super().__init__("agent guard timed out")
-        self.output = output
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 def parse_agent_skip(value: str) -> tuple[AgentSkip, ...]:
@@ -1634,13 +1635,16 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
         stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:
         kill_group()
-        captured = ""
+        out = err = ""
         try:
-            out, err = process.communicate(timeout=15)
-            captured = (out or "") + (err or "")
-        except (OSError, subprocess.SubprocessError):
+            try:
+                out, err = process.communicate(timeout=15)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        finally:
+            # Also on KeyboardInterrupt in the second wait: the group is already killed, so always reap.
             reap()
-        raise AgentGuardTimeout(captured) from error
+        raise AgentGuardTimeout(out or "", err or "") from error
     except BaseException:
         kill_group()
         reap()
@@ -1657,7 +1661,7 @@ def run_guarded(
     try:
         result = executor(command, agent_guard_environment())
     except AgentGuardTimeout as error:
-        emit_agent_guard_lines(error.output)
+        emit_agent_guard_lines(error.stdout, error.stderr)
         raise AgentGuardStop("timeout", f"agent guard Ansible exceeded {AGENT_GUARD_TIMEOUT_SECONDS} seconds") from error
     except (OSError, subprocess.SubprocessError) as error:
         raise AgentGuardStop(launch_kind, f"agent guard Ansible could not be started: {error}") from error
