@@ -20,7 +20,8 @@ import { PlanningBoardChainLinks, planningBoardHasPieceLinks } from './PlanningB
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { compareChainStripBars, planningBoardChainStripBars } from './planningBoardChainStripBars';
 import { PlanningBoardDragArrow } from './PlanningBoardDragArrow';
-import { PlanningBoardForwardGanttRow, type ForwardMove, type ForwardReorder } from './PlanningBoardForwardGanttRow';
+import { PlanningBoardForwardLaneFrame, PlanningBoardForwardRowBinding } from './PlanningBoardForwardDragBindings';
+import { type ForwardMove, type ForwardReorder } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardLaterQueue } from './PlanningBoardForwardLaterQueue';
 import { PlanningBoardForwardQueuePopover, type ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
@@ -42,7 +43,7 @@ import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 import { planningBoardBarsOnResource, planningBoardSeibansWithVisibleBars, usePlanningBoardSeibanColors, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
-import { usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
+import { ghostTransform, usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
 import { usePlanningBoardSharedSheetBounds } from './usePlanningBoardSharedSheetBounds';
 import { usePlanningBoardShelfInteraction, useShelfSelectionPreview, type SharedShelfInteraction } from './usePlanningBoardShelfInteraction';
 
@@ -249,9 +250,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     ? singleGroup ? group.rows.map((row) => ({ resource: group.resource!, bars: row.bars.filter((bar) => bar.item.kind === 'test' || !bar.item.standardHoursMissing), rowKey: row.key,
       start: foldedRows.get(row.key)!.window.start, end: foldedRows.get(row.key)!.window.end }))
       : [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars).filter((bar) => bar.item.kind === 'test' || !bar.item.standardHoursMissing) }] : []), [renderedGroups, singleGroup, foldedRows]);
-  const { dragPreview: activeDrag, dragPointer, subscribePreview, setDragPreview, dragLanes: availableDragLanes, ownsDragPreview } = usePlanningBoardSharedDrag(sharedDrag, singleResourceCd, dragLanes);
+  const { dragPreview: activeDrag, dragStore, dragPointer, subscribePreview, setDragPreview, dragLanes: availableDragLanes, ownsDragPreview } = usePlanningBoardSharedDrag(sharedDrag, singleResourceCd, dragLanes);
   const [selectedPreview, setShelfSelection] = useShelfSelectionPreview(dragLanes, layout.start, dayWidth);
-  const dragPreview = activeDrag ?? sharedDrag?.selectionPreview ?? selectedPreview;
+  // Without a live drag, a shelf selection is what rows and lanes show; a live drag is read from dragStore.
+  const selectionFallback = sharedDrag?.selectionPreview ?? selectedPreview;
+  const dragPreview = activeDrag ?? selectionFallback;
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const { localShelf, shelfInteractionRef, shelfActions, getShelfDrop } = usePlanningBoardShelfInteraction(
@@ -550,11 +553,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
           <div ref={pieceLayer} className="pointer-events-none absolute inset-0" aria-hidden="true" />
-          {renderedGroups.map((group, index) => <div key={group.key} data-gantt-lane={group.resource ? '' : undefined} data-resource-code={group.resource ?? undefined}
-            data-gantt-lane-resource={group.resource ?? undefined}
-            style={{ opacity: dragPreview && group.resource && !dragPreview.allowed.has(group.resource) ? 0.3 : undefined,
-              outline: dragPreview?.drop?.resource === group.resource && group.resource !== dragPreview?.bar.resource ? '3px solid rgb(110 231 183)' : undefined,
-              outlineOffset: -3 }}>
+          {renderedGroups.map((group, index) => <PlanningBoardForwardLaneFrame key={group.key} store={dragStore} fallback={selectionFallback} laneResource={group.resource}
+            data-gantt-lane={group.resource ? '' : undefined} data-resource-code={group.resource ?? undefined}
+            data-gantt-lane-resource={group.resource ?? undefined}>
             {!singleGroup && interaction.resourceView && group.category && group.category !== layout.groups[index - 1]?.category && (
               <div data-testid="planning-gantt-category-header" className="relative flex h-6 bg-slate-800 text-[11px] font-bold">
                 <div className="sticky left-0 z-20 flex items-center bg-slate-800 px-2" style={{ width: labelWidth }}>
@@ -583,15 +584,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
               const folded = foldedRows.get(row.key);
               const rowStart = folded?.window.start ?? layout.start;
               const rowEnd = folded?.window.end ?? layout.end;
-              return <PlanningBoardForwardGanttRow fillRowHeight={fillRowHeight} foldedWindow={folded?.window} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={row.bars.some((bar) => bar.item.kind !== 'test' && bar.item.fseiban === focusedSeiban) ? focusedSeiban : null} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+              return <PlanningBoardForwardRowBinding store={dragStore} fallback={selectionFallback} resource={group.resource} folded={Boolean(folded)} fillRowHeight={fillRowHeight} foldedWindow={folded?.window} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={row.bars.some((bar) => bar.item.kind !== 'test' && bar.item.fseiban === focusedSeiban) ? focusedSeiban : null} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
                 selectedItemIds={rowSelections.get(row.key) ?? EMPTY_SELECTION} disabled={interaction.disabled} dragDisabled={interaction.dragDisabled}
                 pinMode={interaction.pinMode} resourceView={interaction.resourceView} {...rowActions}
                 lanes={availableDragLanes}
-                draggedItemId={dragPreview && row.bars.some((bar) => bar.item.itemId === dragPreview.bar.item.itemId) ? dragPreview.bar.item.itemId : null}
-                insertionLeft={dragPreview?.drop && dragPreview.drop.resource === group.resource && (!folded || dragPreview.drop.rowKey === row.key) ? dragPreview.drop.left : null} onDragPreview={setDragPreview}
+                onDragPreview={setDragPreview}
                 focusedPartKey={sharedChain ? focusedPartKey : showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={folded ? undefined : group.resource ? resourceLabels.get(group.resource)?.node : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
@@ -600,7 +600,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
             {forward && !singleGroup && group.resource && <div data-later-queue-host={`column-${dragLanes.findIndex((lane) => lane.resource === group.resource)}`}
               className="pointer-events-none absolute inset-0 flex items-stretch justify-end" />}
             </div>
-          </div>)}
+          </PlanningBoardForwardLaneFrame>)}
           {forward && !singleGroup && <PlanningBoardForwardLaterQueue viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth}
             labelWidth={labelWidth} viewportWidth={viewportWidth}
             onOpen={(bar, anchor) => queuePopover.current?.show(bar, anchor, true)} />}
@@ -617,10 +617,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />)}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} canMoveResource={canMoveResource} viewport={viewport} lanes={availableDragLanes} start={layout.start} dayWidth={dayWidth} focusedSeiban={focusedSeiban} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {valueSheet && (valueSheetContainer === null ? null : valueSheetContainer ? createPortal(valueSheet, valueSheetContainer) : valueSheet)}
-      {dragPreview && (activeDrag ? ownsDragPreview : !sharedDrag || sharedDrag.selectionPreview?.drop?.resource === singleResourceCd) && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} subscribe={subscribePreview} />}
+      {dragPreview && (activeDrag ? ownsDragPreview : !sharedDrag || sharedDrag.selectionPreview?.drop?.resource === singleResourceCd) && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} subscribe={subscribePreview} store={dragStore} />}
       {activeDrag && ownsDragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
-        className="pointer-events-none fixed z-[110] scale-105 rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
-        style={{ left: dragPointer.current.x / pageZoom() + 12, top: dragPointer.current.y / pageZoom() + 12 }}>
+        className="pointer-events-none fixed left-0 top-0 z-[110] rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
+        style={{ transform: ghostTransform(dragPointer.current.x, dragPointer.current.y), willChange: 'transform' }}>
         <strong className="font-mono">{activeDrag.bar.resource}</strong> {activeDrag.bar.item.kind === 'test' ? activeDrag.bar.item.name : activeDrag.bar.item.fhinmei || activeDrag.bar.item.fhincd}
       </div>, document.body)}
     </section>

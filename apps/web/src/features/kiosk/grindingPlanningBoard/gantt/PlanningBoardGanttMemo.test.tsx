@@ -152,7 +152,7 @@ it('renders only the source and lanes whose insertion marker changes during a dr
     for (let i = 0; i < 20; i++) fireEvent.pointerMove(source, { clientX: 121 + i, clientY: 31 + i });
     await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
     expect(renders).toEqual([]);
-    expect(screen.getByTestId('planning-gantt-drag-ghost')).toHaveStyle({ left: '152px', top: '62px' });
+    expect(screen.getByTestId('planning-gantt-drag-ghost').style.transform).toBe('translate3d(152px, 62px, 0) scale(1.05)');
     hit = [screen.getByTestId('planning-gantt-bar-c')];
     fireEvent.pointerMove(source, { clientX: 122, clientY: 32 });
     await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
@@ -261,6 +261,8 @@ it('batches move previews and publishes only a changed insertion target, cancell
   let renderCount = 0;
   const hook = renderHook(() => { renderCount++; return usePlanningBoardDragPreview(); });
   const setPreview = hook.result.current[1];
+  let notified = 0;
+  hook.result.current[4].subscribe(() => { notified++; });
   const preview = { bar, x: 100, y: 100, allowed: new Set(['305', '306']),
     drop: { resource: '306', bar: target, placement: 'before' as const, left: 10 } };
   act(() => setPreview(preview));
@@ -271,8 +273,10 @@ it('batches move previews and publishes only a changed insertion target, cancell
   for (let i = 0; i < 20; i++) act(() => setPreview({ ...preview, drop: { ...preview.drop, left: 20 + i } }));
   expect(renderCount).toBe(started);
   await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
-  expect(renderCount).toBe(started + 1);
-  expect(hook.result.current[0]?.drop?.left).toBe(39);
+  // A changed drop target reaches rows through the store; the host never re-renders for it.
+  expect(renderCount).toBe(started);
+  expect(hook.result.current[4].get()?.drop?.left).toBe(39);
+  expect(notified).toBeGreaterThan(0);
   act(() => { setPreview(preview); setPreview(null); });
   await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
   expect(hook.result.current[0]).toBeNull();

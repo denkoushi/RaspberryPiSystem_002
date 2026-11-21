@@ -1,16 +1,23 @@
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 
 import { pageZoom } from '../pageZoom';
 
 import type { ForwardDragPreview } from './PlanningBoardForwardGanttRow';
+import type { ForwardDragStore } from './usePlanningBoardSharedDrag';
 import type { RefObject } from 'react';
 
-export function PlanningBoardDragArrow({ preview, viewport, subscribe }: {
+const noopSubscribe = () => () => undefined;
+const noVersion = () => 0;
+
+export function PlanningBoardDragArrow({ preview, viewport, subscribe, store }: {
   preview: ForwardDragPreview;
   subscribe: (listener: () => void) => () => void;
+  /** When given, the arrow re-measures after a drop-target change and on scroll or resize, not on every pointer frame. */
+  store?: ForwardDragStore;
   viewport: RefObject<HTMLDivElement | null>;
 }) {
+  const dropVersion = useSyncExternalStore(store?.subscribe ?? noopSubscribe, store?.version ?? noVersion);
   const [points, setPoints] = useState<{ x: number; y: number; tx: number; ty: number } | null>(null);
   useLayoutEffect(() => {
     const measure = () => {
@@ -36,7 +43,8 @@ export function PlanningBoardDragArrow({ preview, viewport, subscribe }: {
     };
     measure();
     // Auto-scroll may move the marker while the logical drop target stays unchanged.
-    if (preview.source === 'shelf-selection') {
+    // The queue panel keeps its own insertion marker, so queue drags (and callers without a store) still follow every frame.
+    if (preview.source === 'shelf-selection' || (store && preview.source !== 'queue')) {
       window.addEventListener('scroll', measure, true);
       window.addEventListener('resize', measure);
       return () => {
@@ -45,7 +53,8 @@ export function PlanningBoardDragArrow({ preview, viewport, subscribe }: {
       };
     }
     return subscribe(measure);
-  }, [preview, viewport, subscribe]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dropVersion only re-runs the measurement after a drop-target commit.
+  }, [preview, viewport, subscribe, store, dropVersion]);
   if (!points) return null;
   const { x, y, tx, ty } = points;
   return createPortal(<svg data-testid="planning-gantt-drag-arrow" className="pointer-events-none fixed inset-0 z-[109] h-full w-full overflow-visible" aria-hidden="true">

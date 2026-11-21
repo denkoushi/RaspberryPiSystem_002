@@ -8,7 +8,7 @@ import { pageZoom } from '../pageZoom';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
-import { findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
+import { beginForwardDropCache, findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
 import { canReorderForwardBars, forwardDueLabel, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
@@ -204,6 +204,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     const inQueue = inside;
     const next = inQueue ? findDrop(event.clientX, pending.bar) : null;
     setDrop(next);
+    if (!inQueue) beginForwardDropCache();
     const ganttDrop = inQueue ? null : findForwardDrop(event.clientX, event.clientY, pending.bar, pending.allowed,
       forwardDropBoard(viewport.current), lanes.current, start, dayWidth);
     onDragPreview({ source: 'queue', bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: ganttDrop });
