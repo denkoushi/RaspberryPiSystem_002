@@ -4,6 +4,7 @@ import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayou
 import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { comparePlanningBoardBarOrder } from '../sortGrindingPlanningBoardItems';
 
+import { invalidateForwardDropCache } from './planningBoardForwardDrop';
 import { canReorderForwardBars } from './planningBoardForwardQueue';
 import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 import { PlanningBoardSeibanShelfColumn } from './PlanningBoardSeibanShelfColumn';
@@ -222,6 +223,7 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
   const endDrag = (event: PointerEvent<HTMLButtonElement>) => {
     const current = drag.current;
     if (!current || current.pointerId !== event.pointerId) return;
+    if (current.active) invalidateForwardDropCache();
     const drop = current.active ? getDrop?.(event.clientX, event.clientY, current.source, current.allowed, current.moving) : null;
     clearDrag();
     if (current.active) place(current.ids, drop ?? null);

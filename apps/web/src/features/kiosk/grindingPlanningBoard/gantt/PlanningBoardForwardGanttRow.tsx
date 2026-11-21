@@ -9,7 +9,7 @@ import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext'
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
-import { findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
+import { beginForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache } from './planningBoardForwardDrop';
 import { forwardItemDetails } from './planningBoardForwardQueue';
 import { FOLDED_BAR_TOP, FOLDED_ROW_BASE_HEIGHT, operationSplitGap } from './planningBoardGanttGeometry';
 import { dayLabel, dateToDay, workingPeriods } from './planningBoardGanttLayout';
@@ -170,6 +170,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         if (delta && !overOtherPane && bounds.height > 0) {
           const previous = viewport.scrollTop;
           viewport.scrollTop += delta;
+          if (viewport.scrollTop !== previous) invalidateForwardDropCache();
           if (viewport.scrollTop !== previous) onDragPreview({ rowKey: row.key, bar: pending.bar, x, y, allowed: pending.allowed,
             drop: findForwardDrop(x, y, pending.bar, pending.allowed, forwardDropBoard(viewport), lanes.current, start, dayWidth) });
         }
@@ -197,6 +198,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     if (distance >= 8 && !dragDisabled && resourceView && !gate.canWrite()) { gate.attempt(); clear(); return; }
     if (!pending.moved && distance >= 8) { pending.moved = true; onCloseQueue(); }
     if (pending.moved && !disabled && !dragDisabled && !pinMode && resourceView) {
+      beginForwardDropCache();
       pending.allowed ??= new Set(lanes.current.filter((lane) => lane.resource === pending.bar.resource || (pending.bar.item.kind !== 'test' && canMoveResource?.(pending.bar.item, lane.resource))).map((lane) => lane.resource));
       onDragPreview({ rowKey: row.key, bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: findDrop(event.clientX, event.clientY, pending) });
     }
@@ -359,6 +361,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 const pending = drag.current;
                 if (!pending || pending.pointerId !== event.pointerId) return;
                 move(event);
+                invalidateForwardDropCache();
                 const drop = findDrop(event.clientX, event.clientY, pending);
                 suppressClick.current = pending.tapCancelled || pending.longPressed;
                 clear();
