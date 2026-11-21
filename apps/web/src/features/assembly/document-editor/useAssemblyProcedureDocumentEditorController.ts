@@ -120,6 +120,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     onDiscardMaterials: discardMaterialPlacements,
     enabled: accessGranted,
     dirty: isDirty,
+    interacting: history.dragStart !== null,
     onStorageError
   });
   const { saveImmediately: saveRecoveryImmediately } = recovery;

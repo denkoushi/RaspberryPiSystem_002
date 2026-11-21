@@ -23,6 +23,8 @@ export function useAssemblyDocumentEditorRecovery(input: {
   onDiscardMaterials?: (placements: PendingMaterialPlacement[]) => Promise<void>;
   enabled: boolean;
   dirty: boolean;
+  // 話し合い中やドラッグ中は更新が続くので、書き込みを10秒に1回までに間引く
+  interacting?: boolean;
   onStorageError?: () => void;
 }) {
   const {
@@ -34,12 +36,21 @@ export function useAssemblyDocumentEditorRecovery(input: {
     onDiscardMaterials,
     enabled,
     dirty,
+    interacting = false,
     onStorageError
   } = input;
   const [pending, setPending] = useState<AssemblyDocumentEditorRecoveryRecord | null>(null);
   const storageErrorShown = useRef(false);
   const pendingAfterPageChange = useRef<AssemblyDocumentEditorRecoveryRecord | null>(null);
   const lastImmediateSave = useRef<AssemblyDocumentEditorRecoveryMatch | null>(null);
+  const throttleTimer = useRef<number | null>(null);
+  const latestWrite = useRef<() => void>(() => undefined);
+  const clearThrottleTimer = useCallback(() => {
+    if (throttleTimer.current === null) return;
+    window.clearTimeout(throttleTimer.current);
+    throttleTimer.current = null;
+  }, []);
+  useEffect(() => clearThrottleTimer, [clearThrottleTimer]);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
@@ -67,10 +78,13 @@ export function useAssemblyDocumentEditorRecovery(input: {
   }, [baseUpdatedAt, documentId, editVersion, enabled, onStorageError, onDiscardMaterials]);
 
   useEffect(() => {
-    if (!enabled || !dirty || typeof window === 'undefined') return;
+    if (!enabled || !dirty || typeof window === 'undefined') {
+      if (typeof window !== 'undefined') clearThrottleTimer();
+      return;
+    }
     pendingAfterPageChange.current = null;
     setPending(null);
-    const timer = window.setTimeout(() => {
+    const write = () => {
       try {
         writeAssemblyDocumentEditorRecovery(window.localStorage, {
           version: 1,
@@ -87,12 +101,26 @@ export function useAssemblyDocumentEditorRecovery(input: {
           onStorageError?.();
         }
       }
-    }, 750);
+    };
+    latestWrite.current = write;
+    if (interacting) {
+      // 操作中は待ち直さず、10秒の枠の終わりに最新の内容を1回だけ書く
+      throttleTimer.current ??= window.setTimeout(() => {
+        throttleTimer.current = null;
+        latestWrite.current();
+      }, 10_000);
+      return;
+    }
+    // 操作が終わったら間引きをやめ、通常の750msで最新を書く
+    clearThrottleTimer();
+    const timer = window.setTimeout(write, 750);
     return () => window.clearTimeout(timer);
   }, [
     baseUpdatedAt,
     documentId,
     dirty,
+    interacting,
+    clearThrottleTimer,
     editVersion,
     elements,
     materialPlacements,
