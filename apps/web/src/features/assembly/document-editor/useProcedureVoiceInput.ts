@@ -131,7 +131,6 @@ export function useProcedureMeetingInput({
   const [status, setStatus] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [targetId, setTargetId] = useState<string>();
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState('');
   const [pending, setPending] = useState<{ target: OverlayTextElement; text: string; documentId?: string }>();
   const [previous, setPrevious] = useState<MeetingEdit>();
@@ -158,14 +157,6 @@ export function useProcedureMeetingInput({
       if (session) disposeVoiceSession(session);
     };
   }, [documentId]);
-
-  useEffect(() => {
-    if (status !== 'recording' || recordingStartedAt === null) return;
-    const timer = setInterval(() => {
-      setElapsedSeconds(Math.min(MEETING_RECORDING_MAX_SECONDS, Math.floor((Date.now() - recordingStartedAt) / 1000)));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [status, recordingStartedAt]);
 
   useEffect(() => {
     if (!pending || pending.documentId !== documentId || busy || inlineEditingId === pending.target.id) return;
@@ -195,7 +186,6 @@ export function useProcedureMeetingInput({
     setTargetId(target.id);
     setStatus('recording');
     setRecordingStartedAt(null);
-    setElapsedSeconds(0);
     setPrevious(undefined);
     setError('');
 
@@ -257,7 +247,7 @@ export function useProcedureMeetingInput({
     setError('');
   };
   return { available: enabled && available, status: selected ? status : 'idle' as const, locked: status !== 'idle',
-    elapsedSeconds, error: selected ? error : '', canRestore, start, stop, restore };
+    startedAt: recordingStartedAt, maxSeconds: MEETING_RECORDING_MAX_SECONDS, error: selected ? error : '', canRestore, start, stop, restore };
 }
 
 async function uploadMeeting(audio: Blob, signal: AbortSignal): Promise<string> {

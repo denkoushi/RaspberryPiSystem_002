@@ -49,6 +49,7 @@ const common = { onDelete: vi.fn(), onBringForward: vi.fn(), onSendBackward: vi.
 const onBegin = vi.fn();
 const onEnd = vi.fn();
 let latestText = '';
+let harnessRenders = 0;
 
 function Harness({ text = '' }: { text?: string }) {
   const [elements, setElements] = useState({ one: makeElement(text), two: makeElement('別', 'two') });
@@ -56,6 +57,7 @@ function Harness({ text = '' }: { text?: string }) {
   const [disabled, setDisabled] = useState(false);
   const element = elements[selected];
   latestText = elements.one.text;
+  harnessRenders++;
   const update = (next: OverlayTextElement) => setElements(current => ({ ...current, [next.id]: next }));
   const live = useProcedureLiveMeeting({ element, enabled: true, disabled, onUpdate: update, onBegin, onEnd, getTerms: () => `${elements.two.text}  語` });
   return <>
@@ -86,9 +88,25 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
   URL.createObjectURL = vi.fn(() => 'blob:worklet'); URL.revokeObjectURL = vi.fn();
 });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('live meeting input', () => {
+  it('ticks the recording time without re-rendering the owner of the hook', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] });
+    const flush = () => act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    render(<Harness />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: '話し合い' }));
+    await flush(); await flush();
+    expect(FakeSocket.last).toBeDefined();
+    await act(async () => { FakeSocket.last.open(); });
+    expect(screen.getByText('00:00')).toBeInTheDocument();
+    const before = harnessRenders;
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(screen.getByText('00:10')).toBeInTheDocument();
+    expect(harnessRenders).toBe(before);
+  });
+
   it('connects with the client key and streams pcm frames', async () => {
     render(<Harness />);
     await startLive();
