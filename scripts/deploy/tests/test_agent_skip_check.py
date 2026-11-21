@@ -132,6 +132,21 @@ class AgentSkipCheckTests(unittest.TestCase):
                 self.assertEqual(MODULE.main(["--sha", S, "--inventory", bad, "pi4-a:barcode-agent"], fake), 2)
             self.assertEqual(fake.commands, [])
 
+    def test_nested_inventory_directory_config_is_part_of_the_diff(self) -> None:
+        nested = "infrastructure/ansible/staging/inventory.yml"
+        fake = Fake()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            MODULE.main(["--sha", S, "--inventory", str(ROOT / INV), "pi4-a:barcode-agent"], fake)
+        plain = next(c for c in fake.commands if c[:3] == ["git", "diff", "--name-only"] and "--" in c)
+        self.assertEqual(plain[plain.index("--") + 1:], [INV, *MODULE.CONFIG_PATHS])
+        fake = Fake(config="infrastructure/ansible/staging/group_vars/staging.yml\n")
+        verdict = MODULE.judge(MODULE.Pair("pi4-a", "barcode-agent"), T, "docker", S, nested, fake)
+        diff = next(c for c in fake.commands if c[:3] == ["git", "diff", "--name-only"] and "--" in c)
+        self.assertIn("infrastructure/ansible/staging/group_vars", diff)
+        self.assertIn("infrastructure/ansible/staging/host_vars", diff)
+        self.assertFalse(verdict.ok)
+        self.assertIn("configuration changed", verdict.reason)
+
     def test_step5_candidates_ignore_case_and_a_failed_diff_fails_the_pair(self) -> None:
         code, text = run_main(Fake(changed="apps/web/src/Barcode/Scanner.ts\nNFC.md\n"), "pi4-a:barcode-agent")
         self.assertEqual(code, 0)

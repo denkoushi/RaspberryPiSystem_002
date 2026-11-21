@@ -313,7 +313,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             self.assertEqual(call[2], "{{.Config.Image}} {{.State.Status}}")
             self.assertEqual(len(call), 4)
 
-    def test_read_playbook_uses_the_inventory_project_and_ignores_output_settings(self) -> None:
+    def test_read_playbook_uses_the_inventory_project(self) -> None:
         rows = ["nfc-agent c9 ghcr.io/o/raspisys-nfc-agent:" + "d" * 40 + " running staging-x"]
         hosts = {"k1": {"ansible_connection": "local", "release_kiosk_compose_project": "staging-x"}}
         result, out, log = self._images(rows, hosts)

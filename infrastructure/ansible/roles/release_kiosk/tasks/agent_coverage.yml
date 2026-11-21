@@ -35,8 +35,9 @@
       ansible.builtin.debug:
         msg: >-
           Pi4 {{ inventory_hostname }} keeps these agents at their current version by explicit allowance:
-          {{ release_kiosk_agents_not_updated | join(', ') }}
-      when: release_kiosk_agents_not_updated | length > 0
+          {{ release_kiosk_agents_not_updated | join(', ') }}.
+          Allowed but not missing from the release set: {{ release_kiosk_agents_allowed_here | difference(release_kiosk_agents_not_updated) | sort | join(', ') }}
+      when: (release_kiosk_agents_not_updated | length > 0) or (release_kiosk_agents_allowed_here | length > 0)
       tags:
         - always
 

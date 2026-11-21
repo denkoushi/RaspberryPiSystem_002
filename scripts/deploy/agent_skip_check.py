@@ -146,7 +146,9 @@ def judge(pair: Pair, tag: str, project: str, sha: str, inventory: str, run: Run
     for ref in (tag, sha):
         if run(["git", "cat-file", "-e", f"{ref}:{inventory}"]).returncode != 0:
             return fail(f"the inventory {inventory} is not tracked by git at {ref[:12]}, so its changes cannot be compared")
-    diff = run(["git", "diff", "--name-only", tag, sha, "--", inventory, *CONFIG_PATHS])
+    inventory_dir = Path(inventory).parent.as_posix()
+    config_paths = tuple(dict.fromkeys((*CONFIG_PATHS, f"{inventory_dir}/group_vars", f"{inventory_dir}/host_vars")))
+    diff = run(["git", "diff", "--name-only", tag, sha, "--", inventory, *config_paths])
     if diff.returncode != 0:
         return fail("the configuration diff could not be taken")
     if diff.stdout.strip():

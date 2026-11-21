@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -2396,6 +2397,101 @@ class AgentSkipGuardTests(unittest.TestCase):
                     Path("infrastructure/ansible/inventory.yml"), (("pi4", ("pi4-a",)),), variables,
                 )
         self.assertEqual(caught.exception.kind, "timeout")
+
+    def _agent_images_args(self):
+        return MODULE.parse_arguments(["--agent-images", "--limit", "pi4-a:pi4-b"])
+
+    def _run_agent_images(self, remote: str, returncode: int = 0) -> tuple[int, dict]:
+        with mock.patch.object(MODULE, "inventory_path", return_value=(Path("inv.yml"), MODULE.DEFAULT_INVENTORY)), mock.patch.object(
+            MODULE, "inventory_document", return_value={**DOC, "_meta": {"hostvars": {}}}
+        ), mock.patch.object(MODULE, "server_connection", return_value=("h", "u", 22)), mock.patch.object(
+            MODULE.subprocess, "run", return_value=completed(["ssh"], remote, returncode)
+        ), redirect_stdout(io.StringIO()) as out:
+            code = MODULE.agent_images(self._agent_images_args())
+        return code, json.loads(out.getvalue())
+
+    def test_agent_images_fails_on_duplicate_reports_and_on_ssh_exit_code(self) -> None:
+        a = json.dumps(guard_report("pi4-a", "nfc-agent", "img:" + "a" * 40))
+        b = json.dumps(guard_report("pi4-b", "nfc-agent", "img:" + "a" * 40))
+        done = json.dumps({"ansibleExitCode": 0})
+        code, payload = self._run_agent_images("\n".join((a, b, done)) + "\n")
+        self.assertEqual(code, 0)
+        code, payload = self._run_agent_images("\n".join((a, a, b, done)) + "\n")
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["hosts"][0], {"host": "pi4-a", "readable": False})
+        code, _ = self._run_agent_images("\n".join((a, b, done)) + "\n", returncode=255)
+        self.assertEqual(code, 1)
+
+    def test_pi5_script_forwards_only_files_named_after_their_own_host(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "infrastructure/ansible").mkdir(parents=True)
+            (root / "infrastructure/ansible/ansible.cfg").write_text("")
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            (bin_dir / "timeout").write_text('#!/bin/sh\nshift 2\nexec "$@"\n')
+            (bin_dir / "ansible-playbook").write_text(
+                '#!/bin/sh\nfor a; do case "$a" in release_agent_guard_out_dir=*) d="${a#*=}";; esac; done\n'
+                'echo \'{"host":"pi4-a"}\' > "$d/pi4-a.json"\n'
+                'echo \'{"host":"pi4-x"}\' > "$d/pi4-b.json"\n'
+                'echo \'not json\' > "$d/pi4-c.json"\n'
+            )
+            for name in ("timeout", "ansible-playbook"):
+                (bin_dir / name).chmod(0o755)
+            script = MODULE.agent_images_script(root, MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b")
+            result = subprocess.run(
+                ["/bin/bash", "-c", script], text=True, capture_output=True, check=False,
+                env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+            )
+        lines = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(lines, [{"host": "pi4-a"}, {"ansibleExitCode": 0}])
+
+    def test_guard_runner_kills_the_group_on_keyboard_interrupt_and_reaps_after_a_failed_second_wait(self) -> None:
+        process = mock.MagicMock(pid=77, returncode=None)
+        process.communicate.side_effect = KeyboardInterrupt()
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg") as killpg:
+            with self.assertRaises(KeyboardInterrupt):
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        killpg.assert_called_once_with(77, MODULE.signal.SIGKILL)
+        process.wait.assert_called_once()
+        process = mock.MagicMock(pid=78, returncode=None)
+        process.communicate.side_effect = [subprocess.TimeoutExpired("a", 1), subprocess.TimeoutExpired("a", 15)]
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg"):
+            with self.assertRaises(MODULE.AgentGuardTimeout):
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        process.stdout.close.assert_called_once()
+        process.stderr.close.assert_called_once()
+        process.wait.assert_called_once()
+
+    def test_real_timeout_kills_children_and_grandchildren_and_removes_temporary_folders(self) -> None:
+        command = ["sh", "-c", "sleep 61 & exec sleep 62"]
+
+        def alive() -> bool:
+            return subprocess.run(["pgrep", "-f", "sleep 6[12]"], capture_output=True).returncode == 0
+
+        self.assertFalse(alive(), "unrelated sleep 61/62 is already running")
+        with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 1):
+            with self.assertRaises(MODULE.AgentGuardTimeout):
+                MODULE.run_agent_guard_command(command, os.environ.copy())
+        time.sleep(0.3)
+        self.assertFalse(alive())
+        for call in (
+            lambda executor: MODULE.run_coverage_playbook(MODULE.DEFAULT_INVENTORY, "pi4-a", ("pi4-a",), {}, {}, executor),
+            lambda executor: MODULE.reread_agent_images(MODULE.DEFAULT_INVENTORY, MODULE.agent_skip_pairs(agent_args()), executor),
+        ):
+            created: list[str] = []
+
+            def executor(cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+                created.append(json.loads(cmd[cmd.index("--extra-vars") + 1]).get("release_agent_guard_out_dir", ""))
+                return MODULE.run_agent_guard_command(["sh", "-c", "sleep 61 & exec sleep 62"], env)
+
+            with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 1), redirect_stderr(io.StringIO()):
+                with self.assertRaises(MODULE.AgentGuardStop) as caught:
+                    call(executor)
+            self.assertEqual(caught.exception.kind, "timeout")
+            self.assertFalse(any(Path(path).exists() for path in created if path))
+        time.sleep(0.3)
+        self.assertFalse(alive())
 
     def test_release_variables_follow_the_body_conditions(self) -> None:
         def build(**flags: object) -> dict[str, object]:

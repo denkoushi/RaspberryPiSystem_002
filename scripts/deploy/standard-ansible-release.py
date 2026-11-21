@@ -1612,20 +1612,39 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
         list(command), env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         start_new_session=True, cwd=ROOT,
     )
-    try:
-        stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired as error:
+    def kill_group() -> None:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except OSError:
             pass
+
+    def reap() -> None:
+        for stream in (process.stdout, process.stderr):
+            try:
+                if stream is not None:
+                    stream.close()
+            except OSError:
+                pass
+        try:
+            process.wait(timeout=15)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    try:
+        stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as error:
+        kill_group()
         captured = ""
         try:
             out, err = process.communicate(timeout=15)
             captured = (out or "") + (err or "")
         except (OSError, subprocess.SubprocessError):
-            pass
+            reap()
         raise AgentGuardTimeout(captured) from error
+    except BaseException:
+        kill_group()
+        reap()
+        raise
     code = process.returncode if process.returncode >= 0 else 128 - process.returncode
     return subprocess.CompletedProcess(list(command), code, stdout, stderr)
 
@@ -1803,7 +1822,16 @@ def agent_images_script(remote_root: Path, relative: str, limit: str) -> str:
         f"ansible-playbook -i {shlex.quote(relative)} {playbook} --limit {shlex.quote(limit)} "
         '-e release_agent_guard_out_dir="$d" >&2',
         "code=$?",
-        'for f in "$d"/*.json; do if [ -f "$f" ]; then cat "$f"; echo; fi; done',
+        "python3 - \"$d\" <<'PY'",
+        "import json, pathlib, sys",
+        "for path in sorted(pathlib.Path(sys.argv[1]).glob('*.json')):",
+        "    try:",
+        "        value = json.loads(path.read_text(encoding='utf-8'))",
+        "    except (OSError, ValueError):",
+        "        continue",
+        "    if isinstance(value, dict) and value.get('host') == path.stem:",
+        "        print(json.dumps(value, separators=(',', ':')))",
+        "PY",
         'echo "{\\"ansibleExitCode\\": $code}"',
     ))
 
@@ -1830,6 +1858,7 @@ def agent_images(args: argparse.Namespace) -> int:
     if result.stderr:
         print(result.stderr, end="", file=sys.stderr)
     reports: dict[str, dict[str, Any]] = {}
+    duplicated: set[str] = set()
     exit_code: int | None = None
     for line in result.stdout.splitlines():
         try:
@@ -1839,12 +1868,16 @@ def agent_images(args: argparse.Namespace) -> int:
         if isinstance(value, dict) and set(value) == {"ansibleExitCode"} and isinstance(value["ansibleExitCode"], int):
             exit_code = value["ansibleExitCode"]
         elif isinstance(value, dict) and isinstance(value.get("host"), str) and value["host"] in names:
-            reports[value["host"]] = value
+            if value["host"] in reports or value["host"] in duplicated:
+                duplicated.add(value["host"])
+                reports.pop(value["host"], None)
+            else:
+                reports[value["host"]] = value
     if exit_code is None:
         raise RuntimeError("could not read the agent images through the Pi5 release checkout")
     hosts = [reports.get(name, {"host": name, "readable": False}) for name in names]
     print(json.dumps({"schemaVersion": 1, "inventory": relative, "ansibleExitCode": exit_code, "hosts": hosts}, ensure_ascii=False, indent=2))
-    return 0 if exit_code == 0 and all(name in reports for name in names) else 1
+    return 0 if exit_code == 0 and result.returncode == 0 and all(name in reports for name in names) else 1
 
 
 def remove_deploy_status_run(run_id: str) -> None:

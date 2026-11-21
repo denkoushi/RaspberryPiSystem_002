@@ -2,6 +2,7 @@
 # Agents enabled on this Pi4. This lives in role vars (not defaults) so an
 # inventory value of the same name cannot override it; both the release and the
 # agent coverage check read it, so they cannot drift apart.
+# Inputs (nfc_agent_client_id, barcode_agent_enabled, torque_agent_enabled) must be literals; scripts/ci/tests/test_agent_guard_inputs_literal.py enforces it.
 release_kiosk_enabled_agent_services: >-
   {{
     (['nfc-agent'] if (nfc_agent_client_id | default('') | string | length > 0) else [])

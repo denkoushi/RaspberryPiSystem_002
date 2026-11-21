@@ -96,7 +96,7 @@ ansible-playbook -i infrastructure/ansible/inventory-staging.yml \
 
 ### 1.2 print-plan → 承認 → 実行
 
-専用Pi5/Pi4が provision 済みで、private varsの存在を内容非参照で確認でき、かつ別途承認された場合だけ、canonical wrapperのplanを作る。`--print-plan` はinventoryとAnsibleの `--list-hosts` / `--list-tasks` だけを実行し、remote host/runtimeを変更しない。ただしbranchのexact SHA解決のためGit originへ問い合わせる。
+専用Pi5/Pi4が provision 済みで、private varsの存在を内容非参照で確認でき、かつ別途承認された場合だけ、canonical wrapperのplanを作る。`--print-plan` はinventoryとAnsibleの `--list-hosts` / `--list-tasks` に加え、Pi4を選ぶ場合は判定のplaybookをローカルで実行する。判定のplaybookは端末へ接続せず、remote host/runtimeを変更しない。ただしbranchのexact SHA解決のためGit originへ問い合わせる。
 
 ```bash
 mkdir -p "$EVIDENCE_DIR"
@@ -108,6 +108,7 @@ if scripts/update-all-clients.sh <approved-branch> "$STAGING_INVENTORY" \
 else
   echo "plan failed; do not approve or execute" >&2
   rm -f "$EVIDENCE_DIR/print-plan.json" "$EVIDENCE_DIR/print-plan.sha256"
+  false  # 失敗コードを返し、後続の手順へ進ませない
 fi
 ```
 
@@ -542,6 +543,7 @@ if scripts/update-all-clients.sh <approved-previous-branch> "$STAGING_INVENTORY"
 else
   echo "plan failed; do not approve or execute" >&2
   rm -f "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"
+  false  # 失敗コードを返し、後続の手順へ進ませない
 fi
 ```
 
