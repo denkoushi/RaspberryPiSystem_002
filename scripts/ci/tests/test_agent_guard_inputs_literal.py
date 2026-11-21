@@ -20,11 +20,13 @@ and the body could disagree. This test covers:
 from __future__ import annotations
 
 import json
+import posixpath
 import re
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 import yaml
 from jinja2 import Environment, nodes
@@ -180,111 +182,224 @@ def literal_problems(files: list[Path], root: Path) -> list[str]:
     return problems
 
 
-def _role_references(value):
-    """Role names used by import_role/include_role/roles anywhere in a play or task list."""
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if key in ROLE_MODULES and isinstance(item, dict) and isinstance(item.get("name"), str):
-                yield item["name"]
-            elif key == "roles" and isinstance(item, list):
-                for entry in item:
-                    if isinstance(entry, str):
-                        yield entry
-                    elif isinstance(entry, dict):
-                        name = entry.get("role", entry.get("name"))
-                        if isinstance(name, str):
-                            yield name
-            elif key == "dependencies" and isinstance(item, list):
-                for entry in item:
-                    name = entry if isinstance(entry, str) else (entry.get("role", entry.get("name")) if isinstance(entry, dict) else None)
-                    if isinstance(name, str):
-                        yield name
-            yield from _role_references(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _role_references(item)
-
-
-def body_pi4_role_prefixes(root: Path = ROOT) -> tuple[str, ...]:
-    """Roles read by the body's Pi4 (hosts: kiosk) plays, with their role dependencies."""
-    plays = _load(root / BODY_PLAYBOOK)
-    pending = [
-        name for play in plays if isinstance(play, dict) and "kiosk" in str(play.get("hosts", ""))
-        for name in _role_references(play)
-    ]
-    seen: list[str] = []
-    while pending:
-        name = pending.pop()
-        if name in seen:
-            continue
-        seen.append(name)
-        role_directory = root / "infrastructure/ansible/roles" / name
-        # Role dependencies (meta) and roles included from the role's own tasks and handlers, recursively.
-        for subdirectory in ("meta", "tasks", "handlers"):
-            for path in sorted((role_directory / subdirectory).rglob("*")) if (role_directory / subdirectory).is_dir() else []:
-                if path.is_file() and (path.suffix in {".yml", ".yaml"} or path.suffix == ""):
-                    pending.extend(_role_references(_load(path)))
-    return tuple(f"infrastructure/ansible/roles/{name}/" for name in sorted(seen))
-
-
-_EXTERNAL_TASKS = re.compile(r"^\{\{\s*playbook_dir\s*\}\}/\.\./tasks/(.+)$")
+ANSIBLE_REL = "infrastructure/ansible"
+ROLES_REL = f"{ANSIBLE_REL}/roles"
+EXTERNAL_TASKS_REL = f"{ANSIBLE_REL}/tasks/"
+GUARD_PLAYBOOKS = (
+    "infrastructure/ansible/playbooks/release-agent-coverage-check.yml",
+    "infrastructure/ansible/playbooks/release-agent-images-read.yml",
+)
 TASK_INCLUDE_MODULES = {
     f"{prefix}{name}" for prefix in ("", "ansible.builtin.", "ansible.legacy.") for name in ("include_tasks", "import_tasks")
 }
+ACTION_KEYS = {"action", "local_action"}
+SET_FACT = {f"{prefix}set_fact" for prefix in ("", "ansible.builtin.", "ansible.legacy.")}
+_JINJA = ("{{", "{%", "{#")
+_ROLE_PATH = re.compile(r"^\{\{\s*role_path\s*\}\}/(.+)$")
+_PLAYBOOK_DIR = re.compile(r"^\{\{\s*playbook_dir\s*\}\}/(.+)$")
+
+
+def _has_jinja(text: str) -> bool:
+    return any(marker in text for marker in _JINJA)
+
+
+def _action_module(item) -> str | None:
+    """The module named by an action:/local_action: value (string form or dict form)."""
+    if isinstance(item, str):
+        parts = item.split()
+        return parts[0] if parts else None
+    if isinstance(item, dict) and isinstance(item.get("module"), str):
+        return item["module"]
+    return None
+
+
+def _role_entry(entry):
+    """(name, None) for a usable role entry, (None, text) for one that cannot be resolved."""
+    name = entry if isinstance(entry, str) else (entry.get("role", entry.get("name")) if isinstance(entry, dict) else None)
+    if isinstance(name, str) and not _has_jinja(name):
+        return name, None
+    return None, repr(entry)
+
+
+def _references(value):
+    """Yield ("role", name), ("tasks", expression) or ("bad", text) for every role/task-file reference in a value.
+
+    "bad" is a reference whose target cannot be read statically (variable names, unknown forms)."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in ROLE_MODULES:
+                name = item.get("name") if isinstance(item, dict) else None
+                if isinstance(name, str) and not _has_jinja(name):
+                    yield "role", name
+                else:
+                    yield "bad", f"{key}: {item!r}"
+            elif key in TASK_INCLUDE_MODULES:
+                expression = item.get("file") if isinstance(item, dict) else item
+                if isinstance(expression, str):
+                    yield "tasks", expression
+                else:
+                    yield "bad", f"{key}: {item!r}"
+            elif key in ACTION_KEYS and _action_module(item) in (ROLE_MODULES | TASK_INCLUDE_MODULES):
+                yield "bad", f"{key}: {item!r}"
+            elif key in {"roles", "dependencies"} and isinstance(item, list):
+                for entry in item:
+                    name, bad = _role_entry(entry)
+                    if name is not None:
+                        yield "role", name
+                    else:
+                        yield "bad", f"{key}: {bad}"
+            yield from _references(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _references(item)
+
+
+def _role_references(value):
+    """Role names used by import_role/include_role/roles/dependencies anywhere in a play or task list."""
+    for kind, name in _references(value):
+        if kind == "role":
+            yield name
 
 
 def _task_includes(value):
-    """File names given to include_tasks/import_tasks anywhere in a value."""
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if key in TASK_INCLUDE_MODULES:
-                if isinstance(item, str):
-                    yield item
-                elif isinstance(item, dict) and isinstance(item.get("file"), str):
-                    yield item["file"]
-            yield from _task_includes(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _task_includes(item)
+    """File expressions given to include_tasks/import_tasks anywhere in a value."""
+    for kind, expression in _references(value):
+        if kind == "tasks":
+            yield expression
+
+
+def _role_of(relative: str) -> str | None:
+    parts = relative.split("/")
+    prefix = ROLES_REL.split("/")
+    if parts[: len(prefix)] == prefix and len(parts) > len(prefix) + 1:
+        return parts[len(prefix)]
+    return None
+
+
+def _resolve_tasks_file(expression: str, origin: str, root: Path) -> str | None:
+    """Repository-relative path of a task file named by an include, or None when it cannot be resolved."""
+    role = _role_of(origin)
+    candidates: list[str] = []
+    if (match := _PLAYBOOK_DIR.match(expression)) and not _has_jinja(match.group(1)):
+        candidates = [f"{ANSIBLE_REL}/playbooks/{match.group(1)}"]
+    elif (match := _ROLE_PATH.match(expression)) and not _has_jinja(match.group(1)):
+        # role_path is the folder of the role that holds the including file.
+        candidates = [f"{ROLES_REL}/{role}/{match.group(1)}"] if role else []
+    elif not _has_jinja(expression) and not expression.startswith("/"):
+        candidates = [f"{posixpath.dirname(origin)}/{expression}"]
+        if role:
+            candidates.append(f"{ROLES_REL}/{role}/tasks/{expression}")
+    for candidate in candidates:
+        normalized = posixpath.normpath(candidate)
+        if normalized.startswith(ANSIBLE_REL + "/") and (root / normalized).is_file():
+            return normalized
+    return None
+
+
+def closure(root: Path = ROOT) -> tuple[list[str], list[str], list[str]]:
+    """Roles, task files and unresolved references reached from the body's Pi4 plays and the two guard playbooks.
+
+    Roles and shared task files are followed in both directions (a role loads files, a file calls roles)."""
+    roles: list[str] = []
+    files: list[str] = []
+    problems: list[str] = []
+    queue: list[tuple[str, Any]] = []
+
+    def add_file(relative: str) -> None:
+        if relative not in files:
+            files.append(relative)
+            queue.append((relative, _load(root / relative)))
+
+    def add_role(name: str, origin: str) -> None:
+        if name in roles:
+            return
+        directory = root / ROLES_REL / name
+        if not directory.is_dir():
+            problems.append(f"{origin}: role {name} does not exist")
+            return
+        roles.append(name)
+        for subdirectory in ("meta", "tasks", "handlers"):
+            path_list = sorted((directory / subdirectory).rglob("*")) if (directory / subdirectory).is_dir() else []
+            for path in path_list:
+                if path.is_file() and path.suffix in {"", ".yml", ".yaml"}:
+                    add_file(path.relative_to(root).as_posix())
+
+    plays = _load(root / BODY_PLAYBOOK)
+    queue += [(BODY_PLAYBOOK, play) for play in plays if isinstance(play, dict) and "kiosk" in str(play.get("hosts", ""))]
+    for relative in GUARD_PLAYBOOKS:
+        if (root / relative).is_file():
+            queue.append((relative, _load(root / relative)))
+    while queue:
+        origin, document = queue.pop()
+        for kind, value in _references(document):
+            if kind == "role":
+                add_role(value, origin)
+            elif kind == "tasks":
+                target = _resolve_tasks_file(value, origin, root)
+                if target is None:
+                    problems.append(f"{origin}: unresolved include {value!r}")
+                else:
+                    add_file(target)
+            else:
+                problems.append(f"{origin}: unresolved reference {value}")
+    return sorted(roles), sorted(files), sorted(dict.fromkeys(problems))
+
+
+def body_pi4_role_prefixes(root: Path = ROOT) -> tuple[str, ...]:
+    """Roles reached from the body's Pi4 (hosts: kiosk) plays, with role dependencies and included roles."""
+    return tuple(f"{ROLES_REL}/{name}/" for name in closure(root)[0])
 
 
 def external_task_files(root: Path = ROOT) -> tuple[str, ...]:
-    """Task files outside the roles (infrastructure/ansible/tasks) that the body's Pi4 plays or roles load."""
-    plays = _load(root / BODY_PLAYBOOK)
-    documents = [play for play in plays if isinstance(play, dict) and "kiosk" in str(play.get("hosts", ""))]
-    for prefix in body_pi4_role_prefixes(root):
-        for subdirectory in ("tasks", "handlers"):
-            directory = root / prefix / subdirectory
-            if directory.is_dir():
-                documents += [_load(path) for path in sorted(directory.rglob("*")) if path.is_file() and path.suffix in {"", ".yml", ".yaml"}]
-    seen: list[str] = []
-    pending = [document for document in documents]
-    while pending:
-        for name in _task_includes(pending.pop()):
-            match = _EXTERNAL_TASKS.match(name)
-            relative = f"infrastructure/ansible/tasks/{match.group(1)}" if match else None
-            if relative and relative not in seen and (root / relative).is_file():
-                seen.append(relative)
-                pending.append(_load(root / relative))
-    return tuple(sorted(seen))
+    """Task files outside the roles (infrastructure/ansible/tasks) that the Pi4 plays or roles load."""
+    return tuple(name for name in closure(root)[1] if name.startswith(EXTERNAL_TASKS_REL))
+
+
+def closure_problems(root: Path = ROOT) -> list[str]:
+    """Include/import expressions in the Pi4 closure that cannot be resolved statically."""
+    return closure(root)[2]
 
 
 def no_definition_prefixes(root: Path = ROOT) -> tuple[str, ...]:
-    return tuple(dict.fromkeys((*_STATIC_NO_DEFINITION_FILES, *body_pi4_role_prefixes(root), *external_task_files(root))))
+    roles, files, _problems = closure(root)
+    return tuple(dict.fromkeys((
+        *_STATIC_NO_DEFINITION_FILES, *(f"{ROLES_REL}/{name}/" for name in roles),
+        *(name for name in files if _role_of(name) not in roles),
+    )))
 
 
 def include_vars_files(document) -> list:
-    """The file argument of every include_vars at any depth (block, rescue, always included)."""
+    """The file argument of every include_vars at any depth (block, rescue, always included).
+
+    action:/local_action: forms count too, as a ("action", text) value that never equals an allowed expression."""
     found: list = []
     if isinstance(document, dict):
         for key, item in document.items():
             if key in INCLUDE_VARS:
                 found.append(item.get("file") if isinstance(item, dict) else item)
+            elif key in ACTION_KEYS and _action_module(item) in INCLUDE_VARS:
+                found.append(("action", item if isinstance(item, str) else json.dumps(item, sort_keys=True, default=str)))
             found += include_vars_files(item)
     elif isinstance(document, list):
         for item in document:
             found += include_vars_files(item)
     return found
+
+
+def string_set_facts(document) -> int:
+    """Count set_fact calls in the "name=value" string form (also through action:/local_action:)."""
+    count = 0
+    if isinstance(document, dict):
+        for key, item in document.items():
+            if key in SET_FACT and isinstance(item, str):
+                count += 1
+            elif key in ACTION_KEYS and isinstance(item, str) and _action_module(item) in SET_FACT:
+                count += 1
+            count += string_set_facts(item)
+    elif isinstance(document, list):
+        for item in document:
+            count += string_set_facts(item)
+    return count
 
 
 def definition_problems(files: list[Path], root: Path, prefixes: tuple[str, ...] | None = None) -> list[str]:
@@ -303,10 +418,15 @@ def definition_problems(files: list[Path], root: Path, prefixes: tuple[str, ...]
             problems.append(f"{rel}: defines {name}")
         for name in sorted(set(_registered(document)) & INPUTS):
             problems.append(f"{rel}: registers {name}")
-        if keys & INCLUDE_VARS:
+        occurrences = include_vars_files(document)
+        if occurrences:
             allowed = ALLOWED_INCLUDE_VARS.get(rel)
-            if allowed is None or include_vars_files(document) != [allowed[0]]:
+            if allowed is None or occurrences != [allowed[0]]:
                 problems.append(f"{rel}: uses include_vars")
+        if "vars_files" in keys:
+            problems.append(f"{rel}: uses vars_files")
+        if string_set_facts(document):
+            problems.append(f"{rel}: uses string-form set_fact")
     return problems
 
 
@@ -331,6 +451,13 @@ class AgentGuardInputsAreLiteral(unittest.TestCase):
             resolved = (Path(expression.replace("{{ role_path }}", str(role_path)))).resolve()
             self.assertEqual(resolved, (ROOT / loaded).resolve(), task_file)
             self.assertEqual(set(map(str, _keys(_load(ROOT / loaded)))) & INPUTS, set(), loaded)
+
+    def test_every_include_in_the_pi4_closure_is_resolved(self) -> None:
+        self.assertEqual(closure_problems(), [])
+        # Loaded through {{ role_path }}/../client/... from release_kiosk.
+        _roles, files, _problems = closure()
+        self.assertIn("infrastructure/ansible/roles/client/tasks/agents_hardened_group.yml", files)
+        self.assertIn("infrastructure/ansible/roles/client/tasks/torque_guard_running.yml", files)
 
     def test_the_body_pi4_roles_are_discovered_from_the_playbook(self) -> None:
         prefixes = body_pi4_role_prefixes()
@@ -524,6 +651,106 @@ class TheChecksActuallyFail(unittest.TestCase):
                 definition_problems([leaf], root, no_definition_prefixes(root)),
                 ["infrastructure/ansible/roles/leaf/tasks/main.yml: defines torque_agent_enabled"],
             )
+
+    def _tree(self, root: Path, files: dict[str, str]) -> None:
+        (root / "infrastructure/ansible/playbooks").mkdir(parents=True, exist_ok=True)
+        for relative, text in files.items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+
+    def test_a_file_loaded_through_role_path_is_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            roles = "infrastructure/ansible/roles"
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/main.yml": '- ansible.builtin.include_tasks: "{{ role_path }}/../other/tasks/x.yml"\n',
+                f"{roles}/other/tasks/x.yml": "- ansible.builtin.set_fact:\n    torque_agent_enabled: true\n",
+            })
+            self.assertEqual(closure_problems(root), [])
+            bad = root / f"{roles}/other/tasks/x.yml"
+            self.assertEqual(
+                definition_problems([bad], root, no_definition_prefixes(root)),
+                [f"{roles}/other/tasks/x.yml: defines torque_agent_enabled"],
+            )
+
+    def test_a_role_called_from_a_shared_task_file_is_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            roles = "infrastructure/ansible/roles"
+            self._tree(root, {
+                BODY_PLAYBOOK: '- hosts: kiosk\n  tasks:\n    - ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/a.yml"\n',
+                "infrastructure/ansible/tasks/a.yml": "- ansible.builtin.include_role:\n    name: called\n",
+                f"{roles}/called/tasks/main.yml": "- ansible.builtin.set_fact:\n    torque_agent_enabled: true\n",
+            })
+            self.assertEqual(closure_problems(root), [])
+            bad = root / f"{roles}/called/tasks/main.yml"
+            self.assertEqual(
+                definition_problems([bad], root, no_definition_prefixes(root)),
+                [f"{roles}/called/tasks/main.yml: defines torque_agent_enabled"],
+            )
+
+    def test_an_include_that_cannot_be_resolved_is_rejected(self) -> None:
+        bodies = (
+            '- ansible.builtin.include_tasks: "{{ some_dir }}/x.yml"\n',
+            '- ansible.builtin.import_tasks: "{{ item }}.yml"\n',
+            "- ansible.builtin.include_tasks: missing.yml\n",
+            '- ansible.builtin.include_tasks: "{{ role_path }}/../nowhere/tasks/x.yml"\n',
+            "- ansible.builtin.include_role:\n    name: \"{{ which }}\"\n",
+            "- ansible.builtin.import_role:\n    name: nowhere\n",
+            "- ansible.builtin.include_tasks: [a.yml]\n",
+            "- action: include_tasks x.yml\n",
+            "- local_action: {module: include_role, name: top}\n",
+        )
+        for body in bodies:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                self._tree(root, {
+                    BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                    "infrastructure/ansible/roles/top/tasks/main.yml": body,
+                })
+                self.assertEqual(len(closure_problems(root)), 1, body)
+
+    def test_a_role_path_include_from_a_shared_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._tree(root, {
+                BODY_PLAYBOOK: '- hosts: kiosk\n  tasks:\n    - ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/a.yml"\n',
+                "infrastructure/ansible/tasks/a.yml": '- ansible.builtin.include_tasks: "{{ role_path }}/tasks/x.yml"\n',
+            })
+            self.assertEqual(len(closure_problems(root)), 1)
+
+    def test_every_include_vars_spelling_is_counted(self) -> None:
+        relative = next(iter(ALLOWED_INCLUDE_VARS))
+        expression = ALLOWED_INCLUDE_VARS[relative][0]
+        exact = f"- ansible.builtin.include_vars:\n    file: \"{expression}\"\n"
+        extras = (
+            "- action: include_vars other.yml\n",
+            "- action: ansible.builtin.include_vars file=other.yml\n",
+            "- local_action: include_vars other.yml\n",
+            "- action:\n    module: ansible.legacy.include_vars\n    file: other.yml\n",
+            "- local_action: {module: include_vars, file: other.yml}\n",
+            "- ansible.legacy.include_vars: other.yml\n",
+            "- ansible.builtin.include_vars: {dir: other}\n",
+        )
+        for extra in extras:
+            self.assertEqual(self._problems(relative, exact + extra, definition_problems), [f"{relative}: uses include_vars"], extra)
+        self.assertEqual(self._problems(relative, exact, definition_problems), [])
+
+    def test_string_form_set_fact_and_vars_files_are_rejected(self) -> None:
+        path = "infrastructure/ansible/roles/release_kiosk/tasks/x.yml"
+        for text in (
+            "- ansible.builtin.set_fact: torque_agent_enabled=true\n",
+            "- set_fact: a=b\n",
+            "- action: set_fact a=b\n",
+            "- local_action: ansible.builtin.set_fact a=b\n",
+        ):
+            self.assertEqual(self._problems(path, text, definition_problems), [f"{path}: uses string-form set_fact"], text)
+        self.assertEqual(self._problems(path, "- ansible.builtin.set_fact:\n    other_name: 1\n", definition_problems), [])
+        for relative in (BODY_PLAYBOOK, GUARD_PLAYBOOKS[0], GUARD_PLAYBOOKS[1]):
+            problems = self._problems(relative, "- hosts: kiosk\n  vars_files:\n    - x.yml\n", definition_problems)
+            self.assertEqual(problems, [f"{relative}: uses vars_files"], relative)
 
     def test_jinja_names_are_parsed_not_matched(self) -> None:
         self.assertEqual(jinja_names("{{ a | default(b) }} {% if c %}{{ d }}{% endif %}"), {"a", "b", "c", "d"})

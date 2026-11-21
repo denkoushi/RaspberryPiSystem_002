@@ -1596,12 +1596,17 @@ def allowed_missing_agents(pairs: Sequence[AgentSkip], hosts: Sequence[str]) -> 
     return {host: sorted(agents) for host, agents in result.items()}
 
 
+AGENT_GUARD_SSH_ARGS = "-C -o ControlMaster=no -o ControlPersist=no"
+
+
 def agent_guard_environment() -> dict[str, str]:
     environment = ansible_environment()
     for name in ("ANSIBLE_RUN_TAGS", "ANSIBLE_SKIP_TAGS"):
         environment.pop(name, None)
     # An inventory dict of the same name must never be merged into the human's allowance.
     environment["ANSIBLE_HASH_BEHAVIOUR"] = "replace"
+    # No SSH multiplexing: a ControlPersist master would outlive a killed process group by up to 60 seconds.
+    environment["ANSIBLE_SSH_ARGS"] = AGENT_GUARD_SSH_ARGS
     return environment
 
 
@@ -1845,7 +1850,9 @@ def agent_images_script(remote_root: Path, relative: str, limit: str) -> str:
         f"cd {root} || exit 1",
         'd="$(mktemp -d)" || exit 1',
         "trap 'rm -rf \"$d\"' EXIT",
-        f"ANSIBLE_CONFIG={config} ANSIBLE_HASH_BEHAVIOUR=replace timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
+        "unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS",
+        f"ANSIBLE_CONFIG={config} ANSIBLE_HASH_BEHAVIOUR=replace ANSIBLE_SSH_ARGS={shlex.quote(AGENT_GUARD_SSH_ARGS)} "
+        f"timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
         f"ansible-playbook -i {shlex.quote(relative)} {playbook} --limit {shlex.quote(limit)} "
         '-e release_agent_guard_out_dir="$d" >&2',
         "code=$?",

@@ -2286,6 +2286,7 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertNotIn("ANSIBLE_RUN_TAGS", environment)
         self.assertNotIn("ANSIBLE_SKIP_TAGS", environment)
         self.assertEqual(environment["ANSIBLE_HASH_BEHAVIOUR"], "replace")
+        self.assertEqual(environment["ANSIBLE_SSH_ARGS"], "-C -o ControlMaster=no -o ControlPersist=no")
         errors = io.StringIO()
         with redirect_stdout(io.StringIO()) as out, redirect_stderr(errors):
             MODULE.emit_agent_guard_lines("a\nb", "c")
@@ -2318,7 +2319,13 @@ class AgentSkipGuardTests(unittest.TestCase):
     def test_agent_images_script_bounds_ansible_and_keeps_stdout_for_json(self) -> None:
         script = MODULE.agent_images_script(Path("/srv/repo"), MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b")
         self.assertIn("cd /srv/repo ||", script)
-        self.assertIn("ANSIBLE_CONFIG=/srv/repo/infrastructure/ansible/ansible.cfg ANSIBLE_HASH_BEHAVIOUR=replace timeout --kill-after=10 300 ansible-playbook", script)
+        self.assertIn(
+            "ANSIBLE_CONFIG=/srv/repo/infrastructure/ansible/ansible.cfg ANSIBLE_HASH_BEHAVIOUR=replace "
+            "ANSIBLE_SSH_ARGS='-C -o ControlMaster=no -o ControlPersist=no' timeout --kill-after=10 300 ansible-playbook",
+            script,
+        )
+        self.assertIn("unset ANSIBLE_RUN_TAGS ANSIBLE_SKIP_TAGS\n", script)
+        self.assertLess(script.index("unset ANSIBLE_RUN_TAGS"), script.index("ansible-playbook"))
         self.assertIn(f"-i {MODULE.DEFAULT_INVENTORY} ", script)
         self.assertIn(str(MODULE.IMAGES_PLAYBOOK.relative_to(MODULE.ROOT)), script)
         self.assertIn("--limit pi4-a:pi4-b", script)
@@ -2570,7 +2577,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             )
             for name in ("timeout", "ansible-playbook"):
                 (bin_dir / name).chmod(0o755)
-            script = MODULE.agent_images_script(root, MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b")
+            script = MODULE.agent_images_script(root, MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b:pi4-c")
             result = subprocess.run(
                 ["/bin/bash", "-c", script], text=True, capture_output=True, check=False,
                 env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(scratch)},
@@ -2582,9 +2589,28 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertNotIn("fatal", result.stdout)
         self.assertNotIn("TASK failed", result.stdout)
         self.assertEqual(leftovers, [])
-        # The script reports Ansible's non-zero exit code as data; the Mac side turns it into a failure.
-        code, _ = self._run_agent_images("\n".join(result.stdout.splitlines()) + "\n")
-        self.assertEqual(code, 1)
+        # The script reports Ansible's non-zero exit code as data; the Mac side turns it into a failure
+        # and still lists the two readable hosts and the unreadable third one in the final JSON.
+        report = lambda host: {**guard_report(host, "nfc-agent", "img:" + "a" * 40)}
+        remote = "\n".join((json.dumps(report("pi4-a")), json.dumps(report("pi4-b")), json.dumps({"ansibleExitCode": 3}))) + "\n"
+        stderr = io.StringIO()
+        args = MODULE.parse_arguments(["--agent-images", "--limit", "pi4-a:pi4-b:pi4-c"])
+        doc = {**DOC, "kiosk": {"hosts": ["pi4-a", "pi4-b", "pi4-c"]}, "_meta": {"hostvars": {}}}
+        with mock.patch.object(MODULE, "inventory_path", return_value=(Path("inv.yml"), MODULE.DEFAULT_INVENTORY)), mock.patch.object(
+            MODULE, "inventory_document", return_value=doc
+        ), mock.patch.object(MODULE, "server_connection", return_value=("h", "u", 22)), mock.patch.object(
+            MODULE.subprocess, "run", return_value=subprocess.CompletedProcess(["ssh"], 0, stdout=remote, stderr=result.stderr)
+        ) as remote_run, redirect_stdout(io.StringIO()) as out, redirect_stderr(stderr):
+            code = MODULE.agent_images(args)
+        payload = json.loads(out.getvalue())
+        self.assertIn("--limit pi4-a:pi4-b:pi4-c", remote_run.call_args.args[0][-1])
+        self.assertNotEqual(code, 0)
+        hosts = payload["hosts"]
+        self.assertEqual([h["host"] for h in hosts], ["pi4-a", "pi4-b", "pi4-c"])
+        self.assertTrue(all("readable" not in h or h["readable"] for h in hosts[:2]))
+        self.assertEqual(hosts[2], {"host": "pi4-c", "readable": False})
+        self.assertIn("fatal: pi4-c unreachable", stderr.getvalue())
+        self.assertNotIn("fatal", out.getvalue())
 
     def test_guard_runner_kills_the_group_on_keyboard_interrupt_and_reaps_after_a_failed_second_wait(self) -> None:
         process = mock.MagicMock(pid=77, returncode=None)
