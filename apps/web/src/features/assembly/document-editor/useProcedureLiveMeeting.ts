@@ -95,7 +95,7 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
   const [available, setAvailable] = useState(false);
   const [status, setStatus] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [targetId, setTargetId] = useState<string>();
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [previous, setPrevious] = useState<{ text: string; applied: string } | null>(null);
   const [next, setNext] = useState('');
@@ -190,7 +190,7 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
       stopped: false, finished: false, failed: false, queue: []
     };
     sessionRef.current = session;
-    setTargetId(target.id); setError(''); setPrevious(null); setNext(''); setElapsedSeconds(0); setStatus('recording');
+    setTargetId(target.id); setError(''); setPrevious(null); setNext(''); setStartedAt(Date.now()); setStatus('recording');
     onBegin?.();
     try {
       if (!clientKey) throw new Error('client key');
@@ -259,13 +259,6 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     if (session) { session.stopped = true; finish(session); }
   }, []);
 
-  useEffect(() => {
-    if (status !== 'recording') return;
-    const startedAt = Date.now();
-    const timer = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
-    return () => clearInterval(timer);
-  }, [status]);
-
   const selected = element !== null && element.id === targetId;
   const canRestore = status === 'idle' && selected && previous !== null && previous.applied === element.text;
   const restore = () => {
@@ -275,6 +268,6 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
   };
   return {
     available: enabled && available, status: selected ? status : 'idle' as const, locked: status !== 'idle',
-    elapsedSeconds, error: selected ? error : '', next: selected && status === 'recording' ? next : '', canRestore, start, stop, restore
+    startedAt, error: selected ? error : '', next: selected && status === 'recording' ? next : '', canRestore, start, stop, restore
   };
 }
