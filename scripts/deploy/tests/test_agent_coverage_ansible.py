@@ -547,7 +547,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             ANSIBLE_HOST_KEY_CHECKING="false", **options.get("env", {}),
         )
         variables = {
-            "release_agent_guard_out_dir": str(out), "release_agent_images_expected_hosts_json": '["k1"]',
+            "release_agent_guard_out_dir": str(out), "release_agent_images_expected_hosts_json": json.dumps(list(hosts)),
             "release_kiosk_agent_services": ["nfc-agent"], "release_allowed_missing_agents_json": "{}",
             "release_kiosk_service_allowlist": [],
         }
@@ -570,7 +570,7 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             ("ansible_ssh_common_args", "-CS/tmp/z"),
             ("ansible_ssh_extra_args", "-S /tmp/x"),
         )
-        for playbook in (IMAGES, COVERAGE):
+        for playbook in (IMAGES,):
             for name, value in bad:
                 # Without the guard's extra vars (which empty the extra args) the playbook check sees the inventory.
                 result, calls = self._ssh_run(playbook, {name: value}, guard_vars=name != "ansible_ssh_extra_args")
@@ -589,8 +589,13 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             ("ansible_ssh_common_args", "-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/tmp/a\\ b"),
             ("ansible_ssh_common_args", "-o ProxyCommand='ssh -W %h:%p jump'"),
             ("ansible_ssh_extra_args", '-o "ControlPath=/tmp/x"'),
+            ("ansible_ssh_common_args", "-o StrictHostKeyChecking=yes\n-S /tmp/x"),
+            ("ansible_ssh_common_args", "-o A=b\r\n-oControlPath=/tmp/x"),
+            ("ansible_ssh_common_args", "-o A=b\x0b-S /tmp/x"),
+            ("ansible_ssh_common_args", "-o A=b\x0c-S /tmp/x"),
+            ("ansible_ssh_extra_args", "-o StrictHostKeyChecking=yes\n-S /tmp/x"),
         )
-        for playbook in (IMAGES, COVERAGE):
+        for playbook in (IMAGES,):
             for name, value in bad:
                 result, calls = self._ssh_run(playbook, {name: value}, guard_vars=name != "ansible_ssh_extra_args")
                 text = self._text(result)
@@ -599,12 +604,47 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
                 self.assertEqual(calls, [], (playbook.name, name, value))
 
     def test_one_refused_host_stops_all_hosts_even_with_the_free_strategy(self) -> None:
+        # Control: the same two hosts without a refused value do reach ssh, so the test can see SSH.
+        free = {"ANSIBLE_STRATEGY": "free"}
+        result, calls = self._ssh_run(IMAGES, {}, hosts={"k1": {}, "k2": {}}, env=free)
+        self.assertNotIn("the agent guard cannot run with them", self._text(result))
+        self.assertTrue(calls, self._text(result))
         hosts = {"k1": {}, "k2": {"ansible_ssh_common_args": "-o ControlPath=/tmp/x"}}
-        for playbook in (IMAGES, COVERAGE):
-            result, calls = self._ssh_run(playbook, {}, hosts=hosts, env={"ANSIBLE_STRATEGY": "free"})
-            self.assertNotEqual(result.returncode, 0, self._text(result))
-            self.assertIn("the agent guard cannot run with them", self._text(result))
-            self.assertEqual(calls, [], playbook.name)
+        result, calls = self._ssh_run(IMAGES, {}, hosts=hosts, env=free)
+        self.assertNotEqual(result.returncode, 0, self._text(result))
+        self.assertIn("the agent guard cannot run with them", self._text(result))
+        self.assertEqual(calls, [])
+        out = max(self.directory.glob("ssh-out-*"), key=lambda path: int(path.name.rsplit("-", 1)[1]))
+        self.assertEqual(list(out.iterdir()), [])
+
+    def test_the_coverage_playbook_never_opens_ssh_whatever_the_ssh_arguments_are(self) -> None:
+        for value in (
+            "-o 'UserKnownHostsFile=/tmp/a b' -o StrictHostKeyChecking=yes",
+            "-S /tmp/x -o ControlPath=/tmp/y",
+            "-o A=b\n-S /tmp/x",
+        ):
+            result, calls = self._ssh_run(COVERAGE, {"ansible_ssh_common_args": value, **self.NFC})
+            self.assertEqual(result.returncode, 0, (value, self._text(result)))
+            self.assertNotIn("the agent guard cannot run with them", self._text(result))
+            self.assertEqual(calls, [], value)
+
+    def test_the_coverage_playbook_accepts_the_standard_inventory_expression_in_a_path_with_a_space(self) -> None:
+        directory = self.directory / "path with space"
+        directory.mkdir()
+        document = {"all": {"children": {"kiosk": {"hosts": {"k1": {
+            "ansible_host": "203.0.113.10", **self.NFC,
+            "ansible_ssh_common_args": (
+                "-o UserKnownHostsFile={{ (inventory_dir ~ '/known_hosts') | quote }} -o GlobalKnownHostsFile=/dev/null "
+                "-o HostKeyAlias={{ inventory_hostname }} -o StrictHostKeyChecking=yes"
+            ),
+        }}}}}}
+        inventory = directory / "inventory.yml"
+        inventory.write_text(yaml.safe_dump(document), encoding="utf-8")
+        script, log = self._ssh_recorder()
+        result, _ = self._check({}, ["nfc-agent"], inventory=inventory, env={"SSH_LOG": str(log)})
+        self.assertEqual(result.returncode, 0, self._text(result))
+        self.assertNotIn("the agent guard cannot run with them", self._text(result))
+        self.assertEqual(log.read_text(), "")
 
     def test_a_host_name_that_is_not_a_plain_name_writes_no_result_file(self) -> None:
         local = {"ansible_connection": "local", "ansible_become": False}
@@ -621,6 +661,16 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, (name, self._text(result)))
             self.assertIn("not usable for the agent guard result files", self._text(result))
             self.assertEqual(list(out.iterdir()), [], name)
+
+    def test_the_image_read_accepts_the_standard_inventory_expression_and_connects(self) -> None:
+        common = (
+            "-o UserKnownHostsFile={{ (inventory_dir ~ '/known_hosts') | quote }} -o GlobalKnownHostsFile=/dev/null "
+            "-o HostKeyAlias={{ inventory_hostname }} -o StrictHostKeyChecking=yes"
+        )
+        self.assertNotIn(" ", str(self.directory))
+        result, calls = self._ssh_run(IMAGES, {"ansible_ssh_common_args": common})
+        self.assertNotIn("the agent guard cannot run with them", self._text(result))
+        self.assertNotEqual(calls, [], self._text(result))
 
     def test_standard_inventory_style_ssh_arguments_pass_the_check_and_ssh_gets_no_multiplexing(self) -> None:
         common = (

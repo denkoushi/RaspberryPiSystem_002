@@ -281,6 +281,9 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path) -> str | None:
     """Repository-relative path of a task file named by an include, or None when it cannot be resolved."""
     role = _role_of(origin)
     candidates: list[str] = []
+    # Ansible's relative search for a file inside a role can also fall back to the playbook directory. That file is
+    # never followed here, but it must not exist next to a different candidate.
+    fallback: list[str] = []
     if (match := _PLAYBOOK_DIR.match(expression)) and not _has_jinja(match.group(1)):
         candidates = [f"{ANSIBLE_REL}/playbooks/{match.group(1)}"]
     elif (match := _ROLE_PATH.match(expression)) and not _has_jinja(match.group(1)):
@@ -290,11 +293,17 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path) -> str | None:
         candidates = [f"{posixpath.dirname(origin)}/{expression}"]
         if role:
             candidates.append(f"{ROLES_REL}/{role}/tasks/{expression}")
+            fallback.append(f"{ANSIBLE_REL}/playbooks/{expression}")
     found: list[str] = []
     for candidate in candidates:
         normalized = posixpath.normpath(candidate)
         if normalized.startswith(ANSIBLE_REL + "/") and (root / normalized).is_file() and normalized not in found:
             found.append(normalized)
+    for candidate in fallback:
+        normalized = posixpath.normpath(candidate)
+        if normalized.startswith(ANSIBLE_REL + "/") and (root / normalized).is_file():
+            if found and normalized not in found:
+                found.append(normalized)
     if len(found) > 1:
         # Ansible picks one by its own search order; a different file than this check follows must not be possible.
         raise ValueError(f"ambiguous include {expression!r}: both {found[0]} and {found[1]} exist")
@@ -835,6 +844,21 @@ class TheChecksActuallyFail(unittest.TestCase):
             })
             self.assertEqual(closure_problems(root), [])
             self._tree(root, {f"{roles}/top/tasks/x.yml": "- ansible.builtin.debug: {msg: far}\n"})
+            problems = closure_problems(root)
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn("ambiguous include", problems[0])
+
+    def test_an_include_that_also_exists_in_the_playbook_directory_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            roles = "infrastructure/ansible/roles"
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/main.yml": "- ansible.builtin.include_tasks: sub/x.yml\n",
+                f"{roles}/top/tasks/sub/x.yml": "- ansible.builtin.debug: {msg: role}\n",
+            })
+            self.assertEqual(closure_problems(root), [])
+            self._tree(root, {"infrastructure/ansible/playbooks/sub/x.yml": "- ansible.builtin.debug: {msg: playbook}\n"})
             problems = closure_problems(root)
             self.assertEqual(len(problems), 1, problems)
             self.assertIn("ambiguous include", problems[0])

@@ -31,12 +31,13 @@
         agent_guard_ssh_sources:
           ansible_ssh_common_args: "{{ hostvars[inventory_hostname].ansible_ssh_common_args | default('') | string }}"
           ansible_ssh_extra_args: "{{ hostvars[inventory_hostname].ansible_ssh_extra_args | default('') | string }}"
-        # Quotes and backslashes are refused outright (the value is then not split on whitespace the way ssh reads it).
+        # Quotes, backslashes and line breaks (CR, LF, VT, FF) are refused outright: Ansible splits the value with shlex,
+        # where they are whitespace too, but the -S check below only knows space and tab.
         # \x5c is written twice: the class stays valid whether or not the string escapes are decoded.
         agent_guard_ssh_flagged: >-
           {{ (agent_guard_ssh_sources | dict2items
-                | selectattr('value', 'search', '[\x22\x27\x5c\x5c]')
-                | map(attribute='key') | map('regex_replace', '$', ' (quote or backslash)') | list)
+                | selectattr('value', 'search', '[\x22\x27\x5c\x5c\x0a\x0b\x0c\x0d]')
+                | map(attribute='key') | map('regex_replace', '$', ' (quote, backslash or line break)') | list)
              + (agent_guard_ssh_sources | dict2items
                 | selectattr('value', 'search', '(^|[ \t])-[^- \toiplFEeBbcDIJLOQRWwm]*S')
                 | map(attribute='key') | map('regex_replace', '$', ' (-S)') | list)

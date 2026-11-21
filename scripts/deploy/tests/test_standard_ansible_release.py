@@ -2760,8 +2760,14 @@ class AgentSkipGuardTests(unittest.TestCase):
     def test_host_names_that_are_not_plain_names_stop_before_any_path_or_command(self) -> None:
         import tempfile
 
-        parent = Path(tempfile.gettempdir())
-        before = sorted(path.name for path in parent.glob("agent-*"))
+        # A private temporary root, so other runs on the same machine cannot change what is compared.
+        private = tempfile.TemporaryDirectory()
+        self.addCleanup(private.cleanup)
+        parent = Path(private.name)
+        tempdir_patch = mock.patch.object(tempfile, "tempdir", str(parent))
+        tempdir_patch.start()
+        self.addCleanup(tempdir_patch.stop)
+        before = sorted(path.name for path in parent.iterdir())
         for name in ("a/../x", "../evil", "a..b", ".hidden", "-x", ""):
             executor = mock.Mock()
             with self.assertRaises(MODULE.AgentGuardStop) as caught:
@@ -2774,7 +2780,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             MODULE.reread_agent_images(MODULE.DEFAULT_INVENTORY, (pair,), executor)
         self.assertEqual(caught.exception.kind, "reread-unreadable")
         executor.assert_not_called()
-        self.assertEqual(sorted(path.name for path in parent.glob("agent-*")), before)
+        self.assertEqual(sorted(path.name for path in parent.iterdir()), before)
 
     def test_route_stops_when_the_guard_raises_something_unexpected(self) -> None:
         helper = StandardAnsibleReleaseTests()
