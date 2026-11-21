@@ -63,6 +63,7 @@ export function usePlanningBoardDragPreview() {
       const ghost = document.querySelector<HTMLElement>('[data-testid="planning-gantt-drag-ghost"]');
       if (ghost) {
         ghost.style.transform = ghostTransform(next.x, next.y);
+        ghost.style.maxWidth = ghostMaxWidth(next.x);
       }
       listeners.current.forEach(listener => listener());
       const previous = current.current;
@@ -78,8 +79,13 @@ export function usePlanningBoardDragPreview() {
       notifyStore();
     });
   }, [notifyStore]);
-  useEffect(() => () => { if (frame.current !== null) cancelAnimationFrame(frame.current); endForwardDropCache(); }, []);
+  useEffect(() => () => { if (frame.current !== null) cancelAnimationFrame(frame.current); if (current.current !== null) endForwardDropCache(); }, []);
   return [preview, setPreview, pointer, subscribe, store] as const;
+}
+
+/** Fixed-position boxes shrink to fit the room right of `left`; with a transform the same limit is set explicitly. */
+export function ghostMaxWidth(x: number) {
+  return `calc(100% - ${x / pageZoom() + 12}px)`;
 }
 
 /** The ghost follows the pointer by transform so moving it never invalidates layout. */

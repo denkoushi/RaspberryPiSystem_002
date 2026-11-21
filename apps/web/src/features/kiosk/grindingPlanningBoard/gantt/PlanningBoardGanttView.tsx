@@ -43,7 +43,7 @@ import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 import { planningBoardBarsOnResource, planningBoardSeibansWithVisibleBars, usePlanningBoardSeibanColors, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
-import { ghostTransform, usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
+import { ghostMaxWidth, ghostTransform, usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
 import { usePlanningBoardSharedSheetBounds } from './usePlanningBoardSharedSheetBounds';
 import { usePlanningBoardShelfInteraction, useShelfSelectionPreview, type SharedShelfInteraction } from './usePlanningBoardShelfInteraction';
 
@@ -620,7 +620,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
       {dragPreview && (activeDrag ? ownsDragPreview : !sharedDrag || sharedDrag.selectionPreview?.drop?.resource === singleResourceCd) && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} subscribe={subscribePreview} store={dragStore} />}
       {activeDrag && ownsDragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed left-0 top-0 z-[110] rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
-        style={{ transform: ghostTransform(dragPointer.current.x, dragPointer.current.y), willChange: 'transform' }}>
+        style={{ transform: ghostTransform(dragPointer.current.x, dragPointer.current.y), maxWidth: ghostMaxWidth(dragPointer.current.x), willChange: 'transform' }}>
         <strong className="font-mono">{activeDrag.bar.resource}</strong> {activeDrag.bar.item.kind === 'test' ? activeDrag.bar.item.name : activeDrag.bar.item.fhinmei || activeDrag.bar.item.fhincd}
       </div>, document.body)}
     </section>

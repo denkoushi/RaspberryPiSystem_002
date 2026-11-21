@@ -8,7 +8,7 @@ import { pageZoom } from '../pageZoom';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
-import { beginForwardDropCache, findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
+import { beginForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache } from './planningBoardForwardDrop';
 import { canReorderForwardBars, forwardDueLabel, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
@@ -250,6 +250,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
         }} onPointerMove={move} onPointerUp={(event) => {
           const pending = drag.current;
           if (!pending || pending.pointerId !== event.pointerId) return;
+          invalidateForwardDropCache();
           const target = move(event);
           clearDrag();
           if (target && !gate.attempt()) return;

@@ -16,7 +16,6 @@ type DropCache = {
   board: Element;
   laneList: readonly ForwardDragLane[];
   lanes: readonly CachedLane[];
-  overlays: readonly (readonly [Element, Box])[];
   scrolls: readonly (readonly [Element, number, number])[];
   page: readonly [number, number];
 };
@@ -28,6 +27,24 @@ let cache: DropCache | null = null;
 let cacheDirty = true;
 let cacheUnusable = false;
 const markDirty = () => { cacheDirty = true; };
+
+// Layout can change with no scroll or resize event (row heights, shelf open/close), so observe the elements that hold the lanes.
+let observer: ResizeObserver | null = null;
+const observed = new Set<Element>();
+const geometryListeners = new Set<() => void>();
+const onLayoutChange = () => { markDirty(); geometryListeners.forEach((listener) => listener()); };
+/** Fires when a drag-time layout change (not scroll or window resize) may have moved the lanes. */
+export function subscribeForwardDropGeometry(listener: () => void) {
+  geometryListeners.add(listener);
+  return () => { geometryListeners.delete(listener); };
+}
+function observeLayout(elements: readonly Element[]) {
+  if (!cacheActive || typeof ResizeObserver === 'undefined') return;
+  observer ??= new ResizeObserver(onLayoutChange);
+  const wanted = new Set(elements);
+  observed.forEach((element) => { if (!wanted.has(element)) { observer!.unobserve(element); observed.delete(element); } });
+  wanted.forEach((element) => { if (!observed.has(element)) { observer!.observe(element); observed.add(element); } });
+}
 
 export function invalidateForwardDropCache() { markDirty(); }
 export function beginForwardDropCache() {
@@ -42,6 +59,9 @@ export function endForwardDropCache() {
   cacheActive = false;
   cache = null;
   cacheUnusable = false;
+  observer?.disconnect();
+  observer = null;
+  observed.clear();
   window.removeEventListener('scroll', markDirty, true);
   window.removeEventListener('resize', markDirty);
 }
@@ -50,11 +70,20 @@ const toBox = (rect: DOMRect): Box => ({ left: rect.left, top: rect.top, right: 
 const area = (box: Box) => Math.max(0, box.right - box.left) * Math.max(0, box.bottom - box.top);
 const contains = (box: Box, x: number, y: number) => x >= box.left && x < box.right && y >= box.top && y < box.bottom;
 
-// Only the part a scroll viewport shows can be hit.
+// Only the part a scroll viewport shows can be hit, and its scrollbars are not a drop target.
+function viewportBox(viewport: HTMLElement): Box {
+  const rect = viewport.getBoundingClientRect();
+  const scale = viewport.offsetWidth > 0 ? rect.width / viewport.offsetWidth : 1;
+  const left = rect.left + viewport.clientLeft * scale;
+  const top = rect.top + viewport.clientTop * scale;
+  return { left, top, right: left + viewport.clientWidth * scale, bottom: top + viewport.clientHeight * scale };
+}
 function visibleBox(element: Element): Box {
   const own = element.getBoundingClientRect();
-  const clip = element.closest('[data-gantt-viewport]')?.getBoundingClientRect();
-  return clip ? { left: Math.max(own.left, clip.left), top: Math.max(own.top, clip.top), right: Math.min(own.right, clip.right), bottom: Math.min(own.bottom, clip.bottom) } : toBox(own);
+  const viewport = element.closest<HTMLElement>('[data-gantt-viewport]');
+  if (!viewport) return toBox(own);
+  const clip = viewportBox(viewport);
+  return { left: Math.max(own.left, clip.left), top: Math.max(own.top, clip.top), right: Math.min(own.right, clip.right), bottom: Math.min(own.bottom, clip.bottom) };
 }
 
 function buildDropCache(board: Element, laneList: readonly ForwardDragLane[]): DropCache {
@@ -62,10 +91,9 @@ function buildDropCache(board: Element, laneList: readonly ForwardDragLane[]): D
   const lanes = Array.from(board.querySelectorAll<HTMLElement>('[data-gantt-lane]')).map((element): CachedLane => ({
     box: visibleBox(element), resource: element.dataset.resourceCode, rowKey: element.dataset.ganttWindowRow,
     trackLeft: element.querySelector('[data-gantt-track]')?.getBoundingClientRect().left ?? null }));
-  const overlays = Array.from(document.querySelectorAll<HTMLElement>('[data-later-queue], [data-forward-queue]'))
-    .map((element) => [element, visibleBox(element)] as const).filter(([, box]) => area(box) > 0);
+  observeLayout([board, ...viewports, ...viewports.flatMap((viewport) => Array.from(viewport.children))]);
   cacheUnusable = !lanes.some((lane) => area(lane.box) > 0);
-  return { board, laneList, lanes, overlays, scrolls: viewports.map((element) => [element, element.scrollLeft, element.scrollTop] as const),
+  return { board, laneList, lanes, scrolls: viewports.map((element) => [element, element.scrollLeft, element.scrollTop] as const),
     page: [window.scrollX, window.scrollY] };
 }
 
@@ -87,9 +115,10 @@ export function findForwardDrop(clientX: number, clientY: number, source: GanttB
   let rowKey: string | undefined;
   let trackLeft: number | null;
   if (cached) {
-    // Overlays may cover a lane but must never receive a Gantt drop.
-    // A queue panel closed when the drag started is still in the cache until it unmounts; skip it once it is gone.
-    if (cached.overlays.some(([element, box]) => element.isConnected && contains(box, clientX, clientY))) return null;
+    // Overlays may cover a lane but must never receive a Gantt drop. They can appear at any frame, so they are read live.
+    const overlay = Array.from(document.querySelectorAll<HTMLElement>('[data-later-queue], [data-forward-queue]'))
+      .some((element) => contains(visibleBox(element), clientX, clientY));
+    if (overlay) return null;
     // Later lanes are descendants of earlier ones in document order, so the last match is the innermost.
     const lane = cached.lanes.filter((candidate) => contains(candidate.box, clientX, clientY)).at(-1);
     targetResource = lane?.resource;

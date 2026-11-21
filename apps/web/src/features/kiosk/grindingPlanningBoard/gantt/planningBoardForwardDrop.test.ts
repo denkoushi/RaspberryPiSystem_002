@@ -1,6 +1,8 @@
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { beginForwardDropCache, endForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache } from './planningBoardForwardDrop';
+import { usePlanningBoardDragPreview } from './usePlanningBoardSharedDrag';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
@@ -31,6 +33,7 @@ describe('forward drop hit-test cache', () => {
   let laneA: HTMLElement;
   let laneB: HTMLElement;
   let overlay: HTMLElement;
+  let scrollbar = 0;
   const source = bar('s', '305', 0, 1);
   const lanes: ForwardDragLane[] = [
     { resource: '306', bars: [bar('a', '306', 1, 2), bar('b', '306', 3, 4)] },
@@ -44,6 +47,10 @@ describe('forward drop hit-test cache', () => {
     board = div(document.body, { 'data-testid': 'planning-board-gantt' });
     viewport = div(board, { 'data-gantt-viewport': '' });
     place(viewport, { left: 0, top: 0, right: 400, bottom: 300 });
+    // jsdom has no layout: the client area follows the mocked rectangle unless a test adds a scrollbar.
+    scrollbar = 0;
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, get: () => rects.get(viewport)!.right - rects.get(viewport)!.left - scrollbar });
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, get: () => rects.get(viewport)!.bottom - rects.get(viewport)!.top });
     laneA = div(viewport, { 'data-gantt-lane': '', 'data-resource-code': '306' });
     place(laneA, { left: 0, top: 0, right: 400, bottom: 100 });
     place(div(laneA, { 'data-gantt-track': '' }), { left: 50, top: 0, right: 400, bottom: 100 });
@@ -116,6 +123,54 @@ describe('forward drop hit-test cache', () => {
     beginForwardDropCache();
     expect(drop(60, 10)).toBeNull();
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [laneB] });
+    expect(drop(60, 10)?.resource).toBe('307');
+  });
+
+  it('re-measures after a layout change reported by ResizeObserver, with no scroll or resize event', () => {
+    const callbacks: (() => void)[] = [];
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class { constructor(callback: () => void) { callbacks.push(callback); } observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+    try {
+      beginForwardDropCache();
+      expect(drop(60, 10)?.resource).toBe('306');
+      place(laneA, { left: 0, top: -100, right: 400, bottom: 0 });
+      place(laneB, { left: 0, top: 0, right: 400, bottom: 400 });
+      expect(drop(60, 10)?.resource).toBe('306');
+      expect(callbacks).toHaveLength(1);
+      callbacks[0]!();
+      expect(drop(60, 10)?.resource).toBe('307');
+    } finally { globalThis.ResizeObserver = original; }
+  });
+
+  it('never drops on an overlay that appears after the cache was built', () => {
+    beginForwardDropCache();
+    expect(drop(60, 10)?.resource).toBe('306');
+    const late = div(document.body, { 'data-forward-queue': '' });
+    place(late, { left: 0, top: 0, right: 200, bottom: 50 });
+    expect(drop(60, 10)).toBeNull();
+    late.remove();
+    expect(drop(60, 10)?.resource).toBe('306');
+  });
+
+  it('does not drop over a scrollbar of the lane viewport', () => {
+    scrollbar = 15;
+    beginForwardDropCache();
+    expect(drop(60, 10)?.resource).toBe('306');
+    expect(drop(395, 10)).toBeNull();
+    expect(drop(390, 150)).toBeNull();
+  });
+
+  it('keeps the shared cache when an unused local drag hook unmounts mid-drag', () => {
+    const owner = renderHook(() => usePlanningBoardDragPreview());
+    const idle = renderHook(() => usePlanningBoardDragPreview());
+    act(() => owner.result.current[1]({ bar: source, x: 60, y: 10, allowed, drop: null }));
+    expect(drop(60, 10)?.resource).toBe('306');
+    place(laneA, { left: 0, top: -100, right: 400, bottom: 0 });
+    place(laneB, { left: 0, top: 0, right: 400, bottom: 400 });
+    idle.unmount();
+    // Still cached (stale on purpose): the idle hook must not have ended the drag's cache.
+    expect(drop(60, 10)?.resource).toBe('306');
+    owner.unmount();
     expect(drop(60, 10)?.resource).toBe('307');
   });
 });

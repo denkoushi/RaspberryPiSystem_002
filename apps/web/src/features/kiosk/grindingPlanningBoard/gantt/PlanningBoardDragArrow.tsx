@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 
 import { pageZoom } from '../pageZoom';
 
+import { subscribeForwardDropGeometry } from './planningBoardForwardDrop';
+
 import type { ForwardDragPreview } from './PlanningBoardForwardGanttRow';
 import type { ForwardDragStore } from './usePlanningBoardSharedDrag';
 import type { RefObject } from 'react';
@@ -47,7 +49,9 @@ export function PlanningBoardDragArrow({ preview, viewport, subscribe, store }: 
     if (preview.source === 'shelf-selection' || (store && preview.source !== 'queue')) {
       window.addEventListener('scroll', measure, true);
       window.addEventListener('resize', measure);
+      const unsubscribe = subscribeForwardDropGeometry(measure);
       return () => {
+        unsubscribe();
         window.removeEventListener('scroll', measure, true);
         window.removeEventListener('resize', measure);
       };

@@ -170,7 +170,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         if (delta && !overOtherPane && bounds.height > 0) {
           const previous = viewport.scrollTop;
           viewport.scrollTop += delta;
-          invalidateForwardDropCache();
+          if (viewport.scrollTop !== previous) invalidateForwardDropCache();
           if (viewport.scrollTop !== previous) onDragPreview({ rowKey: row.key, bar: pending.bar, x, y, allowed: pending.allowed,
             drop: findForwardDrop(x, y, pending.bar, pending.allowed, forwardDropBoard(viewport), lanes.current, start, dayWidth) });
         }
@@ -361,6 +361,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 const pending = drag.current;
                 if (!pending || pending.pointerId !== event.pointerId) return;
                 move(event);
+                invalidateForwardDropCache();
                 const drop = findDrop(event.clientX, event.clientY, pending);
                 suppressClick.current = pending.tapCancelled || pending.longPressed;
                 clear();
