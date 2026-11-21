@@ -38,9 +38,11 @@ export class LiveMeetingSession implements LiveSession {
   private dirty = false;
   private lastOrganizeAt: number;
   private closed = false;
+  private terms: string;
 
   constructor(private readonly opts: LiveSessionOptions) {
     this.now = opts.now ?? Date.now;
+    this.terms = opts.terms ?? '';
     this.interval = opts.organizeIntervalMs ?? 20000;
     this.timeout = opts.organizeTimeoutMs ?? 60000;
     this.lastOrganizeAt = this.now();
@@ -59,7 +61,7 @@ export class LiveMeetingSession implements LiveSession {
     });
   }
 
-  setTerms(terms: string): void { this.segmenter.setTerms(terms); }
+  setTerms(terms: string): void { this.terms = terms; this.segmenter.setTerms(terms); }
   push(chunk: Buffer): void { if (!this.closed) this.segmenter.push(chunk); }
   close(): void { this.closed = true; }
 
@@ -83,7 +85,7 @@ export class LiveMeetingSession implements LiveSession {
     this.lastOrganizeAt = this.now();
     const previous = this.organized;
     this.organizing = (async () => {
-      const result = await organizeTranscript(this.opts.complete, this.finals.join('\n'), previous, this.timeout);
+      const result = await organizeTranscript(this.opts.complete, this.finals.join('\n'), previous, this.timeout, this.terms);
       if (!result) {
         this.dirty = true; // 失敗・読めない答えは次の機会(または終了時)に整理し直す
         return;
