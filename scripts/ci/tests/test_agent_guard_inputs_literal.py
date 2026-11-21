@@ -20,6 +20,7 @@ and the body could disagree. This test covers:
 from __future__ import annotations
 
 import json
+import os
 import posixpath
 import re
 import subprocess
@@ -90,6 +91,14 @@ def _is_variable_file(path: Path) -> bool:
         "group_vars" in path.parts or "host_vars" in path.parts
         or ("roles" in path.parts and bool(ROLE_DIRECTORIES & set(path.parts)))
     )
+
+
+def _walk_files(top: Path) -> list[Path]:
+    """Every path under top; a folder that vanishes while it is walked (another test's temp folder) is skipped."""
+    found: list[Path] = []
+    for folder, dirs, files in os.walk(top):  # os.walk ignores errors by default
+        found.extend(Path(folder) / name for name in (*dirs, *files))
+    return sorted(found)
 
 
 def _tracked_files() -> list[Path]:
@@ -313,7 +322,7 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path, context_role: 
     name = posixpath.normpath(expression)
     if relative_search and not name.startswith(".."):
         suffix = "/" + name
-        for path in sorted((root / ANSIBLE_REL).rglob("*")):
+        for path in _walk_files(root / ANSIBLE_REL):
             relative = path.relative_to(root).as_posix()
             if not path.is_file() or not relative.endswith(suffix) or relative in found:
                 continue
@@ -566,6 +575,19 @@ class AgentGuardInputsAreLiteral(unittest.TestCase):
         self.assertIn("infrastructure/ansible/group_vars/staging.yml", names)
         self.assertIn(ROLE_DEFAULTS, names)
         self.assertFalse([name for name in names if "vault" in name])
+
+    def test_no_symbolic_link_is_tracked_in_the_ansible_tree(self) -> None:
+        # The checks read only the tracked files of this tree; a linked role, task folder or file would let Ansible
+        # read files they never list. Keeping the tree free of links closes every such path at once.
+        listed = subprocess.run(
+            ["git", "ls-files", "-s", "--", ANSIBLE_REL], cwd=ROOT, check=True, capture_output=True, text=True,
+        ).stdout.splitlines()
+        links = [line.split("\t", 1)[1] for line in listed if line.startswith("120000 ")]
+        self.assertEqual(links, [], "Do not put symbolic links under infrastructure/ansible; copy the file instead.")
+        # Roles are looked up only inside this tree.
+        config = (ROOT / ANSIBLE_REL / "ansible.cfg").read_text(encoding="utf-8")
+        self.assertEqual(re.findall(r"^\s*roles_path\s*=\s*(.+?)\s*$", config, re.M), ["./roles"])
+        self.assertNotRegex(config, r"(?m)^\s*collections_path")
 
     def test_inputs_have_no_jinja(self) -> None:
         self.assertEqual(

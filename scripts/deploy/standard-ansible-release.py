@@ -1641,11 +1641,61 @@ def _text(value: Any) -> str:
     return value or ""
 
 
+class _InterruptLatch:
+    """Ctrl-C while a guard Ansible runs, recorded from before the start until the group is stopped and reaped.
+
+    The handler raises KeyboardInterrupt only while armed, which is only around the wait for Ansible, and disarms
+    itself when it does. Any other Ctrl-C is recorded and passed on after the cleanup, so none can skip SIGTERM,
+    SIGKILL or the reap. A Python handler is reset by exec, so Ansible keeps the default. Installed only over the
+    default handler in the main thread; an ignored SIGINT stays ignored."""
+
+    def __init__(self) -> None:
+        self.armed = False
+        self.pending = False
+        self.raised = False
+        self.previous: Any = None
+
+    def _handle(self, signum: int, frame: Any) -> None:
+        self.pending = True
+        if self.armed:
+            self.armed = False
+            self.raised = True
+            raise KeyboardInterrupt
+
+    def install(self) -> None:
+        try:
+            if signal.getsignal(signal.SIGINT) is signal.default_int_handler:
+                self.previous = signal.signal(signal.SIGINT, self._handle)
+        except ValueError:  # not the main thread
+            self.previous = None
+
+    def restore(self) -> None:
+        if self.previous is not None:
+            signal.signal(signal.SIGINT, self.previous)
+            self.previous = None
+
+
 def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    """Run a guard Ansible with an upper time limit; the whole process group is killed on overrun."""
+    """Run a guard Ansible with an upper time limit; the whole process group is stopped on overrun or Ctrl-C."""
+    latch = _InterruptLatch()
+    latch.install()
+    try:
+        return _run_agent_guard_process(command, env, latch)
+    finally:
+        latch.restore()
+        if latch.pending and not latch.raised:
+            # A Ctrl-C recorded while the group was started, stopped or reaped: pass it on now that it is gone.
+            latch.raised = True
+            raise KeyboardInterrupt
+
+
+def _run_agent_guard_process(
+    command: Sequence[str], env: dict[str, str], latch: _InterruptLatch,
+) -> subprocess.CompletedProcess[str]:
+    # Undecodable output (a multibyte character cut by a kill) must not turn a time-out into another stop kind.
     process = subprocess.Popen(
-        list(command), env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        start_new_session=True, cwd=ROOT, stdin=subprocess.DEVNULL,
+        list(command), env=env, text=True, encoding="utf-8", errors="replace",
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, cwd=ROOT, stdin=subprocess.DEVNULL,
     )
     def kill_group() -> None:
         try:
@@ -1656,8 +1706,8 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
     def stop_group() -> BaseException | None:
         """SIGTERM, a bounded grace, then SIGKILL. Returns an interrupt that arrived during the grace, if any.
 
-        Ansible workers call setsid(), so only Ansible's own SIGTERM handling reaches them. A further Ctrl-C during the
-        grace does not cut it short; the grace stays bounded and SIGKILL always follows."""
+        Ansible workers call setsid(), so only Ansible's own SIGTERM handling reaches them. The latch is disarmed
+        here, so a further Ctrl-C is only recorded; an interrupt raised by other means still cannot cut the grace."""
         interrupted: BaseException | None = None
         try:
             os.killpg(process.pid, signal.SIGTERM)
@@ -1688,31 +1738,28 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
         except (OSError, subprocess.SubprocessError):
             pass
 
-    def hold_interrupts() -> set[signal.Signals]:
-        # While the group is being stopped and reaped, a further Ctrl-C is held (delivered when the mask is restored),
-        # so it cannot skip SIGKILL or the reap. The launcher runs in one thread, the only one that could take it.
-        return signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
-
-    def release_interrupts(previous: set[signal.Signals]) -> None:
-        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
-
     try:
-        stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired as error:
-        previous = hold_interrupts()
         try:
-            stopped = _stop_after_timeout(error, stop_group, reap, process)
+            latch.armed = True
+            if latch.pending:
+                # Ctrl-C between the start of Ansible and here.
+                latch.armed = False
+                latch.raised = True
+                raise KeyboardInterrupt
+            stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
         finally:
-            release_interrupts(previous)
+            # A Ctrl-C up to this point raises here at the latest, and is caught below.
+            latch.armed = False
+    except subprocess.TimeoutExpired as error:
+        stopped = _stop_after_timeout(error, stop_group, reap, process)
         raise AgentGuardTimeout(*stopped) from error
     except KeyboardInterrupt:
         # Ctrl-C while Ansible runs: the same SIGTERM, grace and SIGKILL as a time-out, so setsid workers stop too.
-        previous = hold_interrupts()
+        latch.raised = True
         try:
             stop_group()
-            reap()
         finally:
-            release_interrupts(previous)
+            reap()
         raise
     except BaseException:
         kill_group()

@@ -162,7 +162,10 @@ def judge(pair: Pair, tag: str, project: str, sha: str, inventory: str, run: Run
         composition = classification["torqueComposition"]
     except (ValueError, KeyError, TypeError):
         return fail("the change classification could not be read")
-    if not isinstance(reasons, list) or not isinstance(services, list) or not isinstance(composition, bool):
+    if (
+        not isinstance(reasons, list) or not isinstance(services, list) or not isinstance(composition, bool)
+        or not all(isinstance(service, str) for service in services)
+    ):
         return fail("the change classification could not be read")
     if classify.returncode != 0 or reasons:
         return fail("the change classification fails closed: " + ", ".join(map(str, reasons)))

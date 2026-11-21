@@ -229,7 +229,10 @@ class AgentSkipCheckTests(unittest.TestCase):
             self.assertIn("could not be read", text, key)
 
     def test_a_classification_value_of_the_wrong_type_is_refused_as_unreadable(self) -> None:
-        for key, value in (("failClosedReasons", None), ("pi4AgentServices", 3), ("torqueComposition", "false")):
+        for key, value in (
+            ("failClosedReasons", None), ("pi4AgentServices", 3), ("pi4AgentServices", [{"name": "nfc-agent"}]),
+            ("torqueComposition", "false"),
+        ):
             text = self._assert_refused(Fake(classify={key: value}))
             self.assertIn("付けてはいけない", text, key)
             self.assertIn("could not be read", text, key)

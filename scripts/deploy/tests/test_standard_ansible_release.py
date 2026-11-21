@@ -2778,6 +2778,51 @@ class AgentSkipGuardTests(unittest.TestCase):
             with self.assertRaises(ProcessLookupError, msg=f"second_interrupt={second_interrupt}"):
                 os.kill(worker_pid, 0)
 
+    def test_a_ctrl_c_right_after_the_start_still_stops_the_setsid_worker(self) -> None:
+        # A real SIGINT arrives after Ansible is started but before the launcher waits for it.
+        tmp = Path(tempfile.mkdtemp(prefix="guard-int-start-"))
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        pid_file = tmp / "worker.pid"
+        self.addCleanup(_kill_recorded_worker, pid_file)
+        script = (
+            "import os, signal, subprocess, sys, time\n"
+            "worker = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True)\n"
+            "def stop(*_):\n"
+            "    worker.kill(); worker.wait(); os._exit(0)\n"
+            "signal.signal(signal.SIGTERM, stop)\n"
+            "open(sys.argv[1] + '.tmp', 'w').write(str(worker.pid)); os.rename(sys.argv[1] + '.tmp', sys.argv[1])\n"
+            "time.sleep(60)\n"
+        )
+        real_popen = subprocess.Popen
+
+        def popen_then_ctrl_c(*args, **kwargs):  # type: ignore[no-untyped-def]
+            process = real_popen(*args, **kwargs)
+            deadline = time.monotonic() + 20
+            while not pid_file.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            os.kill(os.getpid(), signal.SIGINT)
+            time.sleep(0.2)  # the handler runs here, before the launcher's wait
+            return process
+
+        with mock.patch.object(MODULE.subprocess, "Popen", side_effect=popen_then_ctrl_c), \
+                mock.patch.object(MODULE, "AGENT_GUARD_TERM_GRACE_SECONDS", 3):
+            with self.assertRaises(KeyboardInterrupt):
+                MODULE.run_agent_guard_command([sys.executable, "-c", script, str(pid_file)], os.environ.copy())
+        self.assertIs(signal.getsignal(signal.SIGINT), signal.default_int_handler)
+        self.assertTrue(pid_file.exists(), "the worker never started")
+        worker_pid = int(pid_file.read_text())
+        time.sleep(0.3)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(worker_pid, 0)
+
+    def test_a_cut_multibyte_character_keeps_the_time_out_kind(self) -> None:
+        # Ansible killed in the middle of a UTF-8 character must still be reported as a time-out.
+        script = "import sys, time\nsys.stdout.buffer.write(b'ok \\xe3\\x81'); sys.stdout.flush()\ntime.sleep(60)\n"
+        with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 1), mock.patch.object(MODULE, "AGENT_GUARD_TERM_GRACE_SECONDS", 1):
+            with self.assertRaises(MODULE.AgentGuardTimeout) as caught:
+                MODULE.run_agent_guard_command([sys.executable, "-c", script], os.environ.copy())
+        self.assertIn("ok", caught.exception.stdout)
+
     def test_real_timeout_kills_children_and_grandchildren_and_removes_temporary_folders(self) -> None:
         # A random marker on the command line of both sleepers, so only this test's own processes are looked for
         # (another worktree running the same test on this machine cannot be mistaken for a leftover).
