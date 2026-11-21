@@ -1688,31 +1688,31 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
         except (OSError, subprocess.SubprocessError):
             pass
 
+    def hold_interrupts() -> set[signal.Signals]:
+        # While the group is being stopped and reaped, a further Ctrl-C is held (delivered when the mask is restored),
+        # so it cannot skip SIGKILL or the reap. The launcher runs in one thread, the only one that could take it.
+        return signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+
+    def release_interrupts(previous: set[signal.Signals]) -> None:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+
     try:
         stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:
-        interrupted = stop_group()
-        if interrupted is not None:
-            # Ctrl-C during the grace: the group is stopped; reap it before passing the interrupt on.
-            reap()
-            raise interrupted
-        # Partial output captured before the first time-out; the second wait may add to it or fail too.
-        out, err = _text(error.stdout), _text(error.stderr)
+        previous = hold_interrupts()
         try:
-            try:
-                out, err = process.communicate(timeout=15)
-            except subprocess.TimeoutExpired as second:
-                out, err = _text(second.stdout) or out, _text(second.stderr) or err
-            except (OSError, subprocess.SubprocessError):
-                pass
+            stopped = _stop_after_timeout(error, stop_group, reap, process)
         finally:
-            # Also on KeyboardInterrupt in the second wait: the group is already killed, so always reap.
-            reap()
-        raise AgentGuardTimeout(out or "", err or "") from error
+            release_interrupts(previous)
+        raise AgentGuardTimeout(*stopped) from error
     except KeyboardInterrupt:
         # Ctrl-C while Ansible runs: the same SIGTERM, grace and SIGKILL as a time-out, so setsid workers stop too.
-        stop_group()
-        reap()
+        previous = hold_interrupts()
+        try:
+            stop_group()
+            reap()
+        finally:
+            release_interrupts(previous)
         raise
     except BaseException:
         kill_group()
@@ -1720,6 +1720,28 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
         raise
     code = process.returncode if process.returncode >= 0 else 128 - process.returncode
     return subprocess.CompletedProcess(list(command), code, stdout, stderr)
+
+
+def _stop_after_timeout(error: subprocess.TimeoutExpired, stop_group: Any, reap: Any, process: Any) -> tuple[str, str]:
+    """Stop and reap the group after the time limit; returns the output captured so far."""
+    interrupted = stop_group()
+    if interrupted is not None:
+        # Ctrl-C during the grace: the group is stopped; reap it before passing the interrupt on.
+        reap()
+        raise interrupted
+    # Partial output captured before the first time-out; the second wait may add to it or fail too.
+    out, err = _text(error.stdout), _text(error.stderr)
+    try:
+        try:
+            out, err = process.communicate(timeout=15)
+        except subprocess.TimeoutExpired as second:
+            out, err = _text(second.stdout) or out, _text(second.stderr) or err
+        except (OSError, subprocess.SubprocessError):
+            pass
+    finally:
+        # Also on KeyboardInterrupt in the second wait: the group is already killed, so always reap.
+        reap()
+    return out or "", err or ""
 
 
 def run_guarded(

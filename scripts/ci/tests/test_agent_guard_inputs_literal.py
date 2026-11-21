@@ -330,6 +330,9 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path, context_role: 
     if found and not found[0].startswith(ANSIBLE_REL + "/"):
         # The definition checks read only files under infrastructure/ansible.
         raise ValueError(f"ambiguous include {expression!r}: resolves to {found[0]} outside {ANSIBLE_REL}")
+    if found and (root / found[0]).resolve() != root.resolve() / found[0]:
+        # A symbolic link on the way would let Ansible read a file the definition checks never list.
+        raise ValueError(f"ambiguous include {expression!r}: {found[0]} goes through a symbolic link")
     return found[0] if found else None
 
 
@@ -962,6 +965,21 @@ class TheChecksActuallyFail(unittest.TestCase):
             problems = closure_problems(root)
             self.assertEqual(len(problems), 1, problems)
             self.assertIn("ambiguous include", problems[0])
+
+    def test_an_include_through_a_symbolic_link_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            roles = "infrastructure/ansible/roles"
+            self._tree(root, {
+                BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                f"{roles}/top/tasks/main.yml": "- ansible.builtin.include_tasks: \"{{ playbook_dir }}/../tasks/link/x.yml\"\n",
+                "elsewhere/x.yml": "- ansible.builtin.debug: {msg: outside}\n",
+            })
+            (root / "infrastructure/ansible/tasks").mkdir(parents=True)
+            (root / "infrastructure/ansible/tasks/link").symlink_to(root / "elsewhere", target_is_directory=True)
+            problems = closure_problems(root)
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn("symbolic link", problems[0])
 
     def test_an_include_found_only_outside_the_ansible_tree_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

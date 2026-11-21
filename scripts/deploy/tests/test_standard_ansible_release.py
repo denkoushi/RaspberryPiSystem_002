@@ -10,6 +10,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -82,6 +83,14 @@ def torque_capable_host(serial: str = "702902S") -> dict[str, object]:
         ],
     }
 
+
+
+def _kill_recorded_worker(pid_file: Path) -> None:
+    """Test cleanup: never leave the setsid worker of a failed run behind."""
+    try:
+        os.kill(int(pid_file.read_text()), signal.SIGKILL)
+    except (OSError, ValueError):
+        pass
 
 class StandardAnsibleReleaseTests(unittest.TestCase):
     def test_release_artifact_resolution_and_plan(self):
@@ -2700,13 +2709,14 @@ class AgentSkipGuardTests(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp(prefix="guard-term-"))
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         pid_file = tmp / "worker.pid"
+        self.addCleanup(_kill_recorded_worker, pid_file)
         script = (
             "import os, signal, subprocess, sys, time\n"
             "worker = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True)\n"
-            "open(sys.argv[1] + '.tmp', 'w').write(str(worker.pid)); os.rename(sys.argv[1] + '.tmp', sys.argv[1])\n"
             "def stop(*_):\n"
             "    worker.kill(); worker.wait(); os._exit(0)\n"
             "signal.signal(signal.SIGTERM, stop)\n"
+            "open(sys.argv[1] + '.tmp', 'w').write(str(worker.pid)); os.rename(sys.argv[1] + '.tmp', sys.argv[1])\n"
             "time.sleep(60)\n"
         )
         with mock.patch.object(MODULE, "AGENT_GUARD_TIMEOUT_SECONDS", 2), mock.patch.object(MODULE, "AGENT_GUARD_TERM_GRACE_SECONDS", 3):
@@ -2723,13 +2733,14 @@ class AgentSkipGuardTests(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp(prefix="guard-int-"))
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         pid_file = tmp / "worker.pid"
+        self.addCleanup(_kill_recorded_worker, pid_file)
         script = (
             "import os, signal, subprocess, sys, time\n"
             "worker = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True)\n"
-            "open(sys.argv[1] + '.tmp', 'w').write(str(worker.pid)); os.rename(sys.argv[1] + '.tmp', sys.argv[1])\n"
             "def stop(*_):\n"
             "    worker.kill(); worker.wait(); os._exit(0)\n"
             "signal.signal(signal.SIGTERM, stop)\n"
+            "open(sys.argv[1] + '.tmp', 'w').write(str(worker.pid)); os.rename(sys.argv[1] + '.tmp', sys.argv[1])\n"
             "time.sleep(60)\n"
         )
         real_popen = subprocess.Popen
@@ -2746,14 +2757,26 @@ class AgentSkipGuardTests(unittest.TestCase):
             process.communicate = communicate  # type: ignore[method-assign]
             return process
 
-        with mock.patch.object(MODULE.subprocess, "Popen", side_effect=interrupted_popen), mock.patch.object(MODULE, "AGENT_GUARD_TERM_GRACE_SECONDS", 3):
-            with self.assertRaises(KeyboardInterrupt):
-                MODULE.run_agent_guard_command([sys.executable, "-c", script, str(pid_file)], os.environ.copy())
-        self.assertTrue(pid_file.exists(), "the worker never started")
-        worker_pid = int(pid_file.read_text())
-        time.sleep(0.3)
-        with self.assertRaises(ProcessLookupError):
-            os.kill(worker_pid, 0)
+        real_killpg = os.killpg
+
+        def killpg_after_a_second_ctrl_c(pid: int, sig: int) -> None:
+            # A second Ctrl-C arrives just before the SIGTERM: it must not skip SIGTERM, SIGKILL or the reap.
+            if sig == signal.SIGTERM:
+                os.kill(os.getpid(), signal.SIGINT)
+            real_killpg(pid, sig)
+
+        for second_interrupt in (False, True):
+            pid_file.unlink(missing_ok=True)
+            killpg = killpg_after_a_second_ctrl_c if second_interrupt else real_killpg
+            with mock.patch.object(MODULE.subprocess, "Popen", side_effect=interrupted_popen), \
+                    mock.patch.object(MODULE, "AGENT_GUARD_TERM_GRACE_SECONDS", 3), mock.patch.object(MODULE.os, "killpg", killpg):
+                with self.assertRaises(KeyboardInterrupt):
+                    MODULE.run_agent_guard_command([sys.executable, "-c", script, str(pid_file)], os.environ.copy())
+            self.assertTrue(pid_file.exists(), "the worker never started")
+            worker_pid = int(pid_file.read_text())
+            time.sleep(0.3)
+            with self.assertRaises(ProcessLookupError, msg=f"second_interrupt={second_interrupt}"):
+                os.kill(worker_pid, 0)
 
     def test_real_timeout_kills_children_and_grandchildren_and_removes_temporary_folders(self) -> None:
         # A random marker on the command line of both sleepers, so only this test's own processes are looked for
