@@ -72,7 +72,6 @@ TORQUE_URL = re.compile(r"^https?://[^\s{}]+$")
 TORQUE_URL_VARIABLE = re.compile(r"^\{\{\s*[A-Za-z_][A-Za-z0-9_.]*\s*\}\}$")
 OPTIONAL_HOST_CONNECT_TIMEOUT_SECONDS = 3.0
 # A host name that becomes "<name>.json" in a temporary directory: no separator, no leading dot, no "..".
-SAFE_GUARD_RESULT_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 SAFE_COMPOSE_PROJECT = SAFE_COMPOSE_PROJECT_RE
 AGENT_GUARD_PREFIX = "[agent-guard] "
 # Copied Ansible output must never look like the launcher's own "[agent-guard] stop {...}" line.
@@ -83,6 +82,18 @@ AGENT_GUARD_TERM_GRACE_SECONDS = 10
 AGENT_IMAGES_INVENTORY_SECONDS = 60
 AGENT_IMAGES_CLEANUP_SECONDS = 40  # kill-after 10 plus ssh and cleanup margin
 SAFE_INVENTORY_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
+
+
+def split_limit(limit: str) -> list[str]:
+    """The names in a --limit pattern (separated by ':' or ',')."""
+    return re.split(r"[:,]", limit)
+
+
+def safe_result_host(host: Any) -> bool:
+    """An inventory host name that is also safe as a guard result file name."""
+    return isinstance(host, str) and bool(SAFE_INVENTORY_HOST.fullmatch(host)) and ".." not in host
+
+
 OPTIONAL_ADDRESS_ALIASES = {
     "kiosk_ip": "raspberrypi4_ip",
     "signage_ip": "raspberrypi3_ip",
@@ -205,7 +216,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         )
         if any(others):
             raise UsageError("--agent-images accepts only --limit and --inventory")
-        hosts = re.split(r"[:,]", args.limit) if args.limit else []
+        hosts = split_limit(args.limit) if args.limit else []
         if not hosts or any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts) or len(set(hosts)) != len(hosts):
             raise UsageError("--agent-images requires --limit with exact Pi4 kiosk host names")
         args.inventory = args.inventory or DEFAULT_INVENTORY
@@ -221,7 +232,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     if args.first_install:
         if args.full_fleet or not args.limit or args.torque_cutover or args.hermes_search_trial_maintenance:
             raise UsageError("--first-install requires exact Pi4 kiosk --limit hosts; full-fleet and other mutation modes are forbidden")
-        hosts = re.split(r"[:,]", args.limit)
+        hosts = split_limit(args.limit)
         if any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts) or len(set(hosts)) != len(hosts):
             raise UsageError("--first-install --limit must be an exact host or colon/comma-separated host list; patterns are forbidden")
     if (args.allow_agent_skip is None) != (args.allow_agent_skip_sha is None):
@@ -229,7 +240,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     if args.allow_agent_skip is not None and not args.status:
         if args.full_fleet or args.first_install or args.torque_cutover or args.hermes_search_trial_maintenance:
             raise UsageError("--allow-agent-skip cannot be combined with --full-fleet, --first-install, --torque-cutover or Hermes maintenance")
-        names = re.split(r"[:,]", args.limit) if args.limit else []
+        names = split_limit(args.limit) if args.limit else []
         if not names or any(not SAFE_INVENTORY_HOST.fullmatch(name) for name in names) or len(set(names)) != len(names):
             raise UsageError("--allow-agent-skip requires --limit to be an exact host name list")
         if not FULL_SHA.fullmatch(args.allow_agent_skip_sha):
@@ -340,7 +351,7 @@ def validate_first_install_selection(
 ) -> None:
     if not getattr(args, "first_install", False):
         return
-    hosts = re.split(r"[:,]", args.limit)
+    hosts = split_limit(args.limit)
     selected = {host for _profile, members in selection for host in members}
     if (
         tuple(profile for profile, _hosts in selection) != ("pi4",)
@@ -1582,7 +1593,7 @@ def validate_agent_skip_selection(
         return
     if getattr(args, "allow_agent_skip_sha", None) != sha:
         raise UsageError("--allow-agent-skip-sha differs from the release SHA; confirm the versions again")
-    names = re.split(r"[:,]", args.limit)
+    names = split_limit(args.limit)
     selected = {host for _profile, members in selection for host in members}
     if set(names) != selected or any(name in document for name in names):
         raise UsageError("--allow-agent-skip requires --limit to list inventory host names only, never groups or patterns")
@@ -1761,7 +1772,7 @@ def agent_images_argv(inventory: str, hosts: Sequence[str], directory: str) -> l
 def require_safe_result_hosts(hosts: Sequence[str], kind: str) -> None:
     """Refuse before any path is built from a host name (the same constraint the playbook tasks assert)."""
     for host in hosts:
-        if not isinstance(host, str) or not SAFE_GUARD_RESULT_HOST.fullmatch(host) or ".." in host:
+        if not safe_result_host(host):
             raise AgentGuardStop(kind, f"host name {host!r} is not usable for the agent guard result files")
 
 
@@ -1914,8 +1925,8 @@ def agent_images(args: argparse.Namespace) -> int:
     """Read-only: print the agent containers of the named Pi4 kiosks (through Pi5)."""
     inventory, relative = inventory_path(args.inventory)
     document = inventory_document(inventory, timeout=AGENT_IMAGES_INVENTORY_SECONDS)
-    names = re.split(r"[:,]", args.limit)
-    if any(not SAFE_GUARD_RESULT_HOST.fullmatch(name) or ".." in name for name in names):
+    names = split_limit(args.limit)
+    if not all(safe_result_host(name) for name in names):
         raise UsageError("--agent-images --limit must list Pi4 kiosk host names of the inventory")
     # Direct members of the kiosk group only: the same reading as selected_profiles.
     kiosks = document.get("kiosk", {}).get("hosts", [])
