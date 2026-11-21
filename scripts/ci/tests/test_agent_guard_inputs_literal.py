@@ -284,11 +284,13 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path, context_role: 
     caller, so its relative includes are searched under that role's tree too."""
     role = _role_of(origin) or context_role
     candidates: list[str] = []
-    # Ansible's relative search for a file inside a role walks several folders of that role and of the playbook
-    # directory (caller folder, role tasks/, role root, playbooks/, playbooks/tasks/, ...). Instead of copying that
-    # order, any file in those trees whose path ends with the same relative name counts as a candidate, so the
-    # include is accepted only when exactly one such file exists.
-    search_trees: list[str] = []
+    # Ansible's relative search walks many folders (the caller folder and its tasks/, each caller on the include
+    # chain, the role's tasks/ and root, playbooks/ and playbooks/tasks/, the current directory's tasks/, ...).
+    # Instead of copying that order, every file under infrastructure/ansible (other roles excepted, which Ansible
+    # never searches) whose path ends with the same relative name counts as a candidate, as do the same name and
+    # tasks/<name> at the repository root (the launcher's current directory). The include is accepted only when
+    # exactly one such file exists.
+    relative_search = False
     if (match := _PLAYBOOK_DIR.match(expression)) and not _has_jinja(match.group(1)):
         candidates = [f"{ANSIBLE_REL}/playbooks/{match.group(1)}"]
     elif (match := _ROLE_PATH.match(expression)) and not _has_jinja(match.group(1)):
@@ -298,20 +300,26 @@ def _resolve_tasks_file(expression: str, origin: str, root: Path, context_role: 
         candidates = [f"{posixpath.dirname(origin)}/{expression}"]
         if role:
             candidates.append(f"{ROLES_REL}/{role}/tasks/{expression}")
-            search_trees = [f"{ROLES_REL}/{role}", f"{ANSIBLE_REL}/playbooks"]
+        relative_search = True
     found: list[str] = []
     for candidate in candidates:
         normalized = posixpath.normpath(candidate)
         if normalized.startswith(ANSIBLE_REL + "/") and (root / normalized).is_file() and normalized not in found:
             found.append(normalized)
-    suffix = "/" + posixpath.normpath(expression)
-    for tree in search_trees:
-        if not (root / tree).is_dir() or suffix.startswith("/.."):
-            continue
-        for path in sorted((root / tree).rglob("*")):
+    name = posixpath.normpath(expression)
+    if relative_search and not name.startswith(".."):
+        suffix = "/" + name
+        for path in sorted((root / ANSIBLE_REL).rglob("*")):
             relative = path.relative_to(root).as_posix()
-            if path.is_file() and relative.endswith(suffix) and relative not in found:
-                found.append(relative)
+            if not path.is_file() or not relative.endswith(suffix) or relative in found:
+                continue
+            owner = _role_of(relative)
+            if owner is not None and owner != role:
+                continue
+            found.append(relative)
+        for outside in (name, f"tasks/{name}"):
+            if (root / outside).is_file() and outside not in found:
+                found.append(outside)
     if len(found) > 1:
         # Ansible picks one by its own search order; a different file than this check follows must not be possible.
         raise ValueError(f"ambiguous include {expression!r}: both {found[0]} and {found[1]} exist")
@@ -878,6 +886,29 @@ class TheChecksActuallyFail(unittest.TestCase):
                 self.assertEqual(len(problems), 1, (extra, problems))
                 self.assertIn("ambiguous include", problems[0])
                 (root / extra).unlink()
+
+    def test_a_relative_include_inside_a_shared_file_is_rejected_when_the_name_also_exists_beside_or_at_the_root(self) -> None:
+        roles = "infrastructure/ansible/roles"
+        for extra in (
+            "infrastructure/ansible/tasks/tasks/w.yml",
+            "tasks/w.yml",
+            "w.yml",
+            "infrastructure/ansible/other/w.yml",
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                self._tree(root, {
+                    BODY_PLAYBOOK: "- hosts: kiosk\n  roles:\n    - top\n",
+                    f"{roles}/top/tasks/main.yml": '- ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/shared.yml"\n',
+                    "infrastructure/ansible/tasks/shared.yml": "- ansible.builtin.import_tasks: w.yml\n",
+                    "infrastructure/ansible/tasks/w.yml": "- ansible.builtin.debug: {msg: shared}\n",
+                    f"{roles}/another/tasks/w.yml": "- ansible.builtin.debug: {msg: another role}\n",
+                })
+                self.assertEqual(closure_problems(root), [], extra)
+                self._tree(root, {extra: "- ansible.builtin.set_fact: {torque_agent_enabled: true}\n"})
+                problems = closure_problems(root)
+                self.assertEqual(len(problems), 1, (extra, problems))
+                self.assertIn("ambiguous include", problems[0])
 
     def test_an_include_that_also_exists_in_the_playbook_directory_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1678,7 +1678,13 @@ def run_agent_guard_command(command: Sequence[str], env: dict[str, str]) -> subp
     try:
         stdout, stderr = process.communicate(timeout=AGENT_GUARD_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as error:
-        terminate_group()
+        try:
+            terminate_group()
+        except BaseException:
+            # Interrupted during the grace (Ctrl-C): stop and reap the group before passing the interrupt on.
+            kill_group()
+            reap()
+            raise
         kill_group()
         # Partial output captured before the first time-out; the second wait may add to it or fail too.
         out, err = _text(error.stdout), _text(error.stderr)

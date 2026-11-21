@@ -2512,6 +2512,18 @@ class AgentSkipGuardTests(unittest.TestCase):
             errors.getvalue().splitlines(), ["[agent-guard] | out-no-newline", "[agent-guard] | err-no-newline"]
         )
 
+    def test_guard_runner_kills_and_reaps_when_interrupted_during_the_sigterm_grace(self) -> None:
+        process = mock.MagicMock(pid=79, returncode=None)
+        process.communicate.side_effect = [subprocess.TimeoutExpired("a", 1)]
+        process.wait.side_effect = [KeyboardInterrupt(), None]
+        with mock.patch.object(MODULE.subprocess, "Popen", return_value=process), mock.patch.object(MODULE.os, "killpg") as killpg:
+            with self.assertRaises(KeyboardInterrupt):
+                MODULE.run_agent_guard_command(["ansible-playbook"], {})
+        self.assertEqual([c.args for c in killpg.call_args_list], [(79, MODULE.signal.SIGTERM), (79, MODULE.signal.SIGKILL)])
+        process.stdout.close.assert_called_once()
+        process.stderr.close.assert_called_once()
+        self.assertEqual(process.wait.call_count, 2)
+
     def test_guard_runner_reaps_when_interrupted_during_the_second_wait(self) -> None:
         process = mock.MagicMock(pid=79, returncode=None)
         process.communicate.side_effect = [subprocess.TimeoutExpired("a", 1), KeyboardInterrupt()]
@@ -2634,6 +2646,7 @@ class AgentSkipGuardTests(unittest.TestCase):
         self.assertIn("fatal: pi4-c unreachable", result.stderr)
         self.assertNotIn("fatal", result.stdout)
         self.assertNotIn("TASK failed", result.stdout)
+        self.assertIn("TASK failed", result.stderr)
         self.assertEqual(leftovers, [])
         # The script reports Ansible's non-zero exit code as data; the Mac side turns it into a failure
         # and still lists the two readable hosts and the unreadable third one in the final JSON.
