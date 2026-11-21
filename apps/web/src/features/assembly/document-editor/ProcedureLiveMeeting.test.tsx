@@ -49,6 +49,7 @@ const common = { onDelete: vi.fn(), onBringForward: vi.fn(), onSendBackward: vi.
 const onBegin = vi.fn();
 const onEnd = vi.fn();
 let latestText = '';
+let harnessRenders = 0;
 
 function Harness({ text = '' }: { text?: string }) {
   const [elements, setElements] = useState({ one: makeElement(text), two: makeElement('別', 'two') });
@@ -56,6 +57,7 @@ function Harness({ text = '' }: { text?: string }) {
   const [disabled, setDisabled] = useState(false);
   const element = elements[selected];
   latestText = elements.one.text;
+  harnessRenders++;
   const update = (next: OverlayTextElement) => setElements(current => ({ ...current, [next.id]: next }));
   const live = useProcedureLiveMeeting({ element, enabled: true, disabled, onUpdate: update, onBegin, onEnd, getTerms: () => `${elements.two.text}  語` });
   return <>
@@ -86,9 +88,25 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
   URL.createObjectURL = vi.fn(() => 'blob:worklet'); URL.revokeObjectURL = vi.fn();
 });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('live meeting input', () => {
+  it('ticks the recording time without re-rendering the owner of the hook', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] });
+    const flush = () => act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    render(<Harness />);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: '話し合い' }));
+    await flush(); await flush();
+    expect(FakeSocket.last).toBeDefined();
+    await act(async () => { FakeSocket.last.open(); });
+    expect(screen.getByText('00:00')).toBeInTheDocument();
+    const before = harnessRenders;
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(screen.getByText('00:10')).toBeInTheDocument();
+    expect(harnessRenders).toBe(before);
+  });
+
   it('connects with the client key and streams pcm frames', async () => {
     render(<Harness />);
     await startLive();
@@ -132,6 +150,35 @@ describe('live meeting input', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: '戻す' }));
     expect(latestText).toBe('前の文');
+  });
+
+  it('shows the suggested next topic while recording and hides it after stopping', async () => {
+    render(<Harness />);
+    await startLive();
+    expect(screen.queryByTestId('procedure-live-next')).toBeNull();
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '納期を決めましょう。' });
+    expect(screen.getByTestId('procedure-live-next').textContent).toBe('納期を決めましょう。');
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '担当を決めましょう。' });
+    expect(screen.getByTestId('procedure-live-next').textContent).toBe('担当を決めましょう。');
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '' });
+    expect(screen.queryByTestId('procedure-live-next')).toBeNull();
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '納期を決めましょう。' });
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    expect(screen.queryByTestId('procedure-live-next')).toBeNull();
+    await send({ type: 'doc', text: '【論点】\n・寸法', next: '遅れて届いた案' });
+    expect(screen.queryByTestId('procedure-live-next')).toBeNull();
+  });
+
+  it('keeps the text box read-only from start until the meeting is done', async () => {
+    render(<Harness />);
+    const box = () => document.querySelector<HTMLTextAreaElement>('[data-kiosk-sop-target="assembly-document-editor-text-value"]')!;
+    expect(box().readOnly).toBe(false);
+    await startLive();
+    expect(box().readOnly).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '止める' }));
+    expect(box().readOnly).toBe(true);
+    await send({ type: 'done' });
+    expect(box().readOnly).toBe(false);
   });
 
   it('drops the oldest raw lines first when the text gets too long', async () => {

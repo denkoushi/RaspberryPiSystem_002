@@ -312,7 +312,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           }}>
           <AssemblyProcedureDocumentEditorCanvas
             saving={canvasSaving}
-            onUpdateText={controller.commitInlineText}
+            onUpdateText={live.status === 'idle' ? controller.commitInlineText : undefined}
             registerInlineTextFlush={controller.registerInlineTextFlush}
             onInlineEditingChange={setInlineEditingId}
             onDraftChange={controller.onInlineDraftChange}

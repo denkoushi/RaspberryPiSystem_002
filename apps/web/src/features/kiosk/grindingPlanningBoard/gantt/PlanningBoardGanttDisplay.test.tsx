@@ -7,6 +7,7 @@ import { productionFixture } from '../__perf__/fixture';
 import { PlanningBoardPageView } from '../PlanningBoardPageView';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
+import { invalidateForwardDropCache } from './planningBoardForwardDrop';
 import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
@@ -1164,7 +1165,12 @@ describe('two-machine forward dragging', () => {
     vi.useFakeTimers();
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => []) });
+    hitTarget = null;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      // Lane and overlay geometry follows the mocked hit target, so cached hit tests agree with elementsFromPoint.
+      if (this.matches('[data-gantt-lane], [data-gantt-viewport], [data-later-queue], [data-forward-queue]')) {
+        return hitTarget && this.contains(hitTarget) ? new DOMRect(0, 0, 100000, 4000) : new DOMRect(-9000, -9000, 1, 1);
+      }
       const lower = this.closest('section[aria-label="022"]');
       return new DOMRect(100, lower ? 400 : 100, 1000, 60);
     });
@@ -1176,7 +1182,12 @@ describe('two-machine forward dragging', () => {
     localStorage.clear();
   });
   const bar = (id: string) => screen.getAllByTestId(`planning-gantt-bar-${id}`)[0]!;
-  const pointAt = (target: HTMLElement) => vi.mocked(document.elementsFromPoint).mockReturnValue([target]);
+  let hitTarget: HTMLElement | null = null;
+  const pointAt = (target: HTMLElement) => {
+    hitTarget = target;
+    invalidateForwardDropCache();
+    vi.mocked(document.elementsFromPoint).mockReturnValue([target]);
+  };
   const begin = (source: HTMLElement, target: HTMLElement, x = 100) => {
     pointAt(target);
     fireEvent.pointerDown(source, { button: 0, clientX: 150, clientY: 120 });
@@ -1248,6 +1259,7 @@ describe('two-machine forward dragging', () => {
     const source = bar('item-0000');
     const upper = source.closest<HTMLElement>('[data-gantt-viewport]')!;
     upper.scrollTop = 0;
+    Object.defineProperty(upper, 'getBoundingClientRect', { configurable: true, value: () => new DOMRect(100, 100, 1000, 60) });
     begin(source, bar('item-0001'));
     act(() => { vi.advanceTimersByTime(200); });
     expect(upper.scrollTop).toBe(0);

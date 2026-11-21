@@ -35,7 +35,7 @@ type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null; tes
 const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function TwoMachineGantt(props, ref) {
   const candidates = props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean);
   const resources = useMemo(() => planningBoardPair(props.singleResourceCd, props.resourceLanes)!, [props.singleResourceCd, props.resourceLanes]);
-  const [dragPreview, setDragPreview, dragPointer, subscribeDragPreview] = usePlanningBoardDragPreview();
+  const [dragPreview, setDragPreview, dragPointer, subscribeDragPreview, dragStore] = usePlanningBoardDragPreview();
   const paneDragLanes = useRef(new Map<string, readonly ForwardDragLane[]>());
   const dragLanes = useRef<readonly ForwardDragLane[]>([]);
   const registerDragLanes = useCallback((resource: string, lanes: readonly ForwardDragLane[] | null) => {
@@ -72,9 +72,9 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const selectionPreview = useMemo(() => shelfSelection ? shelfSelectionPreview(shelfSelection,
     resources.flatMap(resource => paneDragLanes.current.get(resource) ?? []),
     props.layout.start, resource => panes.get(resource)?.dayWidth ?? 0) : null, [shelfSelection, resources, props.layout.start, panes]);
-  const sharedDrag = useMemo<SharedForwardDrag>(() => ({ preview: dragPreview, setPreview: setDragPreview, pointer: dragPointer, subscribe: subscribeDragPreview,
+  const sharedDrag = useMemo<SharedForwardDrag>(() => ({ preview: dragPreview, setPreview: setDragPreview, pointer: dragPointer, subscribe: subscribeDragPreview, store: dragStore,
     lanes: dragLanes, registerLanes: registerDragLanes, selectionPreview }),
-  [dragPreview, setDragPreview, dragPointer, subscribeDragPreview, registerDragLanes, selectionPreview]);
+  [dragPreview, setDragPreview, dragPointer, subscribeDragPreview, dragStore, registerDragLanes, selectionPreview]);
   const focus = useCallback((key: string | null, resource: string | null) => { setPartKey(key); if (resource) setChainOwner(resource); }, []);
   const selectedTestResource = props.testBarControls?.selectedBar?.resourceCd;
   useEffect(() => { if (selectedTestResource) { setChainOwner(selectedTestResource); setPartKey(null); } }, [selectedTestResource, props.testBarControls?.selectedId]);

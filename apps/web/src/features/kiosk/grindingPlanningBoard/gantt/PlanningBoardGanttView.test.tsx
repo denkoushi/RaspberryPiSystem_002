@@ -2951,8 +2951,9 @@ describe('forward PlanningBoardGanttView', () => {
       expect(hit).toHaveBeenLastCalledWith(x, 210);
       expect(screen.getByTestId('planning-gantt-insertion')).toHaveStyle({ left: target.style.left });
       const ghost = screen.getByTestId('planning-gantt-drag-ghost');
-      expect(parseFloat(ghost.style.left)).toBeCloseTo(x / 0.7 + 12);
-      expect(parseFloat(ghost.style.top)).toBe(312);
+      const [ghostX, ghostY] = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(ghost.style.transform)!.slice(1).map(Number);
+      expect(ghostX).toBeCloseTo(x / 0.7 + 12);
+      expect(ghostY).toBe(312);
       fireEvent.pointerUp(bar, { clientX: x, clientY: 210 });
       expect(onResourceMove).toHaveBeenCalledWith(items[0], '306', items[2], 'before');
     });

@@ -4,7 +4,6 @@ import { normalizeLeaderBoardGanttCapacityMinutes } from './leaderBoardGanttCapa
 import {
   GANTT_DEFAULT_CAPACITY_MINUTES,
   GANTT_FALLBACK_AVAILABLE_WORK_HEIGHT_PX,
-  GANTT_FALLBACK_PX_PER_MINUTE,
   GANTT_FOOTER_CHIPS_EXTRA_PX,
   GANTT_MIN_ROW_HEIGHT_PX,
   GANTT_RULER_MAX_BAND_COUNT,
@@ -307,8 +306,7 @@ export function computeGanttSlotLayout(params: {
   }
 
   const scaleMinutes = Math.max(totalRequiredMinutes, capacityMinutes);
-  const pxPerMinute =
-    availableWorkHeightPx > 0 ? availableWorkHeightPx / scaleMinutes : GANTT_FALLBACK_PX_PER_MINUTE;
+  const pxPerMinute = availableWorkHeightPx / scaleMinutes;
 
   const rowLayouts = computeRowLayouts({ rows: params.rows, pxPerMinute });
   const totalEstimateHeightPx = sumEstimateHeightPx(rowLayouts);
@@ -364,15 +362,4 @@ export function computeGanttRowLayout(params: {
     rowMinHeightPx: row?.visualMinHeightPx ?? GANTT_MIN_ROW_HEIGHT_PX,
     estimateHeightPx: row?.estimateHeightPx ?? GANTT_MIN_ROW_HEIGHT_PX
   };
-}
-
-/** @deprecated computeGanttSlotLayout を使用 */
-export function computeGanttTotalEstimateHeightPx(
-  rowLayouts: readonly LegacyLeaderBoardGanttRowLayout[]
-): number {
-  let sum = 0;
-  for (const layout of rowLayouts) {
-    sum += layout.estimateHeightPx;
-  }
-  return sum;
 }

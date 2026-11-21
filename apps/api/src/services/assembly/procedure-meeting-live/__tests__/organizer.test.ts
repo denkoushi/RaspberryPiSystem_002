@@ -26,6 +26,7 @@ describe('organizer', () => {
     const msgs = buildOrganizeMessages('x'.repeat(20000), prev);
     expect(msgs[1].content.length).toBeLessThan(13000);
     expect(msgs[1].content).toContain('前回の整理');
+    expect(buildOrganizeMessages('a', null, '砥石フランジ')[0].content).toContain('砥石フランジ');
   });
 });
 

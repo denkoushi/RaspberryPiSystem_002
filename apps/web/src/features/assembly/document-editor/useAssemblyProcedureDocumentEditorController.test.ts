@@ -628,6 +628,34 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.elements.map(element => element.pageIndex)).toEqual([0, 1]);
   });
 
+  it('thins recovery writes while a live meeting holds the overlay drag, then writes the latest text after it ends', async () => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/0.png', overlays: [text] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const recoveryWrites = () => setItem.mock.calls.filter(([key]) => key.includes(document.id)).length;
+    vi.useFakeTimers();
+    try {
+      act(() => hook.result.current.beginOverlayDrag());
+      for (let second = 1; second <= 30; second++) {
+        act(() => hook.result.current.updateElement({ ...text, text: `発言${second}` }));
+        act(() => { vi.advanceTimersByTime(1000); });
+      }
+      expect(recoveryWrites()).toBeGreaterThan(0);
+      expect(recoveryWrites()).toBeLessThanOrEqual(4);
+      const during = recoveryWrites();
+      act(() => hook.result.current.endOverlayDrag());
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(recoveryWrites()).toBeGreaterThan(during);
+      expect(readAssemblyDocumentEditorRecovery(localStorage, document.id)?.elements).toContainEqual(expect.objectContaining({ id: 'text', text: '発言30' }));
+    } finally {
+      vi.useRealTimers();
+      setItem.mockRestore();
+    }
+  });
+
   it('does not create recovery data when deleting a page without unsaved edits', async () => {
     const document = makeDocument({ pages: [0, 1].map(pageIndex => ({ pageIndex, imageRelativePath: `/${pageIndex}.png`, overlays: [] })) });
     const hook = renderEditor(document);

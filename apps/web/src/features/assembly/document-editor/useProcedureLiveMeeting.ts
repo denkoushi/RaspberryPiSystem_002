@@ -95,9 +95,10 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
   const [available, setAvailable] = useState(false);
   const [status, setStatus] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [targetId, setTargetId] = useState<string>();
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [previous, setPrevious] = useState<{ text: string; applied: string } | null>(null);
+  const [next, setNext] = useState('');
   const sessionRef = useRef<LiveSession | null>(null);
   const latest = useRef({ element, onUpdate, onEnd, getTerms });
   latest.current = { element, onUpdate, onEnd, getTerms };
@@ -123,6 +124,7 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     }
     if (sessionRef.current === session) sessionRef.current = null;
     if (message) setError(message);
+    setNext('');
     setStatus('idle');
     latest.current.onEnd?.();
   };
@@ -144,7 +146,7 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
 
   const handleEvent = (session: LiveSession, raw: unknown) => {
     if (session.finished || typeof raw !== 'string') return;
-    let data: { type?: unknown; id?: unknown; text?: unknown; error?: unknown };
+    let data: { type?: unknown; id?: unknown; text?: unknown; next?: unknown; error?: unknown };
     try { data = JSON.parse(raw); } catch { return; }
     if (typeof data.error === 'string') {
       session.failed = true;
@@ -159,6 +161,7 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     const text = typeof data.text === 'string' ? data.text.trim() : '';
     if (data.type === 'doc') {
       if (typeof data.text !== 'string') return;
+      if (typeof data.next === 'string' && !session.stopped) setNext(data.next.trim());
       session.doc = text;
       write(session);
       return;
@@ -187,7 +190,7 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
       stopped: false, finished: false, failed: false, queue: []
     };
     sessionRef.current = session;
-    setTargetId(target.id); setError(''); setPrevious(null); setElapsedSeconds(0); setStatus('recording');
+    setTargetId(target.id); setError(''); setPrevious(null); setNext(''); setStartedAt(Date.now()); setStatus('recording');
     onBegin?.();
     try {
       if (!clientKey) throw new Error('client key');
@@ -240,6 +243,7 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     else if (ws.readyState === WebSocket.CONNECTING) session.queue.push('end');
     else { finish(session); return; }
     releaseAudio(session);
+    setNext('');
     setStatus('processing');
     session.timer = setTimeout(() => finish(session), FINISH_TIMEOUT_MS);
   };
@@ -255,13 +259,6 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
     if (session) { session.stopped = true; finish(session); }
   }, []);
 
-  useEffect(() => {
-    if (status !== 'recording') return;
-    const startedAt = Date.now();
-    const timer = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
-    return () => clearInterval(timer);
-  }, [status]);
-
   const selected = element !== null && element.id === targetId;
   const canRestore = status === 'idle' && selected && previous !== null && previous.applied === element.text;
   const restore = () => {
@@ -271,6 +268,6 @@ export function useProcedureLiveMeeting({ element, enabled, disabled, onUpdate, 
   };
   return {
     available: enabled && available, status: selected ? status : 'idle' as const, locked: status !== 'idle',
-    elapsedSeconds, error: selected ? error : '', canRestore, start, stop, restore
+    startedAt, error: selected ? error : '', next: selected && status === 'recording' ? next : '', canRestore, start, stop, restore
   };
 }
