@@ -29,8 +29,8 @@
 - [x] 第2段の設計(下の「第2段の設計」)を Codex と Fable でレビューする(2026-11-21 に判定を Ansible に移して書き直した。決定8。17回目で打ち切り)。
 - [x] PR6: Pi4 に部品が届かないデプロイを止める(#3008、2026-11-22 マージ、cb7e0e2f)。Pi5 への反映(run `20261122-004522-d0961a`)は成功。`raspi4-kensaku-stonebase01` で `--print-plan` と `--agent-images` の通る側を確かめた。止まる側(部品がそろわない SHA で判定が終了コード 0 以外を返す)の実機確認と、初めて判定に止められたときの `--status` の記録は未確認(Web だけの SHA が main に来たときに `--print-plan` だけで行う)。
 - [x] 第3段(速さと台数への強さ)のための計測(2026-11-22、読み取りだけ)。結果と計画は「第3段」。
-- [ ] PR7: 記録を消えにくくする(設定1行)。その後、波3が遅い理由を記録で確かめる。
-- [ ] PR8: 標準経路で pipelining を使う(canary の1台から)。
+- [x] PR7: 記録を消えにくくする(#3013、2026-11-22 マージ、1c3156be)。Pi5 への反映(run `20261122-020741-823678`)は成功し、Pi5 の上限が 2G になったことを確かめた。波3が遅い理由は、次の Pi4 を含むデプロイの記録で確かめる(未確認)。
+- [ ] PR8: 標準経路で pipelining を使う(canary の1台から)。2026-11-22 に `raspi4-kensaku-stonebase01` で事前確認(sudoers に `requiretty` 無し、become 付きで成功)と測定(読むだけの `stat` 20個、Pi5 から実行: pipelining 無し 26.3 秒・26.2 秒、有り 20.9 秒・20.6 秒。1タスク約1.3秒→約1.0秒で約2割減)をした。この端末のホスト変数だけに入れた。波1の前後比較は反映後(未確認)。
 
 ## Surprises & Discoveries
 
@@ -235,7 +235,7 @@ PR6 に、読み取り専用の小さなスクリプト(`scripts/deploy/agent_sk
 
 ### PR8: 標準経路で Ansible の pipelining を使う(速さ、どの段にも効く)
 
-- 理由: 時間の大半は約1秒の小さなタスクの積み上げ(Pi5 の段で約315個、Pi4 は1台あたり約225個)。pipelining はタスクごとの一時ファイルの転送と後片付けの SSH 往復を省く Ansible の標準設定。2026-07-20 に Pi5 から StoneBase への測定で、1タスクの時間が約60〜65%減った(`docs/plans/deploy-speed-optimization-execplan.md:47,89`)。その時は別の経路(端末の forward playbook)だけに入れ、標準経路には入っていない(`ansible.cfg`、`inventory.yml:3-7`、ランチャの環境のどこにも設定が無い、2026-11-22 確認)。
+- 理由: 時間の大半は約1秒の小さなタスクの積み上げ(Pi5 の段で約315個、Pi4 は1台あたり約225個)。pipelining はタスクごとの一時ファイルの転送と後片付けの SSH 往復を省く Ansible の標準設定。2026-07-20 に Pi5 から StoneBase への測定で、1タスクの時間が約60〜65%減った(`docs/plans/deploy-speed-optimization-execplan.md:47,89`)。2026-11-22 に今の標準経路の Ansible(2.19)で測り直すと、約2割減だった(Progress の PR8)。Pi4 1台あたり約225個なら約1分の短縮の見込み。その時は別の経路(端末の forward playbook)だけに入れ、標準経路には入っていない(`ansible.cfg`、`inventory.yml:3-7`、ランチャの環境のどこにも設定が無い、2026-11-22 確認)。
 - 方法: まず canary の `raspi4-kensaku-stonebase01` にだけホスト変数 `ansible_pipelining: true` を入れ、1回のデプロイで波1の時間を前後比較する。効けば Pi4 全台、次に Pi5 と Pi3 に広げる(1回に1段)。sudo の `requiretty` があると失敗するので、7月に作った pipelining と become の事前確認(同計画 `:121`)と同じ確認を、入れる前に読み取りだけで行う。
 - 受け入れ: その段の時間が下がり、失敗 0、health と `--status` が変わらない。悪ければ1行の revert。
 
