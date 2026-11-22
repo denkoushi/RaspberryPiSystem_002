@@ -187,7 +187,8 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         const { processGroup } = drawingPlacementProposalsQuerySchema.parse(request.query);
         const clientIdentifiers = await resolveBaselineClientIdentifiers(request.headers['x-client-key']);
         return drawingPlacementService.listForEditor(
-          id, processGroup === 'grinding' ? 'GRINDING' : 'CUTTING', { clientIdentifiers }
+          id, processGroup === 'grinding' ? 'GRINDING' : 'CUTTING',
+          clientIdentifiers.length > 0 ? { clientIdentifiers } : undefined
         );
       }
     );
