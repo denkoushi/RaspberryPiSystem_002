@@ -17,7 +17,7 @@ export const inspectionDrawingEnvShape = {
   INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED: z
     .preprocess((v) => typeof v === 'string' ? v.trim().toLowerCase() : v, z.enum(['true', 'false']).default('false'))
     .transform((v) => v === 'true'),
-  // Comma-separated non-secret device identifiers (ClientDevice.name or statusClientId) that may see baseline-v1 proposals.
+  // Comma-separated non-secret device identifiers (ClientDevice.name or statusClientId) that may see baseline-v1 proposals; `*` means every caller.
   INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS: z
     .string()
     .default('')

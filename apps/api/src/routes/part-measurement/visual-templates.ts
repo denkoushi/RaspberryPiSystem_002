@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
+import { baselinePlacementNeedsClientIdentity } from '../../config/env/inspection-drawing-baseline-clients.js';
 import { ApiError, DomainHttpError } from '../../lib/errors.js';
 import { findClientDeviceByApiKey, parseKioskApiClientKeyHeader } from '../../services/clients/client-device-auth.service.js';
 import {
@@ -59,10 +60,9 @@ export const drawingPlacementDecisionsBodySchema = z.object({
   rejectedIds: z.array(z.string().guid()).max(200).optional().default([])
 });
 
-// Non-secret identifiers of the calling kiosk (never the raw key). Skipped entirely while the allowlist is empty.
+// Non-secret identifiers of the calling kiosk (never the raw key). Skipped while the allowlist is empty or `*` (every caller).
 async function resolveBaselineClientIdentifiers(rawClientKey: unknown): Promise<string[]> {
-  const allowed = env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS;
-  if (!Array.isArray(allowed) || allowed.length === 0) return [];
+  if (!baselinePlacementNeedsClientIdentity(env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS)) return [];
   const key = parseKioskApiClientKeyHeader(rawClientKey);
   const device = key ? await findClientDeviceByApiKey(key) : null;
   return device ? [device.name, device.statusClientId].filter((id): id is string => typeof id === 'string' && id !== '') : [];

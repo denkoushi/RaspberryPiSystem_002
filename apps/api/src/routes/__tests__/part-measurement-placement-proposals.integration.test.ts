@@ -341,6 +341,8 @@ describe('placement proposals API / Postgres', () => {
       expect(served.proposals).toEqual([expect.objectContaining({
         measurementLabel: '外径', markerXRatio: 0.4, markerYRatio: 0.3, anchorXRatio: 0.3, anchorYRatio: 0.35, dimensionText: null, markerAtRatio: true
       })]);
+      env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['*'];
+      expect((await app.inject({ method: 'GET', url: url(), headers: createAuthHeader(viewer.token) })).json()).toEqual(served);
       const decision = await app.inject({ method: 'POST', url: `${url()}/decisions`, headers, payload: { approvedIds: [served.proposals[0].id] } });
       expect(decision.json()).toEqual({ updated: 1 });
       const skipped = await importBaselinePlacementProposals(baseline, { apply: true });

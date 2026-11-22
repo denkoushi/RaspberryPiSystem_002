@@ -1,6 +1,7 @@
 import { Prisma, type PartMeasurementProcessGroup, type PartMeasurementTemplateItem } from '@prisma/client';
 
 import { env } from '../../config/env.js';
+import { baselinePlacementAllowed } from '../../config/env/inspection-drawing-baseline-clients.js';
 import { InferenceUnavailableError } from '../inference/ports/multi-image-vision-completion.port.js';
 import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
 
@@ -338,10 +339,8 @@ export class PartMeasurementDrawingPlacementService {
     }));
   }
 
-  /** True only when the allowlist is configured and one of the caller's device identifiers is on it. */
   private baselineAllowed(clientIdentifiers: readonly string[] | undefined): boolean {
-    const allowed = env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS;
-    return Array.isArray(allowed) && allowed.length > 0 && (clientIdentifiers ?? []).some((id) => allowed.includes(id));
+    return baselinePlacementAllowed(env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS, clientIdentifiers);
   }
 
   /** Precomputed baseline proposals. Never creates a run and never triggers inference. */
