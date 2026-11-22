@@ -127,6 +127,8 @@ Weekly triage (2026-11-09, `summary --days 7`, 2026-11-03 to 2026-11-09): 7 nigh
 
 Weekly triage (2026-11-16, `summary --days 7`, 2026-11-10 to 2026-11-16): 7 nights, 0 skipped; 88 findings, 8 confirmed, 69 false alarms, 0 known, 0 refused chunks, 0 fixed; confirmed ratio 0.10.
 
+Weekly triage (2026-11-23, `summary --days 7`, 2026-11-17 to 2026-11-23): 6 nights, 0 skipped; 116 findings, 8 confirmed, 103 false alarms, 0 known, 0 refused chunks, 0 fixed; confirmed ratio 0.07.
+
 ## Context and Orientation
 
 Data flows through four parts: the Pi5 host, the Pi5 API containers, the DGX gateway, and Claude in the morning.
