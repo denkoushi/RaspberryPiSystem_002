@@ -31,7 +31,8 @@
 - [x] 第3段(速さと台数への強さ)のための計測(2026-11-22、読み取りだけ)。結果と計画は「第3段」。
 - [x] PR7: 記録を消えにくくする(#3013、2026-11-22 マージ、1c3156be)。Pi5 への反映(run `20261122-020741-823678`)は成功し、Pi5 の上限が 2G になったことを確かめた。波3が遅い理由は、run `20261122-024404-37b0a0` の記録で確かめた(Surprises & Discoveries)。端末の不具合ではない。
 - [ ] PR8: 標準経路で pipelining を使う(canary の1台から)。2026-11-22 に `raspi4-kensaku-stonebase01` で事前確認(sudoers に `requiretty` 無し、become 付きで成功)と測定(読むだけの `stat` 20個、Pi5 から実行: pipelining 無し 26.3 秒・26.2 秒、有り 20.9 秒・20.6 秒。1タスク約1.3秒→約1.0秒で約2割減)をした。この端末のホスト変数だけに入れ(#3014、aebecc44)、全台デプロイ run `20261122-024404-37b0a0` で failed=0、health 200。同じ端末の波1で、3秒未満のタスクの平均が 0.82 秒(11/20、run 開始 00:15)から 0.64 秒になった。波1全体は 439 秒から 754 秒に延びたが、これは配る変更が多かった(ファイルの入れ替え 40→112 秒など)ためで、pipelining の影響ではない。
-- [ ] PR8 の2段目: Pi4 全台(`group_vars/kiosk.yml`)に広げる。2026-11-22 に Pi4 の8台すべてで、sudoers に `requiretty` が無いこと、pipelining 有りで root と `kiosk-display` への become が通ることを読むだけで確かめた。次は Pi5、その次に Pi3(1回に1段)。
+- [x] PR8 の2段目: Pi4 全台(`group_vars/kiosk.yml`)に広げる。2026-11-22 に Pi4 の8台すべてで、sudoers に `requiretty` が無いこと、pipelining 有りで root と `kiosk-display` への become が通ることを読むだけで確かめた。#3015(7ae0d7f1)、全台デプロイ run `20261122-041023-38eeb5` で Pi4 8台 failed=0、Pi5 health 200、約52分。段ごとの時間(#3014 の run → 今回): Pi5 343→366 秒、Pi4 準備 581→413 秒、波1 754→400 秒、波2 860→800 秒、波3 766→496 秒、Pi3 504→585 秒。配る中身が回ごとに違うので、短縮のうち pipelining の分は切り分けていない。
+- [ ] PR8 の3段目: Pi5(`group_vars/server/pipelining.yml`)に広げる。Pi5 は自分自身へも SSH(100.106.158.2)で接続する。2026-11-22 に Pi5 の sudoers に `requiretty` が無いこと、pipelining 有りで root への become が通りファイル転送が0回になることを読むだけで確かめた。読むだけの `stat` 10回(ad-hoc、起動時間込み)は 17.5 秒→15.5 秒。次は Pi3(1回に1段)。
 
 ## Surprises & Discoveries
 
