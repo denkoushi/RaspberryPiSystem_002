@@ -1,4 +1,7 @@
 ---
+# Ansible の pipelining(タスクごとの一時ファイル転送を省く)。全 Pi4 で sudoers に requiretty が無いことを確認済み
+# (docs/plans/deploy-pipeline-hardening-execplan.md の PR8)
+ansible_pipelining: true
 os_security_update_oncalendar: "Sun *-*-* 01:00:00"
 os_security_update_early_oncalendar: "*-*-* 01:00:00"
 os_security_update_randomized_delay_sec: '90min'
