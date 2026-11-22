@@ -1,0 +1,4 @@
+---
+# Ansible の pipelining(タスクごとの一時ファイル転送を省く)。Pi5 の sudoers に requiretty が無いことを確認済み
+# (docs/plans/deploy-pipeline-hardening-execplan.md の PR8)
+ansible_pipelining: true
