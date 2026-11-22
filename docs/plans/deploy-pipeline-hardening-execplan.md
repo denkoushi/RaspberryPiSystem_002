@@ -34,6 +34,7 @@
 - [x] PR8 の2段目: Pi4 全台(`group_vars/kiosk.yml`)に広げる。2026-11-22 に Pi4 の8台すべてで、sudoers に `requiretty` が無いこと、pipelining 有りで root と `kiosk-display` への become が通ることを読むだけで確かめた。#3015(7ae0d7f1)、全台デプロイ run `20261122-041023-38eeb5` で Pi4 8台 failed=0、Pi5 health 200、約52分。段ごとの時間(#3014 の run → 今回): Pi5 343→366 秒、Pi4 準備 581→413 秒、波1 754→400 秒、波2 860→800 秒、波3 766→496 秒、Pi3 504→585 秒。配る中身が回ごとに違うので、短縮のうち pipelining の分は切り分けていない。
 - [x] PR8 の3段目: Pi5(`group_vars/server/pipelining.yml`)に広げる。Pi5 は自分自身へも SSH(100.106.158.2)で接続する。2026-11-22 に Pi5 の sudoers に `requiretty` が無いこと、pipelining 有りで root への become が通りファイル転送が0回になることを読むだけで確かめた。読むだけの `stat` 10回(ad-hoc、起動時間込み)は 17.5 秒→15.5 秒。#3016(5d3ae5a2)。この SHA には Pi4 のエージェントの部品が入っておらず全台デプロイは事前確認で止まったため(手順書どおり)、Pi5 だけのデプロイ run `20261122-052818-24aacc` で確かめた。ok=315 failed=0、health 200。Pi5 の段は 372 秒(前回 366 秒)で、目に見える短縮は無かった。Pi5 の段は画像の取り込みなど長いタスクが中心のためとみる。
 - [ ] PR8 の4段目: Pi3(`group_vars/signage.yml`)に広げる。2026-11-22 に Pi3 の sudoers に `requiretty` が無いこと、pipelining 有りで root への become が通りファイル転送が0回になることを読むだけで確かめた。読むだけの `stat` 10回(ad-hoc、Pi5 から実行、起動時間込み)は 45.5 秒→37.0 秒。
+- [ ] PR9: Pi4 のメンテ画面を health 合格の直後に消す(`roles/release_kiosk/tasks/notice-clear.yml`)。run `20261122-041023-38eeb5` で、health 後の端末設定(OS 更新設定、整合性、ClamAV、Wi-Fi、USB 音声)が終わるまでメンテ画面が 93/258/150 秒(波1/2/3)残っていた。これらはブラウザもエージェントも再起動しない(USB 音声の設定が変わった回だけ WirePlumber を再起動する)。always の解除は保険として残す(2回目は空振り)。解除は切り替えと health のブロックの外に置き、解除の失敗で健全な端末がロールバックされないようにした。
 
 ## Surprises & Discoveries
 

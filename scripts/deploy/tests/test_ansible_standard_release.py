@@ -2492,8 +2492,14 @@ esac
         condition = ' '.join(main['block'][notice_index]['when'])
         self.assertIn('not (release_torque_cutover', condition)
         self.assertIn('release_kiosk_notice_enabled', condition)
-        clear = main['always'][0]
+        # The screen clears right after health and again (idempotently) in always.
+        self.assertEqual(main['always'][0]['ansible.builtin.import_tasks'], 'notice-clear.yml')
+        switch_health_index = next(i for i, task in enumerate(main['block']) if 'block' in task)
+        self.assertEqual(main['block'][switch_health_index + 1].get('ansible.builtin.import_tasks'), 'notice-clear.yml')
+        clear_tasks = yaml.safe_load((role / 'tasks/notice-clear.yml').read_text())
+        clear = clear_tasks[0]
         self.assertIn('clear', clear['ansible.builtin.command']['argv'])
+        self.assertIn('not (release_kiosk_first_install', ' '.join(clear['when']))
         self.assertFalse(clear['failed_when'])
         self.assertIn('not (release_torque_cutover', ' '.join(clear['when']))
         self.assertIn("status_agent_client_id | default('') | trim | length > 0", clear['when'])
@@ -2559,10 +2565,8 @@ esac
                         for task in outer["always"]
                         if "ansible.builtin.import_tasks" in task
                     ],
-                    ["cleanup.yml"],
+                    ["notice-clear.yml", "cleanup.yml"] if role == "release_kiosk" else ["cleanup.yml"],
                 )
-                if role == "release_kiosk":
-                    self.assertIn("release_torque_cutover", " ".join(outer["always"][0]["when"]))
 
     def test_pi3_recovers_failures_after_stopping_before_transfer(self) -> None:
         prepare_tasks = yaml.safe_load(
