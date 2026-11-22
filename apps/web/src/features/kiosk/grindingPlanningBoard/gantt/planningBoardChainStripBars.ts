@@ -7,6 +7,11 @@ import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export type ChainStripBar = Pick<NormalGanttBar, 'item' | 'resource'>;
 
+/** 分割した片は親の行、それ以外は自分の行を工程グループのキーにする。 */
+export function planningBoardProcessGroupKey(item: Pick<GrindingPlanningBoardItem, 'kind' | 'parentItemId' | 'itemId'>): string {
+  return item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
+}
+
 export function compareChainStripBars(a: ChainStripBar, b: ChainStripBar): number {
   return compareProcessOrder(a.item.processOrder, b.item.processOrder) || (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity) || a.item.itemId.localeCompare(b.item.itemId);
 }

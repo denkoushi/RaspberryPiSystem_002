@@ -1,7 +1,9 @@
+import { readProductionBuildConfig } from '../../config/productionBuildConfig';
+
 const FULL_RELEASE_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const VERIFICATION_ID_PATTERN = /^[0-9a-f]{32}$/;
 
-interface DeployVerificationIdentity {
+export interface DeployVerificationIdentity {
   isMaintenance: boolean;
   phase?: string;
   desiredReleaseSha?: string;
@@ -51,4 +53,3 @@ export function resolveKioskReadyChallenge(
     ? { releaseSha: compiledReleaseSha, verificationId: challenge.verificationId }
     : null;
 }
-import { readProductionBuildConfig } from '../../config/productionBuildConfig';

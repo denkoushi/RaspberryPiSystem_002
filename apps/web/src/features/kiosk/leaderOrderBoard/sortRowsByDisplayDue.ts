@@ -1,13 +1,7 @@
+import { toStableNumber } from '../productionSchedule/displayRank';
 import { compareDisplayDueDateForSort } from '../productionSchedule/plannedDueDisplay';
 
 import type { LeaderBoardRow } from './types';
-
-const toStableNumber = (value: string): number => {
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return Number.MAX_SAFE_INTEGER;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
-};
 
 /**
  * 納期（displayDue）昇順＋製番・製番内番号・工順・id の安定タイブレーク。

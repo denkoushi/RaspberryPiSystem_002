@@ -2,6 +2,7 @@ import { useLayoutEffect, useState } from 'react';
 
 import { pageZoom } from '../pageZoom';
 
+import { planningBoardProcessGroupKey } from './planningBoardChainStripBars';
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
 
 import type { NormalGanttBar as GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -77,7 +78,7 @@ export function planningBoardChainPairs(bars: GanttBar[], view: PlanningBoardCha
     if (bar.item.pieceId) lastIntervalByPiece.set(bar.item.pieceId, bar.item.itemId);
   }
   for (const bar of bars) {
-    const key = bar.item.kind === 'piece' && bar.item.parentItemId ? bar.item.parentItemId : bar.item.itemId;
+    const key = planningBoardProcessGroupKey(bar.item);
     const process = processes.get(key);
     if (process) process.push(bar);
     else processes.set(key, [bar]);

@@ -1,4 +1,5 @@
 import { isFullReleaseSha } from './kioskReleaseIdentity';
+import { isKioskPath } from './kioskSeamlessUpdate';
 
 const CACHE_BUST_PARAMETER = '__raspi_web_runtime_recovery';
 const DYNAMIC_IMPORT_PATTERNS = [
@@ -61,10 +62,6 @@ export function isKnownDynamicImportFailure(error: unknown): boolean {
   const { name, message } = errorNameAndMessage(error);
   if (name === 'ChunkLoadError') return true;
   return DYNAMIC_IMPORT_PATTERNS.some((pattern) => pattern.test(message));
-}
-
-function isKioskPath(pathname: string): boolean {
-  return pathname === '/kiosk' || pathname.startsWith('/kiosk/');
 }
 
 function exactRecord(value: unknown): value is RecoveryAttemptRecord {
