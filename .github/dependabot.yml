@@ -48,6 +48,19 @@ updates:
       - dependency-name: "mcr.microsoft.com/playwright"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
+  # CI の Ansible。本番の Pi5(Debian の apt 版)と同じ系列に留めるため、修正版だけを提案する。
+  - package-ecosystem: pip
+    directory: /.github/ansible-ci
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "ansible-core"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
   - package-ecosystem: pip
     directory: /clients/torque-agent
     schedule:

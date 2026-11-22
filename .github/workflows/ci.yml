@@ -513,7 +513,7 @@ jobs:
       - name: Install Ansible
         run: |
           set -euo pipefail
-          python3 -m pip install --user ansible-core
+          python3 -m pip install --user -r .github/ansible-ci/requirements.txt
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           command -v ansible-playbook
 
@@ -866,7 +866,7 @@ jobs:
       - name: Install Ansible renderer
         run: |
           set -euo pipefail
-          python3 -m pip install --user ansible-core
+          python3 -m pip install --user -r .github/ansible-ci/requirements.txt
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Render and seal non-secret production build inputs
