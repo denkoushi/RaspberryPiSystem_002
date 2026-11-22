@@ -1,120 +1,120 @@
 # docker.env.j2 にあるが、標準デプロイ(Pi5)では API の環境ファイルへ書かれないキー。
 # 形式: KEY  # 理由。キーを書き込み一覧へ足したら、ここから消す。
 
-ACTUAL_HOURS_SHARED_FALLBACK_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ADMIN_ALLOW_NETS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ADMIN_MFA_REQUIRED  # 既存のずれ。本番強制は依頼者判断待ち
-ALERTS_DB_DISPATCHER_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ALERTS_DB_INGEST_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ALERTS_DISPATCHER_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ALERTS_DISPATCHER_MODE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ALERTS_SLACK_WEBHOOK_DEPLOY  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ALERTS_SLACK_WEBHOOK_OPS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ALERTS_SLACK_WEBHOOK_SECURITY  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-ALERTS_SLACK_WEBHOOK_SUPPORT  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+ACTUAL_HOURS_SHARED_FALLBACK_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ADMIN_ALLOW_NETS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ADMIN_MFA_REQUIRED  # 本番に無い(コード既定 false)。設定済みの人は毎回コードを聞かれるので、2026-11-22 に保留にした
+ALERTS_DB_DISPATCHER_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ALERTS_DB_INGEST_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ALERTS_DISPATCHER_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ALERTS_DISPATCHER_MODE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ALERTS_SLACK_WEBHOOK_DEPLOY  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ALERTS_SLACK_WEBHOOK_OPS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ALERTS_SLACK_WEBHOOK_SECURITY  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+ALERTS_SLACK_WEBHOOK_SUPPORT  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 API_RUNTIME_GID  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 API_RUNTIME_UID  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-APP_DATABASE_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-BACKUP_RESTORE_DATABASE_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+APP_DATABASE_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+BACKUP_RESTORE_DATABASE_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 BACKUP_SSH_KNOWN_HOSTS_HOST_PATH  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 BACKUP_SSH_PRIVATE_KEY_HOST_PATH  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-BUSINESS_HERMES_API_KEY  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-BUSINESS_HERMES_BASE_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+BUSINESS_HERMES_API_KEY  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+BUSINESS_HERMES_BASE_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 BUSINESS_HERMES_CHAT_CONFIG_FILE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 BUSINESS_HERMES_CHAT_CONTEXT_FILE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 BUSINESS_HERMES_CHAT_EGRESS_IMAGE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-BUSINESS_HERMES_CHAT_EGRESS_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-BUSINESS_HERMES_CHAT_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+BUSINESS_HERMES_CHAT_EGRESS_TIMEOUT_MS  # 本番に無い。コード既定が雛形と同じ 60000 なので影響なし
+BUSINESS_HERMES_CHAT_ENABLED  # 本番に無い。API はこの値を読まない(compose 用)ので影響なし
 BUSINESS_HERMES_CHAT_IMAGE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 BUSINESS_HERMES_CHAT_NO_BUNDLED_SKILLS_FILE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 BUSINESS_HERMES_CHAT_RUNTIME_ENV_FILE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 BUSINESS_HERMES_CHAT_SKILLS_DIR  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 BUSINESS_HERMES_CHAT_SOUL_FILE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 BUSINESS_HERMES_EGRESS_IMAGE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-BUSINESS_HERMES_EGRESS_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-BUSINESS_HERMES_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+BUSINESS_HERMES_EGRESS_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+BUSINESS_HERMES_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 BUSINESS_HERMES_IMAGE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-BUSINESS_HERMES_MODEL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-BUSINESS_HERMES_PROVIDER  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+BUSINESS_HERMES_MODEL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+BUSINESS_HERMES_PROVIDER  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 BUSINESS_HERMES_RUNTIME_ENV_FILE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-BUSINESS_HERMES_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-BUSINESS_HERMES_WEB_BASE_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_EMBEDDING_HEALTH_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_METRICS_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_PROBE_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DGX_RESOURCE_SPARK_HOST_STATUS_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DROPBOX_ACCESS_TOKEN  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DROPBOX_APP_KEY  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DROPBOX_APP_SECRET  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DROPBOX_BASE_PATH  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-DROPBOX_REFRESH_TOKEN  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_ADMIN_MODEL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_ADMIN_PROVIDER_ID  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_ADMIN_RUNTIME_START_PROFILE_ID  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_DOCUMENT_SUMMARY_MAX_TOKENS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_DOCUMENT_SUMMARY_MODEL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_DOCUMENT_SUMMARY_RUNTIME_START_PROFILE_ID  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_DOCUMENT_SUMMARY_TEMPERATURE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_PHOTO_LABEL_MODEL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_PHOTO_LABEL_PROVIDER_ID  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_PHOTO_LABEL_RUNTIME_START_PROFILE_ID  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_PHOTO_LABEL_VISION_MAX_TOKENS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_PHOTO_LABEL_VISION_TEMPERATURE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-INFERENCE_RUNTIME_START_PROFILE_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+BUSINESS_HERMES_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+BUSINESS_HERMES_WEB_BASE_URL  # 本番に無い。A2UI サイネージの描画が既定の 127.0.0.1:4173 を見る。書き込み一覧へ移すかは未決
+DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_EMBEDDING_HEALTH_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_METRICS_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_PROBE_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DGX_RESOURCE_SPARK_HOST_STATUS_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DROPBOX_ACCESS_TOKEN  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DROPBOX_APP_KEY  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DROPBOX_APP_SECRET  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DROPBOX_BASE_PATH  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+DROPBOX_REFRESH_TOKEN  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_ADMIN_MODEL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_ADMIN_PROVIDER_ID  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_ADMIN_RUNTIME_START_PROFILE_ID  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_DOCUMENT_SUMMARY_MAX_TOKENS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_DOCUMENT_SUMMARY_MODEL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_DOCUMENT_SUMMARY_RUNTIME_START_PROFILE_ID  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_DOCUMENT_SUMMARY_TEMPERATURE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_PHOTO_LABEL_MODEL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_PHOTO_LABEL_PROVIDER_ID  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_PHOTO_LABEL_RUNTIME_START_PROFILE_ID  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_PHOTO_LABEL_VISION_MAX_TOKENS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_PHOTO_LABEL_VISION_TEMPERATURE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+INFERENCE_RUNTIME_START_PROFILE_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 INSTALL_PLAYWRIGHT_CHROMIUM  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-JWT_ACCESS_SECRET  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-JWT_REFRESH_SECRET  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_BASE_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_MODEL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_CONTROL_START_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_CONTROL_STOP_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_CONTROL_TOKEN  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_HEALTH_BASE_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_MODE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_RUNTIME_WARM_WINDOW_TIMEZONE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-LOCAL_LLM_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+JWT_ACCESS_SECRET  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+JWT_REFRESH_SECRET  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_BASE_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_MODEL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_CONTROL_START_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_CONTROL_STOP_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_CONTROL_TOKEN  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_HEALTH_BASE_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_MODE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_RUNTIME_WARM_WINDOW_TIMEZONE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+LOCAL_LLM_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 MIGRATION_DATABASE_ENV_FILE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_WEAK_SCORE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_EMBEDDING_API_KEY  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_EMBEDDING_DIMENSION  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_EMBEDDING_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_EMBEDDING_TIMEOUT_MS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_EMBEDDING_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_ASSIST_CONVERGENCE_TOP_K  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_ASSIST_MIN_NEIGHBORS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_ASSIST_PROMPT_MAX_LABELS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_ASSIST_QUERY_NEIGHBOR_LIMIT  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_FIRST_PASS_STRICT_MODE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_FIRST_PASS_VISION_MAX_TOKENS  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_LABEL_FIRST_PASS_VISION_TEMPERATURE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_SIMILARITY_MAX_CANDIDATES  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PART_MEASUREMENT_DRAWING_OCR_RAPIDOCR_WEAK_SCORE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_EMBEDDING_API_KEY  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_EMBEDDING_DIMENSION  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_EMBEDDING_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_EMBEDDING_TIMEOUT_MS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_EMBEDDING_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_ASSIST_CONVERGENCE_TOP_K  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_ASSIST_MIN_NEIGHBORS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_ASSIST_PROMPT_MAX_LABELS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_ASSIST_QUERY_NEIGHBOR_LIMIT  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_FIRST_PASS_STRICT_MODE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_FIRST_PASS_VISION_MAX_TOKENS  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_LABEL_FIRST_PASS_VISION_TEMPERATURE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_SIMILARITY_MAX_CANDIDATES  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 PI5_BACKUP_DIR  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 PI5_BASE_COMPOSE_PROJECT  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 PI5_BLUE_GREEN_CONFIG_DIR  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
@@ -126,10 +126,10 @@ PI5_VOLUME_PREFIX  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメ�
 POSTGRES_DB  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 POSTGRES_SUPERUSER_PASSWORD_FILE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 SERVER_IP  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
-SIGNAGE_LOAN_GRID_ENGINE  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-SIGNAGE_PLAYWRIGHT_DEVICE_SCALE_FACTOR  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-SIGNAGE_WEB_CAPTURE_USERNAME  # 2026-11-22 時点の既存のずれ。棚卸しは別件
-SLACK_KIOSK_SUPPORT_WEBHOOK_URL  # 2026-11-22 時点の既存のずれ。棚卸しは別件
+SIGNAGE_LOAN_GRID_ENGINE  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+SIGNAGE_PLAYWRIGHT_DEVICE_SCALE_FACTOR  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
+SIGNAGE_WEB_CAPTURE_USERNAME  # 本番に無い。inventory にも値が無く、届いても空
+SLACK_KIOSK_SUPPORT_WEBHOOK_URL  # 本番には 2026-08-04 の値で入っている。値を変えるときは書き込み一覧へ移す
 VITE_AGENT_WS_MODE  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 VITE_AGENT_WS_URL  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
 VITE_API_BASE_URL  # Pi5 API 以外向け(VITE_*、compose 用 PI5_* ・イメージ・ファイルパスなど)
