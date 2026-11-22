@@ -1,24 +1,16 @@
 import pathlib
+import sys
 import unittest
 
 import yaml
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from ansible_task_tree import iter_tasks  # noqa: E402
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 ANSIBLE = ROOT / "infrastructure/ansible"
 ASSERT_MODULES = ("ansible.builtin.assert", "assert")
-BLOCK_KEYS = ("block", "rescue", "always", "tasks", "pre_tasks", "post_tasks", "handlers")
-
-
-def iter_tasks(node):
-    if isinstance(node, list):
-        for item in node:
-            yield from iter_tasks(item)
-    elif isinstance(node, dict):
-        yield node
-        for key in BLOCK_KEYS:
-            if key in node:
-                yield from iter_tasks(node[key])
 
 
 def task_files():

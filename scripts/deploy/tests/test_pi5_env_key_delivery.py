@@ -4,17 +4,26 @@
 雛形に足して書き込み一覧に足し忘れる事故が過去に3回あった。
 """
 import re
+import sys
 import unittest
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ansible_task_tree import iter_tasks  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = ROOT / "infrastructure/ansible/templates/docker.env.j2"
 TASKS_DIR = ROOT / "infrastructure/ansible/roles/release_pi5/tasks"
 ALLOWLIST = Path(__file__).resolve().parent / "fixtures/pi5-env-undelivered-allowlist.txt"
 
-# path がこれらを含む lineinfile を「Pi5 API の環境ファイルへの書き込み」とみなす
+# path がこれらを含む lineinfile を「Pi5 API の環境ファイルへの書き込み」とみなす。
+# 試行用・候補用も数えるのは、どれも API の環境ファイルになるため:
+# - release_pi5_trial_maintenance_env_file は hermes-search-trial-maintenance-mutate.yml で
+#   release_pi5_chat_env_file を指す
+# - release_pi5_candidate_env_file は prepare.yml で PI5_ENV_FILE(API の env_file)になり、
+#   business-hermes-chat-prepare.yml で永続の release_pi5_chat_env_file へコピーされる
 ENV_PATH_MARKERS = (
     "release_pi5_chat_env_file",
     "release_pi5_trial_maintenance_env_file",
@@ -41,19 +50,10 @@ def template_keys(text):
     return keys
 
 
-def _walk_tasks(tasks):
-    for task in tasks or []:
-        if not isinstance(task, dict):
-            continue
-        yield task
-        for section in ("block", "rescue", "always"):
-            yield from _walk_tasks(task.get(section))
-
-
 def written_keys_from_yaml(text):
     """YAML 文字列から、Pi5 API 環境ファイルへ書く lineinfile のキーを集める。"""
     keys = set()
-    for task in _walk_tasks(yaml.safe_load(text)):
+    for task in iter_tasks(yaml.safe_load(text)):
         spec = task.get("ansible.builtin.lineinfile") or task.get("lineinfile")
         if not isinstance(spec, dict):
             continue
