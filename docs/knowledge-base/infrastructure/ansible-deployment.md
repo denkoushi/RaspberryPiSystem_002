@@ -2936,6 +2936,9 @@ ensure_local_repo_ready_for_deploy() {
   - 対策: preflightのpingは **`ansible_become=false` を強制**してsudoを使わない（スクリプト側で固定）。
 - また、Pi3が **`Connection timed out during banner exchange`** になる場合（Tailscale pingは通るがSSHだけ不応答）は、Pi3側で `sshd` が応答不能になっている可能性があり、**Pi3再起動で復旧**するケースがある。標準手順の「接続テスト」が通ることを確認してからデプロイを再実行する。
 
+**追加知見（2026-11-22）**:
+- `Timeout (12s) waiting for privilege escalation prompt` の 12 秒は ssh 接続プラグインの `timeout`(既定 10 秒)+ 2 秒。`ansible_become_timeout` という変数は効かない。Pi3 に `ansible_ssh_timeout: 30` を入れた(run `20261122-064748-619fbc` の表示ユニット確認で再発したため)。
+
 **調査結果（2026-01-30）**:
 - デプロイログ（`/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260130-170740-3634.log`）を分析
 - `post_tasks`フェーズの最後の2タスクで`unreachable`が発生

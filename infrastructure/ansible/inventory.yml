@@ -597,8 +597,9 @@ all:
               # Pi5 証明書の固定(段階有効化の1回目)
               client_server_cert_pin_enabled: true
               ansible_user: signageras3
-              # Pi3 は負荷時に sudo 応答が遅れ、既定の become 待ちで UNREACHABLE になり得る
-              ansible_become_timeout: 120
+              # Pi3 は負荷時に sudo 応答が遅れる。sudo の応答待ちは接続の timeout + 2 秒(既定 12 秒)で、
+              # ansible_become_timeout は効かない(run 20261122-064748-619fbc で 12 秒切れ、KB-216)
+              ansible_ssh_timeout: 30
               tailscale_enabled: true
               ansible_command_timeout: 1800
               # デバイスタイプ: Pi3（メモリ416MB、lightdm停止が必要）
