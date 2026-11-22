@@ -17,5 +17,10 @@ export const inspectionDrawingEnvShape = {
   INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED: z
     .preprocess((v) => typeof v === 'string' ? v.trim().toLowerCase() : v, z.enum(['true', 'false']).default('false'))
     .transform((v) => v === 'true'),
+  // Comma-separated non-secret device identifiers (ClientDevice.name or statusClientId) that may see baseline-v1 proposals.
+  INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS: z
+    .string()
+    .default('')
+    .transform((v) => v.split(',').map((entry) => entry.trim()).filter((entry) => entry !== '')),
   INSPECTION_DRAWING_TRANSFER_JEV_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(20000),
 };

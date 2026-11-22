@@ -14,6 +14,7 @@ import {
   PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION
 } from '../../services/part-measurement/part-measurement-drawing-dimension-map-payload.js';
 import { SIBLING_MATCH_VERSION } from '../../services/part-measurement/part-measurement-drawing-sibling-match.js';
+import { importBaselinePlacementProposals } from '../../services/part-measurement/part-measurement-drawing-baseline-placement-import.js';
 import { PartMeasurementDrawingPlacementService, getPartMeasurementDrawingPlacementService } from '../../services/part-measurement/part-measurement-drawing-placement.service.js';
 
 // Uses the migrated CI Postgres database, like part-measurement.integration.test.ts.
@@ -311,5 +312,41 @@ describe('placement proposals API / Postgres', () => {
     const ensure = vi.spyOn(service, 'ensureRun').mockResolvedValue({ status: 'map-pending', run: null });
     await service.backfill(1000);
     expect(ensure.mock.calls.map(([id]) => id)).not.toContain(targetId);
+  });
+
+  it('serves precomputed baseline proposals only to allowlisted devices and saves their decisions', async () => {
+    const baseline = {
+      version: 'baseline-v1' as const,
+      drawings: [{ visualTemplateId: targetId, imageSha256: fingerprint(), proposals: [{
+        sortOrder: 1, kind: 'dia', measurementLabel: '外径', reason: 'Φ10', nominalValue: 10, lowerLimit: 9.9, upperLimit: 10.1,
+        markerXRatio: 0.4, markerYRatio: 0.3, anchorXRatio: 0.3, anchorYRatio: 0.35, leader: null
+      }] }]
+    };
+    const headers = { 'x-client-key': client.apiKey };
+    const before = (await app.inject({ method: 'GET', url: url(), headers })).json();
+    const dry = await importBaselinePlacementProposals(baseline, { apply: false });
+    expect(dry.drawings[0].result).toBe('create');
+    expect(await prisma.partMeasurementDrawingPlacementRun.count({ where: { visualTemplateId: targetId, placementVersion: 'baseline-v1' } })).toBe(0);
+    await importBaselinePlacementProposals(baseline, { apply: true });
+    await importBaselinePlacementProposals(baseline, { apply: true });
+    expect(await prisma.partMeasurementDrawingPlacementProposal.count({ where: { visualTemplateId: targetId, run: { placementVersion: 'baseline-v1' } } })).toBe(1);
+    const original = env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS;
+    try {
+      env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = [];
+      expect((await app.inject({ method: 'GET', url: url(), headers })).json()).toEqual(before);
+      env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = [client.name];
+      expect((await app.inject({ method: 'GET', url: url(), headers: createAuthHeader(viewer.token) })).json()).toEqual(before);
+      const served = (await app.inject({ method: 'GET', url: url(), headers })).json();
+      expect(served).toMatchObject({ status: 'ready', sourceDrawingName: null, unplaced: [] });
+      expect(served.proposals).toEqual([expect.objectContaining({
+        measurementLabel: '外径', markerXRatio: 0.4, markerYRatio: 0.3, anchorXRatio: 0.3, anchorYRatio: 0.35, dimensionText: null, markerAtRatio: true
+      })]);
+      const decision = await app.inject({ method: 'POST', url: `${url()}/decisions`, headers, payload: { approvedIds: [served.proposals[0].id] } });
+      expect(decision.json()).toEqual({ updated: 1 });
+      const skipped = await importBaselinePlacementProposals(baseline, { apply: true });
+      expect(skipped.drawings[0]).toMatchObject({ result: 'skipped', reason: 'has-decided-proposals' });
+    } finally {
+      env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = original;
+    }
   });
 });

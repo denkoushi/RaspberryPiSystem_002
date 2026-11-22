@@ -21,6 +21,8 @@ export type DrawingPlacementProposal = DrawingPlacementRow & {
   anchorXRatio: number | null;
   anchorYRatio: number | null;
   dimensionText: string | null;
+  /** Baseline proposals only: draw the marker at markerX/YRatio; the anchor is the callout tip. */
+  markerAtRatio?: true;
 };
 
 export type DrawingPlacementUnplaced = DrawingPlacementRow & { reason: 'no-candidate' };

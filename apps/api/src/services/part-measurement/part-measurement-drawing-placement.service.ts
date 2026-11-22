@@ -9,6 +9,7 @@ import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION } from './part-measurement-drawing-dimension-map-payload.js';
 import { getPartMeasurementDrawingDimensionMapService } from './part-measurement-drawing-dimension-map.service.js';
+import { BASELINE_PLACEMENT_VERSION } from './part-measurement-drawing-baseline-placement-import.js';
 import { getPartMeasurementDrawingOcrService } from './part-measurement-drawing-ocr.service.js';
 import {
   chooseSourceSibling,
@@ -59,6 +60,8 @@ export type PartMeasurementDrawingPlacementEditorResult = {
     anchorXRatio: number | null;
     anchorYRatio: number | null;
     dimensionText: string | null;
+    /** Present only on baseline-v1 rows: the marker is drawn at markerX/YRatio and the anchor is the callout tip. */
+    markerAtRatio?: true;
   }[];
   unplaced: {
     id: string;
@@ -86,6 +89,7 @@ const runResult = (run: PlacementRun): EnsureRunResult => ({
 });
 const numeric = (value: Prisma.Decimal | null): number | null => value === null ? null : value.toNumber();
 const log = logger.child({ component: 'partMeasurementDrawingPlacement' });
+type EditorProposal = PartMeasurementDrawingPlacementEditorResult['proposals'][number];
 
 function sourceItems(items: PartMeasurementTemplateItem[]): PlacementSourceItem[] {
   return items.flatMap((item) => {
@@ -104,6 +108,43 @@ function sourceItems(items: PartMeasurementTemplateItem[]): PlacementSourceItem[
       calloutTipXRatio: numeric(item.calloutTipXRatio),
       calloutTipYRatio: numeric(item.calloutTipYRatio)
     }];
+  });
+}
+
+type PlacementProposalRow = PlacementRun['proposals'][number];
+function toEditorProposal(row: PlacementProposalRow): EditorProposal {
+  return {
+    id: row.id, sortOrder: row.sortOrder, measurementLabel: row.measurementLabel,
+    measurementPoint: row.measurementPoint, decimalPlaces: row.decimalPlaces,
+    nominalValue: row.nominalValue.toNumber(), lowerLimit: numeric(row.lowerLimit), upperLimit: numeric(row.upperLimit),
+    depthMode: row.depthMode === 'THROUGH' ? 'through' : 'measured',
+    valueKind: row.valueKind === 'JUDGEMENT' ? 'judgement' : 'numeric',
+    markerXRatio: numeric(row.markerXRatio), markerYRatio: numeric(row.markerYRatio),
+    anchorXRatio: row.dimension && typeof row.dimension === 'object' && 'xRatio' in row.dimension &&
+      typeof row.dimension.xRatio === 'number' ? row.dimension.xRatio : null,
+    anchorYRatio: row.dimension && typeof row.dimension === 'object' && 'yRatio' in row.dimension &&
+      typeof row.dimension.yRatio === 'number' ? row.dimension.yRatio : null,
+    dimensionText: row.dimension && typeof row.dimension === 'object' && 'text' in row.dimension &&
+      typeof row.dimension.text === 'string' ? row.dimension.text : null
+  };
+}
+
+/** Twin baseline proposals (same label and nominal in different views) stay separate when their markers are farther apart than this (ratio units). */
+export const BASELINE_TWIN_NEAR_DISTANCE = 0.06;
+
+export type BaselineExistingItem = PlacementExistingItem & { markerXRatio: number | null; markerYRatio: number | null };
+
+/** True when an existing item with the same label and nominal sits near the proposal's marker or anchor; items without a marker count as near. */
+export function baselineItemAlreadyExists(
+  proposal: { measurementLabel: string; nominalValue: number; markerXRatio: number | null; markerYRatio: number | null; anchorXRatio: number | null; anchorYRatio: number | null },
+  existing: readonly BaselineExistingItem[]
+): boolean {
+  return existing.some((item) => {
+    if (item.measurementLabel !== proposal.measurementLabel || item.nominalValue !== proposal.nominalValue) return false;
+    if (item.markerXRatio === null || item.markerYRatio === null) return true;
+    const near = (x: number | null, y: number | null) =>
+      x !== null && y !== null && Math.hypot(item.markerXRatio! - x, item.markerYRatio! - y) <= BASELINE_TWIN_NEAR_DISTANCE;
+    return near(proposal.markerXRatio, proposal.markerYRatio) || near(proposal.anchorXRatio, proposal.anchorYRatio);
   });
 }
 
@@ -285,7 +326,51 @@ export class PartMeasurementDrawingPlacementService {
     return items.map((item) => ({ measurementLabel: item.measurementLabel, nominalValue: numeric(item.nominalValue) }));
   }
 
-  async listForEditor(visualTemplateId: string, processGroup: PartMeasurementProcessGroup): Promise<PartMeasurementDrawingPlacementEditorResult> {
+  private async baselineExistingItems(visualTemplateId: string, processGroup: PartMeasurementProcessGroup): Promise<BaselineExistingItem[]> {
+    const items = await prisma.partMeasurementTemplateItem.findMany({
+      where: { template: { visualTemplateId, isActive: true, processGroup } },
+      select: { measurementLabel: true, nominalValue: true, markerXRatio: true, markerYRatio: true }
+    });
+    return items.map((item) => ({
+      measurementLabel: item.measurementLabel, nominalValue: numeric(item.nominalValue),
+      markerXRatio: item.markerXRatio == null ? null : item.markerXRatio.toNumber(),
+      markerYRatio: item.markerYRatio == null ? null : item.markerYRatio.toNumber()
+    }));
+  }
+
+  /** True only when the allowlist is configured and one of the caller's device identifiers is on it. */
+  private baselineAllowed(clientIdentifiers: readonly string[] | undefined): boolean {
+    const allowed = env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS;
+    return Array.isArray(allowed) && allowed.length > 0 && (clientIdentifiers ?? []).some((id) => allowed.includes(id));
+  }
+
+  /** Precomputed baseline proposals. Never creates a run and never triggers inference. */
+  private async listBaseline(visualTemplateId: string, processGroup: PartMeasurementProcessGroup): Promise<PartMeasurementDrawingPlacementEditorResult | null> {
+    const drawingImageFingerprint = await this.drawingOcrService.getCurrentFingerprint(visualTemplateId);
+    const run = await prisma.partMeasurementDrawingPlacementRun.findUnique({
+      where: { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: {
+        visualTemplateId, drawingImageFingerprint, analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
+        placementVersion: BASELINE_PLACEMENT_VERSION
+      } },
+      include: runInclude
+    });
+    if (!run) return null;
+    const existingItems = await this.baselineExistingItems(visualTemplateId, processGroup);
+    const proposals = run.proposals
+      .filter((row) => row.status === 'PROPOSED')
+      .map((row) => ({ ...toEditorProposal(row), markerAtRatio: true as const }))
+      .filter((row) => !baselineItemAlreadyExists(row, existingItems));
+    if (proposals.length === 0) return null;
+    return { status: 'ready', sourceDrawingName: null, proposals, unplaced: [] };
+  }
+
+  async listForEditor(visualTemplateId: string, processGroup: PartMeasurementProcessGroup, options: {
+    clientIdentifiers?: readonly string[];
+  } = {}): Promise<PartMeasurementDrawingPlacementEditorResult> {
+    if (this.baselineAllowed(options.clientIdentifiers)) {
+      const baseline = await this.listBaseline(visualTemplateId, processGroup);
+      if (baseline) return baseline;
+    }
     const result = await this.ensureRun(visualTemplateId, { processGroup, allowInference: false });
     if (!result.run) return { status: result.status, sourceDrawingName: null, proposals: [], unplaced: [] };
     const existingItems = await this.existingItems(visualTemplateId, processGroup);
@@ -296,20 +381,7 @@ export class PartMeasurementDrawingPlacementService {
         .filter((row) => row.status === 'PROPOSED' && !placementItemAlreadyExists({
           measurementLabel: row.measurementLabel, nominalValue: row.nominalValue.toNumber()
         }, existingItems))
-        .map((row) => ({
-          id: row.id, sortOrder: row.sortOrder, measurementLabel: row.measurementLabel,
-          measurementPoint: row.measurementPoint, decimalPlaces: row.decimalPlaces,
-          nominalValue: row.nominalValue.toNumber(), lowerLimit: numeric(row.lowerLimit), upperLimit: numeric(row.upperLimit),
-          depthMode: row.depthMode === 'THROUGH' ? 'through' : 'measured',
-          valueKind: row.valueKind === 'JUDGEMENT' ? 'judgement' : 'numeric',
-          markerXRatio: numeric(row.markerXRatio), markerYRatio: numeric(row.markerYRatio),
-          anchorXRatio: row.dimension && typeof row.dimension === 'object' && 'xRatio' in row.dimension &&
-            typeof row.dimension.xRatio === 'number' ? row.dimension.xRatio : null,
-          anchorYRatio: row.dimension && typeof row.dimension === 'object' && 'yRatio' in row.dimension &&
-            typeof row.dimension.yRatio === 'number' ? row.dimension.yRatio : null,
-          dimensionText: row.dimension && typeof row.dimension === 'object' && 'text' in row.dimension &&
-            typeof row.dimension.text === 'string' ? row.dimension.text : null
-        })),
+        .map((row) => toEditorProposal(row)),
       unplaced: result.run.proposals.filter((row) => row.status === 'UNPLACED').map((row) => ({
         id: row.id, measurementLabel: row.measurementLabel,
         measurementPoint: row.measurementPoint, decimalPlaces: row.decimalPlaces,

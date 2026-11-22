@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import sharp from 'sharp';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   env: { INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED: false, INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED: false, INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED: false },
@@ -705,5 +705,112 @@ describe('layout placement', () => {
     expect(sql.join('')).toContain('CASE p."processGroup"');
     expect(values).toContain('layout-v1:CUTTING');
     expect(values).toContain('semantic-v1:GRINDING');
+  });
+});
+
+describe('baseline placement', () => {
+  const baselineKey = { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: {
+    visualTemplateId: 'target', drawingImageFingerprint: 'target-hash',
+    analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION, placementVersion: 'baseline-v1'
+  } };
+  const baselineRun = () => run({
+    sourceTemplateId: null, sourceVisualTemplate: null,
+    proposals: [
+      { ...proposal(), id: 'baseline-1', dimension: { text: 'Φ10', xRatio: 0.2, yRatio: 0.3, kind: 'dia', leader: null } },
+      { ...proposal(), id: 'baseline-saved', measurementLabel: '幅' },
+      { ...proposal(), id: 'baseline-approved', status: 'APPROVED' }
+    ]
+  });
+  afterEach(() => { delete (mocks.env as Record<string, unknown>).INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS; });
+
+  const normal = () => {
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(run());
+  };
+
+  it.each([
+    ['env unset', undefined, ['kiosk-a']],
+    ['env empty', [], ['kiosk-a']],
+    ['client not listed', ['kiosk-a'], ['kiosk-b']],
+    ['no client identity', ['kiosk-a'], undefined]
+  ])('returns exactly today\'s response when %s', async (_name, allow, identifiers) => {
+    if (allow) mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = allow as never;
+    normal();
+    const baseline = await service.listForEditor('target', 'CUTTING');
+    const result = await service.listForEditor('target', 'CUTTING', { clientIdentifiers: identifiers });
+    expect(result).toEqual(baseline);
+    expect(result.proposals[0]).not.toHaveProperty('markerAtRatio');
+    expect(mocks.ocr.getCurrentFingerprint).not.toHaveBeenCalled();
+  });
+
+  it('returns baseline proposals with markerAtRatio for an allowlisted client, without inference or ensureRun', async () => {
+    mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(baselineRun());
+    db.partMeasurementTemplateItem.findMany.mockResolvedValue([{ measurementLabel: '幅', nominalValue: decimal(10) }]);
+    const result = await service.listForEditor('target', 'CUTTING', { clientIdentifiers: ['x', 'kiosk-a'] });
+    expect(result).toEqual({
+      status: 'ready', sourceDrawingName: null, unplaced: [],
+      proposals: [{
+        id: 'baseline-1', sortOrder: 1, measurementPoint: '穴A', decimalPlaces: 3, measurementLabel: '長さ', nominalValue: 10,
+        lowerLimit: 9.123456, upperLimit: 10.987654, depthMode: 'measured', valueKind: 'numeric',
+        markerXRatio: 0.5, markerYRatio: 0.5, anchorXRatio: 0.2, anchorYRatio: 0.3, dimensionText: 'Φ10', markerAtRatio: true
+      }]
+    });
+    expect(db.partMeasurementDrawingPlacementRun.findUnique).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ where: baselineKey }));
+    expect(mocks.ocr.getCurrentStatus).not.toHaveBeenCalled();
+    expect(mocks.maps.getCompletedPayload).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.partMeasurementDrawingPlacementRun.create).not.toHaveBeenCalled();
+    expect(mocks.vision.completeMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps a twin proposal far from an existing item and hides a near one', async () => {
+    mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(run({
+      sourceTemplateId: null, sourceVisualTemplate: null,
+      proposals: [
+        { ...proposal(), id: 'near', dimension: { xRatio: 0.2, yRatio: 0.3 } },
+        { ...proposal(), id: 'far', markerXRatio: decimal(0.9), markerYRatio: decimal(0.9), dimension: { xRatio: 0.8, yRatio: 0.8 } }
+      ]
+    }));
+    db.partMeasurementTemplateItem.findMany.mockResolvedValue([
+      { measurementLabel: '長さ', nominalValue: decimal(10), markerXRatio: decimal(0.52), markerYRatio: decimal(0.5) }
+    ]);
+    const result = await service.listForEditor('target', 'CUTTING', { clientIdentifiers: ['kiosk-a'] });
+    expect(result.proposals.map((row) => row.id)).toEqual(['far']);
+  });
+
+  it('falls back to the sibling path when every baseline proposal is already approved', async () => {
+    mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
+    db.partMeasurementDrawingPlacementRun.findUnique.mockImplementation(async ({ where }) =>
+      where.visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion.placementVersion === 'baseline-v1'
+        ? run({ sourceTemplateId: null, sourceVisualTemplate: null, proposals: [{ ...proposal(), id: 'b1' }] })
+        : run());
+    db.partMeasurementTemplateItem.findMany.mockResolvedValue([{ measurementLabel: '長さ', nominalValue: decimal(10) }]);
+    const result = await service.listForEditor('target', 'CUTTING', { clientIdentifiers: ['kiosk-a'] });
+    expect(result.sourceDrawingName).toBe(source.name);
+    expect(result.proposals.every((row) => !('markerAtRatio' in row))).toBe(true);
+  });
+
+  it('falls back to today\'s behaviour for an allowlisted client without a baseline run', async () => {
+    mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
+    db.partMeasurementDrawingPlacementRun.findUnique.mockImplementation(async ({ where }) =>
+      where.visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion.placementVersion === 'baseline-v1' ? null : run());
+    const result = await service.listForEditor('target', 'CUTTING', { clientIdentifiers: ['kiosk-a'] });
+    expect(result.sourceDrawingName).toBe(source.name);
+    expect(result.proposals).toHaveLength(1);
+    expect(result.proposals[0]).not.toHaveProperty('markerAtRatio');
+  });
+
+  it('saves decisions on baseline proposal ids through the same id-scoped update', async () => {
+    db.partMeasurementDrawingPlacementProposal.updateMany.mockResolvedValue({ count: 1 });
+    await service.recordDecisions('target', { approvedIds: ['baseline-1'], rejectedIds: ['baseline-2'] });
+    expect(db.partMeasurementDrawingPlacementProposal.updateMany).toHaveBeenCalledWith({
+      where: { visualTemplateId: 'target', id: { in: ['baseline-1'] }, status: 'PROPOSED' },
+      data: expect.objectContaining({ status: 'APPROVED' })
+    });
+    expect(db.partMeasurementDrawingPlacementProposal.updateMany).toHaveBeenCalledWith({
+      where: { visualTemplateId: 'target', id: { in: ['baseline-2'] }, status: 'PROPOSED' },
+      data: expect.objectContaining({ status: 'REJECTED' })
+    });
   });
 });
