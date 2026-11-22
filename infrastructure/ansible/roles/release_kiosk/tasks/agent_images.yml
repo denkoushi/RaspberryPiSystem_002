@@ -1,0 +1,64 @@
+---
+# Read-only: list the agent service containers (not one-off `docker compose run` containers) of this Pi4 (running or stopped) with the
+# image name they were created from, and write the result as JSON on the
+# controller. Nothing on the Pi4 changes.
+- name: Read the Pi4 agent containers of this Compose project
+  ansible.builtin.shell: |
+    set -euo pipefail
+    inspect_format=$'\173\173.Config.Image\175\175 \173\173.State.Status\175\175'
+    for service in {{ release_kiosk_known_agent_services | map('quote') | join(' ') }}; do
+      container_ids="$(docker ps --all \
+        --filter {{ ('label=com.docker.compose.project=' ~ release_kiosk_compose_project) | quote }} \
+        --filter "label=com.docker.compose.service=${service}" \
+        --filter "label=com.docker.compose.oneoff=False" \
+        --quiet)"
+      for container_id in ${container_ids}; do
+        # Assign first: a failing docker inspect inside a command substitution argument would not stop set -e.
+        inspected="$(docker inspect --format "${inspect_format}" "${container_id}")"
+        printf '%s %s\n' "${service}" "${inspected}"
+      done
+    done
+  args:
+    executable: /bin/bash
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+  register: release_agent_images_read
+  changed_when: false
+  tags:
+    - always
+
+- name: Check the host name for the result file
+  ansible.builtin.import_tasks: agent_result_host.yml
+
+- name: Write the agent container report on the controller
+  ansible.builtin.copy:
+    content: >-
+      {% set report = namespace(containers={}, expected={}) %}
+      {% for service in release_kiosk_known_agent_services %}
+      {% set _ = report.containers.update({service: []}) %}
+      {# Repository only: drop a digest (@sha256:...) and then a tag. #}
+      {% set _ = report.expected.update({service: release_kiosk_agent_images[service] | regex_replace('@[^@/]*$', '') | regex_replace(':[^:/]*$', '')}) %}
+      {% endfor %}
+      {% for line in release_agent_images_read.stdout_lines %}
+      {% set fields = line.split(' ') %}
+      {% set _ = report.containers[fields[0]].append({'image': fields[1], 'status': fields[2]}) %}
+      {% endfor %}
+      {{ {
+        'host': inventory_hostname,
+        'project': release_kiosk_compose_project,
+        'expectedImages': report.expected,
+        'containers': report.containers
+      } | to_json }}
+    dest: "{{ release_agent_guard_out_dir }}/{{ inventory_hostname }}.json"
+    mode: "0600"
+  delegate_to: localhost
+  vars:
+    # The controller itself, even if an inventory lists localhost as an ssh host.
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    ansible_become: false
+  become: false
+  changed_when: false
+  tags:
+    - always

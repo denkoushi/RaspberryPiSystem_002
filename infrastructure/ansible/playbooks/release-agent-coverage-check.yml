@@ -1,0 +1,20 @@
+---
+# Read-only gate run by the standard launcher before the release playbook.
+# It never connects to a host: every task is local to the controller. It is a
+# separate playbook so the release playbook's plays, tags and cleanup stay as is.
+# Every task of the play below runs on the controller (assert/debug, and copy delegated to localhost), so it needs
+# no SSH multiplexing refusal. The play vars below pin the connection to local whatever the inventory says (play vars
+# beat inventory host vars), so no task can ever open SSH; --print-plan therefore never trips over how the inventory
+# renders ansible_ssh_common_args. The SSH-argument refusal lives in release-agent-images-read.yml, the step that connects.
+- name: Check Pi4 agent coverage of the release set
+  hosts: kiosk
+  gather_facts: false
+  any_errors_fatal: false
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  tasks:
+    - name: Check agent coverage for this Pi4
+      ansible.builtin.import_role:
+        name: release_kiosk
+        tasks_from: agent_coverage

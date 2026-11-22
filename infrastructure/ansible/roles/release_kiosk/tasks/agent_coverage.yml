@@ -1,0 +1,67 @@
+---
+# Agent coverage check, run before any release mutation (see
+# playbooks/release-agent-coverage-check.yml). An enabled Pi4 agent that the
+# release set does not name is not updated by this release, so a kiosk that is
+# still on an older version would stay there. Stop unless a human has confirmed
+# the exact host/agent pair through release_allowed_missing_agents_json (a JSON string, never merged).
+- name: Check Pi4 agent coverage of the release set
+  vars:
+    release_kiosk_agents_not_updated: >-
+      {{ release_kiosk_enabled_agent_services | difference(release_kiosk_agent_services) | sort }}
+    release_kiosk_agents_allowed_here: >-
+      {{ (release_allowed_missing_agents_json | default('{}') | from_json).get(inventory_hostname, []) }}
+    release_kiosk_agents_blocked: >-
+      {{ release_kiosk_agents_not_updated | difference(release_kiosk_agents_allowed_here) | sort }}
+  block:
+    - name: Require every enabled agent to be in the release set or explicitly allowed
+      ansible.builtin.assert:
+        that:
+          - release_kiosk_agents_blocked | length == 0
+          - >-
+            (release_kiosk_agents_not_updated | length == 0)
+            or not (release_kiosk_first_install | default(false) | bool)
+        fail_msg: >-
+          Pi4 {{ inventory_hostname }} has enabled agents that this release set does not update:
+          {{ release_kiosk_agents_not_updated | join(', ') }}.
+          Deploy a commit whose release set contains them
+          {{ 'or confirm the running version of each agent as described in docs/guides/deployment.md (agent skip section)' if not (release_kiosk_first_install | default(false) | bool) else '(first install cannot skip agents)' }}.
+          {{ ('To allow after confirming: --allow-agent-skip-sha <SHA> --allow-agent-skip '
+              ~ inventory_hostname ~ ':<agent>:<T>:<project>') if not (release_kiosk_first_install | default(false) | bool) else '' }}
+        quiet: true
+      register: release_kiosk_agent_assert
+      tags:
+        - always
+
+    - name: Report agents that this release leaves at their current version
+      ansible.builtin.debug:
+        msg: >-
+          Pi4 {{ inventory_hostname }} keeps these agents at their current version by explicit allowance:
+          {{ release_kiosk_agents_not_updated | join(', ') }}.
+          Allowed but not missing from the release set: {{ release_kiosk_agents_allowed_here | difference(release_kiosk_agents_not_updated) | sort | join(', ') }}
+      when: (release_kiosk_agents_not_updated | length > 0) or (release_kiosk_agents_allowed_here | length > 0)
+      tags:
+        - always
+
+    - name: Check the host name for the result file
+      ansible.builtin.import_tasks: agent_result_host.yml
+
+    - name: Record that this Pi4 passed the agent coverage check
+      ansible.builtin.copy:
+        content: "{{ {'host': inventory_hostname, 'agentsNotUpdated': release_kiosk_agents_not_updated} | to_json }}"
+        dest: "{{ release_agent_guard_out_dir }}/{{ inventory_hostname }}.json"
+        mode: "0600"
+      delegate_to: localhost
+      vars:
+        # The controller itself, even if an inventory lists localhost as an ssh host.
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+        ansible_become: false
+      become: false
+      changed_when: false
+      # The result file is proof only if the assert really ran and passed (never when it was skipped).
+      when:
+        - release_kiosk_agent_assert is defined
+        - release_kiosk_agent_assert is succeeded
+        - release_kiosk_agent_assert is not skipped
+      tags:
+        - always

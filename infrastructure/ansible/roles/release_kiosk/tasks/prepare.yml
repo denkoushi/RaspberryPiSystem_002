@@ -4,7 +4,7 @@
     that:
       - release_sha is match('^[0-9a-f]{40}$')
       - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
-      - release_kiosk_agent_services | difference(['nfc-agent', 'barcode-agent', 'torque-agent']) | length == 0
+      - release_kiosk_agent_services | difference(release_kiosk_known_agent_services) | length == 0
       - "'nfc-agent' not in release_kiosk_agent_services or release_sha in release_kiosk_nfc_image"
       - "'barcode-agent' not in release_kiosk_agent_services or release_sha in release_kiosk_barcode_image"
       - >-
@@ -27,12 +27,7 @@
 
 - name: Select agents enabled for this Pi4
   ansible.builtin.set_fact:
-    release_kiosk_enabled_services: >-
-      {{
-        (['nfc-agent'] if (nfc_agent_client_id | default('') | string | length > 0) else [])
-        + (['barcode-agent'] if (barcode_agent_enabled | default(false) | bool) else [])
-        + (['torque-agent'] if (torque_agent_enabled | default(false) | bool) else [])
-      }}
+    release_kiosk_enabled_services: "{{ release_kiosk_enabled_agent_services }}"
     release_kiosk_requested_services: "{{ release_kiosk_agent_services | list }}"
     release_kiosk_switch_attempted: false
     release_kiosk_healthy: false
@@ -42,7 +37,7 @@
 - name: Validate an optional bounded Pi4 service allowlist
   ansible.builtin.assert:
     that:
-      - release_kiosk_service_allowlist | default([]) | difference(['nfc-agent', 'barcode-agent', 'torque-agent']) | length == 0
+      - release_kiosk_service_allowlist | default([]) | difference(release_kiosk_known_agent_services) | length == 0
       - release_kiosk_service_allowlist | default([]) | difference(release_kiosk_enabled_services) | length == 0
     fail_msg: The Pi4 service allowlist must contain only agents enabled on the selected kiosk.
 

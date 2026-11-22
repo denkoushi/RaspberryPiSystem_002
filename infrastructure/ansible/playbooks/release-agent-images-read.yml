@@ -1,0 +1,23 @@
+---
+# Read-only: report the agent containers of each selected Pi4 and write one
+# result file per host into release_agent_guard_out_dir. Changes nothing.
+- name: Read the agent containers of the selected Pi4 kiosks
+  hosts: kiosk
+  gather_facts: false
+  any_errors_fatal: false
+  # docker ps/inspect run as root on the Pi4; not left to ansible.cfg.
+  become: true
+  tasks:
+    # The Pi5 checkout inventory may expand a named group; read nothing unless the hosts are exactly the named ones.
+    - name: The selected hosts must be exactly the named kiosks
+      ansible.builtin.assert:
+        that:
+          - (ansible_play_hosts_all | sort) == (release_agent_images_expected_hosts_json | from_json | sort)
+        fail_msg: the selected hosts differ from the named kiosks
+      run_once: true
+      tags:
+        - always
+    - name: Read agent images for this Pi4
+      ansible.builtin.import_role:
+        name: release_kiosk
+        tasks_from: agent_images

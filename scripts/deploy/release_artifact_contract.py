@@ -42,6 +42,7 @@ EXPECTED_IMAGE_REPOSITORIES = {
     "web": f"{GHCR_NAMESPACE}/raspisys-web",
 }
 PI4_AGENT_SERVICES = ("nfc-agent", "barcode-agent", "torque-agent")
+SAFE_COMPOSE_PROJECT_RE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 PI4_AGENT_SERVICE_SET = frozenset(PI4_AGENT_SERVICES)
 TORQUE_AGENT_REPOSITORY = f"{GHCR_NAMESPACE}/raspisys-torque-agent"
 RELEASE_SET_REPOSITORY = f"{GHCR_NAMESPACE}/raspisys-release-set"

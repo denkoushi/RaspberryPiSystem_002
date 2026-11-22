@@ -1320,8 +1320,19 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         service_selection = next(
             task for task in prepare if task["name"] == "Select agents enabled for this Pi4"
         )
-        selection = service_selection["ansible.builtin.set_fact"]["release_kiosk_enabled_services"]
+        self.assertEqual(
+            service_selection["ansible.builtin.set_fact"]["release_kiosk_enabled_services"],
+            "{{ release_kiosk_enabled_agent_services }}",
+        )
+        role_vars = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/vars/main.yml").read_text(encoding="utf-8")
+        )
+        selection = role_vars["release_kiosk_enabled_agent_services"]
         self.assertIn("barcode_agent_enabled | default(false) | bool", selection)
+        self.assertNotIn(
+            "release_kiosk_enabled_agent_services",
+            (ANSIBLE / "roles/release_kiosk/defaults/main.yml").read_text(encoding="utf-8"),
+        )
         barcode_health = next(
             task for task in health if task["name"] == "Verify the Pi4 barcode agent"
         )

@@ -96,15 +96,25 @@ ansible-playbook -i infrastructure/ansible/inventory-staging.yml \
 
 ### 1.2 print-plan → 承認 → 実行
 
-専用Pi5/Pi4が provision 済みで、private varsの存在を内容非参照で確認でき、かつ別途承認された場合だけ、canonical wrapperのplanを作る。`--print-plan` はinventoryとAnsibleの `--list-hosts` / `--list-tasks` だけを実行し、remote host/runtimeを変更しない。ただしbranchのexact SHA解決のためGit originへ問い合わせる。
+専用Pi5/Pi4が provision 済みで、private varsの存在を内容非参照で確認でき、かつ別途承認された場合だけ、canonical wrapperのplanを作る。`--print-plan` はinventoryとAnsibleの `--list-hosts` / `--list-tasks` に加え、Pi4を選ぶ場合は判定のplaybookをローカルで実行する。判定のplaybookは端末へ接続せず、remote host/runtimeを変更しない。ただしbranchのexact SHA解決のためGit originへ問い合わせる。
 
 ```bash
 mkdir -p "$EVIDENCE_DIR"
-scripts/update-all-clients.sh <approved-branch> "$STAGING_INVENTORY" \
-  --print-plan --limit "$STAGING_LIMIT" \
-  | tee "$EVIDENCE_DIR/print-plan.json"
-shasum -a 256 "$EVIDENCE_DIR/print-plan.json" > "$EVIDENCE_DIR/print-plan.sha256"
+# errexit が無い shell でも、planが失敗したらハッシュを作らず先へ進まない。
+if scripts/update-all-clients.sh <approved-branch> "$STAGING_INVENTORY" \
+  --print-plan --limit "$STAGING_LIMIT" > "$EVIDENCE_DIR/print-plan.json"; then
+  cat "$EVIDENCE_DIR/print-plan.json"
+  shasum -a 256 "$EVIDENCE_DIR/print-plan.json" > "$EVIDENCE_DIR/print-plan.sha256"
+else
+  echo "plan failed; do not approve or execute" >&2
+  rm -f "$EVIDENCE_DIR/print-plan.json" "$EVIDENCE_DIR/print-plan.sha256"
+  false  # 失敗コードを返し、後続の手順へ進ませない
+fi
 ```
+
+Pi4を選ぶplanは、有効なagentがリリースセットに無いと判定のplaybookで止まり、JSONを出さず終了コードが0以外になる。その場合はハッシュを作らず、承認にも実行にも進まない。
+
+失敗時は上のブロックが非ゼロを返すので、そこで作業を中止する。次のコマンドや手順へ進まず、貼り付けた複数行の続きも実行しない。
 
 plan JSONの次を、CI artifact manifestと二人以上の承認者が照合する。
 
@@ -527,11 +537,23 @@ awk '/^VmRSS:|^VmHWM:/{print}' "/proc/${API_PID}/status"
 
 ```bash
 # 受入終了後にrollbackが必要な場合の承認前plan。
-scripts/update-all-clients.sh <approved-previous-branch> "$STAGING_INVENTORY" \
-  --print-plan --limit "$STAGING_LIMIT" \
-  | tee "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"
+# planが失敗(終了コードが0以外)したら、証拠ファイルを作らず承認にも実行にも進まない。
+# Pi4を選ぶplanは、判定のplaybookを端末へ接続せずに実行する。
+if scripts/update-all-clients.sh <approved-previous-branch> "$STAGING_INVENTORY" \
+  --print-plan --limit "$STAGING_LIMIT" > "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"; then
+  cat "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"
+else
+  echo "plan failed; do not approve or execute" >&2
+  rm -f "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"
+  false  # 失敗コードを返し、後続の手順へ進ませない
+fi
+```
 
-# 別途承認後に一度だけ実行し、返却された同じrun IDを確認する。
+失敗時はこのブロックが非ゼロを返すので、そこで作業を中止する。承認にも実行にも進まない。
+
+別途承認を得た後だけ、次を一度だけ実行し、返却された同じrun IDを確認する。
+
+```bash
 scripts/update-all-clients.sh <approved-previous-branch> "$STAGING_INVENTORY" \
   --limit "$STAGING_LIMIT" --detach
 scripts/update-all-clients.sh --status <rollback-run-id> --inventory "$STAGING_INVENTORY"

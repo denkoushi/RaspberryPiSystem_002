@@ -168,6 +168,10 @@ def summarize_release_journal(
             summary = "excluded offline hosts: " + " ".join(excluded)
             if excluded and summary not in summaries:
                 summaries.append(summary)
+        elif message.startswith("[agent-guard] stop "):
+            kind = _agent_guard_stop_kind(message[len("[agent-guard] stop "):])
+            if kind:
+                summaries.append(f"agent guard stopped the release: {kind}")
         elif re.fullmatch(r"(?:ok|changed|skipping): \[[A-Za-z0-9_.-]+\]", message):
             summaries.append(message.split(":", 1)[0])
         elif message.startswith(("fatal:", "failed:")):
@@ -184,6 +188,24 @@ def summarize_release_journal(
             if recap:
                 summaries.append(" ".join(recap.group(1).split()))
     return summaries
+
+
+AGENT_GUARD_STOP_KINDS = frozenset({
+    "check-failed", "check-result-missing", "check-launch-failed",
+    "reread-mismatch", "reread-unreadable", "timeout",
+})
+
+
+def _agent_guard_stop_kind(payload: str) -> str:
+    """Return the closed stop kind of the launcher's own one-line JSON, else ''."""
+    try:
+        value = json.loads(payload)
+    except (ValueError, RecursionError):
+        return ""
+    if not isinstance(value, dict) or set(value) != {"kind"}:
+        return ""
+    kind = value["kind"]
+    return kind if isinstance(kind, str) and kind in AGENT_GUARD_STOP_KINDS else ""
 
 
 def _excluded_offline_hosts(
