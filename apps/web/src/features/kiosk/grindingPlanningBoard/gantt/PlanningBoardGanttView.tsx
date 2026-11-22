@@ -18,7 +18,7 @@ import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 import { ganttResourceLabel } from './ganttResourceLabel';
 import { PlanningBoardChainLinks, planningBoardHasPieceLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
-import { compareChainStripBars, planningBoardChainStripBars } from './planningBoardChainStripBars';
+import { compareChainStripBars, planningBoardChainStripBars, planningBoardProcessGroupKey } from './planningBoardChainStripBars';
 import { PlanningBoardDragArrow } from './PlanningBoardDragArrow';
 import { PlanningBoardForwardLaneFrame, PlanningBoardForwardRowBinding } from './PlanningBoardForwardDragBindings';
 import { type ForwardMove, type ForwardReorder } from './PlanningBoardForwardGanttRow';
@@ -281,7 +281,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
     return new Map((showChainPositions ? stripChain : EMPTY_CHAIN).map(({ item }) => {
-      const key = item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
+      const key = planningBoardProcessGroupKey(item);
       if (!positions.has(key)) positions.set(key, positions.size + 1);
       return [item.itemId, positions.get(key)!];
     }));

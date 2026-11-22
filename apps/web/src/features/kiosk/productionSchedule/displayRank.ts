@@ -8,7 +8,7 @@ export type DisplayRankSourceRow = {
   fkojun: string;
 };
 
-const toStableNumber = (value: string): number => {
+export const toStableNumber = (value: string): number => {
   const trimmed = value.trim();
   if (!/^\d+$/.test(trimmed)) return DEFAULT_NUMERIC_ORDER;
   const parsed = Number(trimmed);

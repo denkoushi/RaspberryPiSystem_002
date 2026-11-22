@@ -1,4 +1,4 @@
-import { buildResourceLocalRankMap } from './displayRank';
+import { buildResourceLocalRankMap, toStableNumber } from './displayRank';
 import { isMachinePartCode, normalizeComparisonText } from './machineName';
 import {
   compareDisplayDueDateForSort,
@@ -240,13 +240,6 @@ export const deriveDisplayRows = (
   const { isDisplayRankContext, sortMode, manualSortEnabled } = params;
 
   if (sortMode === 'manual' && manualSortEnabled) {
-    const toStableNumber = (value: string | null | undefined) => {
-      const trimmed = String(value ?? '').trim();
-      if (!/^\d+$/.test(trimmed)) return Number.MAX_SAFE_INTEGER;
-      const parsed = Number(trimmed);
-      return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
-    };
-
     return [...normalizedRows].sort((left, right) => {
       const leftOrder = left.processingOrder ?? Number.MAX_SAFE_INTEGER;
       const rightOrder = right.processingOrder ?? Number.MAX_SAFE_INTEGER;

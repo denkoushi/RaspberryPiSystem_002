@@ -6,6 +6,7 @@ import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton'
 import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
+import { planningBoardProcessGroupKey } from './planningBoardChainStripBars';
 
 import type { NormalGanttBar as GanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardChainView } from './usePersistedPlanningBoardChainView';
@@ -32,7 +33,7 @@ export function PlanningBoardChainStrip({ ref, bottom, selectedItemIds, bars, re
   const part = bars[0]!.item;
   const processPositions = new Map<string, number>();
   const positions = bars.map(({ item }) => {
-    const key = item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
+    const key = planningBoardProcessGroupKey(item);
     if (!processPositions.has(key)) processPositions.set(key, processPositions.size + 1);
     return processPositions.get(key)!;
   });

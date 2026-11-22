@@ -1,4 +1,5 @@
 import {
+  type DeployVerificationIdentity,
   isFullReleaseSha,
   resolveKioskVerificationChallenge
 } from './kioskReleaseIdentity';
@@ -10,13 +11,6 @@ const CACHE_BUST_PARAMETER = '__raspi_kiosk_web_release';
 export const KIOSK_WEB_ACTIVATION_MAX_ATTEMPTS = 3;
 export const KIOSK_WEB_ACTIVATION_DEADLINE_MS = 60_000;
 export const KIOSK_WEB_ACTIVATION_RETRY_INTERVAL_MS = 2_000;
-
-interface DeployVerificationIdentity {
-  isMaintenance: boolean;
-  phase?: string;
-  desiredReleaseSha?: string;
-  verificationId?: string;
-}
 
 interface StorageLike {
   getItem(key: string): string | null;
