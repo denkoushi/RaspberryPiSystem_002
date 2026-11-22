@@ -13,6 +13,9 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ansible_task_tree import iter_tasks  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from scripts.ci.audit_production_config import KEY_ASSIGNMENT  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[3]
 TEMPLATE = ROOT / "infrastructure/ansible/templates/docker.env.j2"
 TASKS_DIR = ROOT / "infrastructure/ansible/roles/release_pi5/tasks"
@@ -30,7 +33,9 @@ ENV_PATH_MARKERS = (
     "release_pi5_candidate_env_file",
     "release_pi5_compose_environment.PI5_ENV_FILE",
 )
-KEY_RE = re.compile(r"^([A-Z][A-Z0-9_]+)=")
+LOOP_LITERAL_KEY_RE = re.compile(r"""['"]key['"]\s*:\s*['"]([A-Z][A-Z0-9_]*)['"]""")
+# キーを静的に読めないが、新しいキーを足さない loop(既存の行を書き戻すだけ)
+DYNAMIC_LOOPS_OK = ("release_pi5_search_trial_preserved_lines",)
 ITEM_KEY_RE = re.compile(r"^\{\{\s*item\.key\s*\}\}=")
 
 # 過去に届け忘れた3件(3d326524, ce31694e, 13733ae0)
@@ -42,46 +47,52 @@ REGRESSION_KEYS = (
 
 
 def template_keys(text):
-    keys = set()
-    for line in text.splitlines():
-        m = KEY_RE.match(line)
-        if m:
-            keys.add(m.group(1))
-    return keys
+    return set(KEY_ASSIGNMENT.findall(text))
 
 
 def written_keys_from_yaml(text):
-    """YAML 文字列から、Pi5 API 環境ファイルへ書く lineinfile のキーを集める。"""
-    keys = set()
+    """YAML 文字列から、Pi5 API 環境ファイルへ書く lineinfile のキーを集める。
+
+    戻り値は (キーの集合, キーを読み取れなかったタスク名の一覧)。
+    """
+    keys, unreadable = set(), []
     for task in iter_tasks(yaml.safe_load(text)):
         spec = task.get("ansible.builtin.lineinfile") or task.get("lineinfile")
         if not isinstance(spec, dict):
             continue
         if not any(marker in str(spec.get("path", "")) for marker in ENV_PATH_MARKERS):
             continue
+        if str(spec.get("state", "present")) != "present":
+            continue
         line = str(spec.get("line", ""))
         regexp = str(spec.get("regexp", ""))
+        loop = task.get("loop")
+        found = set()
         if ITEM_KEY_RE.match(line) or ITEM_KEY_RE.match(regexp.lstrip("^")):
-            loop = task.get("loop")
             if isinstance(loop, list):
-                for item in loop:
-                    if isinstance(item, dict) and "key" in item:
-                        keys.add(str(item["key"]))
-            continue
-        m = KEY_RE.match(line) or KEY_RE.match(regexp.lstrip("^"))
-        if m:
-            keys.add(m.group(1))
-    return keys
+                found = {str(i["key"]) for i in loop if isinstance(i, dict) and "key" in i}
+            elif isinstance(loop, str):
+                # Jinja 式の loop は、中の 'key': 'NAME' の文字どおりの値だけを拾う
+                found = set(LOOP_LITERAL_KEY_RE.findall(loop))
+        else:
+            m = KEY_ASSIGNMENT.match(line) or KEY_ASSIGNMENT.match(regexp.lstrip("^"))
+            if m:
+                found = {m.group(1)}
+        if not found and not any(expr in str(loop) for expr in DYNAMIC_LOOPS_OK):
+            unreadable.append(str(task.get("name", line)))
+        keys |= found
+    return keys, unreadable
 
 
 def collect_written_keys():
-    keys, files = set(), []
+    keys, files, unreadable = set(), [], []
     for path in sorted(TASKS_DIR.glob("*.yml")):
-        found = written_keys_from_yaml(path.read_text(encoding="utf-8"))
+        found, bad = written_keys_from_yaml(path.read_text(encoding="utf-8"))
         if found:
             files.append(path.name)
             keys |= found
-    return keys, files
+        unreadable += ["%s: %s" % (path.name, name) for name in bad]
+    return keys, files, unreadable
 
 
 def load_allowlist(text):
@@ -114,7 +125,8 @@ def check(template, written, allowed):
 
 class Pi5EnvKeyDeliveryTest(unittest.TestCase):
     def test_template_keys_are_delivered_or_allowlisted(self):
-        written, _ = collect_written_keys()
+        written, _, unreadable = collect_written_keys()
+        self.assertEqual([], unreadable, "キーを読み取れない書き込みがあります。loop に 'key': 'NAME' を文字どおり書くか、DYNAMIC_LOOPS_OK に理由付きで足してください")
         errors = check(
             template_keys(TEMPLATE.read_text(encoding="utf-8")),
             written,
@@ -123,7 +135,7 @@ class Pi5EnvKeyDeliveryTest(unittest.TestCase):
         self.assertEqual([], errors, "\n".join(errors))
 
     def test_past_misses_are_written(self):
-        written, files = collect_written_keys()
+        written, files, _ = collect_written_keys()
         self.assertTrue(files)
         for key in REGRESSION_KEYS:
             self.assertIn(key, written)
@@ -139,7 +151,7 @@ class Pi5EnvKeyDeliveryTest(unittest.TestCase):
   loop:
     - { key: OTHER_KEY, value: x }
 """
-        written = written_keys_from_yaml(yaml_text)
+        written, _ = written_keys_from_yaml(yaml_text)
         errors = check(set(REGRESSION_KEYS) | {"OTHER_KEY"}, written, set())
         self.assertEqual(1, len(errors))
         for key in REGRESSION_KEYS:
@@ -160,7 +172,30 @@ class Pi5EnvKeyDeliveryTest(unittest.TestCase):
         regexp: '^NOT_ENV='
         line: 'NOT_ENV=1'
 """
-        self.assertEqual({"SINGLE_KEY"}, written_keys_from_yaml(yaml_text))
+        self.assertEqual(({"SINGLE_KEY"}, []), written_keys_from_yaml(yaml_text))
+
+    def test_jinja_loop_absent_and_unreadable_writes(self):
+        yaml_text = """
+- name: jinja loop
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+  loop: >-
+    {{ [{'key': 'JINJA_KEY', 'value': 'x'}] }}
+- name: removed
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: '^GONE_KEY='
+    state: absent
+- name: unknown
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_chat_env_file }}"
+    regexp: "^{{ item.split('=')[0] }}="
+    line: "{{ item }}"
+  loop: "{{ some_lines }}"
+"""
+        self.assertEqual(({"JINJA_KEY"}, ["unknown"]), written_keys_from_yaml(yaml_text))
 
     def test_stale_and_overlapping_allowlist_entries_fail(self):
         errors = check({"A"}, {"A"}, {"A", "GONE"})
