@@ -38,6 +38,15 @@ describe('proposalToDrawingPoint', () => {
     }
   });
 
+  it('keeps the offset marker position and uses the anchor as the callout tip for baseline proposals', () => {
+    const baseline = { ...proposal, anchorXRatio: 0.2, anchorYRatio: 0.5, markerXRatio: 0.35, markerYRatio: 0.45, markerAtRatio: true as const };
+    const point = proposalToDrawingPoint(baseline, [], 0.35, 0.45);
+    expect(point).toMatchObject({ xRatio: 0.35, yRatio: 0.45, calloutTipXRatio: null, calloutTipYRatio: null });
+    // Without the flag the marker still sits 0.03 from the anchor (unchanged behaviour).
+    const regular = proposalToDrawingPoint({ ...baseline, markerAtRatio: undefined }, [], 0.35, 0.45);
+    expect(regular).toMatchObject({ xRatio: 0.23, yRatio: 0.47, calloutTipXRatio: 0.2, calloutTipYRatio: 0.5 });
+  });
+
   it('numbers proposals above the current maximum in proposal order, but approves into available gaps', () => {
     const points = [createInspectionDrawingPoint(0, 0, 1), createInspectionDrawingPoint(0, 0, 4)];
     const rows = [{ ...proposal, id: 'later', sortOrder: 5 }, proposal];
@@ -56,5 +65,25 @@ describe('proposalToDrawingPoint', () => {
     expect(filterExistingPlacementRows([proposal], [{ ...point, nominalRaw: '57' }])).toEqual([proposal]);
     expect(filterExistingPlacementRows([{ ...proposal, nominalValue: 0 }], [{ ...point, nominalRaw: '' }]))
       .toHaveLength(1);
+  });
+
+  describe('baseline twins (markerAtRatio rows)', () => {
+    const twin: DrawingPlacementProposal = {
+      ...proposal, markerXRatio: 0.5, markerYRatio: 0.5, anchorXRatio: 0.6, anchorYRatio: 0.6, markerAtRatio: true
+    };
+    const existing = (x: number, y: number) => ({ ...proposalToDrawingPoint(proposal, [], x, y), nominalRaw: '56' });
+
+    it('hides a twin when an approved point is near its marker or its anchor', () => {
+      expect(filterExistingPlacementRows([twin], [existing(0.52, 0.5)])).toEqual([]);
+      expect(filterExistingPlacementRows([twin], [existing(0.6, 0.64)])).toEqual([]);
+    });
+
+    it('keeps a twin whose same label and nominal point is far away', () => {
+      expect(filterExistingPlacementRows([twin], [existing(0.1, 0.1)])).toEqual([twin]);
+    });
+
+    it('keeps the exact label and nominal rule for non-baseline rows', () => {
+      expect(filterExistingPlacementRows([proposal], [existing(0.9, 0.9)])).toEqual([]);
+    });
   });
 });

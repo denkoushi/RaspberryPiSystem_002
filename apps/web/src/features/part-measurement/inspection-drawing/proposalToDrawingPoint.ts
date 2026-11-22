@@ -26,23 +26,35 @@ export function proposalToDrawingPoint(
     nominalValue: String(row.nominalValue),
     lowerLimit: row.lowerLimit === null ? null : String(row.lowerLimit),
     upperLimit: row.upperLimit === null ? null : String(row.upperLimit),
-    markerXRatio: String(proposal ? Math.min(1, anchorX + 0.03) : xRatio),
-    markerYRatio: String(proposal ? Math.max(0, anchorY - 0.03) : yRatio),
-    calloutTipXRatio: proposal ? String(anchorX) : null,
-    calloutTipYRatio: proposal ? String(anchorY) : null,
+    markerXRatio: String(proposal && !proposal.markerAtRatio ? Math.min(1, anchorX + 0.03) : xRatio),
+    markerYRatio: String(proposal && !proposal.markerAtRatio ? Math.max(0, anchorY - 0.03) : yRatio),
+    // A marker placed beside the dimension needs no tip; the tip badge would sit on the dimension text.
+    calloutTipXRatio: proposal && !proposal.markerAtRatio ? String(anchorX) : null,
+    calloutTipYRatio: proposal && !proposal.markerAtRatio ? String(anchorY) : null,
     calloutDims: []
   });
 }
+
+/** Baseline twin proposals (same label and nominal in another view) stay visible when the existing point is farther than this (ratio units). */
+export const BASELINE_TWIN_NEAR_DISTANCE = 0.06;
+
+const isNear = (point: InspectionDrawingPoint, x: number | null | undefined, y: number | null | undefined) =>
+  x != null && y != null && Math.hypot(point.xRatio - x, point.yRatio - y) <= BASELINE_TWIN_NEAR_DISTANCE;
 
 export function filterExistingPlacementRows<T extends DrawingPlacementRow>(
   rows: T[],
   points: InspectionDrawingPoint[]
 ): T[] {
-  return rows.filter((row) => !points.some((point) =>
-    point.name === row.measurementLabel &&
-    point.nominalRaw.trim() !== '' &&
-    Number(point.nominalRaw) === row.nominalValue
-  ));
+  return rows.filter((row) => !points.some((point) => {
+    const sameItem = point.name === row.measurementLabel &&
+      point.nominalRaw.trim() !== '' &&
+      Number(point.nominalRaw) === row.nominalValue;
+    if (!sameItem) return false;
+    if (!('markerAtRatio' in row && row.markerAtRatio)) return true;
+    const proposal = row as unknown as DrawingPlacementProposal;
+    return isNear(point, proposal.markerXRatio, proposal.markerYRatio) ||
+      isNear(point, proposal.anchorXRatio, proposal.anchorYRatio);
+  }));
 }
 
 export type DrawingProposalMarker = DrawingPlacementProposal & {

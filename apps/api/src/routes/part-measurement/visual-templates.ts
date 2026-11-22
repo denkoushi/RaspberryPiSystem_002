@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
+import { env } from '../../config/env.js';
 import { ApiError, DomainHttpError } from '../../lib/errors.js';
+import { findClientDeviceByApiKey, parseKioskApiClientKeyHeader } from '../../services/clients/client-device-auth.service.js';
 import {
   deleteImportedDrawing,
   importDrawingAndSave,
@@ -56,6 +58,15 @@ export const drawingPlacementDecisionsBodySchema = z.object({
   })).max(200).optional(),
   rejectedIds: z.array(z.string().guid()).max(200).optional().default([])
 });
+
+// Non-secret identifiers of the calling kiosk (never the raw key). Skipped entirely while the allowlist is empty.
+async function resolveBaselineClientIdentifiers(rawClientKey: unknown): Promise<string[]> {
+  const allowed = env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS;
+  if (!Array.isArray(allowed) || allowed.length === 0) return [];
+  const key = parseKioskApiClientKeyHeader(rawClientKey);
+  const device = key ? await findClientDeviceByApiKey(key) : null;
+  return device ? [device.name, device.statusClientId].filter((id): id is string => typeof id === 'string' && id !== '') : [];
+}
 
 export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
@@ -174,7 +185,11 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       async (request) => {
         const { id } = z.object({ id: z.string().guid() }).parse(request.params);
         const { processGroup } = drawingPlacementProposalsQuerySchema.parse(request.query);
-        return drawingPlacementService.listForEditor(id, processGroup === 'grinding' ? 'GRINDING' : 'CUTTING');
+        const clientIdentifiers = await resolveBaselineClientIdentifiers(request.headers['x-client-key']);
+        return drawingPlacementService.listForEditor(
+          id, processGroup === 'grinding' ? 'GRINDING' : 'CUTTING',
+          clientIdentifiers.length > 0 ? { clientIdentifiers } : undefined
+        );
       }
     );
 

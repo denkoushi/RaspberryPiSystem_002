@@ -323,6 +323,19 @@ describe('InspectionDrawingCanvas marker dragging', () => {
     expect(onPointChange).not.toHaveBeenCalled();
   });
 
+  it('draws a baseline proposal at its own marker position with the leader to the anchor', () => {
+    const { viewport } = renderCanvas({
+      proposalMarkers: [{ ...proposal, anchorXRatio: 0.25, anchorYRatio: 0.5, markerAtRatio: true }]
+    });
+    const marker = screen.getByRole('button', { name: 'AI案 2 内径' });
+    expect(marker.parentElement).toHaveStyle({ left: '480px', top: '240px' });
+    const leader = viewport.querySelector('line[stroke="#d97706"]');
+    expect(leader).toHaveAttribute('x1', '200');
+    expect(leader).toHaveAttribute('y1', '300');
+    expect(leader).toHaveAttribute('x2', '480');
+    expect(leader).toHaveAttribute('y2', '240');
+  });
+
   it.each([1, 2])('drags proposals with shared rAF handling at zoom %s and commits only on release', (zoom) => {
     const onProposalMove = vi.fn();
     const { viewport, onPointChange, onAddPoint } = renderCanvas({

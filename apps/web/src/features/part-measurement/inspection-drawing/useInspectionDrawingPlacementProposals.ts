@@ -98,6 +98,18 @@ export function useInspectionDrawingPlacementProposals({
   const moveProposal = (id: string, position: { xRatio: number; yRatio: number }) => {
     const row = proposals.find((proposal) => proposal.id === id);
     if (!enabled || !visualTemplateId || !row) return;
+    if (row.markerAtRatio) {
+      // The anchor and the numbers come from the precomputed drawing analysis; dragging only moves the marker.
+      onSelectPoint(null);
+      setSession((previous) => ({
+        ...previous,
+        positions: { ...previous.positions, [id]: {
+          xRatio: Math.max(0, Math.min(1, position.xRatio)), yRatio: Math.max(0, Math.min(1, position.yRatio))
+        } },
+        selectedId: id, tab: 'proposals', armedId: null
+      }));
+      return;
+    }
     const override: ProposalOverride = {
       ...current.overrides[id], anchorXRatio: Math.max(0, Math.min(1, position.xRatio)),
       anchorYRatio: Math.max(0, Math.min(1, position.yRatio))

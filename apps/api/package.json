@@ -25,6 +25,8 @@
     "backfill:photo-tool-gallery:prod": "node dist/scripts/backfill-photo-tool-similarity-gallery.js",
     "backfill:part-measurement-drawing-ocr": "tsx src/scripts/backfill-part-measurement-drawing-ocr.ts",
     "backfill:part-measurement-drawing-ocr:prod": "node dist/scripts/backfill-part-measurement-drawing-ocr.js",
+    "import:baseline-placement-proposals": "tsx src/scripts/import-baseline-placement-proposals.ts",
+    "import:baseline-placement-proposals:prod": "node dist/scripts/import-baseline-placement-proposals.js",
     "backfill:order-supplement-planned-end-date": "tsx src/scripts/backfill-order-supplement-planned-end-date.ts",
     "backfill:order-supplement-planned-end-date:prod": "node dist/scripts/backfill-order-supplement-planned-end-date.js",
     "backfill:rigging-inspection-gmail-projection": "tsx src/scripts/backfill-rigging-inspection-gmail-projection.ts",

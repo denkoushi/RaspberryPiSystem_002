@@ -524,8 +524,10 @@ export function InspectionDrawingCanvas({
             const anchorY = image.offsetY + (hasAnchor ? proposal.anchorYRatio! : proposal.markerYRatio) * image.height;
             const insetX = Math.min(22, image.width / 2);
             const insetY = Math.min(22, image.height / 2);
-            const left = Math.max(image.offsetX + insetX, Math.min(image.offsetX + image.width - insetX, anchorX + 34));
-            const top = Math.max(image.offsetY + insetY, Math.min(image.offsetY + image.height - insetY, anchorY - 34));
+            const bubbleX = proposal.markerAtRatio ? image.offsetX + proposal.markerXRatio * image.width : anchorX + 34;
+            const bubbleY = proposal.markerAtRatio ? image.offsetY + proposal.markerYRatio * image.height : anchorY - 34;
+            const left = Math.max(image.offsetX + insetX, Math.min(image.offsetX + image.width - insetX, bubbleX));
+            const top = Math.max(image.offsetY + insetY, Math.min(image.offsetY + image.height - insetY, bubbleY));
             return (
               <div key={proposal.id}>
                 <svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={zoomedLayout.contentWidth} height={zoomedLayout.contentHeight}>
