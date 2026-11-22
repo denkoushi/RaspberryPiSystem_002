@@ -363,9 +363,13 @@ class AgentCoverageAnsibleTests(unittest.TestCase):
             "barcode-agent c2 ghcr.io/o/raspisys-barcode-agent:" + "b" * 40 + " exited docker",
             "barcode-agent c3 ghcr.io/o/raspisys-barcode-agent:" + "c" * 40 + " running docker",
         ]
-        result, out, log = self._images(rows, {"k1": {"ansible_connection": "local", "ansible_become": False}})
+        digest_image = "ghcr.io/o/raspisys-torque-agent@sha256:" + "d" * 64
+        result, out, log = self._images(
+            rows, {"k1": {"ansible_connection": "local", "ansible_become": False, "release_kiosk_torque_image": digest_image}}
+        )
         self.assertEqual(result.returncode, 0, self._text(result))
         report = json.loads((out / "k1.json").read_text())
+        self.assertEqual(report["expectedImages"]["torque-agent"], "ghcr.io/o/raspisys-torque-agent")
         self.assertEqual(report["host"], "k1")
         self.assertEqual(report["project"], "docker")
         for name, image in report["expectedImages"].items():

@@ -6,7 +6,7 @@
   ansible.builtin.shell: |
     set -euo pipefail
     inspect_format=$'\173\173.Config.Image\175\175 \173\173.State.Status\175\175'
-    for service in nfc-agent barcode-agent torque-agent; do
+    for service in {{ release_kiosk_known_agent_services | map('quote') | join(' ') }}; do
       container_ids="$(docker ps --all \
         --filter {{ ('label=com.docker.compose.project=' ~ release_kiosk_compose_project) | quote }} \
         --filter "label=com.docker.compose.service=${service}" \
@@ -28,26 +28,18 @@
   tags:
     - always
 
-- name: The host name must be usable as a result file name
-  ansible.builtin.assert:
-    that:
-      - inventory_hostname is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
-      - "'..' not in inventory_hostname"
-    fail_msg: the host name {{ inventory_hostname }} is not usable for the agent guard result files
-    quiet: true
-  delegate_to: localhost
-  vars:
-    ansible_connection: local
-    ansible_python_interpreter: "{{ ansible_playbook_python }}"
-    ansible_become: false
-  become: false
-  tags:
-    - always
+- name: Check the host name for the result file
+  ansible.builtin.import_tasks: agent_result_host.yml
 
 - name: Write the agent container report on the controller
   ansible.builtin.copy:
     content: >-
-      {% set report = namespace(containers={'nfc-agent': [], 'barcode-agent': [], 'torque-agent': []}) %}
+      {% set report = namespace(containers={}, expected={}) %}
+      {% for service in release_kiosk_known_agent_services %}
+      {% set _ = report.containers.update({service: []}) %}
+      {# Repository only: drop a digest (@sha256:...) and then a tag. #}
+      {% set _ = report.expected.update({service: release_kiosk_agent_images[service] | regex_replace('@[^@/]*$', '') | regex_replace(':[^:/]*$', '')}) %}
+      {% endfor %}
       {% for line in release_agent_images_read.stdout_lines %}
       {% set fields = line.split(' ') %}
       {% set _ = report.containers[fields[0]].append({'image': fields[1], 'status': fields[2]}) %}
@@ -55,11 +47,7 @@
       {{ {
         'host': inventory_hostname,
         'project': release_kiosk_compose_project,
-        'expectedImages': {
-          'nfc-agent': release_kiosk_nfc_image | regex_replace(':[^:/]*$', ''),
-          'barcode-agent': release_kiosk_barcode_image | regex_replace(':[^:/]*$', ''),
-          'torque-agent': release_kiosk_torque_image | regex_replace(':[^:/]*$', '')
-        },
+        'expectedImages': report.expected,
         'containers': report.containers
       } | to_json }}
     dest: "{{ release_agent_guard_out_dir }}/{{ inventory_hostname }}.json"

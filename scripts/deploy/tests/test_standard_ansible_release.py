@@ -2568,7 +2568,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             )
             for name in ("timeout", "ansible-playbook"):
                 (bin_dir / name).chmod(0o755)
-            script = MODULE.agent_images_script(root, MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b")
+            script = MODULE.agent_images_script(root, MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b", ("pi4-a", "pi4-b"))
             result = subprocess.run(
                 ["/bin/bash", "-c", script], text=True, capture_output=True, check=False,
                 env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
@@ -2596,7 +2596,7 @@ class AgentSkipGuardTests(unittest.TestCase):
             )
             for name in ("timeout", "ansible-playbook"):
                 (bin_dir / name).chmod(0o755)
-            script = MODULE.agent_images_script(root, MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b:pi4-c")
+            script = MODULE.agent_images_script(root, MODULE.DEFAULT_INVENTORY, "pi4-a:pi4-b:pi4-c", ("pi4-a", "pi4-b", "pi4-c"))
             result = subprocess.run(
                 ["/bin/bash", "-c", script], text=True, capture_output=True, check=False,
                 env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(scratch)},

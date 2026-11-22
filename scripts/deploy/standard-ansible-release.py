@@ -1896,7 +1896,7 @@ def plan_agent_coverage_check(
     )
 
 
-def agent_images_script(remote_root: Path, relative: str, limit: str, expected_hosts: Sequence[str] = ()) -> str:
+def agent_images_script(remote_root: Path, relative: str, limit: str, expected_hosts: Sequence[str]) -> str:
     root = shlex.quote(str(remote_root))
     config = shlex.quote(str(remote_root / "infrastructure/ansible/ansible.cfg"))
     playbook = shlex.quote(str(IMAGES_PLAYBOOK.relative_to(ROOT)))
@@ -1909,7 +1909,7 @@ def agent_images_script(remote_root: Path, relative: str, limit: str, expected_h
         f"ANSIBLE_CONFIG={config} ANSIBLE_HASH_BEHAVIOUR=replace "
         f"timeout --kill-after=10 {AGENT_GUARD_TIMEOUT_SECONDS} "
         f"ansible-playbook -i {shlex.quote(relative)} {playbook} --limit {shlex.quote(limit)} "
-        f"-e {shlex.quote(json.dumps({'release_agent_images_expected_hosts_json': json.dumps(list(expected_hosts or limit.split(':')), separators=(',', ':'))}, separators=(',', ':')))} "
+        f"-e {shlex.quote(json.dumps({'release_agent_images_expected_hosts_json': json.dumps(list(expected_hosts), separators=(',', ':'))}, separators=(',', ':')))} "
         '-e release_agent_guard_out_dir="$d" >&2',
         "code=$?",
         "python3 - \"$d\" <<'PY'",
