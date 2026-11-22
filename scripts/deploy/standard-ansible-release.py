@@ -89,6 +89,14 @@ def split_limit(limit: str) -> list[str]:
     return re.split(r"[:,]", limit)
 
 
+def exact_host_names(limit: str | None) -> list[str] | None:
+    """The --limit names when it is a non-empty list of distinct exact host names, else None."""
+    names = split_limit(limit) if limit else []
+    if not names or any(not SAFE_INVENTORY_HOST.fullmatch(name) for name in names) or len(set(names)) != len(names):
+        return None
+    return names
+
+
 def safe_result_host(host: Any) -> bool:
     """An inventory host name that is also safe as a guard result file name."""
     return isinstance(host, str) and bool(SAFE_INVENTORY_HOST.fullmatch(host)) and ".." not in host
@@ -216,8 +224,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         )
         if any(others):
             raise UsageError("--agent-images accepts only --limit and --inventory")
-        hosts = split_limit(args.limit) if args.limit else []
-        if not hosts or any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts) or len(set(hosts)) != len(hosts):
+        if exact_host_names(args.limit) is None:
             raise UsageError("--agent-images requires --limit with exact Pi4 kiosk host names")
         args.inventory = args.inventory or DEFAULT_INVENTORY
         return args
@@ -232,16 +239,14 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     if args.first_install:
         if args.full_fleet or not args.limit or args.torque_cutover or args.hermes_search_trial_maintenance:
             raise UsageError("--first-install requires exact Pi4 kiosk --limit hosts; full-fleet and other mutation modes are forbidden")
-        hosts = split_limit(args.limit)
-        if any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts) or len(set(hosts)) != len(hosts):
+        if exact_host_names(args.limit) is None:
             raise UsageError("--first-install --limit must be an exact host or colon/comma-separated host list; patterns are forbidden")
     if (args.allow_agent_skip is None) != (args.allow_agent_skip_sha is None):
         raise UsageError("--allow-agent-skip and --allow-agent-skip-sha must be given together")
     if args.allow_agent_skip is not None and not args.status:
         if args.full_fleet or args.first_install or args.torque_cutover or args.hermes_search_trial_maintenance:
             raise UsageError("--allow-agent-skip cannot be combined with --full-fleet, --first-install, --torque-cutover or Hermes maintenance")
-        names = split_limit(args.limit) if args.limit else []
-        if not names or any(not SAFE_INVENTORY_HOST.fullmatch(name) for name in names) or len(set(names)) != len(names):
+        if exact_host_names(args.limit) is None:
             raise UsageError("--allow-agent-skip requires --limit to be an exact host name list")
         if not FULL_SHA.fullmatch(args.allow_agent_skip_sha):
             raise UsageError("--allow-agent-skip-sha must be a full 40-hex SHA")
