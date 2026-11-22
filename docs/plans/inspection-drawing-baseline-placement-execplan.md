@@ -64,6 +64,9 @@ It is shown first on the trial terminal only (raspi4-kensaku-stonebase01). Respo
 - Decision: Restrict the trial terminal with the env allowlist `INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS`. It holds device names (or status client IDs), not client keys, because keys are secrets. The API resolves `x-client-key` to the ClientDevice and matches its `name` or `statusClientId`. No ClientDevice column is added.
   - Rationale: No migration and no admin screen change are needed. Removing the entry restores today's behavior.
   - Date/Author: 2026-11-22 / Claude
+- Decision: Show baseline proposals on every terminal. The allowlist value `*` means every caller (kiosks and signed-in users), and Ansible now sets `*` instead of the trial terminal.
+  - Rationale: The user asked for every terminal to read them (2026-11-22), so that the on-site check of whether the effort goes down is not limited to one kiosk. Setting the value back to a device name, or to empty, restores the earlier behavior.
+  - Date/Author: 2026-11-22 / Claude
 - Decision: Put baseline proposals in a separate run with `placementVersion = baseline-v1`.
   - The existing proposals from similar drawings (layout/semantic/transfer) are neither deleted nor replaced.
   - Date/Author: 2026-11-22 / Claude

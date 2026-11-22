@@ -338,10 +338,11 @@ export class PartMeasurementDrawingPlacementService {
     }));
   }
 
-  /** True only when the allowlist is configured and one of the caller's device identifiers is on it. */
+  /** True when the allowlist holds `*` (every caller), or one of the caller's device identifiers is on it. */
   private baselineAllowed(clientIdentifiers: readonly string[] | undefined): boolean {
     const allowed = env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS;
-    return Array.isArray(allowed) && allowed.length > 0 && (clientIdentifiers ?? []).some((id) => allowed.includes(id));
+    if (!Array.isArray(allowed) || allowed.length === 0) return false;
+    return allowed.includes('*') || (clientIdentifiers ?? []).some((id) => allowed.includes(id));
   }
 
   /** Precomputed baseline proposals. Never creates a run and never triggers inference. */

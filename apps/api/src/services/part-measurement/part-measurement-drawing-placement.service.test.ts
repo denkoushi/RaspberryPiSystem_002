@@ -742,6 +742,18 @@ describe('baseline placement', () => {
     expect(mocks.ocr.getCurrentFingerprint).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['kiosk without listing', ['kiosk-b']],
+    ['admin without client identity', undefined]
+  ])('returns baseline proposals to every caller when the allowlist is *: %s', async (_name, identifiers) => {
+    mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['*'] as never;
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(baselineRun());
+    const result = await service.listForEditor('target', 'CUTTING', { clientIdentifiers: identifiers });
+    expect(result.proposals.length).toBeGreaterThan(0);
+    expect(result.proposals.every((row) => row.markerAtRatio === true)).toBe(true);
+    expect(db.partMeasurementDrawingPlacementRun.findUnique).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ where: baselineKey }));
+  });
+
   it('returns baseline proposals with markerAtRatio for an allowlisted client, without inference or ensureRun', async () => {
     mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
     db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(baselineRun());

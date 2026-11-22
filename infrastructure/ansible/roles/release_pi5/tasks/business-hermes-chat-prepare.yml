@@ -142,7 +142,7 @@
     - { key: INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED, value: "{{ inspection_drawing_semantic_placement_enabled | default(true) | bool | ternary('true', 'false') }}" }
     - { key: INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED, value: "{{ inspection_drawing_layout_placement_enabled | default(true) | bool | ternary('true', 'false') }}" }
     # 試験端末だけに baseline-v1 の丸数字案を出す。ClientDevice の name / statusClientId をカンマ区切りで並べる(秘密情報は入れない)
-    - { key: INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS, value: "{{ inspection_drawing_baseline_placement_clients | default('raspi4-kensaku-stonebase01') }}" }
+    - { key: INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS, value: "{{ inspection_drawing_baseline_placement_clients | default('*') }}" }
     # 業務LLMの GLM/DeepSeek 切り替え(既定 OFF)。inventory の値はここで渡さないと API に届かない
     - { key: BUSINESS_DEEPSEEK_SWITCH_ENABLED, value: "{{ api_business_deepseek_switch_enabled | default(false) | bool | ternary('true', 'false') }}" }
     - { key: BUSINESS_QWEN38_SWITCH_ENABLED, value: "{{ api_business_qwen38_switch_enabled | default(false) | bool | ternary('true', 'false') }}" }
