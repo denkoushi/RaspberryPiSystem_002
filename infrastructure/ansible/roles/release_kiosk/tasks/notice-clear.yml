@@ -1,0 +1,29 @@
+---
+# Clears the maintenance screen. Idempotent: main.yml calls it right after health
+# (so post-health host policy does not hold the screen) and again in always.
+- name: Clear the Pi4 deploy-status display from Pi5
+  ansible.builtin.command:
+    argv:
+      - python3
+      - '{{ release_kiosk_notice_project_dir }}/scripts/deploy/kiosk_release_notice.py'
+      - clear
+      - --project
+      - '{{ release_kiosk_notice_project_dir }}'
+      - --run-id
+      - '{{ release_run_id }}'
+      - --client
+      - '{{ status_agent_client_id }}'
+  delegate_to: localhost
+  become: false
+  register: release_kiosk_notice_clear
+  changed_when: (release_kiosk_notice_clear.rc | default(1)) == 0
+  failed_when: false
+  when:
+    - not (release_torque_cutover | default(false) | bool)
+    - status_agent_client_id | default('') | trim | length > 0
+    - not (release_kiosk_first_install | bool)
+
+- name: Warn if the Pi4 deploy-status display could not be cleared
+  ansible.builtin.debug:
+    msg: 'WARNING: kiosk notice cleanup failed; remove-run and the API expiry remain available'
+  when: (release_kiosk_notice_clear.rc | default(0)) != 0

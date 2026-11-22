@@ -52,6 +52,10 @@
                 msg: "{{ ansible_failed_result.msg | default('Pi4 first-install switch or health failed') }}"
               when: release_kiosk_first_install | bool
 
+        # Outside the rollback block so a clear error can never roll back a healthy kiosk.
+        - name: Clear the Pi4 deploy-status display once health has passed
+          ansible.builtin.import_tasks: notice-clear.yml
+
         # Host policy is post-health and survives application rollback.
         - name: Converge the Pi4 kiosk weekly OS security update policy
           block:
@@ -131,31 +135,7 @@
             msg: "{{ ansible_failed_result.msg | default('Pi4 release failed') }}"
       always:
         - name: Clear the Pi4 deploy-status display from Pi5
-          ansible.builtin.command:
-            argv:
-              - python3
-              - '{{ release_kiosk_notice_project_dir }}/scripts/deploy/kiosk_release_notice.py'
-              - clear
-              - --project
-              - '{{ release_kiosk_notice_project_dir }}'
-              - --run-id
-              - '{{ release_run_id }}'
-              - --client
-              - '{{ status_agent_client_id }}'
-          delegate_to: localhost
-          become: false
-          register: release_kiosk_notice_clear
-          changed_when: (release_kiosk_notice_clear.rc | default(1)) == 0
-          failed_when: false
-          when:
-            - not (release_torque_cutover | default(false) | bool)
-            - status_agent_client_id | default('') | trim | length > 0
-            - not (release_kiosk_first_install | bool)
-
-        - name: Warn if the Pi4 deploy-status display could not be cleared
-          ansible.builtin.debug:
-            msg: 'WARNING: kiosk notice cleanup failed; remove-run and the API expiry remain available'
-          when: (release_kiosk_notice_clear.rc | default(0)) != 0
+          ansible.builtin.import_tasks: notice-clear.yml
 
         - name: Remove run-scoped Pi4 preparation data
           ansible.builtin.import_tasks: cleanup.yml
