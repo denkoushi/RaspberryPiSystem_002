@@ -1,0 +1,4 @@
+# CI の Ansible は本番の Pi5 と同じ系列にそろえる。
+# Pi5 は Debian 13 の apt パッケージ ansible-core 2.19.11-0+deb13u1(2026-11-22 に確認)。
+# Dependabot は 2.19 系の修正版だけを提案する。2.20 以降へは Pi5 の OS が上がったときに人が上げる。
+ansible-core==2.19.11

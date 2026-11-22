@@ -57,7 +57,15 @@ class CiSecurityBaselineContracts(unittest.TestCase):
         dependabot = self.read(".github/dependabot.yml")
         for ecosystem in ("npm", "github-actions", "docker", "pip"):
             self.assertIn(f"package-ecosystem: {ecosystem}", dependabot)
-        self.assertEqual(dependabot.count("interval: weekly"), 4)
+        self.assertEqual(dependabot.count("interval: weekly"), 5)
+        # CI's Ansible stays on the Pi5 apt line; only patch updates are proposed.
+        self.assertIn("directory: /.github/ansible-ci", dependabot)
+        pin = self.read(".github/ansible-ci/requirements.txt")
+        self.assertRegex(pin, r"(?m)^ansible-core==2\.19\.\d+$")
+        for workflow in (".github/workflows/ci.yml", ".github/workflows/torque-release.yml"):
+            text = self.read(workflow)
+            self.assertNotIn("pip install --user ansible-core", text)
+            self.assertIn("pip install --user -r .github/ansible-ci/requirements.txt", text)
 
 
 if __name__ == "__main__":

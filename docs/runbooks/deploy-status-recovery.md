@@ -51,6 +51,20 @@ Pi5のみの通常更新では、headのrelease setが`manifest unknown` / `not 
 
 journalで `Fail the release after verified empty rollback` と、元の失敗理由、recapを確認する。復旧検証に失敗した場合はstagingを保持するため、途中のtaskだけを再実行せず原因を調査する。接続断・電源断ではrescueが完走できない場合もある。既存状態を削除してpreflightを迂回しない。初回成功は `/var/lib/raspi-release/standard/completed-<inventory_hostname>.json` に残り、次回は通常更新を使う。旧来の標準releaseには完了markerがないため、既存 `/etc/raspi-release`・project・status設定・unitも初回導入を拒否する証拠として扱う。
 
+### Pi4 agent の判定で止まった場合
+
+Pi4 の agent（nfc / barcode / torque）のイメージが今回の SHA にそろっていないと、Pi5 の本体の前で止まる。止まった時点では本体は流れず、Pi4 と Pi3 には何も起きていない。止まる理由と `--allow-agent-skip` の付け方は [Pi4 agent の更新漏れの停止](../guides/deployment.md#pi4-agent-の更新漏れの停止) が正本で、ここでは見分け方と戻し方だけを書く。
+
+まず `--status RUN_ID` の `journal` で `agent guard stopped the release: <種別>` を読む。詳しい出力は launcher の標準エラーに `[agent-guard]` 付きで出る。
+
+- `check-failed`（`agent coverage check failed (exit N)`）: 有効な agent が今回のリリースセットに入っていない、または判定が失敗した。同じ `--limit` で `--print-plan` を流して止まる端末と agent を確かめ、agent の入った SHA でデプロイし直す。版を確かめたうえで古い版のまま残すなら `--allow-agent-skip` を付ける。
+- `check-result-missing`（`did not report exactly the selected Pi4 hosts`）: 判定の結果が選んだ Pi4 とそろわない。Ansible の出力で結果を返さなかった端末を探し、直してから新しい run でやり直す。
+- `check-launch-failed`（`could not be started` / `could not run` / `is not usable for the agent guard result files`）: 判定を始められない、または結果ファイルに使えない端末名がある。Ansible の出力と `--limit` の端末名を確かめる。
+- `timeout`（`exceeded 300 seconds`）: 判定か読み直しの Ansible が上限時間を超えた。端末の応答を確かめてから新しい run でやり直す。
+- `reread-unreadable`（`could not read the running agents`）と `reread-mismatch`（`is not the single running container of project`）: `--allow-agent-skip` で指定した版と、Pi5 が読み直した動作中の版が合わない。`--agent-images --limit HOST` で今の版を読み直し、deployment.md の確認手順をやり直して指定を作り直す。
+
+どの場合も、直したあとは新しい run を標準入口から始める。途中からの再開、Pi4 への直接接続はしない。
+
 ## 3. 復旧できたことを確認する
 
 - 全対象roleが正常終了し、failed/unreachableが0である。
