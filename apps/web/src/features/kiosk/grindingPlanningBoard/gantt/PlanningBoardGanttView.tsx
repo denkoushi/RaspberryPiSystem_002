@@ -335,7 +335,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     setCurrentItemId(null);
   }, []);
   const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
-    if (!latestFocus.current.showChain && !queuePopover.current?.isPinned()) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
+    if (latestFocus.current.showChain || queuePopover.current?.isPinned()) return;
+    queuePopover.current?.showAfterHover(anchor, () => latestFocus.current.showChain ? null : latest.current.currentBars.get(bar.item.itemId) ?? bar);
   }, []);
   const leaveQueue = useCallback(() => queuePopover.current?.hideSoon(), []);
   const closeQueue = useCallback(() => queuePopover.current?.closeUnlessPinned(), []);

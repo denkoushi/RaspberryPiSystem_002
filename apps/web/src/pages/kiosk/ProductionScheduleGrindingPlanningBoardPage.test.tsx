@@ -1614,7 +1614,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByTestId('planning-gantt-bar-b')).not.toHaveClass('opacity-50');
   });
 
-  it('records arrival from a grey queue card, shows the Gantt immediately, and allows cancellation', async () => {
+  it('records arrival from a grey queue card, shows the Gantt immediately, and allows cancellation', { timeout: 15_000 }, async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-06T00:00:00Z'));
     const data = fixture();
@@ -1625,7 +1625,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'), { pointerType: 'mouse' });
-    const card = screen.getByTestId('planning-forward-queue-card-b');
+    const card = await screen.findByTestId('planning-forward-queue-card-b', undefined, { timeout: 3000 });
     expect(card).toHaveClass('border-slate-950', 'text-slate-500');
     const arrive = within(card).getByRole('button', { name: '着', exact: true });
     expect(arrive).toHaveClass('min-h-9');
@@ -1633,7 +1633,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     await waitFor(() => expect(mocks.arrival).toHaveBeenCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: true }));
     await waitFor(() => expect(screen.getByTestId('planning-gantt-bar-b')).toBeInTheDocument());
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
-    const arrived = screen.getByTestId('planning-forward-queue-card-b');
+    const arrived = await screen.findByTestId('planning-forward-queue-card-b', undefined, { timeout: 3000 });
     expect(arrived).not.toHaveClass('text-slate-500');
     fireEvent.click(within(arrived).getByRole('button', { name: '取り消し', exact: true }));
     await waitFor(() => expect(mocks.arrival).toHaveBeenLastCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: false }));
