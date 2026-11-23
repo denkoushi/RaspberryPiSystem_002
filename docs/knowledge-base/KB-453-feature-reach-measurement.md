@@ -1,4 +1,4 @@
-# KB-453: 機能ごとに AI が読む量の月1回の測定記録
+# KB-453: 機能ごとの変更の広さ(週1回)と AI が読む量(月1回)の測定記録
 
 - Status: active
 - Scope: `scripts/analysis/feature-reach/` による画面・API・定期処理の測定。以後の測定記録の正本はこの KB。
@@ -11,7 +11,7 @@
 
 ## Symptoms Or Trigger
 
-月1回、機能の入口から読む範囲を測り直す。fix の件数や割合は危険の指標にしない。
+週1回、直近4週間の変更の多さと広さを数え、同じ型の不具合のくり返しを見る。月1回、機能の入口から読む範囲を測り直す。fix の件数や割合は危険の指標にしない。
 保存の流れの区切り直しの効き目は、計画書の段階2完了後90日の間に、下記12件と同じ型の保存の消失・上書きの不具合が再発するかで見て、件数や割合は比べない。
 
 ## Investigation
@@ -114,13 +114,19 @@ head -10 /tmp/fr/o-api.txt /tmp/fr/o-sched.txt
 
 cycles は輪のファイル数の降順であり、トークン量の順ではない。
 
-あわせて、直前の1か月の変更の多さと広さを数える(2026-11-16 追加。読むだけで5秒前後)。起点は測る日の1か月前にし、その日の 00:00 から数える。`REV` に上で測った SHA を渡す(省くと手元の `origin/main` を数え、後で同じ数を再現できない)。結果は下の「変更の多さと広さ」の表に1行足す。
+変更の多さと広さは、上の量の測定とは別に週1回数える(2026-11-16 追加、2026-11-23 に月1回から週1回へ。読むだけで5秒前後で、`pnpm install` も要らない)。起点は測る日の4週間前にし、その日の 00:00 から数える。`REV` に測る時点の main の SHA を渡す(省くと手元の `origin/main` を数え、後で同じ数を再現できない)。結果は下の「変更の多さと広さ」の表に1行足す。
 
 ```sh
-REV=$(git rev-parse HEAD) sh scripts/analysis/feature-reach/change-width.sh <1か月前の日付> apps/web/src/features/kiosk/grindingPlanningBoard apps/api/src/services/production-schedule/grinding-planning-board apps/web/src/features/assembly apps/api/src/services/assembly apps/api/src/services/imports apps/api/src/services/signage apps/api/src/services/business-hermes apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.tsx apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx
+REV=$(git rev-parse origin/main) sh scripts/analysis/feature-reach/change-width.sh <4週間前の日付> apps/web/src/features/kiosk/grindingPlanningBoard apps/api/src/services/production-schedule/grinding-planning-board apps/web/src/features/assembly apps/api/src/services/assembly apps/api/src/services/imports apps/api/src/services/signage apps/api/src/services/business-hermes apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.tsx apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx scripts/deploy infrastructure/ansible
 ```
 
-最後の2つ(ガントの画面とページ)は、計画書の段階2bの効き目を見るための列である。
+最後の4つのうち、ガントの画面とページは計画書の段階2bの効き目を見るための列、`scripts/deploy` と `infrastructure/ansible` はデプロイ周り(2026-11-23 追加)である。
+
+同じ回に、同じ期間の直しの PR の件名を、数えたパスごとに読み、同じ型の不具合が2回以上あれば表の下に1行書く。件数や割合は比べない。
+
+```sh
+git log origin/main --since="<4週間前の日付> 00:00" --no-merges --format='%h %s' -- <パス> | grep -E '^[0-9a-f]+ fix'
+```
 
 コミットが多く、ファイル数の75%点が大きい機能が、区切り直しの次の候補になる。量の表は、その機能のどこを読むかを探すときに使う。
 
@@ -129,6 +135,14 @@ REV=$(git rev-parse HEAD) sh scripts/analysis/feature-reach/change-width.sh <1�
 | 測った日 | SHA | 起点 | ボード画面 | ボード API | 組立 画面/API | 取り込み | サイネージ | 業務 Hermes | ガントの画面 / ページ |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-16 | `83678cbf` | 2026-10-17 | 102件、5・13 | 43件、8・21 | 26件 8・12 / 38件 11・21 | 24件、10.5・22 | 7件 | 9件 | 45件 6・18 / 42件 11・19 |
+
+デプロイ周り(2026-11-23 から。数字の意味は上と同じ。3区画以上は、3つ以上の区画にまたがったコミットの数):
+
+| 測った日 | SHA | 起点 | scripts/deploy | infrastructure/ansible |
+| --- | --- | --- | --- | --- |
+| 2026-11-23 | `3d45cb36` | 2026-10-22 | 88件、4・8(3区画以上 29) | 113件、4・8(3区画以上 35) |
+
+2026-11-23 の行は、追加を決める前に1か月分で測った参考値。同じ時点の製番ボード画面は126件、4・11(3区画以上 42)だった。
 
 サイネージと業務 Hermes は件数が少なく、多くの区画をまたぐ大きなコミット(最大157ファイル)に引っぱられるので、中央値と75%点は書かない。
 
@@ -149,8 +163,8 @@ REV=$(git rev-parse HEAD) sh scripts/analysis/feature-reach/change-width.sh <1�
 
 ## Open Items
 
-- 担当: 進捗追跡の会話に依頼中(2026-11-16)。決まったらここに書く
-- 次の測定は 2026-12-16 頃。
+- 担当: 進捗追跡の会話。週1回の変更の広さは見回りのついでに流し、月1回の量の測定もあわせて行う(2026-11-23 決定)。
+- 次の週1回の測定は 2026-11-30 頃、月1回の量の測定は 2026-12-16 頃。
 - 数えるパスの一覧は上の手順で保つ。新しい機能ができたら、その機能のパスを足す。
 - 段階2〜4の残りは計画書を正本とし、ここに複製しない。
 
