@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildPlanningBoardGanttLayout } from '../gantt/planningBoardGanttLayout';
@@ -20,7 +20,7 @@ const item = (kind: GrindingPlanningBoardItem['kind'], requiredMinutes: number):
 });
 
 describe('planning board required minutes display', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
   it.each([[120, '120分'], [0, '0分'], [133.33333333333334, '133.3分'], [133.36, '133.4分'], [133.01, '133.0分']])('formats aggregate load %s without changing integer labels', (minutes, label) => {
     expect(formatPlanningBoardLoadSummary(Number(minutes), 0)).toBe(label);
@@ -62,6 +62,7 @@ describe('planning board required minutes display', () => {
     ['row', '333.3333333333333分'],
     ['piece', '333.3分']
   ] as const)('uses the same %s label in the forward bar and queue', (kind, label) => {
+    vi.useFakeTimers();
     class MousePointerEvent extends MouseEvent { readonly pointerType = 'mouse'; }
     vi.stubGlobal('PointerEvent', MousePointerEvent);
     const value = item(kind, 333.3333333333333);
@@ -75,6 +76,7 @@ describe('planning board required minutes display', () => {
     const bar = screen.getByTestId('planning-gantt-bar-a');
     expect(bar).toHaveTextContent(label);
     fireEvent.pointerEnter(bar);
+    act(() => vi.advanceTimersByTime(2000));
     expect(screen.getByTestId('planning-forward-queue-card-a')).toHaveTextContent(label);
     expect(value.requiredMinutes).toBe(333.3333333333333);
   });

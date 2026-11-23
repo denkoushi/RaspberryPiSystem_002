@@ -17,6 +17,7 @@ import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, RefObject } from 'react';
 
+const HOVER_SHOW_DELAY_MS = 2000;
 const HOVER_PIN_DELAY_MS = 3000;
 
 type OpenQueue = { itemId: string; anchor: HTMLButtonElement };
@@ -24,6 +25,7 @@ type Drop = { bar: GanttBar; placement: GrindingPlanningBoardResourceOrderPlacem
 type Drag = { bar: GanttBar; x: number; pointerId: number; element: HTMLDivElement; moved: boolean; y: number; ready: boolean; allowed: ReadonlySet<string> };
 export type ForwardQueueHandle = {
   show: (bar: GanttBar, anchor: HTMLButtonElement, pinned?: boolean) => void;
+  showAfterHover: (anchor: HTMLButtonElement, resolve: () => GanttBar | null) => void;
   isPinned: () => boolean;
   closeUnlessPinned: () => void;
   hideSoon: () => void;
@@ -64,6 +66,8 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   const mouseOverPanel = useRef(false);
   const pinTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const cancelPin = useCallback(() => { clearTimeout(pinTimer.current); pinTimer.current = undefined; }, []);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelHover = useCallback(() => { clearTimeout(hoverTimer.current); hoverTimer.current = undefined; }, []);
   const pin = () => { cancelPin(); pinned.current = true; setPinned(true); cancelHide(); };
   const scroll = useRef<HTMLDivElement>(null);
   const longPress = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -87,19 +91,32 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   }, [onDragPreview]);
   useEffect(() => gate.subscribeReadOnly(clearDrag), [clearDrag, gate]);
   useEffect(() => { if (frozen) clearDrag(); }, [clearDrag, frozen]);
-  const close = useCallback(() => { cancelHide(); cancelPin(); mouseOverPanel.current = false; clearDrag(); pinned.current = false; setPinned(false); setOpen(null); }, [cancelHide, cancelPin, clearDrag]);
+  const closeVisibleQueue = useCallback(() => { cancelHide(); cancelPin(); mouseOverPanel.current = false; clearDrag(); pinned.current = false; setPinned(false); setOpen(null); }, [cancelHide, cancelPin, clearDrag]);
+  const close = useCallback(() => { cancelHover(); closeVisibleQueue(); }, [cancelHover, closeVisibleQueue]);
   const hideSoon = useCallback(() => {
+    cancelHover();
     cancelHide();
-    if (!pinned.current && !drag.current) timer.current = setTimeout(close, 300);
-  }, [cancelHide, close]);
-  const closeUnlessPinned = useCallback(() => { if (!pinned.current && !mouseOverPanel.current && !drag.current) close(); }, [close]);
+    if (!pinned.current && !drag.current) timer.current = setTimeout(closeVisibleQueue, 300);
+  }, [cancelHover, cancelHide, closeVisibleQueue]);
+  const closeUnlessPinned = useCallback(() => { if (!pinned.current && !mouseOverPanel.current && !drag.current) closeVisibleQueue(); }, [closeVisibleQueue]);
+  const show = useCallback((bar: GanttBar, anchor: HTMLButtonElement, fixed = false) => {
+    cancelHover();
+    if (bar.item.kind !== 'test' && bar.item.standardHoursMissing) return;
+    if (pinned.current && !fixed) return;
+    cancelHide(); cancelPin(); mouseOverPanel.current = false; clearDrag(); pinned.current = fixed; setPinned(fixed); setOpen({ itemId: bar.item.itemId, anchor });
+  }, [cancelHover, cancelHide, cancelPin, clearDrag]);
+  const showAfterHover = useCallback((anchor: HTMLButtonElement, resolve: () => GanttBar | null) => {
+    cancelHover();
+    if (pinned.current) return;
+    hoverTimer.current = setTimeout(() => {
+      hoverTimer.current = undefined;
+      const bar = resolve();
+      if (bar && anchor.isConnected && !pinned.current && !drag.current) show(bar, anchor);
+    }, HOVER_SHOW_DELAY_MS);
+  }, [cancelHover, show]);
   useImperativeHandle(ref, () => ({
-    show: (bar, anchor, fixed = false) => {
-      if (bar.item.kind !== 'test' && bar.item.standardHoursMissing) return;
-      if (pinned.current && !fixed) return;
-      cancelHide(); cancelPin(); mouseOverPanel.current = false; clearDrag(); pinned.current = fixed; setPinned(fixed); setOpen({ itemId: bar.item.itemId, anchor });
-    }, hideSoon, close, closeUnlessPinned, isPinned: () => pinned.current
-  }), [cancelHide, cancelPin, clearDrag, hideSoon, close, closeUnlessPinned]);
+    show, showAfterHover, hideSoon, close, closeUnlessPinned: () => { cancelHover(); closeUnlessPinned(); }, isPinned: () => pinned.current
+  }), [show, showAfterHover, hideSoon, close, closeUnlessPinned, cancelHover]);
   const openBar = open && [...(layout.forwardQueue ?? []), ...layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))]
     .find((bar) => bar.item.itemId === open.itemId);
   useEffect(() => { closeUnlessPinned(); }, [layout, scale, closeUnlessPinned]);
@@ -113,7 +130,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     if (!bar || bar.arrivalPending !== pending.bar.arrivalPending || bar.item.isCompleted !== pending.bar.item.isCompleted || bar.resource !== pending.bar.resource) clearDrag();
     else pending.bar = bar;
   }, [layout, clearDrag]);
-  useEffect(() => () => { clearTimeout(timer.current); cancelPin(); clearDrag(); }, [cancelPin, clearDrag]);
+  useEffect(() => () => { clearTimeout(timer.current); cancelPin(); cancelHover(); clearDrag(); }, [cancelPin, cancelHover, clearDrag]);
   useEffect(() => {
     if (!open) return;
     const outside = (event: globalThis.PointerEvent) => {

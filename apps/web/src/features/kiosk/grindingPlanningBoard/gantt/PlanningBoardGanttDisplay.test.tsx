@@ -1414,6 +1414,7 @@ describe('two-machine forward dragging', () => {
     const onResourceMove = vi.fn();
     render(<PlanningBoardGanttDisplay {...props('forward')} resourceMove={{ onResourceMove, canMoveResource: () => true }} />);
     fireEvent.pointerEnter(bar('item-0000'));
+    act(() => vi.advanceTimersByTime(2000));
     const source = screen.getByTestId('planning-forward-queue-card-item-0000');
     begin(source, bar('item-0001'), 0);
     expect(screen.getByTestId('planning-gantt-insertion').closest('[data-resource-code]')).toHaveAttribute('data-resource-code', '022');
