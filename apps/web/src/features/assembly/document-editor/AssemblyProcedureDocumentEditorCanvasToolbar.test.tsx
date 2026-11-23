@@ -7,15 +7,16 @@ import type { ComponentProps } from 'react';
 
 vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: () => ({ unavailable: false }) }));
 
-function renderToolbar({ workshop = false, locked = false, readOnly = false, isDirty = false, saving = false, canTogglePhotoSharpen = false, photoSharpened = false } = {}) {
+function renderToolbar({ workshop = false, locked = false, readOnly = false, isDirty = false, saving = false, canTogglePhotoSharpen = false, photoSharpened = false, cleanView = false, canShowCleanView = false } = {}) {
   const controller = {
     readOnly, isDirty, saving, busy: saving, canSave: true, canPublish: true, canUndo: true, canRedo: true,
     canTogglePhotoSharpen, photoSharpened, togglePhotoSharpen: vi.fn(),
     layoutLocked: locked, canSuggest: true, startLayout: vi.fn(),
     save: vi.fn(), navigateBack: vi.fn(), undo: vi.fn(), redo: vi.fn()
   } as unknown as ComponentProps<typeof AssemblyProcedureDocumentEditorCanvasToolbar>['controller'];
-  render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} />);
-  return { controller };
+  const onToggleCleanView = vi.fn();
+  render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} cleanView={cleanView} canShowCleanView={canShowCleanView} onToggleCleanView={onToggleCleanView} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} />);
+  return { controller, onToggleCleanView };
 }
 
 describe('document editor toolbar navigation', () => {
@@ -82,5 +83,39 @@ describe('photo sharpen button', () => {
     else expect(button).toBeEnabled();
     fireEvent.click(button);
     expect(controller.togglePhotoSharpen).toHaveBeenCalledTimes(disabled ? 0 : 1);
+  });
+});
+
+describe('clean view button', () => {
+  it('sits immediately after layout and is disabled without text', () => {
+    const { onToggleCleanView } = renderToolbar();
+    const button = screen.getByRole('button', { name: '清書で見る', pressed: false });
+    const buttons = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
+    expect(buttons[buttons.indexOf(button) - 1]).toHaveAccessibleName('整える');
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onToggleCleanView).not.toHaveBeenCalled();
+  });
+
+  it('allows opening clean view on a read-only page with text', () => {
+    const { onToggleCleanView } = renderToolbar({ canShowCleanView: true, readOnly: true });
+    const button = screen.getByRole('button', { name: '清書で見る', pressed: false });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(onToggleCleanView).toHaveBeenCalledOnce();
+  });
+
+  it('keeps save, publish and back available while disabling edits', () => {
+    const { onToggleCleanView } = renderToolbar({ cleanView: true, canShowCleanView: true, isDirty: true, canTogglePhotoSharpen: true });
+    for (const name of ['素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '音声入力', '元に戻す', 'やり直す']) {
+      expect(screen.getByRole('button', { name, exact: true })).toBeDisabled();
+    }
+    for (const name of ['未保存の変更を保存する', '公開する', '一覧へ戻る']) {
+      expect(screen.getByRole('button', { name })).toBeEnabled();
+    }
+    const button = screen.getByRole('button', { name: '元のページに戻る', pressed: true });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(onToggleCleanView).toHaveBeenCalledOnce();
   });
 });

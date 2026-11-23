@@ -914,7 +914,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '音声入力', '元に戻す', 'やり直す']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '清書で見る', '音声入力', '元に戻す', 'やり直す']);
     expect(within(rail).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');
@@ -1020,3 +1020,37 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
 });
 
 vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: vi.fn(() => ({ unavailable: false })) }));
+
+it('rebuilds clean view on page selection and exits on a page without text', () => {
+  const second = { ...interactiveText, id: 'second', pageIndex: 1, text: '次のページの手順' };
+  const pages = [
+    editorDocument.pages[0],
+    { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [] },
+    { pageIndex: 2, imageRelativePath: '/pages/3.png', overlays: [] }
+  ];
+  const controller = makeController({ pages, elements: [interactiveText, second] });
+  function Harness() {
+    const [pageIndex, setPageIndex] = useState(0);
+    return <AssemblyProcedureDocumentEditorProvider value={{
+      ...controller, selectedPageIndex: pageIndex, selectedPage: pages[pageIndex],
+      selectedPageElements: controller.elements.filter(element => element.pageIndex === pageIndex),
+      setSelectedPageIndex: setPageIndex
+    }}>
+      <AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} />
+    </AssemblyProcedureDocumentEditorProvider>;
+  }
+  render(<Harness />);
+  fireEvent.click(screen.getByRole('button', { name: '清書で見る' }));
+  expect(screen.queryByTestId('editor-canvas')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '手順1 元の本文' }));
+  fireEvent.click(screen.getByRole('button', { name: '2ページ目' }));
+  const cleanPage = screen.getByRole('region', { name: '2ページ目の清書' });
+  expect(within(cleanPage).getByText('2 / 3')).toBeVisible();
+  expect(within(cleanPage).getByRole('button', { name: '手順1 次のページの手順', pressed: false })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '3ページ目' }));
+  expect(screen.getByTestId('editor-canvas')).toBeVisible();
+  expect(screen.getByRole('button', { name: '清書で見る' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: '1ページ目' }));
+  expect(screen.getByTestId('editor-canvas')).toBeVisible();
+  expect(screen.getByRole('button', { name: '清書で見る' })).toBeEnabled();
+});

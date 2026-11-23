@@ -8,6 +8,7 @@ import { useShelfResources } from '../procedure-manuals/procedure-material-shelf
 import { ProcedureMaterialShelfDialog } from '../procedure-manuals/ProcedureMaterialShelfDialog';
 import { ProcedureVideoShelfDialog } from '../procedure-manuals/ProcedureVideoShelfDialog';
 
+import { AssemblyProcedureCleanView } from './AssemblyProcedureCleanView';
 import { AssemblyProcedureDocumentEditorAuthGate } from './AssemblyProcedureDocumentEditorAuthGate';
 import { AssemblyProcedureDocumentEditorCanvas } from './AssemblyProcedureDocumentEditorCanvas';
 import { AssemblyProcedureDocumentEditorCanvasToolbar } from './AssemblyProcedureDocumentEditorCanvasToolbar';
@@ -21,6 +22,7 @@ import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocum
 import { AssemblyProcedureLayoutSuggestionPanel } from './AssemblyProcedureLayoutSuggestionPanel';
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
+import { buildCleanSteps } from './cleanViewSteps';
 import { DocumentEditorMaterials } from './DocumentEditorMaterials';
 import { useMaterialDrag } from './useMaterialDrag';
 import { useProcedureLiveMeeting } from './useProcedureLiveMeeting';
@@ -39,6 +41,20 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const processNames = context?.processName.split(' › ') ?? [];
   const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
     : processNames.some(name => name.startsWith('研削')) ? 'procedure-grinding' : undefined;
+  const cleanSteps = useMemo(() => buildCleanSteps(controller.pagePreviewElements
+    ? controller.pagePreviewElements.filter(element => element.pageIndex === controller.selectedPageIndex)
+    : controller.selectedPageElements), [controller.pagePreviewElements, controller.selectedPageElements, controller.selectedPageIndex]);
+  const [cleanViewRequested, setCleanViewRequested] = useState(false);
+  const canShowCleanView = cleanSteps.length > 0;
+  const cleanView = cleanViewRequested && canShowCleanView;
+  useEffect(() => {
+    if (!canShowCleanView) setCleanViewRequested(false);
+  }, [canShowCleanView]);
+  const toggleCleanView = useCallback(() => {
+    // Selecting no overlay also commits any active inline edit before the canvas unmounts.
+    if (!cleanView) setSelectedOverlayId(null);
+    setCleanViewRequested(!cleanView);
+  }, [cleanView, setSelectedOverlayId]);
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(() => {
     try { return localStorage.getItem('assembly-document-editor-voice-input') === 'on'; }
     catch { return false; }
@@ -78,7 +94,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
   const meeting = useProcedureMeetingInput({
     element: controller.selectedElement?.kind === 'TEXT' ? controller.selectedElement : null,
-    enabled: voiceInputEnabled && controller.accessGranted,
+    enabled: voiceInputEnabled && controller.accessGranted && !cleanView,
     disabled: inlineEditingId === controller.selectedElement?.id,
     busy: controller.busy || controller.saving || controller.readOnly,
     inlineEditingId,
@@ -87,7 +103,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   });
   const live = useProcedureLiveMeeting({
     element: controller.selectedElement?.kind === 'TEXT' ? controller.selectedElement : null,
-    enabled: voiceInputEnabled && controller.accessGranted,
+    enabled: voiceInputEnabled && controller.accessGranted && !cleanView,
     disabled: inlineEditingId === controller.selectedElement?.id || controller.busy || controller.readOnly,
     onUpdate: controller.updateElement,
     onBegin: controller.beginOverlayDrag,
@@ -171,7 +187,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const materialDrag = useMaterialDrag({
     layerRef: overlayLayerRef,
     elements: visibleElements,
-    enabled: !controller.readOnly && !controller.busy && !controller.conflict && !controller.layoutSuggestions.locked && controller.editLeaseMine,
+    enabled: !cleanView && !controller.readOnly && !controller.busy && !controller.conflict && !controller.layoutSuggestions.locked && controller.editLeaseMine,
     pageIndex: controller.selectedPageIndex,
     place: placeMaterial,
     onError: error => controller.setErrorMessage(readAssemblyApiErrorMessage(error, '素材の配置に失敗しました。'))
@@ -209,7 +225,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     publishOpen || conflictReloadOpen || takeoverOpen || controller.pendingRange != null || controller.textCandidates.length > 0;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing ||
+      if (cleanView || event.key !== 'Escape' || event.defaultPrevented || event.isComposing ||
         !controller.accessGranted || controller.loading || canvasSaving || overlayInteractionActive.current || controller.layoutSuggestions.locked ||
         dialogOpen || inlineEditingId || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       const target = document.activeElement;
@@ -218,7 +234,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [controller.accessGranted, controller.loading, canvasSaving, controller.layoutSuggestions.locked, dialogOpen, inlineEditingId, setSelectedOverlayId]);
+  }, [cleanView, controller.accessGranted, controller.loading, canvasSaving, controller.layoutSuggestions.locked, dialogOpen, inlineEditingId, setSelectedOverlayId]);
 
   if (!controller.accessGranted || controller.loading) {
     return <>{preloader}<AssemblyProcedureDocumentEditorAuthGate context={context} /></>;
@@ -282,10 +298,10 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onDeletePage={setDeletePageIndex}
           onMovePage={controller.movePage}
           locked={controller.layoutSuggestions.locked}
-          disabled={controller.readOnly || controller.busy || controller.conflict}
+          disabled={cleanView || controller.readOnly || controller.busy || controller.conflict}
         />
         {partsPaneOpen ? <AssemblyProcedureDocumentEditorPartsPane
-          materials={<DocumentEditorMaterials revision={materialRevision + (controller.materialRevision ?? 0)} disabled={controller.readOnly || controller.busy || controller.conflict || !controller.editLeaseMine || controller.layoutSuggestions.locked} drag={materialDrag} />}
+          materials={<DocumentEditorMaterials revision={materialRevision + (controller.materialRevision ?? 0)} disabled={cleanView || controller.readOnly || controller.busy || controller.conflict || !controller.editLeaseMine || controller.layoutSuggestions.locked} drag={materialDrag} />}
           elements={controller.elements}
           pageIndex={selectedPage.pageIndex}
           onDuplicate={controller.duplicateOverlayToCurrentPage}
@@ -296,21 +312,28 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onBringForward={controller.bringForward}
           onSendBackward={controller.sendBackward}
           onToggleHidden={toggleHidden}
-          readOnly={controller.readOnly}
+          readOnly={cleanView || controller.readOnly}
           busy={controller.busy}
-          locked={controller.layoutSuggestions.locked}
+          locked={cleanView || controller.layoutSuggestions.locked}
         /> : null}
         <button type="button" disabled={controller.layoutSuggestions.locked} aria-label={partsPaneOpen ? '部品を閉じる' : '部品を開く'} onClick={togglePartsPane} className={`absolute top-1/2 z-50 grid h-[72px] w-[22px] -translate-y-1/2 place-items-center rounded-r-lg border border-l-0 border-[#344252] bg-[#161c22] text-[#9fadb9] ${partsPaneOpen ? 'left-[400px]' : 'left-[120px]'}`}>
           <span aria-hidden="true">{partsPaneOpen ? '<' : '>'}</span>
         </button>
         <section className="relative col-start-3 min-h-0 min-w-0 overflow-hidden p-2" aria-label="手順書キャンバス"
           onPointerDownCapture={event => {
-            if (!event.isPrimary || event.button !== 0 || canvasSaving || overlayInteractionActive.current || controller.selectionMode || controller.layoutSuggestions.locked) return;
+            if (cleanView || !event.isPrimary || event.button !== 0 || canvasSaving || overlayInteractionActive.current || controller.selectionMode || controller.layoutSuggestions.locked) return;
             const target = event.target as HTMLElement;
             if (target.closest('[data-overlay-id], [data-overlay-resize-handle], textarea, [role="status"], [role="alert"], [data-editor-approval]')) return;
             setSelectedOverlayId(null);
           }}>
-          <AssemblyProcedureDocumentEditorCanvas
+          {cleanView ? <AssemblyProcedureCleanView
+            key={`${controller.document?.id}:${selectedPage.pageIndex}`}
+            name={controller.document?.name ?? '手順書'}
+            pageNumber={selectedPage.pageIndex + 1}
+            pageCount={pages.length}
+            steps={cleanSteps}
+            assets={controller.document?.assets}
+          /> : <AssemblyProcedureDocumentEditorCanvas
             saving={canvasSaving}
             onUpdateText={live.status === 'idle' ? controller.commitInlineText : undefined}
             registerInlineTextFlush={controller.registerInlineTextFlush}
@@ -334,8 +357,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             onRangeSelected={controller.handleRangeSelected}
             assets={controller.document?.assets}
             className="h-full w-full !bg-[#0a0d10]"
-          />
-          <AssemblyProcedureLayoutSuggestionPanel suggestions={controller.layoutSuggestions} />
+          />}
+          {!cleanView ? <AssemblyProcedureLayoutSuggestionPanel suggestions={controller.layoutSuggestions} /> : null}
           {controller.document?.lastApproval ? <p data-editor-approval className="absolute bottom-16 left-4 max-w-[calc(100%-32px)] rounded bg-[#161c22eb] px-3 py-1 text-xs text-[#9fadb9]">
             承認: {controller.document.lastApproval.employeeName}{controller.document.lastApproval.positionName ? `(${controller.document.lastApproval.positionName})` : ''} {new Date(controller.document.lastApproval.approvedAt).toLocaleString('ja-JP')}
           </p> : null}
@@ -355,14 +378,14 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             </div>
           ) : null}
         </section>
-        <aside className={`col-start-4 flex min-h-0 min-w-0 flex-col border-l border-[#27313b] bg-[#161c22] max-[1099px]:absolute max-[1099px]:col-auto max-[1099px]:right-20 max-[1099px]:top-4 max-[1099px]:bottom-4 max-[1099px]:z-50 max-[1099px]:w-[340px] max-[1099px]:rounded-[14px] max-[1099px]:border max-[1099px]:bg-[#161c22f5] ${partsPaneOpen ? 'max-[1099px]:max-w-[calc(100%-480px)]' : 'max-[1099px]:max-w-[calc(100%-200px)]'} ${controller.selectedElement ? '' : 'max-[1099px]:hidden'}`} data-testid="assembly-document-editor-details">
+        <aside className={`col-start-4 flex min-h-0 min-w-0 flex-col border-l border-[#27313b] bg-[#161c22] max-[1099px]:absolute max-[1099px]:col-auto max-[1099px]:right-20 max-[1099px]:top-4 max-[1099px]:bottom-4 max-[1099px]:z-50 max-[1099px]:w-[340px] max-[1099px]:rounded-[14px] max-[1099px]:border max-[1099px]:bg-[#161c22f5] ${partsPaneOpen ? 'max-[1099px]:max-w-[calc(100%-480px)]' : 'max-[1099px]:max-w-[calc(100%-200px)]'} ${!cleanView && controller.selectedElement ? '' : 'max-[1099px]:hidden'}`} data-testid="assembly-document-editor-details">
           <div className="flex shrink-0 flex-col items-start gap-2 border-b border-[#27313b] px-[14px] py-[10px] text-[17px] text-[#9fadb9]">
             <b className="w-full whitespace-normal break-words text-[#eef3f6]">{context ? [context.processName.startsWith('共通') ? '' : context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}</b>
             {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>
               {context.mode === 'make' ? '作る' : '直す'} · {controller.document?.supersedesDocumentId ? '改版の下書き' : '下書き'} 第{controller.document?.revisionNumber ?? 1}版
             </span> : null}
           </div>
-        {controller.selectedElement ? <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {!cleanView && controller.selectedElement ? <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <AssemblyProcedureDocumentEditorInspector
           key={voiceInputEnabled ? `${controller.document?.id}:${controller.selectedElement.id}` : undefined}
           textReadOnly={inlineEditingId === controller.selectedElement.id}
@@ -392,6 +415,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         </aside>
         <AssemblyProcedureDocumentEditorCanvasToolbar controller={toolbarController} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
           voiceInputEnabled={voiceInputEnabled} onToggleVoiceInput={toggleVoiceInput}
+          cleanView={cleanView} canShowCleanView={canShowCleanView} onToggleCleanView={toggleCleanView}
           onMaterial={openMaterial} onVideo={openVideo} onPublish={openPublish} />
 
       {materialShelfOpen ? <ProcedureMaterialShelfDialog resources={shelfResources} mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? replaceImageMaterial : placeMaterial} onCreatedDocument={async (documentId) => {
