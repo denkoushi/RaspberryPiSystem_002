@@ -43,7 +43,6 @@ export type ViewModel = {
   totalMasterCount: number;
   periodBorrowCount: number;
   periodReturnCount: number;
-  assetFilterLabel: string;
   datasetLabel: string;
   monthlyTrend: { yearMonth: string; borrowCount: number; returnCount: number }[];
   assets: AssetRow[];
@@ -58,7 +57,6 @@ function mapRigging(data: RiggingLoanAnalyticsResponse): ViewModel {
     totalMasterCount: data.summary.totalRiggingGearsActive,
     periodBorrowCount: data.summary.periodBorrowCount,
     periodReturnCount: data.summary.periodReturnCount,
-    assetFilterLabel: '吊具',
     datasetLabel: '吊具',
     monthlyTrend: data.monthlyTrend.map(({ yearMonth, borrowCount, returnCount }) => ({ yearMonth, borrowCount, returnCount })),
     assets: data.byGear.map((row) => ({
@@ -92,7 +90,6 @@ function mapItems(data: ItemLoanAnalyticsResponse): ViewModel {
     totalMasterCount: data.summary.totalItemsActive,
     periodBorrowCount: data.summary.periodBorrowCount,
     periodReturnCount: data.summary.periodReturnCount,
-    assetFilterLabel: '表示名',
     datasetLabel: 'アイテム',
     monthlyTrend: data.monthlyTrend.map(({ yearMonth, borrowCount, returnCount }) => ({ yearMonth, borrowCount, returnCount })),
     assets: data.byItem.map((row) => ({
@@ -126,7 +123,6 @@ function mapInstruments(data: MeasuringInstrumentLoanAnalyticsResponse): ViewMod
     totalMasterCount: data.summary.totalInstrumentsActive,
     periodBorrowCount: data.summary.periodBorrowCount,
     periodReturnCount: data.summary.periodReturnCount,
-    assetFilterLabel: '計測機器',
     datasetLabel: '計測機器',
     monthlyTrend: data.monthlyTrend.map(({ yearMonth, borrowCount, returnCount }) => ({ yearMonth, borrowCount, returnCount })),
     assets: data.byInstrument.map((row) => ({

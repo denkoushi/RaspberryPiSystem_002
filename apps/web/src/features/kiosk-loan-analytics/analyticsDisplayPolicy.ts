@@ -49,7 +49,7 @@ export function selectEmployeesForDisplay(rows: EmployeeRow[], topLimit: number,
     return topRankedEmployees(rows, topLimit);
   }
   const sorted = [...rows].sort(compareEmployeesByPeriodActivity);
-  return sorted.slice(0, Math.min(sorted.length, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS));
+  return sorted.slice(0, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS);
 }
 
 /** 資産ランキング: Top N または全件（上限付き） */
@@ -58,7 +58,7 @@ export function selectAssetsForDisplay(rows: AssetRow[], topLimit: number, mode:
     return topRankedAssetsByBorrow(rows, topLimit);
   }
   const sorted = [...rows].sort(compareAssetsByPeriodBorrowDesc);
-  return sorted.slice(0, Math.min(sorted.length, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS));
+  return sorted.slice(0, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS);
 }
 
 export function sortPeriodEventsNewestFirst(rows: PeriodEventRow[]): PeriodEventRow[] {
@@ -72,7 +72,7 @@ export function takeTodayEventsForDisplay(
 ): PeriodEventRow[] {
   const sorted = sortPeriodEventsNewestFirst(rows);
   if (mode === 'all') {
-    return sorted.slice(0, Math.min(sorted.length, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS));
+    return sorted.slice(0, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS);
   }
   if (limit <= 0) return [];
   return sorted.slice(0, limit);

@@ -5,7 +5,10 @@ import { scanFrameStore } from './scanFrameStore';
 
 import type { ScanFrameCapture } from '../../barcode-scan/scanFrameCapture';
 
-vi.mock('./scanFrameStore', () => ({ scanFrameStore: { put: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock('./scanFrameStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./scanFrameStore')>()),
+  scanFrameStore: { put: vi.fn().mockResolvedValue(undefined) },
+}));
 vi.mock('../sync/syncScheduler', () => ({ requestSync: vi.fn() }));
 const capture = (): ScanFrameCapture => {
   const fullCanvas = document.createElement('canvas');
