@@ -2,7 +2,20 @@ import { openDB, type IDBPDatabase } from 'idb';
 
 import type { ScanFrameCapture } from '../../barcode-scan/scanFrameCapture';
 
-export const SCAN_FRAME_POLICY = { maxRecords: 300, maxBytes: 60 * 1024 * 1024, slowMs: 1500, retries: 15, sampleRate: 0.1, manualInputGraceMs: 30_000, requestTimeoutMs: 30_000 };
+export const SCAN_FRAME_POLICY = {
+  maxRecords: 300,
+  maxBytes: 60 * 1024 * 1024,
+  slowMs: 1500,
+  retries: 15,
+  sampleRate: 0.1,
+  manualInputGraceMs: 30_000,
+  requestTimeoutMs: 30_000,
+  maxUploadRecords: 20,
+  maxUploadBytes: 2 * 1024 * 1024,
+  jpegQuality: 0.7,
+  maxCropLongEdgePx: 640,
+  idleTimeoutMs: 2000
+};
 export type ScanFrameRecord = {
   id: string;
   kind: 'scan-frame' | 'placement-photo';

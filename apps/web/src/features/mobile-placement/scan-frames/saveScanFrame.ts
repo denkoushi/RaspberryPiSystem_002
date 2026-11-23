@@ -1,17 +1,17 @@
 import { createHaizenClientRecordId } from '../haizen/offline/haizenOfflineQueueStore';
 import { requestSync } from '../sync/syncScheduler';
 
-import { scanFrameStore, type ScanFrameRecord } from './scanFrameStore';
+import { SCAN_FRAME_POLICY, scanFrameStore, type ScanFrameRecord } from './scanFrameStore';
 
 import type { ScanFrameCapture } from '../../barcode-scan/scanFrameCapture';
 
 export function onScanIdle(work: () => Promise<void>) {
   const run = () => { void work().catch(() => console.warn('Scan frame could not be saved')); };
-  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 2000 });
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: SCAN_FRAME_POLICY.idleTimeoutMs });
   else window.setTimeout(run, 0);
 }
 const jpeg = (canvas: HTMLCanvasElement): Promise<Blob> => new Promise((resolve, reject) => {
-  canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('JPEG encoding failed')), 'image/jpeg', 0.7);
+  canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('JPEG encoding failed')), 'image/jpeg', SCAN_FRAME_POLICY.jpegQuality);
 });
 
 export async function encodeScanFrame(capture: ScanFrameCapture) {
@@ -29,7 +29,7 @@ export async function encodeScanFrame(capture: ScanFrameCapture) {
     const height = Math.min(fullCanvas.height, (box.y + box.height + padding) * sy) - y;
     if (width > 0 && height > 0) {
       const canvas = document.createElement('canvas');
-      const scale = Math.min(1, 640 / Math.max(width, height));
+      const scale = Math.min(1, SCAN_FRAME_POLICY.maxCropLongEdgePx / Math.max(width, height));
       canvas.width = Math.max(1, Math.round(width * scale));
       canvas.height = Math.max(1, Math.round(height * scale));
       const context = canvas.getContext('2d');

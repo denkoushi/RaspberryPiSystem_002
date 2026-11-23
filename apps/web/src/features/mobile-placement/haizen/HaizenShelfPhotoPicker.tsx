@@ -121,7 +121,7 @@ export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes,
     {loading ? <p className={hp.empty}>読込中…</p> : error ? <div role="alert" className={hp.empty}>棚を取得できませんでした <button className={hp.mini} onClick={onRetry}>再試行</button></div>
       : <div ref={grid} aria-disabled={disabled || undefined} className={`grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto ${disabled ? 'pointer-events-none opacity-35' : ''} ${compact ? 'grid-cols-2 pb-2' : `grid-cols-2 ${pad} ${hp.hermesBottomPadding}`}`}>
         {[...groups].map(([machineName, group]) => <Fragment key={machineName === null ? 'other' : `machine:${machineName}`}>
-          {!compact && !shelfCounts && <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? `col-span-3 ${speechAvailable ? 'pr-24' : 'pr-10'}` : 'col-span-2'}`}>
+          {!compact && !shelfCounts && <h3 className="flex items-baseline gap-2 pt-2 text-base font-bold col-span-2">
             {machineName ?? 'その他'}<small className={`text-xs ${hp.muted}`}>{group.length}棚</small>
           </h3>}
           {group.map((s) => <button key={s.shelfCodeRaw} type="button" aria-label={`棚 ${[s.machineName, s.direction, s.displayLabel].filter(Boolean).join(' ') || '写真'}`} aria-pressed={selected === s.shelfCodeRaw} disabled={disabled}
@@ -129,14 +129,14 @@ export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes,
           onClick={() => { setSpeechFilter(null); selected === s.shelfCodeRaw ? (onView ?? setViewer)(s) : onSelect(s.shelfCodeRaw); }}>
           <span className="relative block">
             <ShelfPhoto shelf={s} label={s.direction || s.displayLabel || '棚'} className="aspect-[4/3] w-full" />
-            {compact ? <span className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,.85)_50%)] px-2 pb-[5px] pt-[22px] leading-[1.15]"><span className={`block truncate font-mono text-xs font-bold ${hp.muted}`}>{s.machineName}</span><b className="block truncate text-xl font-black text-[var(--hp-shelf)]">{[s.direction, s.displayLabel].filter(Boolean).join(" ") || s.shelfCodeRaw}</b></span> : s.direction && <span className={`absolute inset-x-0 block bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.78))] pt-4 ${compact ? 'px-1.5 pb-1' : 'px-2 pb-1.5'}`}>
-              <b className={`block truncate font-mono text-[var(--hp-shelf)] ${compact ? 'text-sm' : 'text-lg'}`}>{s.direction}</b>
+            {compact ? <span className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,.85)_50%)] px-2 pb-[5px] pt-[22px] leading-[1.15]"><span className={`block truncate font-mono text-xs font-bold ${hp.muted}`}>{s.machineName}</span><b className="block truncate text-xl font-black text-[var(--hp-shelf)]">{[s.direction, s.displayLabel].filter(Boolean).join(" ") || s.shelfCodeRaw}</b></span> : s.direction && <span className="absolute inset-x-0 block bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.78))] pt-4 px-2 pb-1.5">
+              <b className="block truncate font-mono text-[var(--hp-shelf)] text-lg">{s.direction}</b>
             </span>}
           </span>
           {s.shelfCodeRaw === previousShelfCodes[0] && <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-[11px] font-black text-[var(--hp-bg)]">前回</span>}
           {!!shelfCounts?.[s.shelfCodeRaw] && <span aria-label={`この製番 ${shelfCounts[s.shelfCodeRaw]}件`} className="absolute right-1.5 bottom-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-sm font-black text-[var(--hp-bg)]">{shelfCounts[s.shelfCodeRaw]}</span>}
           {compact && selected === s.shelfCodeRaw && <span aria-hidden className="absolute right-1.5 top-1.5 grid h-[30px] w-[30px] place-items-center rounded-full bg-[var(--hp-shelf)] text-xl font-black text-[var(--hp-bg)]">✓</span>}
-          {!compact && <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>}
+          {!compact && <span className="block pt-1.5 px-2 pb-2"><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>}
         </button>)}
         </Fragment>)}
         {!filtered.length && <p className={`${hp.empty} col-span-2`}>棚がありません</p>}

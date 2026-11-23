@@ -27,7 +27,7 @@ export function createScanFrameUploadRunner(store: ScanFrameStore = scanFrameSto
     let count = 0;
     let bytes = 0;
     for (const record of await store.list()) {
-      if (!canSyncNow() || count >= 20) break;
+      if (!canSyncNow() || count >= SCAN_FRAME_POLICY.maxUploadRecords) break;
       if (!await isEligible(record)) continue;
       let body: Awaited<ReturnType<typeof payload>>;
       let size: number;
@@ -39,7 +39,7 @@ export function createScanFrameUploadRunner(store: ScanFrameStore = scanFrameSto
         await store.remove(record.id);
         continue;
       }
-      if (count > 0 && bytes + size > 2 * 1024 * 1024) break;
+      if (count > 0 && bytes + size > SCAN_FRAME_POLICY.maxUploadBytes) break;
       if (!canSyncNow()) break;
       count += 1;
       bytes += size;

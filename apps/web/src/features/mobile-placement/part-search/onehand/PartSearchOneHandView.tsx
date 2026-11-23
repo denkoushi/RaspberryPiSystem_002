@@ -87,7 +87,7 @@ export function PartSearchOneHandView({ rows, offline, topLeftChip, onDelete }: 
 
   return <div style={haizenPhoneStyle} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--hp-bg)] text-[var(--hp-ink)] [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]">
     {offline && <div className="flex min-h-7 items-center gap-2 px-3.5 pb-1.5 pt-3">
-      {topLeftChip ?? (offline && <span className="inline-flex h-[26px] items-center rounded-full border border-[color-mix(in_srgb,var(--hp-shelf)_45%,var(--hp-line))] px-2.5 text-xs font-extrabold text-[var(--hp-shelf)]">圏外</span>)}
+      {topLeftChip ?? <span className="inline-flex h-[26px] items-center rounded-full border border-[color-mix(in_srgb,var(--hp-shelf)_45%,var(--hp-line))] px-2.5 text-xs font-extrabold text-[var(--hp-shelf)]">圏外</span>}
     </div>}
     <section aria-label="検索結果" aria-live="polite" className={hp.list} onScroll={() => setKeysVisible(false)}>
       {result.total === 0 && <p className={hp.empty}>見つかりません</p>}
