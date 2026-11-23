@@ -36,6 +36,7 @@
 ## UI Text
 
 - UIに補助ラベルや説明文を足さない。レイアウトで伝える。
+- 画面を変えたら(Codex など作業役が作った場合も)、PR の前に Claude が `ui-review` スキル(Mac の `~/.claude/skills/ui-review/`)の範囲で点検する。使えない環境では `.claude/skills/verify-screen/SKILL.md` の確認項目で見る。
 
 ## Scope And Evidence
 
