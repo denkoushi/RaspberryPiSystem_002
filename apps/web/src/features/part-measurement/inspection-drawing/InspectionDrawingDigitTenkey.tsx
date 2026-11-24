@@ -15,9 +15,6 @@ const keyClassName =
 const resetClassName =
   'inline-flex h-[34px] shrink-0 items-center justify-center rounded border border-amber-300/30 bg-slate-950 px-2 text-[0.68rem] font-extrabold text-amber-200 hover:bg-slate-800 disabled:opacity-50';
 
-const backspaceClassName =
-  'inline-flex h-[34px] shrink-0 items-center justify-center rounded border border-amber-300/30 bg-slate-950 px-2 text-base font-extrabold text-amber-200 hover:bg-slate-800 disabled:opacity-50';
-
 /** Menubar digit tenkey — entered-digits display, digits 1-9 0, backspace, reset. */
 export function InspectionDrawingDigitTenkey({ value, onChange, disabled = false, ariaLabel = '図面名数字テンキー' }: Props) {
   return (
@@ -39,7 +36,6 @@ export function InspectionDrawingDigitTenkey({ value, onChange, disabled = false
         className="flex shrink-0 items-center gap-0.5"
         keyClassName={keyClassName}
         resetClassName={resetClassName}
-        backspaceClassName={backspaceClassName}
       />
     </div>
   );

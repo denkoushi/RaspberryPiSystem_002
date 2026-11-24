@@ -13,8 +13,6 @@ type Props = {
   showReset?: boolean;
   resetLabel?: string;
   showBackspace?: boolean;
-  /** Backspace key style; defaults to resetClassName. */
-  backspaceClassName?: string;
   /** Key order override, e.g. ascending digits for a single-column layout. */
   digits?: readonly string[];
 };
@@ -36,7 +34,6 @@ export function KioskDigitTenkey({
   showReset = true,
   resetLabel = 'リセット',
   showBackspace = false,
-  backspaceClassName,
   digits
 }: Props) {
   return (
@@ -57,7 +54,7 @@ export function KioskDigitTenkey({
         </button>
       ))}
       {showBackspace ? (
-        <button type="button" aria-label="1文字消す" className={backspaceClassName ?? resetClassName} disabled={disabled || value.length === 0} onClick={() => onChange(value.slice(0, -1))}>⌫</button>
+        <button type="button" aria-label="1文字消す" className={resetClassName} disabled={disabled || value.length === 0} onClick={() => onChange(value.slice(0, -1))}>⌫</button>
       ) : null}
       {showReset ? (
         <button
