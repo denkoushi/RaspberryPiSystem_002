@@ -22,7 +22,10 @@ import type { PointerEvent, RefObject } from 'react';
 const EMPTY_SELECTED: ReadonlySet<string> = new Set();
 const SEARCH_MODES = ['製番', '機種名'] as const;
 const SEARCH_KEY_CLASS = `h-[30px] w-10 ${PLANNING_BOARD_KEY_CLASS}`;
-const SCROLL_BUTTON_CLASS = 'h-[30px] w-9 rounded border border-slate-600 text-slate-200 disabled:opacity-30';
+const SCROLL_BUTTON_CLASS = 'grid h-[30px] w-9 place-items-center rounded border border-slate-600 text-slate-200 disabled:opacity-30';
+const CHEVRON_PATHS = { up: 'm6 15 6-6 6 6', down: 'm6 9 6 6 6-6', left: 'm15 6-6 6 6 6', right: 'm9 6 6 6-6 6' } as const;
+const Chevron = ({ direction }: { direction: keyof typeof CHEVRON_PATHS }) => <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={CHEVRON_PATHS[direction]} /></svg>;
 
 type Props = {
   columns: readonly SeibanShelfColumn[];
@@ -268,15 +271,15 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
   }), []);
   return <div ref={ref} data-testid="planning-seiban-shelf" className="shrink-0 border-t-2 border-slate-600 bg-slate-900">
     {!open ? <div className="flex items-start">
-      <button type="button" aria-label="製番の棚を開く" onClick={() => changeOpen(true)} className="m-1 h-11 w-9 shrink-0 rounded border border-slate-600 text-slate-200">⌃</button>
+      <button type="button" aria-label="製番の棚を開く" onClick={() => changeOpen(true)} className="m-1 grid h-11 w-9 shrink-0 place-items-center rounded border border-slate-600 text-slate-200"><Chevron direction="up" /></button>
       <div className="min-w-0 flex-1"><PlanningBoardSeibanLegend seibanColors={seibanColors} focusedSeiban={focusedSeiban}
         onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={onFocusSeiban} /></div>
     </div> : <>
       <div className="flex h-10 items-center gap-2.5 overflow-x-auto border-b border-slate-700 px-2.5 [scrollbar-width:none]">
-        <button type="button" aria-label="製番の棚を畳む" onClick={() => changeOpen(false)} className="h-[30px] w-9 shrink-0 rounded border border-slate-600 text-slate-200">⌄</button>
+        <button type="button" aria-label="製番の棚を畳む" onClick={() => changeOpen(false)} className="grid h-[30px] w-9 shrink-0 place-items-center rounded border border-slate-600 text-slate-200"><Chevron direction="down" /></button>
         <div className="flex shrink-0 gap-1">
-          <button type="button" aria-label="製番の棚を左へ送る" disabled={!shelfWindow.canScrollLeft} onClick={() => scrollPage(-1)} className={SCROLL_BUTTON_CLASS}>‹</button>
-          <button type="button" aria-label="製番の棚を右へ送る" disabled={!shelfWindow.canScrollRight} onClick={() => scrollPage(1)} className={SCROLL_BUTTON_CLASS}>›</button>
+          <button type="button" aria-label="製番の棚を左へ送る" disabled={!shelfWindow.canScrollLeft} onClick={() => scrollPage(-1)} className={SCROLL_BUTTON_CLASS}><Chevron direction="left" /></button>
+          <button type="button" aria-label="製番の棚を右へ送る" disabled={!shelfWindow.canScrollRight} onClick={() => scrollPage(1)} className={SCROLL_BUTTON_CLASS}><Chevron direction="right" /></button>
         </div>
         {activeSelected.size > 0 && <span className="inline-flex h-[30px] shrink-0 items-center gap-2 rounded-full bg-white pl-3 pr-1 text-[15px] font-extrabold text-slate-950">{activeSelected.size}件
           <button type="button" aria-label="選択を外す" onClick={() => { cancelPlacement(); setSelected(new Set()); }} className="h-6 w-6 rounded-full bg-slate-950 text-white">✕</button>
