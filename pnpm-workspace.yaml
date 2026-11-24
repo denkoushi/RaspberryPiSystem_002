@@ -14,7 +14,11 @@ allowBuilds:
 overrides:
   glob: 10.5.0
   minimatch: 10.2.3
-  fast-uri: 3.1.8
+  fast-uri: 3.1.9
+  ajv@^8: ^8.18.0
+  qs: ^6.16.1
+  fflate: ^0.8.3
+  yaml@^2: ^2.8.3
   dompurify@3.4.11: 3.4.17
   zod: 4.6.6
   effect: 3.22.1
