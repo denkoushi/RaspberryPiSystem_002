@@ -169,6 +169,7 @@ export function InspectionDrawingPointSidebar({
         selectedPointId={selectedPoint?.id ?? null}
         onSelectPoint={onSelectPoint}
         variant="sidebar"
+        scrollSelectedIntoView
       />
     </div>
   );

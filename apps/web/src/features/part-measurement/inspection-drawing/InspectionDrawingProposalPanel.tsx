@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { useEffect, useRef } from 'react';
 
 import type { DrawingProposalTab, InspectionDrawingPlacementProposals } from './useInspectionDrawingPlacementProposals';
 import type { DrawingPlacementRow } from '../../../api/domains/part-measurement-placement';
@@ -32,7 +33,11 @@ export function InspectionDrawingProposalLegend() {
 }
 
 export function InspectionDrawingProposalPanel({ placement, confirmedCount, disabled = false, children }: Props) {
-  const { proposals, unplaced, tab } = placement;
+  const { proposals, unplaced, tab, selectedProposalId } = placement;
+  const selectedRowRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    selectedRowRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [selectedProposalId, tab]);
   if (!proposals.length && !unplaced.length) return <>{children}</>;
   const tabs: { id: DrawingProposalTab; label: string; count: number }[] = [
     { id: 'proposals', label: 'AI案', count: proposals.length },
@@ -59,9 +64,9 @@ export function InspectionDrawingProposalPanel({ placement, confirmedCount, disa
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto p-1" aria-label={tab === 'proposals' ? 'AI案' : '未配置'}>
             {tab === 'proposals' ? proposals.map((row) => (
-              <li key={row.id} className={clsx(
+              <li key={row.id} ref={selectedProposalId === row.id ? selectedRowRef : undefined} className={clsx(
                 'flex flex-col gap-1 rounded-lg border border-slate-600 bg-slate-800 p-2',
-                placement.selectedProposalId === row.id && 'ring-2 ring-blue-400'
+                selectedProposalId === row.id && 'ring-2 ring-blue-400'
               )}>
                 <div className="flex items-center gap-1.5">
                   <button

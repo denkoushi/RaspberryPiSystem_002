@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { InspectionDrawingProposalPanel } from './InspectionDrawingProposalPanel';
 
@@ -98,5 +98,44 @@ describe('InspectionDrawingProposalPanel', () => {
     expect(screen.getByRole('button', { name: 'まとめて承認（1）' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '未配置 1' }));
     expect(screen.getByRole('button', { name: '内径 を置く' })).toBeDisabled();
+  });
+
+  it('switches to the AI案 tab and scrolls the row of a proposal chosen on the drawing into view', () => {
+    const scrollIntoView = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    onTestFinished(() => { Element.prototype.scrollIntoView = original; });
+    const lower = { ...row, id: 'proposal-2', markerNo: 9, measurementLabel: '外径' };
+    function Harness() {
+      const [tab, setTab] = useState<DrawingProposalTab>('confirmed');
+      const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
+      // 図面の丸数字を押したときの選択（useInspectionDrawingPlacementProposals.selectProposal と同じく AI案タブへ切り替える）
+      const selectProposal = (id: string) => { setSelectedProposalId(id); setTab('proposals'); };
+      return (
+        <>
+          <button type="button" onClick={() => selectProposal(lower.id)}>図面の丸数字 9</button>
+          <InspectionDrawingProposalPanel
+            confirmedCount={3}
+            placement={{
+              proposals: [row, lower], unplaced: [], sourceDrawingName: null,
+              tab, setTab, selectedProposalId, armedId: null, approve: vi.fn(), approveAll: vi.fn(),
+              selectProposal, reject: vi.fn(), arm: vi.fn()
+            }}
+          >
+            <div>既存の確定点パネル</div>
+          </InspectionDrawingProposalPanel>
+        </>
+      );
+    }
+    render(<Harness />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '図面の丸数字 9' }));
+
+    expect(screen.getByRole('button', { name: 'AI案 2' })).toHaveAttribute('aria-pressed', 'true');
+    const selectedRow = screen.getByRole('button', { name: 'AI案 9 外径 を選択' }).closest('li');
+    expect(selectedRow).toHaveClass('ring-2');
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(selectedRow);
   });
 });
