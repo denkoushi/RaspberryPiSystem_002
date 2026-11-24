@@ -9,6 +9,7 @@ import { HaizenShelfPhoto } from '../../features/kiosk/haizen/HaizenShelfPhoto';
 import { useHaizenVoiceSearch } from '../../features/kiosk/haizen/useHaizenVoiceSearch';
 import { GridIcon, ListIcon, MicIcon, TrailIcon, VerifyLogIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { invButton, invButtonDanger, invButtonGhost, invCard, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
+import { ASCENDING_DIGIT_KEYS } from '../../features/kiosk/KioskDigitTenkey';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 import type { HaizenOverviewRow, MobilePlacementRegisteredShelfEntry } from '../../api/domains/mobile-placement';
@@ -160,7 +161,7 @@ export function KioskHaizenPage() {
       </div>
       <input aria-label="番号" placeholder="番号" value={search.text} maxLength={100} onChange={event => setSearch(current => ({ ...current, text: event.target.value }))} className={`h-11 w-[220px] shrink-0 rounded-xl border-2 bg-inv-bg px-2.5 font-mono text-2xl font-bold placeholder:text-base placeholder:text-inv-faint ${query ? 'border-inv-cyan' : 'border-inv-line2'}`} />
       <div role="group" aria-label="番号入力キー" className="flex shrink-0 flex-nowrap gap-1">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map(key => <button key={key} type="button" className={`${invButton} w-[52px] px-0 font-mono text-[22px]`} onClick={() => setSearch(current => ({ ...current, text: (current.text + key).slice(0, 100) }))}>{key}</button>)}
+        {ASCENDING_DIGIT_KEYS.map(key => <button key={key} type="button" className={`${invButton} w-[52px] px-0 font-mono text-[22px]`} onClick={() => setSearch(current => ({ ...current, text: (current.text + key).slice(0, 100) }))}>{key}</button>)}
         <button type="button" aria-label="1字消す" className={`${invButton} w-14 px-0 text-lg`} onClick={() => setSearch(current => ({ ...current, text: current.text.slice(0, -1) }))}>⌫</button>
         <button type="button" aria-label="全部消す" className={`${invButton} w-14 px-0 text-lg`} onClick={clearSearch}>C</button>
       </div>

@@ -1,4 +1,6 @@
-import { normalizeMachineName } from '../../productionSchedule/machineName';
+import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
+
+import { normalizeFullMachineName, normalizeMachineName } from '../../productionSchedule/machineName';
 import { compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
 
 import { planningBoardPartKey } from './planningBoardGanttLayout';
@@ -24,6 +26,7 @@ export type SeibanShelfColumn = {
   seiban: string;
   color: string;
   model: string;
+  modelDigits: string;
   due: string | null;
   placed: number;
   total: number;
@@ -53,6 +56,7 @@ export function buildPlanningBoardSeibanShelf(
     if (!parts) return [];
     let due: string | null = null;
     let model = '';
+    let modelDigits = '';
     let placed = 0;
     let total = 0;
     let late = false;
@@ -64,7 +68,10 @@ export function buildPlanningBoardSeibanShelf(
       for (const item of members) {
         const itemDue = resolveGrindingPlanningBoardDueDate(item, 'alternate');
         if (itemDue && (!due || itemDue < due)) due = itemDue;
-        if (!model) model = normalizeMachineName(item.machineName);
+        if (!model) {
+          model = normalizeMachineName(item.machineName);
+          modelDigits = extractInspectionDrawingAsciiDigits(normalizeFullMachineName(item.machineName));
+        }
         const resource = resolveGrindingPlanningBoardResource(item, 'alternate');
         const placedOnMachine = resource !== null && resources.includes(resource);
         const tile = { item, resource, placed: category === 'grinding' ? item.arrived !== false : placedOnMachine,
@@ -79,6 +86,6 @@ export function buildPlanningBoardSeibanShelf(
       return { key, name: members[0]!.fhinmei ?? '', code: members[0]!.fhincd,
         quantity: quantities.length ? Math.max(...quantities) : null, units: [...units.values()] };
     });
-    return [{ seiban, color, model, due, placed, total, late, parts: shelfParts }];
+    return [{ seiban, color, model, modelDigits, due, placed, total, late, parts: shelfParts }];
   });
 }
