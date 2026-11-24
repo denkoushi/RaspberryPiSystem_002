@@ -72,13 +72,19 @@ describe('pieceLanePath', () => {
     const row: LaneRow = { left: 0, right: 10, barTop: 34, barBottom: 104, minY: 0, maxY: 200 };
     expect(pieceLaneY(row, 'below', 0, 2.5)).toBe(112);
     expect(pieceLaneY(row, 'below', 1, 2.5)).toBe(119);
-    // Above, the line sits one line width further out than the base offsets 7/13.
-    expect(pieceLaneY(row, 'above', 0, 2.5)).toBe(24.5);
-    expect(pieceLaneY(row, 'above', 1, 2.5)).toBe(18.5);
-    expect(pieceLaneY(row, 'above', 0, 5)).toBe(20.75);
+    // With room above (the 1台 view), the above side uses the same base offsets 7/13.
+    expect(pieceLaneY(row, 'above', 0, 2.5)).toBe(27);
+    expect(pieceLaneY(row, 'above', 1, 2.5)).toBe(21);
+    expect(pieceLaneY(row, 'above', 0, 5)).toBe(25.75);
     // A thicker 4K line adds only its extra half, and deeper levels reuse the outermost lane.
     expect(pieceLaneY(row, 'below', 0, 5)).toBe(113.25);
     expect(pieceLaneY(row, 'below', 3, 2.5)).toBe(119);
+  });
+
+  it('keeps one line width clear above bars that sit 3px under the row top', () => {
+    const multi: LaneRow = { left: 0, right: 10, barTop: 103, barBottom: 173, minY: 101, maxY: 240 };
+    expect(pieceLaneY(multi, 'above', 0, 2.5)).toBe(99.25);
+    expect(pieceLaneY(multi, 'above', 1, 2.5)).toBe(99.25);
   });
 
   it('never sits inside the bars when the gap is too small', () => {
