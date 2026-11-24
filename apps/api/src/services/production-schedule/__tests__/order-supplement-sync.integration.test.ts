@@ -318,6 +318,88 @@ describe('order-supplement-sync.service (integration)', () => {
     ]);
   });
 
+  it('27M の補助から同じオーダー・工順の 021 winner に指示数を反映し、再同期でも維持する', async () => {
+    const productNo = '0004174165';
+    const occurredAt = new Date('2026-06-20T00:00:00.000Z');
+    const [exact, fallback, superseded] = await Promise.all(
+      [
+        { resourceCd: '27M', suffix: 'exact', createdAt: occurredAt },
+        { resourceCd: '021', suffix: 'fallback', createdAt: occurredAt },
+        { resourceCd: '021', suffix: 'superseded', createdAt: new Date('2026-06-19') },
+      ].map(({ resourceCd, suffix, createdAt }) =>
+        prisma.csvDashboardRow.create({
+          data: {
+            csvDashboardId: MAIN_DASHBOARD_ID,
+            occurredAt,
+            createdAt,
+            dataHash: `${DATA_HASH_PREFIX}-alternate-${suffix}`,
+            rowData: {
+              ProductNo: productNo,
+              FSEIBAN: 'SYNC-ALTERNATE',
+              FHINCD: 'PART-ALTERNATE',
+              FSIGENCD: resourceCd,
+              FKOJUN: '200',
+            },
+          },
+        })
+      )
+    );
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
+        occurredAt,
+        dataHash: `${DATA_HASH_PREFIX}-alternate-source`,
+        rowData: {
+          ProductNo: productNo,
+          FSIGENCD: '27M',
+          FKOJUN: '200',
+          FKOJUNSIJISU: '5',
+          FKOJUNSTTYOTEIYMD: '2027-03-04',
+        },
+      },
+    });
+    const readSupplement = (rowId: string) => prisma.productionScheduleOrderSupplement.findUnique({
+      where: { csvDashboardRowId: rowId },
+    });
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    expect(await service.syncFromSupplementDashboard()).toMatchObject({ matched: 1, unmatched: 0, upserted: 2 });
+    expect(await readSupplement(exact.id)).toMatchObject({
+      plannedQuantity: 5,
+      plannedStartDate: new Date('2027-03-04'),
+    });
+    expect(await readSupplement(fallback.id)).toMatchObject({
+      productNo,
+      resourceCd: '021',
+      processOrder: '200',
+      sourceCsvDashboardId: SUPPLEMENT_DASHBOARD_ID,
+      plannedQuantity: 5,
+      plannedStartDate: null,
+      plannedEndDate: null,
+      plannedStartDateManuallySet: false,
+    });
+    expect(await readSupplement(superseded.id)).toBeNull();
+
+    const prior = await prisma.productionScheduleOrderSupplement.update({
+      where: { csvDashboardRowId: fallback.id },
+      data: {
+        plannedQuantity: 2,
+        plannedStartDate: new Date('2024-01-01'),
+        plannedEndDate: new Date('2024-01-02'),
+        lastSeenAt: new Date('2024-01-01'),
+      },
+    });
+    expect(await service.syncFromSupplementDashboard()).toMatchObject({ matched: 1, unmatched: 0, upserted: 2 });
+    const refreshed = await readSupplement(fallback.id);
+    expect(refreshed).toMatchObject({
+      id: prior.id,
+      plannedQuantity: 5,
+      plannedStartDate: prior.plannedStartDate,
+      plannedEndDate: prior.plannedEndDate,
+      plannedStartDateManuallySet: false,
+    });
+    expect(refreshed?.lastSeenAt.getTime()).toBeGreaterThan(prior.lastSeenAt.getTime());
+  });
+
   it('1年超のsource行は未照合だけ削除し、現行日程に残る長期案件は保持する', async () => {
     await prisma.csvDashboardRow.create({
       data: {
