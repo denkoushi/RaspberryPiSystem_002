@@ -9,6 +9,8 @@ import { getInferenceRuntime } from '../../services/inference/inference-runtime.
 
 export const MEETING_LIVE_PATH = '/assembly/procedure-documents/meeting-live';
 const BUFFER_LIMIT_BYTES = 2 * 1024 * 1024;
+// 鍵確認前に溜めるフレームは、空でも1件ごとにこの分を数える。
+const EARLY_FRAME_OVERHEAD_BYTES = 64;
 
 function messageByteLength(data: unknown): number {
   if (typeof data === 'string') return Buffer.byteLength(data);
@@ -206,7 +208,7 @@ export function registerProcedureMeetingLiveRoutes(
     socket.on('message', (data, isBinary) => {
       if (!ready) {
         if (closed) return;
-        earlyBytes += messageByteLength(data);
+        earlyBytes += messageByteLength(data) + EARLY_FRAME_OVERHEAD_BYTES;
         if (earlyBytes > BUFFER_LIMIT_BYTES) {
           early.length = 0;
           closeDownstream(1009, 'Too much data before ready');

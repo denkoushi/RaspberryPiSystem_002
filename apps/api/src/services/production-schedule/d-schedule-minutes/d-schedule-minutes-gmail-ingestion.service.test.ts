@@ -111,10 +111,19 @@ describe('minutes Gmail attachments by kind', () => {
     expect(gmail.trashMessage).not.toHaveBeenCalled(); expect(gmail.markAsRead).toHaveBeenCalledOnce();
   });
 
-  it('rejects an oversized attachment as a permanent failure without parsing it', async () => {
+  it('skips an oversized attachment without parsing it, like an unrelated workbook', async () => {
     dBuffer = Buffer.alloc(12 * 1024 * 1024 + 1);
     messages = [mail('mail-1', ['d'])];
-    await expect(cycle()).rejects.toMatchObject({ permanentFailures: [expect.stringContaining('大きすぎます')] });
+    await cycle();
+    expect(runs.size).toBe(0);
+  });
+
+  it('does not download an attachment whose declared size is too large', async () => {
+    const message = mail('mail-1', ['d']);
+    message.payload!.parts![0].body!.size = 12 * 1024 * 1024 + 1;
+    messages = [message];
+    await cycle();
+    expect(gmail.getAttachment).not.toHaveBeenCalled();
     expect(runs.size).toBe(0);
   });
 

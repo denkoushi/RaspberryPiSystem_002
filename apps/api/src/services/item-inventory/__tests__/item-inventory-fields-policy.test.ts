@@ -90,4 +90,8 @@ describe('item inventory Gmail ingestion policy', () => {
     expect(extractEmail('<'.repeat(5000))).toBeUndefined();
     expect(extractEmail(`${'x'.repeat(980)} <ops@example.com>`)).toBe('ops@example.com');
   });
+
+  it('takes the address at the end of the From header', () => {
+    expect(extractEmail('"<ops@example.com>" <other@example.net>')).toBe('other@example.net');
+  });
 });

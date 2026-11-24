@@ -75,8 +75,10 @@ export function isDueRetry(record: WorkInstructionImportMessageView, now: Date):
     (!record.nextRetryAt || record.nextRetryAt.getTime() <= now.getTime());
 }
 
+const MAX_FROM_HEADER_LENGTH = 998;
+
 export function extractEmail(from: string | undefined): string | undefined {
-  if (!from) return undefined;
-  const bracketed = from.match(/<([^>]+)>/);
+  if (!from || from.length > MAX_FROM_HEADER_LENGTH) return undefined;
+  const bracketed = from.match(/<([^<>]+)>\s*$/);
   return (bracketed?.[1] ?? from).trim().toLowerCase();
 }

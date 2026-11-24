@@ -1,5 +1,3 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import { validateBackupForRestore } from '../../services/backup/backup-restore-validation.js';
 import { BackupOperationType } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
@@ -15,7 +13,7 @@ import type { BackupKind } from '../../services/backup/backup-types.js';
 import { BackupHistoryService } from '../../services/backup/backup-history.service.js';
 import { logger } from '../../lib/logger.js';
 import { runPreRestoreBackup } from '../../services/backup/pre-restore-backup.service.js';
-import { resolveRestoreDestination } from '../../services/backup/restore-destination.js';
+import { resolveRestoreDestination, writeRestoredFile } from '../../services/backup/restore-destination.js';
 
 const RESTORE_RATE_LIMIT = { max: 10, timeWindow: '1 minute' };
 
@@ -139,8 +137,7 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
       } else {
         // restoreメソッドが実装されていない場合は通常の処理を実行
         if (destination) {
-          await fs.mkdir(path.dirname(destination), { recursive: true });
-          await fs.writeFile(destination, backupData, { mode: 0o600 });
+          await writeRestoredFile(destination, backupData);
         }
         const result = { success: true, timestamp: new Date() };
 
