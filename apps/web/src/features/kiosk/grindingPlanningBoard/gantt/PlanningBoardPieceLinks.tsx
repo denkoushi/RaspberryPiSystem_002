@@ -43,7 +43,8 @@ export function pieceLaneSides(pieces: readonly { part: string; pane: number; ro
 
 export function pieceLaneY(row: LaneRow, side: LaneSide, level: number, weight: number) {
   // The rows keep the same CSS height on large screens, so only the extra half of a thicker line is added.
-  const offset = PIECE_LANE_OFFSETS[side][Math.min(level, PIECE_LANE_LEVELS - 1)]! + Math.max(0, weight - 2.5) / 2;
+  // Above the bars there is no chip row to set the line apart, so the line sits one line width further out.
+  const offset = PIECE_LANE_OFFSETS[side][Math.min(level, PIECE_LANE_LEVELS - 1)]! + Math.max(0, weight - 2.5) / 2 + (side === 'above' ? weight : 0);
   return side === 'below'
     ? Math.max(Math.min(row.barBottom + offset, row.maxY), row.barBottom + weight)
     : Math.min(Math.max(row.barTop - offset, row.minY), row.barTop - weight);
