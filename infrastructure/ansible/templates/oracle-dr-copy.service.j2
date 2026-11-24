@@ -1,0 +1,23 @@
+[Unit]
+Description=Copy the Business Pi5 encrypted disaster-recovery repository to Oracle
+Wants=network-online.target
+After=network-online.target
+OnFailure=oracle-dr-copy-alert.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory={{ google_drive_dr_install_root }}
+Environment=ORACLE_DR_RCLONE_CONFIG={{ google_drive_dr_rclone_config }}
+Environment=ORACLE_DR_RESTIC_PASSWORD_FILE={{ google_drive_dr_restic_password_file }}
+Environment=ORACLE_DR_ENV_FILE={{ google_drive_dr_credential_root }}/oci/oracle.env
+Environment=ORACLE_DR_OCI_CONFIG={{ google_drive_dr_credential_root }}/oci/config
+Environment=ORACLE_DR_RCLONE={{ oracle_dr_rclone_root }}/rclone
+ExecStart={{ google_drive_dr_install_root }}/oracle-dr-copy.sh
+TimeoutStartSec=6h
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal

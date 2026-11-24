@@ -65,6 +65,8 @@ The [dedicated DR playbook](../../infrastructure/ansible/playbooks/deploy-google
 
 The copy script first checks that the Pi5's restic password still opens the Google Drive repository and stops without touching the stick if it does not. It never overwrites a file already on the stick (`rclone copy --immutable`); restic files never change, so a changed file fails the following `rclone check` and the run stops. Changes to the script reach the Pi5 only through the dedicated DR playbook, not the standard rolling update.
 
+Oracle Object Storage holds a second off-site copy that the Pi5's Oracle key cannot delete or overwrite. The copy runs nightly at 04:30 Asia/Tokyo and queues an operations alert if the service fails, including when the bucket exceeds 17 GiB. To stay within the 20 GB free tier, once a month the administrator waits for the USB copy to finish with `RESULT=OK`, then runs `oci os object bulk-delete -bn raspi-dr-business-pi5 --force` in Oracle Cloud Shell. The next nightly copy repopulates the bucket. Empty the entire bucket in this step because restic shares data between snapshots, and deleting individual objects by date can corrupt every snapshot.
+
 ## Prevention
 
 - Force the locale in every check that parses command output, and read results, not schedules.
