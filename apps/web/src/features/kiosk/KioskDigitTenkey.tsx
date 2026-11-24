@@ -1,4 +1,5 @@
 const DIGIT_KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '0'] as const;
+export const ASCENDING_DIGIT_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
 
 type Props = {
   value: string;

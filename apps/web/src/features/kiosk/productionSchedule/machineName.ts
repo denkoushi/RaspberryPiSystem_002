@@ -11,6 +11,10 @@ export const isMachinePartCode = (fhincd: string | null | undefined): boolean =>
   return normalized.startsWith('MH') || normalized.startsWith('SH');
 };
 
+/** Untruncated form for matching; display keeps normalizeMachineName's cap. */
+export const normalizeFullMachineName = (value: string | null | undefined): string =>
+  normalizeMachineName(value, { maxChars: Number.MAX_SAFE_INTEGER });
+
 export const normalizeMachineName = (
   value: string | null | undefined,
   options?: { maxChars?: number }

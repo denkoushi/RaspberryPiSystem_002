@@ -103,6 +103,15 @@ it('matches only the digits from the normalized model name', () => {
   expect(screen.queryByRole('button', { name: 'S1', exact: true })).not.toBeInTheDocument();
 });
 
+it('matches digits beyond the displayed model name length', () => {
+  const longItems = [{ ...items[0]!, itemId: 'long', fseiban: 'S40', machineName: `${'Ａ'.repeat(40)}９８７` }];
+  const longColors = new Map([['S40', 'bg-sky-400']]);
+  render(<PlanningBoardSeibanShelf {...props} seibanColors={longColors} columns={buildPlanningBoardSeibanShelf(longItems, [], ['021'], longColors)} />);
+  fireEvent.click(screen.getByRole('button', { name: '機種名', exact: true }));
+  pressShelfDigits('9', '8', '7');
+  expect(screen.getByRole('button', { name: 'S40', exact: true })).toBeVisible();
+});
+
 it('keeps the entered digits when switching the search mode in either direction', () => {
   render(<PlanningBoardSeibanShelf {...searchProps} />);
   pressShelfDigits('2', '1');

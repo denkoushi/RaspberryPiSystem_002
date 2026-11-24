@@ -1,9 +1,9 @@
-import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { KioskDigitTenkey } from '../../KioskDigitTenkey';
+import { ASCENDING_DIGIT_KEYS, KioskDigitTenkey } from '../../KioskDigitTenkey';
 import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
+import { PLANNING_BOARD_KEY_CLASS } from '../planningBoardKeyClass';
 import { comparePlanningBoardBarOrder } from '../sortGrindingPlanningBoardItems';
 
 import { invalidateForwardDropCache } from './planningBoardForwardDrop';
@@ -21,8 +21,7 @@ import type { PointerEvent, RefObject } from 'react';
 
 const EMPTY_SELECTED: ReadonlySet<string> = new Set();
 const SEARCH_MODES = ['製番', '機種名'] as const;
-const SEARCH_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
-const SEARCH_KEY_CLASS = 'flex h-[30px] w-10 items-center justify-center rounded border border-slate-700 bg-slate-900 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40';
+const SEARCH_KEY_CLASS = `h-[30px] w-10 ${PLANNING_BOARD_KEY_CLASS}`;
 const SCROLL_BUTTON_CLASS = 'h-[30px] w-9 rounded border border-slate-600 text-slate-200 disabled:opacity-30';
 
 type Props = {
@@ -85,7 +84,7 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
   const visibleColumns = useMemo(() => columns.filter(column => {
     if (remaining && column.placed >= column.total) return false;
     if (!searchValue) return true;
-    const searchText = searchMode === '製番' ? column.seiban.toLowerCase() : extractInspectionDrawingAsciiDigits(column.model);
+    const searchText = searchMode === '製番' ? column.seiban.toLowerCase() : column.modelDigits;
     return searchText.includes(searchValue);
   }), [columns, remaining, searchMode, searchValue]);
   const { viewport: shelfViewport, window: shelfWindow, reveal: revealSeiban, scrollPage } = usePlanningBoardShelfWindow(visibleColumns, open, focusedSeiban, highlightedSeiban ?? null, highlightedItemId);
@@ -289,7 +288,7 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
           searchValue ? 'border-emerald-400 ring-1 ring-emerald-400/20' : 'border-slate-700')}>
           {searchValue ? <span className="truncate">{searchValue}</span> : <span className="text-slate-500">—</span>}
         </div>
-        <KioskDigitTenkey value={searchValue} onChange={setSearchValue} digits={SEARCH_DIGITS} maxLength={100}
+        <KioskDigitTenkey value={searchValue} onChange={setSearchValue} digits={ASCENDING_DIGIT_KEYS} maxLength={100}
           showBackspace showReset resetLabel="↺" className="flex shrink-0 gap-1" keyClassName={SEARCH_KEY_CLASS} resetClassName={SEARCH_KEY_CLASS} />
         <div className="ml-auto flex h-[30px] shrink-0 overflow-hidden rounded-lg border border-slate-600">
           {[false, true].map(rest => <button key={String(rest)} type="button" aria-pressed={remaining === rest} onClick={() => setRemaining(rest)}
