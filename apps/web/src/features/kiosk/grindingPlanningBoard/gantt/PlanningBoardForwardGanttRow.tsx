@@ -387,7 +387,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
             </button>{split && <span aria-hidden="true" data-gantt-unit-underline data-seiban-unfocused={focusedSeiban === null ? 'underline' : undefined} className={clsx('pointer-events-none absolute h-[3px] rounded', focusedSeiban !== null && focusedSeiban !== normal?.fseiban ? 'opacity-20' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined)}
               style={{ top: (foldedWindow ? 95 : NORMAL_BAR_TOP + 73) * verticalScale, left: (segment.start - start) * dayWidth, width: segmentWidth, background: operationSplitColor(color, 0) }} />}</div>;
           })}
-          {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={(foldedWindow ? 91 : 72) * verticalScale - 16} />}
+          {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={(foldedWindow ? 91 : NORMAL_BAR_TOP + 69) * verticalScale - 16} />}
           {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-0 -translate-x-1/2 text-xs leading-none text-rose-400"
             style={{ left: Math.max(0, (dateToDay(bar.due) + 1 - start) * dayWidth) }}>▲</span>}
         </div>;
