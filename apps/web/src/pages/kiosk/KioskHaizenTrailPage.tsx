@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useHaizenShelves } from '../../api/hooks/haizen-overview';
 import { useHaizenOrderTrail } from '../../api/hooks/haizen-records';
 import { invButton, invButtonGhost, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
+import { ASCENDING_DIGIT_KEYS } from '../../features/kiosk/KioskDigitTenkey';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 import type { HaizenOrderTrail } from '../../features/kiosk/haizen/haizenRecordTypes';
@@ -32,7 +33,7 @@ export function KioskHaizenTrailPage() {
       <span className="min-w-0 flex-1" />
       <input aria-label="製造オーダー" placeholder="製造オーダー" value={text} maxLength={100} onChange={event => setText(event.target.value)} className={`h-11 w-[220px] shrink-0 rounded-xl border-2 bg-inv-bg px-2.5 font-mono text-2xl font-bold placeholder:text-base placeholder:text-inv-faint ${text ? 'border-inv-cyan' : 'border-inv-line2'}`} />
       <div role="group" aria-label="番号入力キー" className="flex shrink-0 flex-nowrap gap-1">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map(key => <button key={key} type="button" className={`${invButton} w-[52px] px-0 font-mono text-[22px]`} onClick={() => setText((text + key).slice(0, 100))}>{key}</button>)}
+        {ASCENDING_DIGIT_KEYS.map(key => <button key={key} type="button" className={`${invButton} w-[52px] px-0 font-mono text-[22px]`} onClick={() => setText((text + key).slice(0, 100))}>{key}</button>)}
         <button type="button" aria-label="1字消す" className={`${invButton} w-14 px-0 text-lg`} onClick={() => setText(text.slice(0, -1))}>⌫</button>
         <button type="button" aria-label="全部消す" className={`${invButton} w-14 px-0 text-lg`} onClick={() => setText('')}>C</button>
       </div>
