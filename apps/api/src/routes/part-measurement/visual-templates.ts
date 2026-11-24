@@ -57,7 +57,8 @@ export const drawingPlacementDecisionsBodySchema = z.object({
     xRatio: z.number().min(0).max(1),
     yRatio: z.number().min(0).max(1)
   })).max(200).optional(),
-  rejectedIds: z.array(z.string().guid()).max(200).optional().default([])
+  rejectedIds: z.array(z.string().guid()).max(200).optional().default([]),
+  processGroup: processGroupSchema.optional()
 });
 
 // Non-secret identifiers of the calling kiosk (never the raw key). Skipped while the allowlist is empty or `*` (every caller).
@@ -198,8 +199,11 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
         const { id } = z.object({ id: z.string().guid() }).parse(request.params);
-        const body = drawingPlacementDecisionsBodySchema.parse(request.body);
-        return drawingPlacementService.recordDecisions(id, body);
+        const { processGroup, ...body } = drawingPlacementDecisionsBodySchema.parse(request.body);
+        return drawingPlacementService.recordDecisions(id, {
+          ...body,
+          processGroup: processGroup ? (processGroup === 'grinding' ? 'GRINDING' : 'CUTTING') : undefined
+        });
       }
     );
 
