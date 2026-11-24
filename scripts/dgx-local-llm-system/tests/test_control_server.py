@@ -1258,6 +1258,10 @@ class BusinessQwenSwitchTests(unittest.TestCase):
         capture = patch('business_qwen38.capture_rank_exit')
         self.capture_mock = capture.start()
         self.addCleanup(capture.stop)
+        attach = patch('business_qwen38.start_rank_startup_logs')
+        self.attach_mock = attach.start()
+        self.attach_mock.return_value.return_value = {}
+        self.addCleanup(attach.stop)
 
     def test_unprepared_qwen_refuses_before_any_stop_or_selection_change(self):
         before = self.state_value()
@@ -1323,11 +1327,51 @@ class BusinessQwenSwitchTests(unittest.TestCase):
             self.assertEqual(body['chat_template_kwargs'], {'enable_thinking': False})
             self.assertNotIn('reasoning_effort', body)
 
+    def test_qwen_monitor_discards_startup_tail_before_publishing_ready(self):
+        from unittest.mock import patch
+        self.assertEqual(self.request(modelProfileId=self.qwen, reason='business-model-selection')[0], 200)
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        self.capture_mock.reset_mock()
+        stopped_during = []
+        self.attach_mock.return_value.side_effect = lambda: stopped_during.append(self.state_value()['businessTransition'])
+        ready = {'prepared': True, 'failureReason': None, 'ranks': [{'running': True}, {'running': True}]}
+        replies = [io.BytesIO(b'{"data":[{"id":"system-prod-primary"}]}'),
+                   io.BytesIO(b'{"choices":[{"message":{"content":"OK"}}]}')]
+        with patch('business_qwen38.runtime_status', return_value=ready), \
+                patch.object(self.module.urllib.request, 'urlopen', side_effect=replies):
+            self.monitor.temp_original(config, identity, profile)
+        self.attach_mock.assert_called_once_with(profile, identity, config.active_model_state_path, 1200)
+        self.attach_mock.return_value.assert_called_once_with()
+        self.assertEqual(stopped_during, ['loading'])
+        self.assertEqual(self.state_value()['businessTransition'], 'ready')
+        self.capture_mock.assert_not_called()
+        self.assertFalse(Path(str(self.state) + '.qwen38-rank-exit.json').exists())
+
+    def test_qwen_monitor_discards_startup_tail_if_superseded(self):
+        from unittest.mock import patch
+        self.assertEqual(self.request(modelProfileId=self.qwen, reason='business-model-selection')[0], 200)
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        self.capture_mock.reset_mock()
+
+        def supersede(_):
+            state = self.state_value()
+            self.state.write_text(json.dumps({**state, 'businessGeneration': 'other-generation'}))
+
+        with patch('business_qwen38.runtime_status', side_effect=subprocess.CalledProcessError(255, 'ssh')) as inspect, \
+                patch.object(self.module.time, 'sleep', side_effect=supersede):
+            self.monitor.temp_original(config, identity, profile)
+        inspect.assert_called_once()
+        self.attach_mock.return_value.assert_called_once_with(keep_tail=False)
+        self.assertEqual(self.state_value()['businessGeneration'], 'other-generation')
+        self.capture_mock.assert_not_called()
+
     def test_qwen_monitor_fails_after_two_rank_exit_observations(self):
         from unittest.mock import patch
         self.assertEqual(self.request(modelProfileId=self.qwen, reason='business-model-selection')[0], 200)
         config, identity, profile = self.thread_mock.call_args.kwargs['args']
         self.capture_mock.reset_mock()
+        tails = {'worker-id': ('engine traceback', 137)}
+        self.attach_mock.return_value.return_value = tails
         exited = {'prepared': True, 'failureReason': 'business_rank_state_inconsistent',
                   'ranks': [{'running': True}, {'running': False}]}
         with patch('business_qwen38.runtime_status', return_value=exited) as inspect, \
@@ -1339,7 +1383,8 @@ class BusinessQwenSwitchTests(unittest.TestCase):
         self.assertEqual(inspect.call_count, 2)
         sleep.assert_called_once_with(5)
         probe.assert_not_called()
-        self.capture_mock.assert_called_once_with(profile, config.active_model_state_path)
+        self.attach_mock.return_value.assert_called_once_with(keep_tail=True)
+        self.capture_mock.assert_called_once_with(profile, config.active_model_state_path, log_tails=tails)
         self.assertEqual(self.state_value()['businessTransition'], 'failed')
         self.assertEqual(self.state_value()['businessFailureReason'], 'business_rank_exited')
         resource = json.loads(Path(config.resource_state_path).read_text())

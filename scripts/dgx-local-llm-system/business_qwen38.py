@@ -6,10 +6,13 @@ import json
 import os
 from pathlib import Path
 import re
+import selectors
 import shlex
+import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 
 from model_profiles import ModelProfile
@@ -215,7 +218,117 @@ def _observations(profile: ModelProfile, runner) -> list[dict]:
     return result
 
 
-def capture_rank_exit(profile: ModelProfile, state_path: str, *, runner=subprocess.run) -> None:
+def _startup_attach(container_id: str, target: str | None, timeout: int):
+    command = ['docker', 'attach', '--no-stdin', '--sig-proxy=false', container_id]
+    if target is None:
+        return subprocess.Popen(command, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    def open_ssh(command, **_):
+        nonlocal process
+        # Hang up the remote attach on disconnect, even while output is idle.
+        process = subprocess.Popen([command[0], '-tt', *command[1:]], stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        return process
+
+    process = None
+    remote = ['timeout', '--foreground', '--kill-after=2s', f'{timeout}s', *command]
+    _run('stty -opost -echo; exec ' + shlex.join(remote) + ' </dev/null', target, open_ssh)
+    return process
+
+
+def start_rank_startup_logs(profile: ModelProfile, identity: tuple, state_path: str, timeout: int):
+    """Start bounded live tails for the recorded generation and return their stop function."""
+    from active_model_state import business_selection_state, business_state_lock
+
+    limit = 8192
+    stopped = threading.Event()
+    processes = {}
+    tails = {}
+    reader = None
+
+    def collect():
+        try:
+            with selectors.DefaultSelector() as selector:
+                for container_id, process in processes.items():
+                    selector.register(process.stdout, selectors.EVENT_READ, container_id)
+                while selector.get_map() and not stopped.is_set():
+                    events = selector.select(0.1)
+                    if not events or stopped.is_set():
+                        continue
+                    try:
+                        with business_state_lock(state_path, exclusive=False, blocking=False):
+                            state = business_selection_state(state_path)
+                            if (state['selectedBusinessProfileId'], state['selectionRevision'],
+                                    state.get('businessGeneration'), state['businessTransition']) != (*identity, 'loading'):
+                                tails.clear()
+                                return
+                            for key, _ in events:
+                                chunk = os.read(key.fd, limit)
+                                if not chunk:
+                                    selector.unregister(key.fileobj)
+                                    continue
+                                tail = tails.setdefault(key.data, bytearray())
+                                tail.extend(chunk)
+                                del tail[:-limit]
+                    except BlockingIOError:
+                        stopped.wait(0.05)
+        except Exception:
+            tails.clear()
+        finally:
+            if not stopped.is_set():
+                # An unread attach can fill Docker's buffer and stall the engine.
+                for process in processes.values():
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+
+    def stop(*, keep_tail=False):
+        if stopped.is_set():
+            return {}
+        stopped.set()
+        if reader is not None:
+            reader.join()
+        result = {}
+        for container_id, process in processes.items():
+            try:
+                running = process.poll() is None
+                if running:
+                    process.kill()
+                process.stdout.close()
+                exit_code = process.wait(timeout=1)
+                if keep_tail and tails.get(container_id):
+                    tail = tails[container_id].decode('utf-8', errors='replace')
+                    result[container_id] = (tail, None if running and exit_code == -signal.SIGKILL else exit_code)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        tails.clear()
+        return result
+
+    try:
+        binding = json.loads(Path(state_path + '.qwen38-runtime.json').read_text())
+        container_ids = binding['containerIds']
+        if binding['generation'] != identity[2] or len(container_ids) != 2:
+            return stop
+        for (target, _, _), container_id in zip(_nodes(profile), container_ids):
+            if not isinstance(container_id, str) or not re.fullmatch(r'[0-9a-f]{64}', container_id):
+                continue
+            try:
+                processes[container_id] = _startup_attach(container_id, target, timeout)
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                continue
+        if processes:
+            thread = threading.Thread(target=collect, daemon=True)
+            thread.start()
+            reader = thread
+    except Exception:
+        stop()
+    return stop
+
+
+def capture_rank_exit(profile: ModelProfile, state_path: str, *,
+                      log_tails: dict[str, tuple[str, int | None]] | None = None, runner=subprocess.run) -> None:
     """Preserve Docker exit metadata before a lifecycle command removes the ranks."""
     entries = []
     recorded_at = datetime.now(timezone.utc).isoformat()
@@ -260,9 +373,26 @@ def capture_rank_exit(profile: ModelProfile, state_path: str, *, runner=subproce
                 history = []
             if not isinstance(history, list):
                 history = []
-            temporary = path.with_suffix(path.suffix + '.tmp')
-            temporary.write_text(json.dumps((history + entries)[-20:]) + '\n', encoding='utf-8')
-            temporary.replace(path)
+            records = []
+            for entry in entries:
+                record = dict(entry)
+                if entry.get('containerId') in (log_tails or {}):
+                    tail, attach_exit = log_tails[entry['containerId']]
+                    # An attached Docker CLI returns the container's exit status.
+                    # A daemon or SSH failure may also produce diagnostic output.
+                    if (attach_exit in (None, entry['state']['ExitCode']) and attach_exit != 255
+                            and not tail.startswith(('Error response from daemon:', 'cannot attach to a ', 'You cannot attach to a ',
+                                                     'Cannot connect to the Docker daemon', 'failed to connect to the docker API',
+                                                     'permission denied while trying to connect', 'timeout: ', 'unknown flag: '))):
+                        record['logTail'] = tail
+                records.append(record)
+            fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name + '.', suffix='.tmp')
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as output:
+                    output.write(json.dumps((history + records)[-20:]) + '\n')
+                os.replace(temporary, path)
+            finally:
+                Path(temporary).unlink(missing_ok=True)
     except Exception as error:
         event['error'] = type(error).__name__
     try:

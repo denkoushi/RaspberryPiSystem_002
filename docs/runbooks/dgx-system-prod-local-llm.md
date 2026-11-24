@@ -116,6 +116,8 @@ prefix / mm / encoder reset 全体の期限は10秒（prefix の false は0.5秒
 業務の画像は共用フラグにかかわらず通す。共用の私用画像URLは `data:` のみ許可する。
 共用証明は両rankの起動引数とadapter設定の完全一致を要求し、私用の共用失敗は業務ログに記録しない。
 稼働中の推論は gateway 経由に限定する（loading 中の readiness probe は例外）。
+`loading` 中に rank が終了して起動に失敗した場合は、取得できた出力末尾が `<state>.qwen38-rank-exit.json` の該当 entry の `logTail` に入る。
+取得元は起動中の `docker attach`。`ready` の公開前に attach を終了し、蓄積した末尾を破棄する。
 rollback はフラグを維持して停止証明→GLM 選択→ready 確認の後に CP / 業務フラグを無効にする。
 Qwen フラグを切る前に、画面で GLM か DeepSeek に切り替えておく（Qwen 選択のまま切ると業務 LLM は自動では戻らず 503 になる）。
 

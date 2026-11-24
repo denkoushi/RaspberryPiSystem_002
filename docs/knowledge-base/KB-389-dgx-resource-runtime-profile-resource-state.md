@@ -70,6 +70,11 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - Pi5 admin shows **`DGX 所有`** via `overview.runtimeSummary.resourceOwnerLabelJa`（当時の記録。現行の overview に `runtimeSummary` はない）
 - Strict Ready / business readiness still uses Pi5 orchestration + `/v1/models`; resourceState is **display and cross-workload lease hint**, not a KPI.
 
+### Business Qwen3.8 startup diagnostics
+
+- While the selected generation is `loading`, the readiness monitor keeps up to 8 KiB of live output per rank in memory via `docker attach`. If a rank exit fails startup, any captured `logTail` is saved in `<state>.qwen38-rank-exit.json` (mode `0600`), alongside its exit metadata. The journal event contains only metadata.
+- The monitor detaches and discards the buffers before publishing `ready`. Docker's log driver remains `none`.
+
 ### Business DeepSeek private-sharing attestation (local implementation · 2026-11-03)
 
 - `DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED` defaults to false in the Business launcher, control server and gateway; the existing `BUSINESS_DEEPSEEK_SWITCH_ENABLED` must also be enabled. Enabling requires a new Business DeepSeek launch: existing containers cannot acquire proof by changing the flag alone. GLM and the Private port 8888 launcher are unchanged.
