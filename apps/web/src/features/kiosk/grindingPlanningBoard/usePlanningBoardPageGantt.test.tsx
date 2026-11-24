@@ -119,11 +119,11 @@ describe('planning board due order', () => {
     h.unmount();
   });
 
-  it.each([500, 501])('preserves the per-resource 500-item limit (%i items)', (count) => {
+  it.each([2000, 2001])('preserves the per-resource 2000-item limit (%i items)', (count) => {
     const h = setup(productionFixture(count, 1));
     act(() => h.result.current.page.sortResourceOrdersByDue());
-    expect(h.save).toHaveBeenCalledTimes(count === 500 ? 1 : 0);
-    if (count === 500) expect(h.requests[0].request.items).toHaveLength(500);
+    expect(h.save).toHaveBeenCalledTimes(count === 2000 ? 1 : 0);
+    if (count === 2000) expect(h.requests[0].request.items).toHaveLength(2000);
     h.unmount();
   });
 
