@@ -205,7 +205,7 @@ describe('useInspectionDrawingPlacementProposals', () => {
     act(() => result.current.placement.reject(first));
     expect(result.current.placement.proposals).toHaveLength(1);
     expect(postInspectionDrawingPlacementDecisions).toHaveBeenCalledWith(
-      'visual-1', { rejectedIds: [first.id] }, 'kiosk-key'
+      'visual-1', { rejectedIds: [first.id], processGroup: 'cutting' }, 'kiosk-key'
     );
     act(() => result.current.placement.approveAll());
     await act(async () => { await expect(result.current.save()).resolves.toBeUndefined(); });

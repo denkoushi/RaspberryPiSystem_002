@@ -205,6 +205,7 @@ describe('placement proposals API / Postgres', () => {
       }, include: { proposals: true }
     });
     const payload = {
+      processGroup: 'cutting',
       approvedIds: [initial.proposals[0].id, sourceRun.proposals[0].id, initial.unplaced[0].id],
       rejectedIds: [initial.proposals[1].id]
     };
@@ -215,6 +216,7 @@ describe('placement proposals API / Postgres', () => {
     expect((await app.inject({ method: 'POST', url: `${url()}/decisions`, headers, payload })).json()).toEqual({ updated: 0 });
     const rows = await prisma.partMeasurementDrawingPlacementProposal.findMany({ where: { visualTemplateId: targetId } });
     expect(rows.filter((row) => row.decidedAt !== null)).toHaveLength(2);
+    expect(rows.find((row) => row.id === initial.proposals[1].id)?.status).toBe('REJECTED');
     expect(rows.find((row) => row.id === initial.unplaced[0].id)?.status).toBe('UNPLACED');
     expect((await prisma.partMeasurementDrawingPlacementProposal.findUniqueOrThrow({
       where: { id: sourceRun.proposals[0].id }
@@ -314,14 +316,16 @@ describe('placement proposals API / Postgres', () => {
     expect(ensure.mock.calls.map(([id]) => id)).not.toContain(targetId);
   });
 
+  const baselineInput = () => ({
+    version: 'baseline-v1' as const,
+    drawings: [{ visualTemplateId: targetId, imageSha256: fingerprint(), proposals: [{
+      sortOrder: 1, kind: '外寸', measurementLabel: '外径', reason: 'Φ10', nominalValue: 10, lowerLimit: 9.9, upperLimit: 10.1,
+      markerXRatio: 0.4, markerYRatio: 0.3, anchorXRatio: 0.3, anchorYRatio: 0.35, leader: null
+    }] }]
+  });
+
   it('serves precomputed baseline proposals only to allowlisted devices and saves their decisions', async () => {
-    const baseline = {
-      version: 'baseline-v1' as const,
-      drawings: [{ visualTemplateId: targetId, imageSha256: fingerprint(), proposals: [{
-        sortOrder: 1, kind: '外寸', measurementLabel: '外径', reason: 'Φ10', nominalValue: 10, lowerLimit: 9.9, upperLimit: 10.1,
-        markerXRatio: 0.4, markerYRatio: 0.3, anchorXRatio: 0.3, anchorYRatio: 0.35, leader: null
-      }] }]
-    };
+    const baseline = baselineInput();
     const headers = { 'x-client-key': client.apiKey };
     const before = (await app.inject({ method: 'GET', url: url(), headers })).json();
     const dry = await importBaselinePlacementProposals(baseline, { apply: false });
@@ -350,5 +354,78 @@ describe('placement proposals API / Postgres', () => {
     } finally {
       env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = original;
     }
+  });
+
+  describe('baseline rejection by process', () => {
+    const original = env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS;
+    const headers = () => ({ 'x-client-key': client.apiKey });
+    const list = async (processGroup: 'cutting' | 'grinding') => {
+      const response = await app.inject({ method: 'GET', url: `${url()}?processGroup=${processGroup}`, headers: headers() });
+      expect(response.statusCode).toBe(200);
+      return response.json().proposals;
+    };
+    const decide = async (payload: { approvedIds?: string[]; rejectedIds?: string[]; processGroup?: 'cutting' | 'grinding' }) => {
+      const response = await app.inject({ method: 'POST', url: `${url()}/decisions`, headers: headers(), payload });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ updated: 1 });
+    };
+
+    beforeEach(async () => {
+      env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['*'];
+      const imported = await importBaselinePlacementProposals(baselineInput(), { apply: true });
+      expect(imported.created).toBe(1);
+    });
+
+    afterEach(() => {
+      env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = original;
+    });
+
+    it('hides a grinding rejection only in grinding and preserves the baseline during reimport', async () => {
+      const [row] = await list('grinding');
+      expect(await list('cutting')).toEqual([row]);
+
+      await decide({ rejectedIds: [row.id], processGroup: 'grinding' });
+      await decide({ rejectedIds: [row.id], processGroup: 'grinding' });
+
+      expect(await list('grinding')).toEqual([]);
+      expect(await list('cutting')).toEqual([row]);
+      expect(await prisma.partMeasurementDrawingPlacementProposal.findUniqueOrThrow({ where: { id: row.id } }))
+        .toMatchObject({
+          status: 'PROPOSED', decidedAt: expect.any(Date),
+          dimension: { kind: '外寸', reason: 'Φ10', xRatio: 0.3, yRatio: 0.35, leader: null, rejectedProcessGroups: ['GRINDING'] }
+        });
+      const imported = await importBaselinePlacementProposals(baselineInput(), { apply: true });
+      expect(imported.drawings[0]).toMatchObject({ result: 'skipped', reason: 'has-decided-proposals' });
+    });
+
+    it('hides a cutting rejection after the same baseline proposal was approved in grinding', async () => {
+      const [row] = await list('grinding');
+      const saved = await template(targetId, ['外径'], 'GRINDING');
+      await prisma.partMeasurementTemplateItem.updateMany({
+        where: { templateId: saved.id },
+        data: { markerXRatio: row.markerXRatio, markerYRatio: row.markerYRatio }
+      });
+      await decide({ approvedIds: [row.id] });
+      expect(await list('cutting')).toEqual([row]);
+
+      await decide({ rejectedIds: [row.id], processGroup: 'cutting' });
+
+      expect(await list('cutting')).toEqual([]);
+      expect(await list('grinding')).toEqual([]);
+      expect(await prisma.partMeasurementDrawingPlacementProposal.findUniqueOrThrow({ where: { id: row.id } }))
+        .toMatchObject({ status: 'APPROVED', dimension: { rejectedProcessGroups: ['CUTTING'] } });
+    });
+
+    it('keeps a rejection without a process group global', async () => {
+      const [row] = await list('grinding');
+      expect(await list('cutting')).toEqual([row]);
+
+      await decide({ rejectedIds: [row.id] });
+
+      expect(await list('grinding')).toEqual([]);
+      expect(await list('cutting')).toEqual([]);
+      expect(await prisma.partMeasurementDrawingPlacementProposal.findUniqueOrThrow({ where: { id: row.id } }))
+        .toMatchObject({ status: 'REJECTED' });
+    });
   });
 });
