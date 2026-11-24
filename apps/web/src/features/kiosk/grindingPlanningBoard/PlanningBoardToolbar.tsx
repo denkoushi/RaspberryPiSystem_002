@@ -131,6 +131,7 @@ export type PlanningBoardToolbarProps = {
   scopeDisabled?: boolean;
   registeredCount: number;
   feedback?: ReactNode;
+  notice?: ReactNode;
   onOpenDrawer: () => void;
   onCategoryChange: (category: GrindingPlanningBoardCategory) => void;
   onViewChange: (view: GrindingPlanningBoardView) => void;
@@ -173,6 +174,7 @@ export function PlanningBoardToolbar({
   scopeDisabled = false,
   registeredCount,
   feedback,
+  notice,
   onOpenDrawer,
   onCategoryChange,
   onViewChange,
@@ -243,6 +245,7 @@ export function PlanningBoardToolbar({
   const toolbar = useRef<HTMLDivElement>(null);
   usePlanningBoardToolbarWheel(toolbar);
   return (
+    <div className="relative">
     <div ref={toolbar} data-planning-board-toolbar className="[&_button[aria-disabled=true]]:opacity-55 flex h-[66px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
         type="button"
@@ -447,6 +450,8 @@ export function PlanningBoardToolbar({
           <rect x="3" y="4" width="18" height="13" rx="2" /><path d="M12 17v4m-4 0h8" />
         </svg>
       </button>
+    </div>
+    {notice ? <div data-planning-board-notice className="pointer-events-none absolute inset-x-0 top-full z-40 mt-1 h-11"><div className="pointer-events-auto h-full shadow-lg shadow-black/50">{notice}</div></div> : null}
     </div>
   );
 }
