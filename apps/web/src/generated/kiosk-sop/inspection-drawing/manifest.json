@@ -1,6 +1,6 @@
 {
   "artifacts": {
-    "manual.html": "f10775b582d61eb42d4786b6862334c6a2700a750e565f046f3f799b12c60f49",
+    "manual.html": "5c16c7678bb5d2fb407c9b65a19659adc2b0cf8acbaa4a06ac5e2fc65026f832",
     "screens/edit-advanced-point.png": "69d86f808bfe0f8f8f39d009b86a57a849e29d52f32c65380004828ed21ace65",
     "screens/edit-basics.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
     "screens/edit-group-history.png": "0f6ce0a3716113d9da95f1c3231a3667e9d171a187e8a93288110a12df02f0de",
@@ -8,9 +8,9 @@
     "screens/edit-required-point.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
     "screens/edit-trial-report.png": "1995585161910dcd68901153ae6f93eadd38406c9a4db277fead72921871a2c5",
     "screens/edit-visual-source.png": "508f8ebaa5eda7bf185096ac8094668ca49a9c8459d9a64c2845ddc67d465314",
-    "screens/library-entry-search.png": "d4adc7eceb70e8b05030b9bb7701bb4762b3cb915cb1930aa09dcf58f2eafcdb",
-    "screens/library-template-management.png": "d4adc7eceb70e8b05030b9bb7701bb4762b3cb915cb1930aa09dcf58f2eafcdb",
-    "screens/library-visual-management.png": "6958815d3b2dc2ee4f0e1cc89aea1edaae514145e0a1a31ef5c0b6dc1519fac3",
+    "screens/library-entry-search.png": "e389909081de6ba5ccda513c7a04815539f4ccf7ab08f30e71c959c16cae3a93",
+    "screens/library-template-management.png": "e389909081de6ba5ccda513c7a04815539f4ccf7ab08f30e71c959c16cae3a93",
+    "screens/library-visual-management.png": "e450d9ca70d6017ebdb46cf520aa28d2379355a981fcc6fbd9cbe35266783a11",
     "sheets/edit-advanced-point.png": "cb50603c3fbd7a7a3edd429a5cc6da68edc0a0aa7daa2285a62e1487f35cee85",
     "sheets/edit-basics.png": "bf8d682e268266a437e0d372d529e1bcf499f3627411734ef26ba7e045d342f8",
     "sheets/edit-group-history.png": "c9fa9c6235fe498f60a39898dc54c9908273089309251587826bdb78c6213962",
@@ -18,9 +18,9 @@
     "sheets/edit-required-point.png": "00991b2f4b03a9dede50940297afb863ab68a25504d853f8144855e493329a29",
     "sheets/edit-trial-report.png": "12b2edac72925df20acf1afa3a758fab368aefb0d71673860e5c51d00cf1d944",
     "sheets/edit-visual-source.png": "6ae0a43542c0e0498de7fa633ae8152ba4e86fb29bcea95cd59866d069f51ee7",
-    "sheets/library-entry-search.png": "0bc14a0e2043de54fc60b0a54a52c7364dc1f42061160baa1d9687cce7397b3c",
-    "sheets/library-template-management.png": "e03b9c9225b3e1f2517fb7663311e6f66bc81600e9dfd26fa93e9c1edbbbdfb3",
-    "sheets/library-visual-management.png": "2ad9375d1528361903d060c694f35c495b9bfd69247cc04ff9622be8d2d92fce"
+    "sheets/library-entry-search.png": "05497162aaceb15fae878a2b838fafa0e87b5164c6823ea563ae212a74bc955e",
+    "sheets/library-template-management.png": "4c83f1950aaf39915dcb00ef2378ca39b27082a1671de63fd4b69943ec501537",
+    "sheets/library-visual-management.png": "9571de3e91502870c187ff002a359e762d85fbb209a5c1607aec2127520a4159"
   },
   "browserVersion": "156.0.8078.80",
   "definitionSha256": "b07cc7dbe4f1b9d7f004d8c708baf828731fac3bd12419d402eddae24127ee5e",
@@ -652,8 +652,8 @@
         "semantics": {
           "ariaLabel": null,
           "role": null,
-          "tagName": "a",
-          "text": "新規"
+          "tagName": "div",
+          "text": "研削 切削"
         },
         "target": {
           "x": 0.9296875,
@@ -663,7 +663,7 @@
       }
     ]
   },
-  "htmlSha256": "f10775b582d61eb42d4786b6862334c6a2700a750e565f046f3f799b12c60f49",
+  "htmlSha256": "5c16c7678bb5d2fb407c9b65a19659adc2b0cf8acbaa4a06ac5e2fc65026f832",
   "schemaVersion": 1,
   "sourceSha256": "f692aa8881faae3094fd7a54830a6a2faff3069944a7198fd9a05c9ccec09858"
 }
