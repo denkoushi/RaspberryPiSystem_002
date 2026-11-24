@@ -318,7 +318,7 @@ describe('placement proposals API / Postgres', () => {
     const baseline = {
       version: 'baseline-v1' as const,
       drawings: [{ visualTemplateId: targetId, imageSha256: fingerprint(), proposals: [{
-        sortOrder: 1, kind: 'dia', measurementLabel: '外径', reason: 'Φ10', nominalValue: 10, lowerLimit: 9.9, upperLimit: 10.1,
+        sortOrder: 1, kind: '外寸', measurementLabel: '外径', reason: 'Φ10', nominalValue: 10, lowerLimit: 9.9, upperLimit: 10.1,
         markerXRatio: 0.4, markerYRatio: 0.3, anchorXRatio: 0.3, anchorYRatio: 0.35, leader: null
       }] }]
     };
