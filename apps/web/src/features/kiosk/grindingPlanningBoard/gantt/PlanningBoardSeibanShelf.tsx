@@ -268,11 +268,12 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
   }), []);
   return <div ref={ref} data-testid="planning-seiban-shelf" className="shrink-0 border-t-2 border-slate-600 bg-slate-900">
     {!open ? <div className="flex items-start">
+      <button type="button" aria-label="製番の棚を開く" onClick={() => changeOpen(true)} className="m-1 h-11 w-9 shrink-0 rounded border border-slate-600 text-slate-200">⌃</button>
       <div className="min-w-0 flex-1"><PlanningBoardSeibanLegend seibanColors={seibanColors} focusedSeiban={focusedSeiban}
         onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={onFocusSeiban} /></div>
-      <button type="button" aria-label="製番の棚を開く" onClick={() => changeOpen(true)} className="m-1 h-11 w-9 rounded border border-slate-600 text-slate-200">⌃</button>
     </div> : <>
       <div className="flex h-10 items-center gap-2.5 overflow-x-auto border-b border-slate-700 px-2.5 [scrollbar-width:none]">
+        <button type="button" aria-label="製番の棚を畳む" onClick={() => changeOpen(false)} className="h-[30px] w-9 shrink-0 rounded border border-slate-600 text-slate-200">⌄</button>
         <div className="flex shrink-0 gap-1">
           <button type="button" aria-label="製番の棚を左へ送る" disabled={!shelfWindow.canScrollLeft} onClick={() => scrollPage(-1)} className={SCROLL_BUTTON_CLASS}>‹</button>
           <button type="button" aria-label="製番の棚を右へ送る" disabled={!shelfWindow.canScrollRight} onClick={() => scrollPage(1)} className={SCROLL_BUTTON_CLASS}>›</button>
@@ -294,7 +295,6 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
           {[false, true].map(rest => <button key={String(rest)} type="button" aria-pressed={remaining === rest} onClick={() => setRemaining(rest)}
             className={clsx('px-3 text-sm font-bold', remaining === rest ? 'bg-slate-200 text-slate-950' : 'text-slate-400')}>{rest ? '残り' : 'すべて'}</button>)}
         </div>
-        <button type="button" aria-label="製番の棚を畳む" onClick={() => changeOpen(false)} className="h-[30px] w-9 shrink-0 rounded border border-slate-600 text-slate-200">⌄</button>
       </div>
       <div ref={shelfViewport} role="group" aria-label="製番の棚" data-shelf-focus={focusedSeiban !== null ? '' : undefined} className="[&[data-shelf-focus]_[data-shelf-unfocused]]:opacity-[.35] flex h-[min(420px,39dvh)] min-h-0 gap-2 overflow-x-auto overflow-y-hidden p-2">
         {windowStart > 0 && <div aria-hidden="true" className="shrink-0" style={{ width: windowStart * SHELF_COLUMN_STRIDE - 8 }} />}

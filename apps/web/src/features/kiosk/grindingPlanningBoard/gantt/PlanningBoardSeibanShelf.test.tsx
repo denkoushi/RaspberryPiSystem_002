@@ -182,6 +182,16 @@ it('collapses to the unchanged legend and persists across remounts, then opens',
   expect(screen.getByRole('group', { name: '製番の棚' })).toBeVisible();
 });
 
+it('puts the open and collapse buttons at the left end of the shelf', () => {
+  const view = render(<PlanningBoardSeibanShelf {...props} />);
+  const collapse = screen.getByRole('button', { name: '製番の棚を畳む' });
+  expect(collapse.parentElement!.firstElementChild).toBe(collapse);
+  fireEvent.click(collapse);
+  const open = screen.getByRole('button', { name: '製番の棚を開く' });
+  expect(open.parentElement!.firstElementChild).toBe(open);
+  view.unmount();
+});
+
 it.each(['{', 'null', '{"schemaVersion":2,"open":false}', '{"schemaVersion":1,"open":"false"}'])('opens on invalid saved state: %s', saved => {
   localStorage.setItem(SEIBAN_SHELF_STORAGE_KEY, saved);
   expect(renderHook(usePersistedPlanningBoardShelf).result.current.open).toBe(true);
