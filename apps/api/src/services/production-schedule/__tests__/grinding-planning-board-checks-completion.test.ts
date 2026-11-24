@@ -37,7 +37,7 @@ vi.mock('../policies/resource-category-policy.service.js', async (importOriginal
 }));
 
 import { prisma } from '../../../lib/prisma.js';
-import { pruneCompletedGrindingPlanningBoardSeibans } from '../grinding-planning-board/completion.js';
+import { pruneCompletedGrindingPlanningBoardSeibans, readMachiningCompletionBySeiban } from '../grinding-planning-board/completion.js';
 import { boardRevision } from '../grinding-planning-board/state.js';
 import { updateGrindingPlanningBoardSeibanChecks, updateGrindingPlanningBoardSeibanOrder } from '../grinding-planning-board/write.js';
 
@@ -117,6 +117,19 @@ function process(id: string, seiban: string, resource: string, manual: boolean, 
   mocks.rows.push({ id, rowData: { FSEIBAN: seiban, FSIGENCD: resource, FHINCD: part, ProductNo: '1', FKOJUN: id, FSIGENSHOYORYO: '5' } });
   mocks.details.set(id, { rowNotes: [], orderSupplements: [], productionScheduleProgress: { isCompleted: manual }, productionScheduleExternalCompletion: { isExternallyCompleted: external } });
 }
+
+it('reports machining completion per seiban, keeping rows with missing details unfinished', async () => {
+  process('1', 'A', '305', false, true);
+  process('2', 'A', '581', false, false, 'SH-machine');
+  process('3', 'B', '581', true);
+  process('4', 'B', '305', true);
+  mocks.details.delete('4');
+  process('5', 'C', '999', false);
+  process('6', 'D', '305', false, false, 'MH-machine');
+  await expect(readMachiningCompletionBySeiban('site', ['A', 'B', 'C', 'D', 'E'])).resolves.toEqual(new Map([
+    ['A', 'completed'], ['B', 'unfinished'], ['C', 'no-machining'], ['D', 'no-machining'], ['E', 'no-machining']
+  ]));
+});
 
 describe('post-ingest completion pruning', () => {
   it('keeps registered seiban with active missing-hours marker even when donor is completed', async () => {

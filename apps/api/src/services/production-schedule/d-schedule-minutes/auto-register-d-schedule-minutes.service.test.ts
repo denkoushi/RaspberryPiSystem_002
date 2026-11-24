@@ -4,6 +4,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import type { updateGrindingPlanningBoardSeibanOrder } from '../grinding-planning-board/write.js';
+import { getResourceCategoryPolicy } from '../policies/resource-category-policy.service.js';
 import { applyDScheduleMinutes } from './apply-d-schedule-minutes.service.js';
 import { autoRegisterDScheduleMinutes } from './auto-register-d-schedule-minutes.service.js';
 import type { DScheduleMinutesMetrics } from './import-summary.js';
@@ -21,7 +22,7 @@ const mocks = vi.hoisted(() => ({
   history: [] as string[],
   historyVersion: 1, sites: ['A', 'B'],
   minutes: [] as { fseiban: string; assigneesKnown: boolean; assignees: string[]; partsCompleteDate?: Date | null }[],
-  readWinners: vi.fn(), rawRows: [] as { rowData: { FSEIBAN: string } }[],
+  readWinners: vi.fn(), readDetails: vi.fn(), rawRows: [] as { rowData: { FSEIBAN: string } }[],
   writeBoard: vi.fn(), writeHistory: vi.fn(), readBoard: vi.fn(), readHistory: vi.fn()
 }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
@@ -53,7 +54,24 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   site: { findMany: () => mocks.sites.map((key) => ({ key })) },
   productionScheduleGrindingPlanningBoardState: { findMany: () => Object.entries(mocks.boards).map(([siteKey, board]) => ({ siteKey, seibanOrder: board.seibanOrder })) }
 } }));
-vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByFseibans: (...args: unknown[]) => mocks.readWinners(...args) }));
+vi.mock('../grinding-planning-board/source.js', () => ({
+  readWinnerRowsByFseibans: (...args: unknown[]) => mocks.readWinners(...args),
+  readRowDetails: (...args: unknown[]) => mocks.readDetails(...args)
+}));
+vi.mock('../missing-standard-hours-process.js', async (original) => ({
+  ...await original<typeof import('../missing-standard-hours-process.js')>(),
+  readMissingStandardHoursBoardRows: vi.fn(async () => [])
+}));
+vi.mock('../sessaku-pieces/piece-key.js', async (original) => ({
+  ...await original<typeof import('../sessaku-pieces/piece-key.js')>(),
+  readSessakuPieceSets: vi.fn(async () => new Map())
+}));
+vi.mock('../policies/resource-category-policy.service.js', async (original) => ({
+  ...await original<typeof import('../policies/resource-category-policy.service.js')>(),
+  getResourceCategoryPolicy: vi.fn(async ({ siteKey }: { siteKey: string }) => siteKey === 'A'
+    ? { grindingResourceCds: ['305'], cuttingExcludedResourceCds: ['10', 'MSZ'] }
+    : { grindingResourceCds: [], cuttingExcludedResourceCds: ['10', 'MSZ', '305'] })
+}));
 vi.mock('../grinding-planning-board/state.js', () => ({
   getOrCreateState: (...args: unknown[]) => mocks.readBoard(...args),
   boardRevision: (state: { version: number }) => String(state.version),
@@ -278,6 +296,44 @@ describe('D schedule automatic registration', () => {
     await register(mocks.minutes.map((row) => block(row.fseiban)));
     expect(mocks.boards.A.uncheckedFseibans).toEqual(['UNCHECKED', 'NEW-NON-MACHINE']);
     expect(mocks.boards.B.uncheckedFseibans).toEqual(['CHECKED', 'NEW-NON-MACHINE']);
+    expect(mocks.readWinners).not.toHaveBeenCalled();
+    expect(getResourceCategoryPolicy).not.toHaveBeenCalled();
+  });
+
+  it('uses each site’s machining completion only for new entries with blank assignees', async () => {
+    mocks.boards.A.seibanOrder.push('MANUALLY-UNCHECKED');
+    mocks.boards.A.uncheckedFseibans = ['MANUALLY-UNCHECKED'];
+    mocks.boards.B.seibanOrder.push('MANUALLY-UNCHECKED');
+    mocks.boards.B.uncheckedFseibans = ['MANUALLY-UNCHECKED'];
+    mocks.minutes = [
+      { fseiban: 'BA1SC330', assigneesKnown: true, assignees: [] },
+      { fseiban: 'CUTTING', assigneesKnown: true, assignees: [' \t', '　'] },
+      { fseiban: 'COMPLETED', assigneesKnown: true, assignees: [] },
+      { fseiban: 'EXCLUDED', assigneesKnown: true, assignees: [] },
+      { fseiban: 'MATERIALS', assigneesKnown: true, assignees: ['資材課'] },
+      { fseiban: 'MANUALLY-UNCHECKED', assigneesKnown: true, assignees: [] }
+    ];
+    const rows = [
+      { id: '1', rowData: { FSEIBAN: 'BA1SC330', FSIGENCD: '305' } },
+      { id: '2', rowData: { FSEIBAN: 'CUTTING', FSIGENCD: '581' } },
+      { id: '3', rowData: { FSEIBAN: 'COMPLETED', FSIGENCD: '581' } },
+      { id: '4', rowData: { FSEIBAN: 'EXCLUDED', FSIGENCD: '10' } },
+      { id: '5', rowData: { FSEIBAN: 'EXCLUDED', FSIGENCD: 'MSZ' } }
+    ];
+    mocks.readWinners.mockResolvedValue(rows);
+    mocks.readDetails.mockResolvedValue(new Map(rows.map(({ id }) => [id, {
+      rowNotes: [], orderSupplements: [], productionScheduleProgress: { isCompleted: id === '3' }
+    }])));
+
+    await register(mocks.minutes.map(({ fseiban }) => block(fseiban)));
+
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'MANUALLY-UNCHECKED', 'BA1SC330', 'CUTTING', 'COMPLETED', 'EXCLUDED', 'MATERIALS']);
+    expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B', 'MANUALLY-UNCHECKED', 'BA1SC330', 'CUTTING', 'COMPLETED', 'EXCLUDED', 'MATERIALS']);
+    expect(mocks.boards.A.uncheckedFseibans).toEqual(['MANUALLY-UNCHECKED', 'MATERIALS', 'COMPLETED', 'EXCLUDED']);
+    expect(mocks.boards.B.uncheckedFseibans).toEqual(['MANUALLY-UNCHECKED', 'MATERIALS', 'BA1SC330', 'COMPLETED', 'EXCLUDED']);
+    const blankAdditions = ['BA1SC330', 'CUTTING', 'COMPLETED', 'EXCLUDED'];
+    expect(mocks.readWinners.mock.calls).toEqual([[prisma, blankAdditions], [prisma, blankAdditions]]);
+    expect(vi.mocked(getResourceCategoryPolicy).mock.calls).toEqual([[{ siteKey: 'A' }], [{ siteKey: 'B' }]]);
   });
 
   it('rechecks the saved transition on every existing board without changing order, including on an APPLIED retry', async () => {

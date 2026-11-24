@@ -4,6 +4,7 @@ import { isMachineSectionAssigned } from './machine-section-assignee.js';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { readMachiningCompletionBySeiban } from '../grinding-planning-board/completion.js';
 import { boardRevision, getOrCreateState, stateOrder, stateUncheckedFseibans } from '../grinding-planning-board/state.js';
 import { updateGrindingPlanningBoardSeibanOrder } from '../grinding-planning-board/write.js';
 import { getProductionScheduleSearchState, updateProductionScheduleSearchState } from '../production-schedule-search-state.service.js';
@@ -75,7 +76,13 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       select: { fseiban: true, assignees: true, assigneesKnown: true, partsCompleteDate: true }
     });
     const eligibleSet = new Set(eligible);
-    const newUncheckedFseibans = minutes.filter((row) => eligibleSet.has(row.fseiban) && row.assigneesKnown && !isMachineSectionAssigned(row.assignees)).map((row) => row.fseiban);
+    const nonMachineAssignees = new Set<string>();
+    const blankAssignees = new Set<string>();
+    for (const { fseiban, assigneesKnown, assignees } of minutes) {
+      if (!eligibleSet.has(fseiban) || !assigneesKnown) continue;
+      if (!assignees.some((value) => value.trim().length > 0)) blankAssignees.add(fseiban);
+      else if (!isMachineSectionAssigned(assignees)) nonMachineAssignees.add(fseiban);
+    }
     const partsDates = new Map(minutes.map((row) => [row.fseiban, row.partsCompleteDate?.toISOString().slice(0, 10) ?? null]));
 
     const reconcile = async (
@@ -83,7 +90,7 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       savedAuto: string[],
       otherAuto: string[],
       read: () => Promise<{ entries: string[]; revision: string; needsWrite?: boolean }>,
-      write: (entries: string[], revision: string, saveProgress: (client: Prisma.TransactionClient) => Promise<void>) => Promise<void>,
+      write: (entries: string[], revision: string, saveProgress: (client: Prisma.TransactionClient) => Promise<void>, additions: string[]) => Promise<void>,
       ownershipUpdate: (owned: string[]) => Partial<RegistrationOwnership>
     ) => {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -120,7 +127,7 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
             await client.productionScheduleDScheduleMinutesImportRun.update({ where: { id: run.id }, data: { autoRegisteredSeibans: nextOwnership } });
           };
           if (current.needsWrite || JSON.stringify(entries) !== JSON.stringify(current.entries)) {
-            await write(entries, current.revision, saveProgress);
+            await write(entries, current.revision, saveProgress, additions);
           } else {
             await saveProgress(prisma);
           }
@@ -146,7 +153,13 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
         const needsWrite = recheckBoard && (state.uncheckedFseibans == null ? entries : stateUncheckedFseibans(state))
           .some((fseiban) => rechecked.has(fseiban));
         return { entries, revision: boardRevision(state), needsWrite };
-      }, async (fseibans, sourceRevision, saveProgress) => {
+      }, async (fseibans, sourceRevision, saveProgress, additions) => {
+        const newUncheckedFseibans = additions.filter((fseiban) => nonMachineAssignees.has(fseiban));
+        const blankAdditions = additions.filter((fseiban) => blankAssignees.has(fseiban));
+        if (blankAdditions.length > 0) {
+          const completion = await readMachiningCompletionBySeiban(siteKey, blankAdditions);
+          newUncheckedFseibans.push(...blankAdditions.filter((fseiban) => completion.get(fseiban) !== 'unfinished'));
+        }
         await updateGrindingPlanningBoardSeibanOrder({
           siteKey, fseibans, sourceRevision, newUncheckedFseibans,
           ...(recheckBoard ? { recheckedFseibans: rechecked } : {})
