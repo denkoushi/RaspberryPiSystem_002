@@ -8,6 +8,8 @@ export type BoardConnectivitySnapshot = Readonly<{
   recoveredUntil: number | null;
 }>;
 
+const MAX_DATA_CHANGED_REFRESH_WINDOWS = 4;
+
 type Options = {
   config: BoardOfflineConfig;
   now?: () => number;
@@ -26,6 +28,8 @@ export function createPlanningBoardConnectivity({ config, probe, onBootstrapProb
   let bootstrapStarted = 0;
   let successes = 0;
   let refreshingStarted = 0;
+  /** When the current bootstrapping/refreshing phase began; caps how far changed-data retries can extend it. */
+  let phaseStarted = 0;
   let bootstrapComplete = false;
   let interval: ReturnType<typeof setInterval> | undefined;
   let lossTimer: ReturnType<typeof setTimeout> | undefined;
@@ -38,6 +42,7 @@ export function createPlanningBoardConnectivity({ config, probe, onBootstrapProb
   };
   const transition = (phase: BoardConnectivityPhase, recovered = false) => {
     if (phase === 'refreshing') refreshingStarted = now();
+    phaseStarted = now();
     successes = 0;
     bootstrapComplete = false;
     clearTimeout(bannerTimer);
@@ -138,6 +143,7 @@ export function createPlanningBoardConnectivity({ config, probe, onBootstrapProb
       started = true;
       lastSuccess = now();
       bootstrapStarted = now();
+      phaseStarted = now();
       if (initiallyOffline) transition('offline');
       scheduleLoss();
       interval = setInterval(probeNow, config.probeIntervalMs);
@@ -168,6 +174,21 @@ export function createPlanningBoardConnectivity({ config, probe, onBootstrapProb
       const recovered = snapshot.phase === 'refreshing';
       recordSuccess();
       transition('online', recovered);
+    },
+    /**
+     * The server answered that its data changed while the full read was running.
+     * That answer proves the connection, so restart the read deadline instead of
+     * counting it as a failure, up to four read deadlines from the start of the phase.
+     */
+    reportFullRefreshDataChanged(generation: number) {
+      if (!started || stopped) return;
+      checkElapsed();
+      if (generation !== snapshot.generation) return;
+      if (snapshot.phase !== 'refreshing' && snapshot.phase !== 'bootstrapping') return;
+      const restarted = Math.min(now(), phaseStarted + config.refreshTimeoutMs * (MAX_DATA_CHANGED_REFRESH_WINDOWS - 1));
+      if (snapshot.phase === 'refreshing') refreshingStarted = Math.max(refreshingStarted, restarted);
+      else bootstrapStarted = Math.max(bootstrapStarted, restarted);
+      recordSuccess();
     },
     stop() {
       if (stopped) return;

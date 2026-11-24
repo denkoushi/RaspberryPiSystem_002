@@ -1,3 +1,4 @@
+import { isAxiosError } from 'axios';
 import { useCallback, createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 
@@ -17,6 +18,10 @@ export type BoardReadParticipant = {
 };
 const disabledSnapshot: BoardConnectivitySnapshot = { phase: 'online', generation: 0, recoveredUntil: null };
 const noop = () => undefined;
+const DATA_CHANGED_RETRY_MS = 1_000;
+/** The server rejected the read because the board data changed mid-read; the connection itself is fine. */
+const isDataChangedError = (error: unknown) => isAxiosError(error) && error.response?.status === 409 &&
+  (error.response.data as { errorCode?: unknown } | undefined)?.errorCode === 'STALE_PLANNING_BOARD_SNAPSHOT';
 const disabled = {
   enabled: false, frozen: false, snapshot: disabledSnapshot, gate: passThroughPlanningBoardWriteGate,
   displayedAt: null as number | null, now: () => Date.now(), notification: null as string | null,
@@ -173,12 +178,14 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
     let complete = false;
     let disposed = false;
     let retryAfter = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const run = () => {
       if (disposed || active || complete || performance.now() < retryAfter) return;
       const abort = new AbortController();
       active = abort;
       retryAfter = performance.now() + config.probeIntervalMs;
       let reported = false;
+      let dataChanged = false;
       const report = (success: boolean) => {
         if (reported) return;
         reported = true;
@@ -216,8 +223,19 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
             frozenNow.current = null;
             report(true);
           });
-        } catch { abort.abort(); report(false); }
-        finally { clearTimeout(timeout); active = undefined; if (!reported) report(false); }
+        } catch (error) {
+          dataChanged = !reported && !disposed && isDataChangedError(error);
+          abort.abort();
+          if (!dataChanged) report(false);
+        } finally {
+          clearTimeout(timeout); active = undefined;
+          if (dataChanged) {
+            // Read again soon; the controller's phase deadline still bounds how long this can go on.
+            controller.reportFullRefreshDataChanged(snapshot.generation);
+            retryAfter = 0;
+            retryTimer = setTimeout(run, DATA_CHANGED_RETRY_MS);
+          } else if (!reported) report(false);
+        }
       })();
     };
     if (snapshot.phase === 'bootstrapping') retryBootstrap.current = run;
@@ -226,6 +244,7 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
       disposed = true;
       retryBootstrap.current = noop;
       clearTimeout(timeout);
+      clearTimeout(retryTimer);
       active?.abort();
       if (!complete) controller.reportFullRefresh(snapshot.generation, false);
     };
