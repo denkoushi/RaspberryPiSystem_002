@@ -110,8 +110,8 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && zlib_version="$(dpkg-query -W -f='${Version}' zlib1g)" \
   && dpkg --compare-versions "${zlib_version}" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' \
     || { echo "zlib1g is below the required fixed version: ${zlib_version}" >&2; exit 1; } \
-  # ndlocr-lite pins PyYAML 6.0.1; pip cannot uninstall Debian's python3-yaml (no RECORD), so install beside it.
-  && python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed "PyYAML==6.0.1" \
+  # ndlocr-lite pins PyYAML 6.0.1 and cryptography 50.0.2; pip cannot uninstall Debian's python3-yaml / python3-cryptography (no RECORD), so install beside them.
+  && python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed "PyYAML==6.0.1" "cryptography==50.0.2" \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
   && python3 -m pip install --no-cache-dir --break-system-packages "protobuf>=6.33.5,<7" "pillow>=13.0.0,<14" "lxml>=6.1.0,<7" \
