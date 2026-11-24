@@ -50,7 +50,23 @@ const expectedRoutes = [
   ['inspection_drawing', '検査図面', '/kiosk/part-measurement/inspection'],
   ['rigging_analytics', '集計', '/kiosk/rigging-analytics'],
   ['machine_signal', '設備稼働', '/kiosk/machine-signal'],
-  ['call', '通話', '/kiosk/call']
+  ['call', '通話', '/kiosk/call'],
+  ['inventory_dashboard', '在庫＞集計', '/kiosk/inventory/dashboard'],
+  ['inventory_haizen', '在庫＞配膳の場所', '/kiosk/inventory/haizen'],
+  ['inventory_haizen_verify_history', '在庫＞照合の記録', '/kiosk/inventory/haizen/verify-history'],
+  ['inventory_haizen_trail', '在庫＞足取り', '/kiosk/inventory/haizen/trail'],
+  ['assembly_check_sheets', '組立＞組立チェックシート', '/kiosk/assembly/check-sheets'],
+  ['assembly_manuals', '組立＞要領書 見る', '/kiosk/assembly/manuals'],
+  ['assembly_training', '組立＞締付トルク訓練', '/kiosk/assembly/training'],
+  ['part_measurement_finalized', '部品測定＞確定記録の検索', '/kiosk/part-measurement/finalized'],
+  ['self_inspection_record_approvals', '自主検査＞検査記録確認', '/kiosk/part-measurement/self-inspection/record-approvals'],
+  ['self_inspection_reduction', '自主検査＞減らせる検査', '/kiosk/part-measurement/self-inspection/reduction'],
+  ['procedure_board', '手順づくり', '/kiosk/procedure-board'],
+  ['mobile_placement', '配膳', '/kiosk/mobile-placement'],
+  ['mobile_placement_schedule_seibans', '配膳＞日程', '/kiosk/mobile-placement/schedule-seibans'],
+  ['mobile_placement_part_search', '配膳＞部品', '/kiosk/mobile-placement/part-search'],
+  ['mobile_placement_zero2w_status', '配膳＞Zero2W 配膳', '/kiosk/mobile-placement/zero2w-status'],
+  ['mobile_placement_pallet_viz', '配膳＞パレット', '/kiosk/mobile-placement/pallet-viz']
 ] as const;
 
 describe('all startup pages', () => {
@@ -59,7 +75,8 @@ describe('all startup pages', () => {
     const expectedIds = KIOSK_REORDERABLE_HEADER_TAB_IDS.flatMap((id) =>
       id === 'borrow' ? ['borrow_tag', 'borrow_photo'] : id === 'tag_desk' || id === 'due_management' ? [] : [id]
     );
-    expect([...KIOSK_INITIAL_ROUTE_IDS].sort()).toEqual(['portal', ...expectedIds].sort());
+    expect(KIOSK_INITIAL_ROUTE_IDS).toEqual(expect.arrayContaining(['portal', ...expectedIds]));
+    expect([...KIOSK_INITIAL_ROUTE_IDS].sort()).toEqual(expectedRoutes.map(([id]) => id).sort());
     expect(KIOSK_SELECTABLE_INITIAL_ROUTE_IDS).toEqual(KIOSK_INITIAL_ROUTE_IDS);
     expect(Object.keys(KIOSK_INITIAL_ROUTE_PATHS).sort()).toEqual([...KIOSK_INITIAL_ROUTE_IDS].sort());
     expect(Object.keys(KIOSK_INITIAL_ROUTE_LABELS).sort()).toEqual([...KIOSK_INITIAL_ROUTE_IDS].sort());
@@ -72,6 +89,11 @@ describe('all startup pages', () => {
     expect(KIOSK_INITIAL_ROUTE_LABELS[id]).toBe(label);
     expect(KIOSK_INITIAL_ROUTE_PATHS[id]).toBe(path);
     expect(resolveKioskInitialPath({ initialRoute: id, defaultMode: 'TAG' })).toBe(path);
+  });
+
+  it('uses unique paths', () => {
+    const paths = Object.values(KIOSK_INITIAL_ROUTE_PATHS);
+    expect(new Set(paths).size).toBe(paths.length);
   });
 
   it('resolves null using the legacy default mode', () => {

@@ -26,7 +26,23 @@ export const KIOSK_INITIAL_ROUTE_IDS = [
   'inspection_drawing',
   'rigging_analytics',
   'machine_signal',
-  'call'
+  'call',
+  'inventory_dashboard',
+  'inventory_haizen',
+  'inventory_haizen_verify_history',
+  'inventory_haizen_trail',
+  'assembly_check_sheets',
+  'assembly_manuals',
+  'assembly_training',
+  'part_measurement_finalized',
+  'self_inspection_record_approvals',
+  'self_inspection_reduction',
+  'procedure_board',
+  'mobile_placement',
+  'mobile_placement_schedule_seibans',
+  'mobile_placement_part_search',
+  'mobile_placement_zero2w_status',
+  'mobile_placement_pallet_viz'
 ] as const;
 
 export type KioskInitialRouteId = (typeof KIOSK_INITIAL_ROUTE_IDS)[number];
@@ -60,7 +76,23 @@ export const KIOSK_INITIAL_ROUTE_LABELS: Record<KioskInitialRouteId, string> = {
   inspection_drawing: '検査図面',
   rigging_analytics: '集計',
   machine_signal: '設備稼働',
-  call: '通話'
+  call: '通話',
+  inventory_dashboard: '在庫＞集計',
+  inventory_haizen: '在庫＞配膳の場所',
+  inventory_haizen_verify_history: '在庫＞照合の記録',
+  inventory_haizen_trail: '在庫＞足取り',
+  assembly_check_sheets: '組立＞組立チェックシート',
+  assembly_manuals: '組立＞要領書 見る',
+  assembly_training: '組立＞締付トルク訓練',
+  part_measurement_finalized: '部品測定＞確定記録の検索',
+  self_inspection_record_approvals: '自主検査＞検査記録確認',
+  self_inspection_reduction: '自主検査＞減らせる検査',
+  procedure_board: '手順づくり',
+  mobile_placement: '配膳',
+  mobile_placement_schedule_seibans: '配膳＞日程',
+  mobile_placement_part_search: '配膳＞部品',
+  mobile_placement_zero2w_status: '配膳＞Zero2W 配膳',
+  mobile_placement_pallet_viz: '配膳＞パレット'
 };
 
 export const KIOSK_INITIAL_ROUTE_PATHS: Record<KioskInitialRouteId, string> = {
@@ -86,7 +118,23 @@ export const KIOSK_INITIAL_ROUTE_PATHS: Record<KioskInitialRouteId, string> = {
   inspection_drawing: '/kiosk/part-measurement/inspection',
   rigging_analytics: '/kiosk/rigging-analytics',
   machine_signal: '/kiosk/machine-signal',
-  call: '/kiosk/call'
+  call: '/kiosk/call',
+  inventory_dashboard: '/kiosk/inventory/dashboard',
+  inventory_haizen: '/kiosk/inventory/haizen',
+  inventory_haizen_verify_history: '/kiosk/inventory/haizen/verify-history',
+  inventory_haizen_trail: '/kiosk/inventory/haizen/trail',
+  assembly_check_sheets: '/kiosk/assembly/check-sheets',
+  assembly_manuals: '/kiosk/assembly/manuals',
+  assembly_training: '/kiosk/assembly/training',
+  part_measurement_finalized: '/kiosk/part-measurement/finalized',
+  self_inspection_record_approvals: '/kiosk/part-measurement/self-inspection/record-approvals',
+  self_inspection_reduction: '/kiosk/part-measurement/self-inspection/reduction',
+  procedure_board: '/kiosk/procedure-board',
+  mobile_placement: '/kiosk/mobile-placement',
+  mobile_placement_schedule_seibans: '/kiosk/mobile-placement/schedule-seibans',
+  mobile_placement_part_search: '/kiosk/mobile-placement/part-search',
+  mobile_placement_zero2w_status: '/kiosk/mobile-placement/zero2w-status',
+  mobile_placement_pallet_viz: '/kiosk/mobile-placement/pallet-viz'
 };
 
 const KNOWN_KIOSK_INITIAL_ROUTE_ID_SET = new Set<string>(KIOSK_INITIAL_ROUTE_IDS);

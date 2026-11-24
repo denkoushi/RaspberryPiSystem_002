@@ -1,10 +1,10 @@
-import { normalizeKioskInitialRoute } from '@raspi-system/shared-types';
+import { KIOSK_INITIAL_ROUTE_PATHS, normalizeKioskInitialRoute } from '@raspi-system/shared-types';
 import { Link } from 'react-router-dom';
 
 import { KioskHomeIcon } from '../../../components/kiosk/KioskHomeIcon';
 
 import { kioskHeaderNavClass } from './kioskHeaderNavClass';
-import { isKioskHeaderTabActive, resolveCurrentKioskInitialRoute } from './kioskHeaderTabActivity';
+import { isKioskHeaderTabActive, resolveActiveKioskHeaderTab, resolveCurrentKioskInitialRoute } from './kioskHeaderTabActivity';
 import { KIOSK_HEADER_TAB_LABELS } from './kioskHeaderTabLabels';
 import { resolveKioskHeaderTabPath } from './kioskHeaderTabRoutes';
 
@@ -51,7 +51,9 @@ export function renderKioskReorderableHeaderTab(
   const borrowRoute = isActive
     ? resolveCurrentKioskInitialRoute(ctx.pathname)
     : (ctx.defaultMode === 'PHOTO' ? 'borrow_photo' : 'borrow_tag');
-  const isInitialTab = tabId === 'borrow' ? initialRoute === borrowRoute : initialRoute === tabId;
+  const isInitialTab = tabId === 'borrow'
+    ? initialRoute === borrowRoute
+    : resolveActiveKioskHeaderTab(KIOSK_INITIAL_ROUTE_PATHS[initialRoute]) === tabId;
   const markLabel = (label: string) => isInitialTab ? (
     <><KioskHomeIcon filled className={`mr-1.5 h-4 w-4 shrink-0 ${isActive ? 'text-inv-cyan-ink' : 'text-inv-cyan'}`} /><span className="sr-only">開始ページ </span>{label}</>
   ) : label;

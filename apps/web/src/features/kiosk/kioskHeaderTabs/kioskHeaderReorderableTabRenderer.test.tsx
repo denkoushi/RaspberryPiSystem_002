@@ -121,16 +121,35 @@ describe('startup page tab markers and route parity', () => {
     expect(screen.getByRole('link', { name: '要領書' }).querySelector('svg')).toBeNull();
   });
 
+  it.each([
+    ['inventory_settings', 'inventory_haizen', '/kiosk/inventory', '在庫'],
+    ['self_inspection', 'self_inspection_reduction', '/kiosk/part-measurement/self-inspection', '自主検査']
+  ] as const)('marks the %s parent tab for %s', (tabId, route, path, label) => {
+    render(<MemoryRouter>{renderKioskReorderableHeaderTab(tabId, { ...baseContext, initialKioskRoute: route })}</MemoryRouter>);
+    const link = screen.getByRole('link', { name: `開始ページ ${label}` });
+    expect(link).toHaveAttribute('href', path);
+    expect(link.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
+  });
+
+  it('does not mark a tab for a startup page without a parent tab', () => {
+    const context = { ...baseContext, initialKioskRoute: 'mobile_placement' };
+    render(<MemoryRouter>
+      {renderKioskReorderableHeaderTab('inventory_settings', context)}
+      {renderKioskReorderableHeaderTab('borrow', context)}
+    </MemoryRouter>);
+    expect(screen.queryByRole('link', { name: /開始ページ/ })).not.toBeInTheDocument();
+  });
+
   it('keeps every eligible tab destination and new label aligned with shared-types including web constants', async () => {
-    const { KIOSK_INITIAL_ROUTE_IDS, KIOSK_INITIAL_ROUTE_PATHS, KIOSK_INITIAL_ROUTE_LABELS } = await import('@raspi-system/shared-types');
+    const { KIOSK_INITIAL_ROUTE_IDS, KIOSK_INITIAL_ROUTE_PATHS, KIOSK_INITIAL_ROUTE_LABELS, isKioskReorderableHeaderTabId } = await import('@raspi-system/shared-types');
     const { KIOSK_MACHINE_SIGNAL_PATH } = await import('../../machine-signal/machineSignalRoutes');
     const { KIOSK_INSPECTION_DRAWING_LIBRARY_PATH } = await import('../../part-measurement/inspection-drawing/kioskInspectionDrawingRoutes');
     expect(KIOSK_INITIAL_ROUTE_PATHS.machine_signal).toBe(KIOSK_MACHINE_SIGNAL_PATH);
     expect(KIOSK_INITIAL_ROUTE_PATHS.inspection_drawing).toBe(KIOSK_INSPECTION_DRAWING_LIBRARY_PATH);
     for (const route of KIOSK_INITIAL_ROUTE_IDS) {
-      if (route === 'portal') continue; // Fixed portal tab is rendered by KioskHeader.
       const borrow = route === 'borrow_tag' || route === 'borrow_photo';
       const tabId = borrow ? 'borrow' : route;
+      if (!isKioskReorderableHeaderTabId(tabId)) continue;
       const view = render(<MemoryRouter>{renderKioskReorderableHeaderTab(tabId, { ...baseContext, defaultMode: route === 'borrow_photo' ? 'PHOTO' : 'TAG', initialKioskRoute: route })}</MemoryRouter>);
       expect(screen.getByRole('link')).toHaveAttribute('href', KIOSK_INITIAL_ROUTE_PATHS[route]);
       expect(screen.getByRole('link')).toHaveAccessibleName(`開始ページ ${borrow ? '持出' : KIOSK_INITIAL_ROUTE_LABELS[route]}`);

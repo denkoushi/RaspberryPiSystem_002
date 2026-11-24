@@ -52,6 +52,8 @@ describe('initial-route request boundary without a database', () => {
 
   it.each([
     { initialRoute: 'unknown' }, { initialRoute: 'tag_desk' }, { initialRoute: 'due_management' },
+    { initialRoute: 'assembly_record_approvals' }, { initialRoute: 'assembly_traceability' },
+    { initialRoute: 'assembly_manuals_workshop' },
     {}, { initialRoute: 123 }, { initialRoute: 'assembly', clientId: 'other-device' },
     { initialRoute: 'assembly', defaultMode: 'PHOTO' }
   ])('rejects invalid or extra body fields: %j', async (payload) => {
