@@ -11,7 +11,7 @@ import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
 import { beginForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache } from './planningBoardForwardDrop';
 import { forwardItemDetails } from './planningBoardForwardQueue';
-import { FOLDED_BAR_TOP, FOLDED_ROW_BASE_HEIGHT, operationSplitGap } from './planningBoardGanttGeometry';
+import { FOLDED_BAR_TOP, FOLDED_ROW_BASE_HEIGHT, NORMAL_BAR_TOP, NORMAL_ROW_BASE_HEIGHT, operationSplitGap } from './planningBoardGanttGeometry';
 import { dayLabel, dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_SINGLE_RESOURCE_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
@@ -245,7 +245,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
   const shiftPeriods = workingPeriods(hours, pausesForBreaks);
   const firstOfDay = !foldedWindow?.working || Math.abs(start - day - shiftPeriods[0]!.start) < 1e-9;
   const workingWidth = foldedWindow?.periods.reduce((sum, period) => sum + period.end - period.start, 0) ?? 0;
-  const rowBaseHeight = foldedWindow ? FOLDED_ROW_BASE_HEIGHT : 76;
+  const rowBaseHeight = foldedWindow ? FOLDED_ROW_BASE_HEIGHT : NORMAL_ROW_BASE_HEIGHT;
   const originalHeight = rowBaseHeight + chipLayout.lines * CHIP_LINE_HEIGHT;
   const rowHeight = Math.max(originalHeight, fillRowHeight ?? 0);
   const verticalScale = fillRowHeight === undefined ? 1 : rowHeight / originalHeight;
@@ -285,7 +285,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         </span>;
       }))}
       {Number.isFinite(now) && <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />}
-      {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ top: 36 * verticalScale, left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
+      {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute border-t-2 border-dotted border-amber-400" style={{ top: (foldedWindow ? 36 : NORMAL_BAR_TOP + 33) * verticalScale, left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
       {scaledChips.strips.filter(({ bar }) => visibleIds.has(bar.item.itemId)).map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
         className="pointer-events-none absolute flex flex-nowrap gap-0.5" style={{ left: left * verticalScale, top: (rowBaseHeight + line * CHIP_LINE_HEIGHT) * verticalScale, transform: verticalScale === 1 ? undefined : `scale(${verticalScale})`, transformOrigin: 'top left' }}>
         {placement && <span className="inline-flex shrink-0" style={{ width: badgeWidth }}>
@@ -320,7 +320,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               aria-pressed={pinMode ? Boolean(normal?.orderPinned) : selected} disabled={disabled || bar.item.isCompleted || normal?.standardHoursMissing}
               title={normal?.standardHoursMissing ? `${normal.processOrder} 標準工数入力忘れ` : undefined}
               data-drag-disabled={pinMode || dragDisabled || disabled || !resourceView || normal?.standardHoursMissing}
-              className={clsx('absolute top-[3px] h-[70px] touch-pan-y select-none rounded text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
+              className={clsx('absolute h-[70px] touch-pan-y select-none rounded text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 inChain && index === 0 ? 'overflow-visible' : 'overflow-hidden',
                 seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
@@ -330,7 +330,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 normal?.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
                 split && opIndex > 0 && 'border-l border-slate-950/60',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
-              style={{ top: (foldedWindow ? FOLDED_BAR_TOP : 3) * verticalScale, height: 70 * verticalScale, fontSize: 11 * textScale, lineHeight: `${14 * textScale}px`, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
+              style={{ top: (foldedWindow ? FOLDED_BAR_TOP : NORMAL_BAR_TOP) * verticalScale, height: 70 * verticalScale, fontSize: 11 * textScale, lineHeight: `${14 * textScale}px`, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 borderRadius: split && !bar.item.itemId.startsWith('piece:') ? 0 : undefined,
                 clipPath: !split && bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
                 backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : test ? '#c4b5fd' : undefined,
@@ -385,7 +385,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                   {!split && <small style={{ fontSize: 11 * textScale }} className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>}
                 </span> : null}
             </button>{split && <span aria-hidden="true" data-gantt-unit-underline data-seiban-unfocused={focusedSeiban === null ? 'underline' : undefined} className={clsx('pointer-events-none absolute h-[3px] rounded', focusedSeiban !== null && focusedSeiban !== normal?.fseiban ? 'opacity-20' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined)}
-              style={{ top: (foldedWindow ? 95 : 76) * verticalScale, left: (segment.start - start) * dayWidth, width: segmentWidth, background: operationSplitColor(color, 0) }} />}</div>;
+              style={{ top: (foldedWindow ? 95 : NORMAL_BAR_TOP + 73) * verticalScale, left: (segment.start - start) * dayWidth, width: segmentWidth, background: operationSplitColor(color, 0) }} />}</div>;
           })}
           {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={(foldedWindow ? 91 : 72) * verticalScale - 16} />}
           {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-0 -translate-x-1/2 text-xs leading-none text-rose-400"

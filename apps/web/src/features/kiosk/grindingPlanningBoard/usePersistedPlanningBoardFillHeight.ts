@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { GANTT_HEADER_HEIGHT } from './gantt/planningBoardGanttGeometry';
+
 export const FILL_HEIGHT_MIN_INNER_HEIGHT = 1600;
 export const FILL_HEIGHT_STORAGE_KEY = 'kiosk-planning-board-fill-height';
 const CHANGE_EVENT = 'planning-board-fill-height-change';
@@ -55,7 +57,7 @@ export function usePlanningBoardFillRowHeight(eligible: boolean, viewportHeight:
     const count = groups.reduce((sum, group) => sum + group.rows.length, 0);
     const categoryHeight = singleGroup ? 0 : groups.reduce((sum, group, index) =>
       sum + (group.category && group.category !== groups[index - 1]?.category ? 24 : 0), 0);
-    return count ? Math.floor(Math.max(0, (viewportClientHeight || viewportHeight) - (singleGroup ? 0 : 36) - categoryHeight - bottomInset) / count) : undefined;
+    return count ? Math.floor(Math.max(0, (viewportClientHeight || viewportHeight) - (singleGroup ? 0 : GANTT_HEADER_HEIGHT) - categoryHeight - bottomInset) / count) : undefined;
   }, [fillHeight, viewportHeight, viewportClientHeight, groups, singleGroup, bottomInset]);
   const rowGeometryKey = useMemo(() => fillRowHeight === undefined ? undefined : { fillRowHeight, chipsByPart, placementByPart },
     [fillRowHeight, chipsByPart, placementByPart]);
