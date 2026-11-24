@@ -13,7 +13,10 @@ import {
 import { matchesDigitQuery } from './inspectionDrawingDigitQuery';
 import { InspectionDrawingResourceCdChipList } from './InspectionDrawingResourceCdChipList';
 import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotations';
-import { formatVisualLibraryTimestamp } from './inspectionDrawingVisualLibraryHelpers';
+import {
+  formatVisualLibraryTimestamp,
+  splitVisualNameIntoPartNumberAndName
+} from './inspectionDrawingVisualLibraryHelpers';
 import {
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
   kioskInspectionDrawingCreatePathWithVisual
@@ -167,12 +170,20 @@ export function KioskInspectionDrawingVisualLibrarySection({
                 const resourceCds = resourceCdsByVisualId?.[visual.id];
                 const showResourceRow = resourceCds != null && resourceCds.length > 0;
                 const processGroups = processGroupsByVisualId?.[visual.id];
+                const { partNumber, partName } = splitVisualNameIntoPartNumberAndName(visual.name);
 
                 return (
                   <Fragment key={visual.id}>
                     <tr className="border-t border-white/10 first:border-t-0">
-                      <td className="truncate px-2 pb-0.5 pt-1.5 font-bold text-white" title={visual.name}>
-                        {visual.name}
+                      <td
+                        className="px-2 pb-0.5 pt-1.5 font-bold text-white"
+                        title={visual.name}
+                        data-testid="inspection-visual-name-cell"
+                      >
+                        <span className="block truncate">{partNumber}</span>
+                        {partName ? (
+                          <span className="block break-words font-semibold text-white/85">{partName}</span>
+                        ) : null}
                       </td>
                       <td className="whitespace-nowrap px-2 pb-0.5 pt-1.5 font-semibold text-white/65">
                         {formatVisualLibraryTimestamp(visual.createdAt)}
