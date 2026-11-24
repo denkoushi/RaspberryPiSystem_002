@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DropboxStorageProvider } from '../storage/dropbox-storage.provider';
 import { BackupService } from '../backup.service';
+import { resolveRestoreDestination } from '../restore-destination';
 import { FileBackupTarget } from '../targets/file-backup.target';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -97,8 +98,9 @@ const skipIfNoToken = !accessToken || !enableLive ? it.skip : it;
       expect(result.success).toBe(true);
       expect(result.path).toBeDefined();
 
-      const restorePath = path.join(os.tmpdir(), `dropbox-restored-${Date.now()}.txt`);
-      const restore = await backupService.restore(result.path!, { destination: restorePath });
+      const restoreName = `dropbox-restored-${Date.now()}.txt`;
+      const restore = await backupService.restore(result.path!, { destination: restoreName });
+      const restorePath = resolveRestoreDestination(restoreName);
       expect(restore.success).toBe(true);
 
       const content = await fs.readFile(restorePath, 'utf-8');

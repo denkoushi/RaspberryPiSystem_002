@@ -2,6 +2,8 @@ import { GmailSenderVerificationSession } from '../../gmail/gmail-sender-verific
 import { createHash, randomUUID } from 'node:crypto';
 
 import { ApiError } from '../../../lib/errors.js';
+import { MAX_XLSX_BYTES } from '../../assembly/check-sheet/check-sheet-import.constants.js';
+import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
 import type { BackupConfig } from '../../backup/backup-config.js';
 import { collectGmailAttachments, type GmailApiClient } from '../../backup/gmail-api-client.js';
@@ -176,7 +178,15 @@ export class DScheduleMinutesGmailIngestionService {
         const transientFailures: string[] = [];
         for (const attachment of collectGmailAttachments(message).filter((item) => /\.xlsx$/i.test(item.filename))) {
           try {
+            if ((attachment.size ?? 0) > MAX_XLSX_BYTES) {
+              logger.warn({ gmailMessageId, filename: attachment.filename, size: attachment.size }, 'Skipped oversized schedule minutes attachment');
+              continue;
+            }
             const buffer = await gmail.getAttachment(gmailMessageId, attachment.attachmentId);
+            if (buffer.length > MAX_XLSX_BYTES) {
+              logger.warn({ gmailMessageId, filename: attachment.filename, size: buffer.length }, 'Skipped oversized schedule minutes attachment');
+              continue;
+            }
             const imported = await this.parseAndApply(buffer, { gmailMessageId, filename: attachment.filename, receivedAt, subject }, runs);
             if (imported) runs.set(imported.kind, imported.run);
           } catch (error) {

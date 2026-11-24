@@ -1,5 +1,3 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import { validateBackupForRestore } from '../../services/backup/backup-restore-validation.js';
 import { BackupOperationType } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
@@ -15,6 +13,7 @@ import type { BackupKind } from '../../services/backup/backup-types.js';
 import { BackupHistoryService } from '../../services/backup/backup-history.service.js';
 import { logger } from '../../lib/logger.js';
 import { runPreRestoreBackup } from '../../services/backup/pre-restore-backup.service.js';
+import { resolveRestoreDestination, writeRestoredFile } from '../../services/backup/restore-destination.js';
 
 const RESTORE_RATE_LIMIT = { max: 10, timeWindow: '1 minute' };
 
@@ -54,6 +53,7 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
     },
   }, async (request, reply) => {
     const body = restoreRequestSchema.parse(request.body ?? {});
+    const destination = body.destination ? resolveRestoreDestination(body.destination) : undefined;
 
     // ストレージプロバイダーを作成（Factoryパターンを使用）
     const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
@@ -118,7 +118,7 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
       if (target.restore) {
         logger?.info({ targetKind, targetSource, backupPath: body.backupPath }, '[BackupRoute] Restoring using target restore method');
         const result = await target.restore(backupData, {
-          destination: body.destination,
+          destination,
           overwrite: true,
         });
 
@@ -136,9 +136,8 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
         });
       } else {
         // restoreメソッドが実装されていない場合は通常の処理を実行
-        if (body.destination) {
-          await fs.mkdir(path.dirname(body.destination), { recursive: true });
-          await fs.writeFile(body.destination, backupData, { mode: 0o600 });
+        if (destination) {
+          await writeRestoredFile(destination, backupData);
         }
         const result = { success: true, timestamp: new Date() };
 

@@ -4,6 +4,7 @@ import {
   allocateWorkInstructionBatch,
   buildWorkInstructionGmailSearchQuery,
   escapeGmailQuotedSearchValue,
+  extractEmail,
 } from '../work-instruction-ingestion.policy.js';
 
 describe('work-instruction ingestion allocation policy', () => {
@@ -41,5 +42,13 @@ describe('buildWorkInstructionGmailSearchQuery', () => {
     expect(buildWorkInstructionGmailSearchQuery({
       subjectTokens: ['[Kakou-Dandori-photo]'],
     })).toBe('(subject:"[Kakou-Dandori-photo]") in:inbox is:unread');
+  });
+});
+
+describe('extractEmail', () => {
+  it('takes the address at the end of the From header and ignores overlong headers', () => {
+    expect(extractEmail('Tanaka <Ops@Example.COM>')).toBe('ops@example.com');
+    expect(extractEmail('"<ops@example.com>" <other@example.net>')).toBe('other@example.net');
+    expect(extractEmail('<'.repeat(5000))).toBeUndefined();
   });
 });

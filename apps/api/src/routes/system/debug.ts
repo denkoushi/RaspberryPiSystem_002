@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
+import { redactUrlForLog } from '../../lib/log-url.js';
 
 /**
  * デバッグ用エンドポイント
@@ -38,7 +39,7 @@ export function registerDebugRoutes(app: FastifyInstance): void {
         message: `HTTP ${statusCode}`,
         data: {
           method: request.method,
-          url: request.url,
+          url: redactUrlForLog(request.url) ?? '',
           statusCode,
           responseTime,
           ip: request.ip,
@@ -59,7 +60,7 @@ export function registerDebugRoutes(app: FastifyInstance): void {
     requestLogs.push({
       timestamp: new Date().toISOString(),
       method: request.method,
-      url: request.url,
+      url: redactUrlForLog(request.url) ?? '',
       statusCode,
       responseTime,
     });

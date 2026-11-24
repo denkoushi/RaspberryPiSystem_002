@@ -3,7 +3,7 @@ import path from 'path';
 import { encryptBackup, encryptBackupFile, requireBackupEncryptionKey } from './backup-encryption.js';
 import type { FileInfo, LargeFileUploadProvider, StorageProvider } from './storage-provider.interface';
 
-const getDefaultBaseDir = (): string => {
+export const getDefaultBaseDir = (): string => {
   if (process.env.BACKUP_STORAGE_DIR) return process.env.BACKUP_STORAGE_DIR;
   if (process.env.NODE_ENV === 'test') return '/tmp/test-backups';
   return '/opt/backups';

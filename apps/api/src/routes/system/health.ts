@@ -26,10 +26,8 @@ export function registerSystemHealthRoute(app: FastifyInstance): void {
       await checkDatabaseConnection();
       checks.database = { status: 'ok' };
     } catch (error) {
-      checks.database = {
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Database connection failed',
-      };
+      request.log.error({ err: error }, 'Database health check failed');
+      checks.database = { status: 'error', message: 'Database connection failed' };
     }
 
     // メモリ使用量チェック

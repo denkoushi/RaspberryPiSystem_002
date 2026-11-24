@@ -137,7 +137,7 @@
 ```json
 {
   "backupPath": "/backups/database/2025-12-29T00-00-01-695Z/borrow_return.sql.gz",
-  "destination": "/tmp/restored.sql.gz",
+  "destination": "restored.sql.gz",
   "preBackup": true,
   "storage": {
     "provider": "local",
@@ -149,7 +149,7 @@
 **パラメータ**
 
 - `backupPath` (必須): バックアップファイルのパス
-- `destination` (オプション): リストア先のパス（未指定時は元の場所に復元）
+- `destination` (オプション): リストア先。バックアップ保存先の `restored/` 配下の相対パスで指定する(絶対パスや `..` は 400)。未指定時は元の場所に復元
 - `preBackup` (オプション): 事前バックアップを実行するか（デフォルト: `database` は `true`）
 - `storage` (オプション): ストレージプロバイダー設定（未指定時はローカルストレージ）
 

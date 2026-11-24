@@ -9,6 +9,16 @@ import { getInferenceRuntime } from '../../services/inference/inference-runtime.
 
 export const MEETING_LIVE_PATH = '/assembly/procedure-documents/meeting-live';
 const BUFFER_LIMIT_BYTES = 2 * 1024 * 1024;
+// 鍵確認前に溜めるフレームは、空でも1件ごとにこの分を数える。
+const EARLY_FRAME_OVERHEAD_BYTES = 64;
+
+function messageByteLength(data: unknown): number {
+  if (typeof data === 'string') return Buffer.byteLength(data);
+  if (Array.isArray(data)) return data.reduce((sum: number, part) => sum + messageByteLength(part), 0);
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  if (ArrayBuffer.isView(data)) return data.byteLength;
+  return 0;
+}
 const WS_OPEN = 1;
 const AVAILABILITY_TTL_MS = 30000;
 const TERMS_MAX_CHARS = 200;
@@ -194,8 +204,19 @@ export function registerProcedureMeetingLiveRoutes(
         } catch { /* ignore malformed context */ }
       }
     };
+    let earlyBytes = 0;
     socket.on('message', (data, isBinary) => {
-      if (!ready) { early.push({ data, isBinary }); return; }
+      if (!ready) {
+        if (closed) return;
+        earlyBytes += messageByteLength(data) + EARLY_FRAME_OVERHEAD_BYTES;
+        if (earlyBytes > BUFFER_LIMIT_BYTES) {
+          early.length = 0;
+          closeDownstream(1009, 'Too much data before ready');
+          return;
+        }
+        early.push({ data, isBinary });
+        return;
+      }
       handle(data, isBinary);
     });
     socket.on('close', () => { closed = true; closeUpstream(); });
