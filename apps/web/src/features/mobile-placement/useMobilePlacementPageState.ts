@@ -1,5 +1,4 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -8,6 +7,7 @@ import {
   snapFseibanTokens,
   verifyMobilePlacementSlipMatch
 } from '../../api/client';
+import { getApiErrorMessage } from '../../api/errors';
 import {
   BARCODE_FORMAT_PRESET_ALL_COMMON,
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE
@@ -26,6 +26,10 @@ import { createSlipVerifyRecorder } from './verify-records/recordSlipVerify';
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
 import type { ActualSlipOcrResponse, MobilePlacementSlipMatchResponse } from '../../api/domains/mobile-placement';
+
+function isBranchSelectionEmpty(branchId: string | null): branchId is '' | null {
+  return branchId == null || branchId.length === 0;
+}
 
 /**
  * 配膳ページの状態と API 呼び出し（UI から分離してテスト・再利用しやすくする）
@@ -162,13 +166,7 @@ export function useMobilePlacementPageState() {
       const res = await read();
       if (res) applyActualSlipOcrResponse(res);
     } catch (e: unknown) {
-      const msg = isAxiosError(e)
-        ? typeof e.response?.data?.message === 'string'
-          ? e.response.data.message
-          : e.message
-        : e instanceof Error
-          ? e.message
-          : '読取に失敗しました';
+      const msg = getApiErrorMessage(e, '読取に失敗しました');
       setActualSlipOcrFeedback({
         ...initialActualSlipOcrFeedback,
         status: 'error',
@@ -226,7 +224,7 @@ export function useMobilePlacementPageState() {
     setRegisterSubmitting(true);
     try {
       if (orderPlacementIntent === 'move_existing') {
-        if (selectedBranchId == null || selectedBranchId.length === 0) {
+        if (isBranchSelectionEmpty(selectedBranchId)) {
           setRegisterError('移動する分配枝を一覧から選んでください');
           return;
         }
@@ -251,13 +249,7 @@ export function useMobilePlacementPageState() {
       void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
       void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.orderPlacementBranchesAll });
     } catch (e: unknown) {
-      const msg = isAxiosError(e)
-        ? typeof e.response?.data?.message === 'string'
-          ? e.response.data.message
-          : e.message
-        : e instanceof Error
-          ? e.message
-          : '登録に失敗しました';
+      const msg = getApiErrorMessage(e, '登録に失敗しました');
       setRegisterError(msg);
     } finally {
       setRegisterSubmitting(false);
@@ -268,8 +260,7 @@ export function useMobilePlacementPageState() {
     registerSubmitting ||
     shelfCode.trim().length === 0 ||
     orderBarcode.trim().length === 0 ||
-    (orderPlacementIntent === 'move_existing' &&
-      (selectedBranchId == null || selectedBranchId.length === 0));
+    (orderPlacementIntent === 'move_existing' && isBranchSelectionEmpty(selectedBranchId));
 
   const selectShelf = useCallback((code: string) => {
     setShelfCode(code);

@@ -7,6 +7,7 @@ import {
   kioskButtonSecondaryClassName,
   kioskInputClassName
 } from '../../../features/kiosk/kioskTheme';
+import { readApiErrorMessage } from '../selfInspectionRecordApproval/selfInspectionRecordApprovalViewModel';
 
 import {
   inspectionDrawingKioskDialogClassName,
@@ -22,16 +23,6 @@ type Props = {
   onClose: () => void;
   onSuccess: (visual: PartMeasurementVisualTemplateDto) => void;
 };
-
-function readApiErrorMessage(error: unknown, fallback: string): string {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const message = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
-    if (typeof message === 'string' && message.trim().length > 0) {
-      return message;
-    }
-  }
-  return fallback;
-}
 
 export function KioskInspectionDrawingVisualRenameModal({
   isOpen,
