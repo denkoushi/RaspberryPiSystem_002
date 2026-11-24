@@ -64,6 +64,7 @@ from model_profiles import (  # noqa: E402
     ModelProfile,
     validate_startable_profile,
     find_model_profile,
+    load_model_profile_manifest,
 )
 from profile_launcher import launcher_env_for_profile  # noqa: E402
 from resource_state import infer_owner_from_profile, state_to_api, write_resource_state  # noqa: E402
@@ -348,10 +349,32 @@ def business_active_running(config: ControlConfig) -> bool:
         return False
 
 
+def capture_qwen_rank_exit(config: ControlConfig, *, state: dict | None = None,
+                           profile: ModelProfile | None = None) -> None:
+    from business_qwen38 import capture_rank_exit
+    try:
+        if profile is None or profile.id != BUSINESS_QWEN38_PROFILE_ID:
+            if state is None:
+                state = json.loads(Path(config.active_model_state_path).read_text(encoding="utf-8"))
+            if BUSINESS_QWEN38_PROFILE_ID not in (
+                    state.get("selectedBusinessProfileId"), state.get("modelProfileId") or state.get("activeProfileId")):
+                return
+            if business_qwen38_switch_enabled():
+                profile = find_model_profile(config.model_registry_root, BUSINESS_QWEN38_PROFILE_ID)
+            else:
+                # An existing Qwen rank may outlive the flag that enables new starts.
+                profile = load_model_profile_manifest(
+                    Path(config.model_registry_root) / BUSINESS_QWEN38_PROFILE_ID / "manifest.json")
+        capture_rank_exit(profile, config.active_model_state_path)
+    except Exception:
+        pass
+
+
 def monitor_business_ready(config: ControlConfig, identity: tuple, profile: ModelProfile) -> None:
     # Detached start stays within the existing command timeout. Readiness is
     # fenced by selection + generation and never probes through a loading gateway.
     from business_tensorfold import runtime_status
+    from business_qwen38 import capture_rank_exit, runtime_status as qwen_runtime_status
     deadline = time.monotonic() + 1200
     failure = "business_readiness_timeout"
     last_error = TimeoutError(failure)
@@ -365,12 +388,24 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
             last_error = RuntimeError(failure)
             deadline = 0
         headers["Authorization"] = "Bearer " + key
+    rank_exited = False
     while time.monotonic() < deadline:
+        previously_exited, rank_exited = rank_exited, False
         try:
             with business_state_lock(config.active_model_state_path, exclusive=False):
                 state = business_selection_state(config.active_model_state_path)
                 if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) != identity or state["businessTransition"] != "loading":
                     return
+                if profile.id == BUSINESS_QWEN38_PROFILE_ID:
+                    # The Qwen monitor is registered only after record_generation succeeds.
+                    status = qwen_runtime_status(profile, identity[2], config.active_model_state_path)
+                    rank_exited = any(r["running"] is False for r in status["ranks"])
+                    if rank_exited and previously_exited:
+                        failure = "business_rank_exited"
+                        last_error = RuntimeError(failure)
+                        break
+                    if rank_exited or not status["prepared"] or status["failureReason"]:
+                        raise ValueError("runtime not ready")
                 with urllib.request.urlopen(urllib.request.Request(base + "/v1/models", headers=headers), timeout=8) as response:
                     models = json.load(response)["data"]
                 if not any(m.get("id") == "system-prod-primary" for m in models):
@@ -391,7 +426,6 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
                     if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
                         raise ValueError("runtime not ready")
                 elif profile.id == BUSINESS_QWEN38_PROFILE_ID:
-                    from business_qwen38 import runtime_status as qwen_runtime_status
                     status = qwen_runtime_status(profile, identity[2], config.active_model_state_path)
                     if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
                         raise ValueError("runtime not ready")
@@ -412,6 +446,8 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
             with business_state_lock(config.active_model_state_path):
                 state = business_selection_state(config.active_model_state_path)
                 if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
+                    if failure == "business_rank_exited":
+                        capture_rank_exit(profile, config.active_model_state_path)
                     state.update(businessTransition="failed", businessFailureReason=failure)
                     replace_active_payload(config.active_model_state_path, state)
                     write_resource_state_best_effort(config, owner="business", status="failed",
@@ -514,6 +550,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     start_backend = config.active_backend
                     if profile is not None:
                         start_backend = profile.backend
+                    capture_qwen_rank_exit(config, profile=profile)
                     if single_active_guard_enabled():
                         hard_stop = resolve_hard_stop_for_backend(
                             inactive_backend(start_backend),
@@ -555,7 +592,10 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     body = read_json_body(self)
                     reason = _string_body_value(body, "reason")
                     stop_backend, stop_source = resolve_effective_backend(config)
-                    run_command(resolve_command(config, "stop", stop_backend))
+                    command = resolve_command(config, "stop", stop_backend)
+                    if command != ":":
+                        capture_qwen_rank_exit(config)
+                    run_command(command)
                     resource_state = write_resource_state_best_effort(
                         config,
                         owner=infer_owner_from_profile(None, reason),
@@ -580,6 +620,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     body = read_json_body(self)
                     reason = _string_body_value(body, "reason")
                     stop_backend, stop_source = resolve_effective_backend(config)
+                    capture_qwen_rank_exit(config)
                     run_command(resolve_command(config, "stop-force", stop_backend))
                     resource_state = write_resource_state_best_effort(
                         config,
@@ -646,6 +687,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                 if isinstance(error.__cause__, OSError) and not isinstance(error.__cause__, FileNotFoundError):
                     # Still attempt both stops, but an unreadable selection is
                     # not evidence that its persisted contents need recovery.
+                    capture_qwen_rank_exit(config)
                     for stop_backend in ("blue", "green"):
                         try:
                             run_command(resolve_command(config, "stop-force", stop_backend))
@@ -676,6 +718,8 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     stop_env = {"DGX_BUSINESS_GENERATION": state.get("businessGeneration", "")}
                 command = resolve_command(config, self.path[1:], backend)
                 try:
+                    if self.path == "/stop-force" or command != ":":
+                        capture_qwen_rank_exit(config, state=None if recovery else state)
                     if self.path == "/stop-force":
                         # Try both backends even when one stop fails.
                         errors = []
@@ -704,6 +748,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
             selected = state["selectedBusinessProfileId"]
             profile_id = requested or selected
             profile = validate_startable_profile(config.model_registry_root, profile_id)
+            previous_state = state.copy()
             explicit = reason == "business-model-selection"
             if explicit and (profile_id not in BUSINESS_PROFILES or not profile.business_orchestration_eligible):
                 raise SelectionConflict("unsupported business profile")
@@ -743,6 +788,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
             try:
                 # Drain has completed under the shared gateway/lifecycle lock.
                 # Always stop blue too: all business models share that backend.
+                capture_qwen_rank_exit(config, state=previous_state, profile=profile)
                 run_command(resolve_command(config, "stop-force", "blue"))
                 if single_active_guard_enabled():
                     run_command(resolve_command(config, "stop-force", "green"))
@@ -761,6 +807,15 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     backend=profile.backend, guarantee_level="post_only")
             except Exception as exc:
                 log_business_failure("start", profile.id, state.get("businessGeneration"), exc, secrets=(config.token,))
+                if profile.id == BUSINESS_QWEN38_PROFILE_ID:
+                    capture_qwen_rank_exit(config, profile=profile)
+                    try:
+                        # The adapter writes the worker marker before either rank starts.
+                        # Blue stop removes the local container and the marked worker.
+                        run_command(resolve_command(config, "stop-force", "blue"))
+                    except Exception as stop_error:
+                        log_business_failure("stop-force", profile.id, state.get("businessGeneration"),
+                                             stop_error, secrets=(config.token,))
                 state = business_selection_state(config.active_model_state_path)
                 state.update(businessTransition="failed", businessFailureReason="business_runtime_start_failed")
                 replace_active_payload(config.active_model_state_path, state)
