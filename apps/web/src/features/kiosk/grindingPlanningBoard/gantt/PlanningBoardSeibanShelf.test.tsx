@@ -90,7 +90,7 @@ it('filters by a substring of the seiban and retains a hidden selection', () => 
   expect(screen.getByRole('button', { name: 'S21', exact: true })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'S30', exact: true })).not.toBeInTheDocument();
   expect(screen.getByText('1件')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: '入力をリセット' }));
+  fireEvent.click(screen.getByRole('button', { name: '↺' }));
   expect(screen.getByTestId('planning-shelf-tile-e')).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -117,8 +117,8 @@ it('keeps the entered digits when switching the search mode in either direction'
 
 it('deletes the last digit and resets the search', () => {
   render(<PlanningBoardSeibanShelf {...searchProps} />);
-  const backspace = screen.getByRole('button', { name: '入力を1文字削除' });
-  const reset = screen.getByRole('button', { name: '入力をリセット' });
+  const backspace = screen.getByRole('button', { name: '1文字消す' });
+  const reset = screen.getByRole('button', { name: '↺' });
   pressShelfDigits('1', '2');
   expect(screen.getByRole('group', { name: '製番の棚' })).toBeEmptyDOMElement();
   fireEvent.click(backspace);

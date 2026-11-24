@@ -289,12 +289,8 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
           searchValue ? 'border-emerald-400 ring-1 ring-emerald-400/20' : 'border-slate-700')}>
           {searchValue ? <span className="truncate">{searchValue}</span> : <span className="text-slate-500">—</span>}
         </div>
-        <div className="flex shrink-0 gap-1">
-          <KioskDigitTenkey value={searchValue} onChange={setSearchValue} digits={SEARCH_DIGITS} showReset={false} maxLength={100}
-            className="flex gap-1" keyClassName={SEARCH_KEY_CLASS} />
-          <button type="button" aria-label="入力を1文字削除" disabled={!searchValue} onClick={() => setSearchValue(value => value.slice(0, -1))} className={SEARCH_KEY_CLASS}>⌫</button>
-          <button type="button" aria-label="入力をリセット" disabled={!searchValue} onClick={() => setSearchValue('')} className={SEARCH_KEY_CLASS}>↺</button>
-        </div>
+        <KioskDigitTenkey value={searchValue} onChange={setSearchValue} digits={SEARCH_DIGITS} maxLength={100}
+          showBackspace showReset resetLabel="↺" className="flex shrink-0 gap-1" keyClassName={SEARCH_KEY_CLASS} resetClassName={SEARCH_KEY_CLASS} />
         <div className="ml-auto flex h-[30px] shrink-0 overflow-hidden rounded-lg border border-slate-600">
           {[false, true].map(rest => <button key={String(rest)} type="button" aria-pressed={remaining === rest} onClick={() => setRemaining(rest)}
             className={clsx('px-3 text-sm font-bold', remaining === rest ? 'bg-slate-200 text-slate-950' : 'text-slate-400')}>{rest ? '残り' : 'すべて'}</button>)}
