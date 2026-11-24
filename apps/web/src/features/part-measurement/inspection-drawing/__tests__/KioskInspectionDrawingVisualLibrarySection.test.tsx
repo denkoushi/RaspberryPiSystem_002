@@ -44,7 +44,7 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     for (const header of ['図面名', '登録', '操作']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
-    expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');
+    expect(screen.getByText('7161テーブル').closest('td')).toHaveAttribute('title', '7161テーブル');
     expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual(['研削', '切削']);
     expect(screen.getByRole('link', { name: '研削' })).toHaveAttribute('title', '研削で新規作成');
     expect(screen.getByRole('link', { name: '切削' })).toHaveAttribute('title', '切削で新規作成');
@@ -159,5 +159,23 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
 
     expect(screen.getByText('7161テーブル')).toBeInTheDocument();
     expect(screen.queryByText('別図面9000')).not.toBeInTheDocument();
+  });
+
+  it('shows the drawing name on two lines: part number, then part name', () => {
+    render(
+      <MemoryRouter>
+        <KioskInspectionDrawingVisualLibrarySection
+          previewVisuals={[{ ...visuals[0], name: '7720-MD009104410 スライドベース（左側・リニアガイド取付）' }]}
+          onRegisterClick={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    const cell = screen.getByTestId('inspection-visual-name-cell');
+    expect(cell).toHaveAttribute('title', '7720-MD009104410 スライドベース（左側・リニアガイド取付）');
+    expect(cell).not.toHaveClass('truncate');
+    const lines = Array.from(cell.children).map((line) => line.textContent);
+    expect(lines).toEqual(['7720-MD009104410', 'スライドベース（左側・リニアガイド取付）']);
+    expect(cell.children[1]).toHaveClass('break-words');
   });
 });

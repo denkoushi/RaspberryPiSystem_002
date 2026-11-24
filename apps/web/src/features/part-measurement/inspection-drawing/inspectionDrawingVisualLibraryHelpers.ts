@@ -7,6 +7,13 @@ export function defaultVisualNameFromFileName(fileName: string): string {
   return stem.length > 0 ? stem : '図面テンプレート';
 }
 
+/** 図面名「品番 品名」を最初の空白（半角・全角）で品番と品名に分ける。空白が無ければ全体を品番として返す。 */
+export function splitVisualNameIntoPartNumberAndName(name: string): { partNumber: string; partName: string } {
+  const trimmed = name.trim();
+  const match = /^(\S+)[\s\u3000]+(.+)$/u.exec(trimmed);
+  return match ? { partNumber: match[1], partName: match[2] } : { partNumber: trimmed, partName: '' };
+}
+
 export function formatVisualLibraryTimestamp(iso: string | null | undefined): string {
   if (!iso) return '—';
   const date = new Date(iso);
