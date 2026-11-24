@@ -2,6 +2,7 @@
 # Pi5: copy the encrypted DR repository from Google Drive to a USB stick, verify it, unmount.
 # Never deletes anything on Google Drive (read-only there). On the stick it only deletes key files
 # that are gone from Google Drive, so a replaced password stops opening the stick too.
+# It stops before touching the stick's key files if our password no longer opens Google Drive.
 # See KB-416 for the install location and procedure.
 set -euo pipefail
 export LC_ALL=C
@@ -51,6 +52,9 @@ free=$(df -B1 --output=avail "$MNT" | tail -1)
 # copy (no deletions), then compare
 rclone --config "$CONF" copy "$SRC" "$DEST" --exclude "locks/**" --transfers 4 --stats 30s --stats-one-line -v 2>&1 | grep -v ": Copied (new)" || true
 rclone --config "$CONF" check "$SRC" "$DEST" --exclude "locks/**" --one-way 2>&1 | tail -3
+# replace the stick's key files only when our password still opens the source
+RCLONE_CONFIG="$CONF" restic -r "rclone:$SRC" --password-file "$PASS" --no-cache --no-lock cat config >/dev/null \
+  || fail "our password does not open the source; key files on the stick were left unchanged"
 rclone --config "$CONF" sync "$SRC/keys" "$DEST/keys" -v 2>&1 | tail -5
 sync
 
