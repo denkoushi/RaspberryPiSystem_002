@@ -1,5 +1,6 @@
 import { isInspectionDrawingThroughDepthMode } from '@raspi-system/shared-types';
 import clsx from 'clsx';
+import { useEffect, useRef } from 'react';
 
 import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
 import {
@@ -37,6 +38,8 @@ type Props = {
   variant: 'sidebar';
   /** 列数。自主検査セッション右ペインのみ twoColumn、作成/改版は oneColumn（既定） */
   layout?: InspectionDrawingPointSummaryListLayout;
+  /** 選択が変わったら選択行を見える位置へ送る（検査図面の作成画面向け） */
+  scrollSelectedIntoView?: boolean;
 };
 
 function sortByMarkerNo(points: InspectionDrawingPoint[]): InspectionDrawingPoint[] {
@@ -72,8 +75,13 @@ export function InspectionDrawingPointSummaryList({
   showMeasurementStatus = false,
   measurementStatusOverrides = {},
   variant,
-  layout = 'oneColumn'
+  layout = 'oneColumn',
+  scrollSelectedIntoView = false
 }: Props) {
+  const selectedItemRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollSelectedIntoView) selectedItemRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [scrollSelectedIntoView, selectedPointId]);
   if (variant !== 'sidebar') {
     return null;
   }
@@ -102,7 +110,7 @@ export function InspectionDrawingPointSummaryList({
             const testValueDisplay = showMeasurementStatus ? displayRaw(pt.testValue) : null;
             const statusOverride = measurementStatusOverrides[pt.id];
             return (
-              <div key={pt.id} role="listitem" className="min-w-0">
+              <div key={pt.id} ref={selected ? selectedItemRef : undefined} role="listitem" className="min-w-0">
                 <button
                   {...(selected ? inspectionDrawingSopTargetProps('select-point') : {})}
                   type="button"

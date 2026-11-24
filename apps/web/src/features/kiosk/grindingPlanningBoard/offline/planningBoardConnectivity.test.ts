@@ -148,6 +148,38 @@ describe('planning board connectivity', () => {
     expect(phase()).toBe('offline');
   });
 
+  it.each(['bootstrapping', 'refreshing'] as const)('keeps %s while the server reports changed data, up to four read deadlines', async (target) => {
+    if (target === 'refreshing') { await offline(); await successfulProbe(); await successfulProbe(); }
+    probe.mockResolvedValue(true);
+    if (target === 'bootstrapping') await start();
+    expect(phase()).toBe(target);
+    board.reportFullRefreshDataChanged(generation() - 1);
+    await advance(44999); expect(phase()).toBe(target);
+    for (let elapsed = 44999; elapsed < 134999; elapsed += 30000) {
+      board.reportFullRefreshDataChanged(generation());
+      await advance(30000);
+      expect(phase()).toBe(target);
+    }
+    // 134999ms into the phase: the restart can no longer move past 135000ms, so the phase ends at 180000ms.
+    board.reportFullRefreshDataChanged(generation());
+    await advance(44999); expect(phase()).toBe(target);
+    board.reportFullRefreshDataChanged(generation());
+    await advance(1); expect(phase()).toBe(target);
+    await advance(1); expect(phase()).toBe('offline');
+  });
+
+  it('ignores changed-data reports from an old phase', async () => {
+    probe.mockResolvedValue(true);
+    await start();
+    const bootstrapping = generation();
+    await advance(44000);
+    board.reportFullRefreshDataChanged(bootstrapping - 1);
+    await advance(1000);
+    expect(phase()).toBe('offline');
+    board.reportFullRefreshDataChanged(bootstrapping);
+    expect(phase()).toBe('offline');
+  });
+
   it.each(['bootstrapping', 'refreshing'] as const)('extends %s connectivity with current-generation reads but ignores stale reads', async (target) => {
     if (target === 'refreshing') { await offline(); await successfulProbe(); await successfulProbe(); }
     else await start();

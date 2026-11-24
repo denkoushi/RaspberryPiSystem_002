@@ -1,5 +1,4 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import {
   useCallback,
   useEffect,
@@ -23,6 +22,7 @@ import {
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 import { PLANNING_BOARD_SETTINGS_REFETCH_MS } from './grinding-planning-board-resource-minutes';
+import { isStalePlanningBoardSnapshotError } from './stalePlanningBoardSnapshotError';
 
 import type {
   GrindingPlanningBoardProcessChipsRequest,
@@ -293,8 +293,7 @@ export function useKioskGrindingPlanningBoardProgressive(
       } catch (error) {
         if (!cancelled && runId === runIdRef.current) {
           if (
-            isAxiosError(error) && error.response?.status === 409 &&
-            error.response.data?.errorCode === 'STALE_PLANNING_BOARD_SNAPSHOT' &&
+            isStalePlanningBoardSnapshotError(error) &&
             staleRefetchCountRef.current < 2
           ) {
             staleRefetchCountRef.current += 1;

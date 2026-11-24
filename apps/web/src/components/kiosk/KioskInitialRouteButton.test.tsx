@@ -81,7 +81,7 @@ describe('kiosk start page control', () => {
   });
 
   it.each([
-    ['/kiosk/assembly/manuals', 'assembly', 'TAG'],
+    ['/kiosk/assembly/manuals', 'assembly_manuals', 'TAG'],
     ['/kiosk/photo', null, 'PHOTO'],
     ['/kiosk/tag', null, 'TAG']
   ] as const)('shows the effective startup page on %s without saving again', async (pathname, route, mode) => {
@@ -92,6 +92,21 @@ describe('kiosk start page control', () => {
     fireEvent.click(button);
     expect(screen.getByRole('status')).toHaveTextContent('この画面が開始ページです');
     expect(mocks.put).not.toHaveBeenCalled();
+  });
+
+  it('saves the current inventory subpage and fills the button only when its ID matches', async () => {
+    const view = mount('/kiosk/inventory/haizen', 'inventory_settings');
+    const button = screen.getByRole('button', { name: 'この画面を開始ページにする' });
+    expect(button.querySelector('svg')).toHaveAttribute('fill', 'none');
+    fireEvent.click(button);
+    expect(await screen.findByRole('status')).toHaveTextContent('起動時に「在庫＞配膳の場所」を開きます');
+    expect(mocks.put).toHaveBeenCalledExactlyOnceWith('inventory_haizen', 'self-device-key');
+    expect(screen.getByRole('button', { name: 'この画面が開始ページです' }).querySelector('svg'))
+      .toHaveAttribute('fill', 'currentColor');
+
+    view.rerender(<QueryClientProvider client={queryClient}><Harness pathname="/kiosk/inventory" /></QueryClientProvider>);
+    expect(screen.getByRole('button', { name: 'この画面を開始ページにする' }).querySelector('svg'))
+      .toHaveAttribute('fill', 'none');
   });
 
   it.each([
@@ -109,7 +124,7 @@ describe('kiosk start page control', () => {
 
   it.each([
     ['/kiosk/photo', 'borrow_photo'], ['/kiosk/tag', 'borrow_tag'], ['/kiosk', 'borrow_tag'],
-    ['/kiosk/part-measurement/self-inspection/records', 'self_inspection']
+    ['/kiosk/part-measurement/self-inspection/sessions/example', 'self_inspection']
   ])('resolves the current tab on %s to %s', async (pathname, route) => {
     mount(pathname, 'assembly', 'PHOTO');
     fireEvent.click(screen.getByRole('button', { name: 'この画面を開始ページにする' }));

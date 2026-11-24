@@ -174,13 +174,13 @@ describe('ClientsPage', () => {
     render(<ClientsPage />);
     const save = settings().getByRole('button', { name: '保存' });
     expect(save).toBeDisabled();
-    fireEvent.change(settings().getByLabelText('起動先'), { target: { value: 'borrow_tag' } });
-    expect(settings().getByRole('status')).toHaveTextContent('起動先: 組立 → 2タグスキャン');
+    fireEvent.change(settings().getByLabelText('起動先'), { target: { value: 'inventory_haizen' } });
+    expect(settings().getByRole('status')).toHaveTextContent('起動先: 組立 → 在庫＞配膳の場所');
     fireEvent.click(save);
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
     expect(mutateAsync).toHaveBeenCalledWith({
       id: 'mac',
-      payload: expect.objectContaining({ kioskInitialRoute: 'borrow_tag', name: 'Mac' })
+      payload: expect.objectContaining({ kioskInitialRoute: 'inventory_haizen', name: 'Mac' })
     });
     expect(await settings().findByText('保存しました')).toBeInTheDocument();
   });

@@ -26,7 +26,7 @@ describe('screen watch peer', () => {
     const { stream } = mockStream(); await peer.offer(stream);
     expect(pc.addTrack).toHaveBeenCalledWith(stream.getVideoTracks()[0], stream);
     expect(pc.sender.setParameters).toHaveBeenCalledWith(expect.objectContaining({
-      encodings: [{ maxFramerate: 5, maxBitrate: 1_500_000 }], degradationPreference: 'maintain-resolution'
+      encodings: [{ maxFramerate: 15, maxBitrate: 1_500_000 }], degradationPreference: 'maintain-resolution'
     }));
     expect(send).toHaveBeenCalledWith({ type: 'watch.signal', payload: { watchId: 'watch', description: { type: 'offer', sdp: 'screen-offer' } } });
     const candidate = { candidate: 'local-ice' };
@@ -38,7 +38,7 @@ describe('screen watch peer', () => {
     pc.sender.setParameters.mockRejectedValueOnce(new DOMException('unsupported', 'NotSupportedError'));
     await peer.offer(mockStream().stream);
     expect(pc.sender.setParameters).toHaveBeenCalledTimes(2);
-    expect(pc.sender.setParameters).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: [{ maxFramerate: 5, maxBitrate: 1_500_000 }] }));
+    expect(pc.sender.setParameters).toHaveBeenLastCalledWith(expect.objectContaining({ encodings: [{ maxFramerate: 15, maxBitrate: 1_500_000 }] }));
     expect(pc.parameters.degradationPreference).toBeUndefined();
     expect(pc.createOffer).toHaveBeenCalledOnce();
   });

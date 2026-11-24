@@ -3,9 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getRTCConfiguration } from '../../webrtc/rtcConfiguration';
 import { sendSignalingMessage } from '../../webrtc/signalingBus';
 
+const frameRate = 15;
+
 export async function startCapture(): Promise<MediaStream> {
   const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 5, max: 5 }, displaySurface: 'browser' },
+    video: { frameRate: { ideal: frameRate, max: frameRate }, displaySurface: 'browser' },
     selfBrowserSurface: 'include', audio: false, preferCurrentTab: true
   } as DisplayMediaStreamOptions);
   for (const track of stream.getVideoTracks()) track.contentHint = 'detail';
@@ -67,7 +69,7 @@ export class ScreenWatchPeer {
     const parameters = sender.getParameters();
     if (parameters.encodings?.length) {
       for (const encoding of parameters.encodings) {
-        encoding.maxFramerate = 5;
+        encoding.maxFramerate = frameRate;
         encoding.maxBitrate = 1_500_000;
       }
       parameters.degradationPreference = 'maintain-resolution';
