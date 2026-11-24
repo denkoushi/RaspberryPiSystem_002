@@ -14,7 +14,7 @@ describe('forward vertical geometry', () => {
   it.each([1, 2, 5])('scales top/height without changing horizontal geometry (k=%s)', k => {
     const bar = bars[0]!;
     const base = ganttBarGeometry(bar, layout.start, 300, true)!;
-    expect(ganttBarGeometry(bar, layout.start, 300, true, false, false, k)).toEqual({ ...base, top: 3 * k, height: 70 * k });
+    expect(ganttBarGeometry(bar, layout.start, 300, true, false, false, k)).toEqual({ ...base, top: 11 * k, height: 70 * k });
     expect(ganttBarGeometry(bar, layout.start, 300, true, true, true, k)).toMatchObject({ top: 34 * k, height: 70 * k });
     expect(ganttBarGeometry(bar, layout.start, 300, false, false, false, k)).toEqual(ganttBarGeometry(bar, layout.start, 300, false));
   });
@@ -30,7 +30,7 @@ describe('forward vertical geometry', () => {
       bars, barRows: new Map(bars.map(bar => [bar.item.itemId, bar.item.itemId])), labelWidth: 168,
       layout, dayWidth: 300, viewportWidth: 3840, viewportHeight: 2000 });
     bars.forEach((bar, i) => {
-      expect(positions.get(bar.item.itemId)?.first.top).toBe(i * 400 + 3 * (i + 2));
+      expect(positions.get(bar.item.itemId)?.first.top).toBe(i * 400 + 11 * (i + 2));
       expect(positions.get(bar.item.itemId)?.last.height).toBe(70 * (i + 2));
     });
   });

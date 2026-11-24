@@ -259,7 +259,7 @@ describe('PlanningBoardGanttView', () => {
     const average = screen.getByTitle('稼働した日の1日あたり稼働時間の中央値');
     expect(average).toHaveTextContent('月平均7.8h');
     const lane = screen.getByTestId(`planning-forward-lane-${layout.groups[0]!.rows[0]!.key}`);
-    expect(lane).toHaveStyle({ minHeight: '76px' });
+    expect(lane).toHaveStyle({ minHeight: '84px' });
     expect(average.parentElement).toHaveClass('justify-evenly', 'py-0.5');
     expect(average.parentElement).not.toHaveClass('gap-1');
     rerender(<PlanningBoardGanttView {...values} />);
@@ -549,7 +549,7 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.click(chip);
     expect(chip).toHaveAttribute('aria-pressed', 'true');
     expect(scrollTo).toHaveBeenCalledTimes(1);
-    expect(scrollTo.mock.calls[0]![0]).toMatchObject({ top: 264, behavior: 'smooth' });
+    expect(scrollTo.mock.calls[0]![0]).toMatchObject({ top: mode === 'forward' ? 284 : 276, behavior: 'smooth' });
     expect(scrollTo.mock.calls[0]![0].left).toBeCloseTo(Math.max(0, Math.min(barLeft + barWidth / 2 - (1120 - labelWidth) / 2, barLeft - 16)));
     // Pressing the same chip again only clears the spotlight.
     fireEvent.click(chip);
@@ -1556,7 +1556,7 @@ describe('forward PlanningBoardGanttView', () => {
       const next = screen.getAllByTestId(`planning-gantt-bar-piece:${index + 2}`)[0]!;
       const x1 = 168 + parseFloat(previous.style.left) + parseFloat(previous.style.width) - 2;
       const x2 = 168 + parseFloat(next.style.left) + 2;
-      expect(link).toHaveAttribute('d', `M ${x1} 3 C ${x1} -13, ${x2} -13, ${x2} 3`);
+      expect(link).toHaveAttribute('d', `M ${x1} 11 C ${x1} -5, ${x2} -5, ${x2} 11`);
       expect(link).toHaveAttribute('stroke', 'white');
       expect(link).toHaveAttribute('stroke-width', '2');
       expect(link).toHaveAttribute('stroke-linecap', 'round');
@@ -1870,7 +1870,7 @@ describe('forward PlanningBoardGanttView', () => {
       const x1 = 168 + (segments.at(-1)!.end - values.layout.start) * pixelsPerDay - 2;
       const x2 = 168 + (nextBar.segments![0]!.start - values.layout.start) * pixelsPerDay;
       const bend = Math.max(24, Math.abs(x2 - x1) / 2);
-      expect(path).toHaveAttribute('d', `M ${x1} 85 C ${x1 + bend} 85, ${x2 - bend} 285, ${x2} 285`);
+      expect(path).toHaveAttribute('d', `M ${x1} 93 C ${x1 + bend} 93, ${x2 - bend} 293, ${x2} 293`);
       expect(screen.getByTestId('planning-gantt-chain-links').querySelector('circle')).toHaveAttribute('cx', String(x2));
     };
     expectPath(dayWidth);
@@ -1882,11 +1882,11 @@ describe('forward PlanningBoardGanttView', () => {
     expect(step).toHaveAttribute('aria-current', 'step');
     expect(step).toHaveClass('ring-white');
     expect(viewport.scrollLeft).toBeCloseTo(66);
-    expect(viewport.scrollTop).toBe(144);
+    expect(viewport.scrollTop).toBe(164);
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     fireEvent.click(step);
-    expect(scrollTo).toHaveBeenCalledWith({ left: expect.closeTo(66), top: 144, behavior: 'smooth' });
+    expect(scrollTo).toHaveBeenCalledWith({ left: expect.closeTo(66), top: 164, behavior: 'smooth' });
     rerender(<PlanningBoardGanttView {...values} scale={4} />);
     expectPath((1120 - 168) / 4);
     Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 1000 });
@@ -1930,15 +1930,15 @@ describe('forward PlanningBoardGanttView', () => {
       act(() => observers.get(legend)!());
       expect(strip).toHaveStyle({ bottom: '104px' });
     }
-    // In a short viewport the usual 36px top offset would leave the bar under the strip.
-    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 });
+    // In a short viewport the usual 24px top offset would leave the bar under the strip.
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 180 });
     vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 100, left: 0 } as DOMRect);
     vi.spyOn(screen.getByTestId('planning-gantt-bar-b').closest('[data-gantt-track]')!.parentElement!, 'getBoundingClientRect')
       .mockReturnValue({ top: 397 } as DOMRect);
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     fireEvent.click(within(strip).getByRole('button', { name: /工順20/ }));
-    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 470 - 100 - 200 + 96, behavior: 'smooth' }));
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 478 - 100 - 180 + 96, behavior: 'smooth' }));
     const heightBeforeClose = viewport.style.height;
     fireEvent.click(within(strip).getByRole('button', { name: '工程のつながりを閉じる' }));
     expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
@@ -2325,7 +2325,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(shades).toHaveLength(days.size * 2);
     expect(shades.every(shade => !shade.className.includes('z-['))).toBe(true);
     const bar = screen.getByTestId('planning-gantt-bar-a');
-    expect(bar).toHaveClass('top-[3px]', 'h-[70px]');
+    expect(bar).toHaveClass('h-[70px]');
+    expect(bar).toHaveStyle({ top: '11px' });
     expect(screen.getByTestId('planning-forward-lane-305')).toHaveClass('border-slate-600');
     expect(screen.getByTestId('planning-board-gantt').querySelector('.top-9.border-l')).toBeNull();
     expect(bar.querySelector('b')).toHaveClass('line-clamp-2');
@@ -3070,26 +3071,26 @@ describe('forward fill height', () => {
     const preference = renderHook(() => usePersistedPlanningBoardFillHeight(true));
     const chart = render(<PlanningBoardGanttView {...values} fillHeightEligible />);
     const lane = screen.getByTestId('planning-forward-lane-305');
-    expect(lane).toHaveStyle({ minHeight: '76px' });
+    expect(lane).toHaveStyle({ minHeight: '84px' });
     const count = chart.container.querySelectorAll('*').length;
     act(() => preference.result.current.changeFillHeight(true));
-    const height = Math.floor((Math.floor(2160 / zoom - 10) - 36) / 2);
+    const height = Math.floor((Math.floor(2160 / zoom - 10) - 24) / 2);
     expect(lane.style.minHeight).toBe(`${height}px`);
     expect(screen.getByTestId('planning-forward-lane-581').style.minHeight).toBe(`${height}px`);
-    expect(Number(lane.dataset.ganttVerticalScale)).toBeCloseTo(height / 76);
+    expect(Number(lane.dataset.ganttVerticalScale)).toBeCloseTo(height / 84);
     const bar = screen.getByTestId('planning-gantt-bar-a');
-    expect(parseFloat(bar.style.height)).toBeCloseTo(70 * height / 76);
-    expect(parseFloat(bar.style.top)).toBeCloseTo(3 * height / 76);
-    expect(height / 76).toBeGreaterThan(GANTT_FILL_MAX_TEXT_SCALE);
+    expect(parseFloat(bar.style.height)).toBeCloseTo(70 * height / 84);
+    expect(parseFloat(bar.style.top)).toBeCloseTo(11 * height / 84);
+    expect(height / 84).toBeGreaterThan(GANTT_FILL_MAX_TEXT_SCALE);
     expect(parseFloat(bar.style.fontSize)).toBeCloseTo(11 * GANTT_FILL_MAX_TEXT_SCALE);
     expect(parseFloat(bar.style.lineHeight)).toBeCloseTo(14 * GANTT_FILL_MAX_TEXT_SCALE);
     expect(parseFloat(lane.querySelector<HTMLElement>('[data-gantt-lane-label]')!.style.fontSize)).toBeCloseTo(12 * GANTT_FILL_MAX_TEXT_SCALE);
     expect(chart.container.querySelectorAll('*')).toHaveLength(count);
     act(() => { vi.stubGlobal('innerHeight', 1800); window.dispatchEvent(new Event('resize')); });
-    expect(parseFloat(lane.style.minHeight)).toBe(Math.floor((Math.floor(1800 / zoom - 10) - 36) / 2));
+    expect(parseFloat(lane.style.minHeight)).toBe(Math.floor((Math.floor(1800 / zoom - 10) - 24) / 2));
     act(() => { vi.stubGlobal('innerHeight', 1599); window.dispatchEvent(new Event('resize')); });
-    expect(lane).toHaveStyle({ minHeight: '76px' });
-    expect(bar).toHaveStyle({ height: '70px', top: '3px' });
+    expect(lane).toHaveStyle({ minHeight: '84px' });
+    expect(bar).toHaveStyle({ height: '70px', top: '11px' });
   });
   it('keeps scaled process chips below the bar inside the stretched row', () => {
     vi.stubGlobal('innerHeight', 2160);
@@ -3103,12 +3104,12 @@ describe('forward fill height', () => {
       <PlanningBoardGanttView {...values} fillHeightEligible />
     </PlanningBoardProcessChipsContext.Provider>);
     const lane = screen.getByTestId('planning-forward-lane-305');
-    const height = Math.floor((2160 - 10 - 36) / 2);
-    const k = height / 96;
+    const height = Math.floor((2160 - 10 - 24) / 2);
+    const k = height / 104;
     expect(lane).toHaveStyle({ minHeight: `${height}px` });
     expect(Number(lane.dataset.ganttVerticalScale)).toBeCloseTo(k);
     const strip = screen.getByTestId('planning-gantt-chips-a');
-    expect(parseFloat(strip.style.top)).toBeCloseTo(76 * k);
+    expect(parseFloat(strip.style.top)).toBeCloseTo(84 * k);
     expect(strip.style.transform).toBe(`scale(${k})`);
     expect(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.height)).toBeCloseTo(70 * k);
     expect(parseFloat(strip.style.top) + 20 * k).toBeCloseTo(height);
@@ -3125,10 +3126,10 @@ describe('forward fill height', () => {
     });
     render(<PlanningBoardGanttView {...values} fillHeightEligible fitPane />);
     const lane = screen.getByTestId('planning-forward-lane-305');
-    expect(lane).toHaveStyle({ minHeight: '232px' });
+    expect(lane).toHaveStyle({ minHeight: '238px' });
     available = 100;
     act(() => window.dispatchEvent(new Event('resize')));
-    expect(lane).toHaveStyle({ minHeight: '76px' });
+    expect(lane).toHaveStyle({ minHeight: '84px' });
     expect(lane.dataset.ganttVerticalScale).toBe('1');
   });
   it('does not stretch other categories even with the preference saved', () => {
@@ -3138,6 +3139,6 @@ describe('forward fill height', () => {
     values.layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 14 });
     render(<PlanningBoardGanttView {...values} />);
-    expect(screen.getByTestId('planning-forward-lane-305')).toHaveStyle({ minHeight: '76px' });
+    expect(screen.getByTestId('planning-forward-lane-305')).toHaveStyle({ minHeight: '84px' });
   });
 });

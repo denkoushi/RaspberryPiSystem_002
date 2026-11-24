@@ -24,7 +24,7 @@ import { PlanningBoardForwardLaneFrame, PlanningBoardForwardRowBinding } from '.
 import { type ForwardMove, type ForwardReorder } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardLaterQueue } from './PlanningBoardForwardLaterQueue';
 import { PlanningBoardForwardQueuePopover, type ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
-import { ganttBarGeometry } from './planningBoardGanttGeometry';
+import { GANTT_HEADER_HEIGHT, ganttBarGeometry } from './planningBoardGanttGeometry';
 import { isNormalGanttBar , dayLabel, dayToDate, jstDay, planningBoardVisibleBars, type NormalGanttBar, type GanttBar, type GanttLayout } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, GANTT_SINGLE_RESOURCE_LABEL_WIDTH, PlanningBoardGanttRow, type PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
@@ -320,7 +320,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const { pieceLinks } = usePersistedPlanningBoardPieceLinks(); const pieceLayer = useRef<HTMLDivElement>(null);
   const linkGeometry = useMemo(() => ({ content, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey, pieceLayer }), [barLocations, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey]);
   const localPiecePanes = useMemo(() => [{ ...linkGeometry, bars: [], viewport: null }], [linkGeometry]);
-  useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { ...linkGeometry, bars: linkBars, headerHeight: singleGroup ? 0 : 36 });
+  useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { ...linkGeometry, bars: linkBars, headerHeight: singleGroup ? 0 : GANTT_HEADER_HEIGHT });
   const latestFocus = useRef({ focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus, showChain });
   useLayoutEffect(() => { latestFocus.current = { focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus, showChain }; });
   const focusChain = useCallback((original: GanttBar, keepOpen = false) => {
@@ -400,10 +400,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const visibleDays = useMemo(() => days.filter(({ day }) => !ganttWindow ||
     (day - layout.start) * dayWidth <= ganttWindow.right && (day + 1 - layout.start) * dayWidth >= ganttWindow.left),
   [days, ganttWindow, layout.start, dayWidth]);
-  const dateHeadings = useMemo(() => visibleDays.map(({ day, weekday, weekend }) => <div key={day} className={clsx('absolute inset-y-0 shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
+  const dateHeadings = useMemo(() => visibleDays.map(({ day, weekday, weekend }) => <div key={day} className={clsx('absolute inset-y-0 flex shrink-0 items-center justify-center overflow-hidden whitespace-nowrap border-l border-slate-800 text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
               style={{ left: labelWidth + (day - layout.start) * dayWidth, width: dayWidth }} title={dayToDate(day)}>
-              {dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}
-              {showHours && hourTicks.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
+              <span>{dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}{showHours && hourTicks.includes(12) && <b className="ml-1.5 text-xs opacity-90">12時</b>}</span>
+              {showHours && hourTicks.filter((hour) => hour > 0 && hour !== 12).map((hour) => <span key={hour} className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
             </div>), [visibleDays, dayWidth, layout.start, layout.today, labelWidth, showHours, hourTicks]);
   const selectedParts = useMemo(() => new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) =>
     row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.partKey)
@@ -420,7 +420,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     const left = Math.max(0, Math.min(barLeft + rect.width / 2 - (viewportWidth + labelWidth) / 2, barLeft - labelWidth - 16));
     const rowTop = (rowElement.getBoundingClientRect().top - bounds.top) / pageZoom() + rect.top;
     const visibleHeight = element.clientHeight || viewportHeight || bounds.height / pageZoom();
-    const top = Math.max(0, element.scrollTop + rowTop - 36,
+    const top = Math.max(0, element.scrollTop + rowTop - GANTT_HEADER_HEIGHT,
       element.scrollTop + rowTop + rect.height - visibleHeight + bottomInset);
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
     else { element.scrollLeft = left; element.scrollTop = top; measureWindow(); }
@@ -434,7 +434,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     const row = rows[flaggedIndex.current]!;
     const rowElement = rowElements.current.get(row.key);
     if (!rowElement) return;
-    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() - 36;
+    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() - GANTT_HEADER_HEIGHT;
     const rect = row.bars.map((bar) => ganttBarGeometry(bar, layout.start, dayWidth, forward)).find((rect) => rect !== null);
     if (rect) element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
     measureWindow();
@@ -537,21 +537,21 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         {...blankTap} onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width, paddingBottom: bottomInset }}>
-          {!singleGroup && <div className="sticky top-0 z-30 flex h-9 border-b border-slate-700 bg-slate-950">
+          {!singleGroup && <div className="sticky top-0 z-30 flex border-b border-slate-700 bg-slate-950" style={{ height: GANTT_HEADER_HEIGHT }}>
             {/* The ‹ › buttons sit in the top-left corner so they never cover bars. */}
             <div className="sticky left-0 z-40 flex shrink-0 items-center justify-center gap-2 bg-slate-950 px-2" style={{ width: labelWidth }} role="group" aria-label="ガントの左右送り">
               {([[-1, '2時間戻る', '‹'], [1, '2時間進む', '›']] as const).map(([direction, label, mark]) => <button key={direction} type="button" aria-label={label}
-                className="grid h-8 w-16 place-items-center rounded-md border border-slate-500 bg-slate-900 pb-0.5 text-2xl font-bold leading-none text-slate-100 active:bg-sky-400 active:text-slate-950"
+                className="grid h-[22px] w-16 place-items-center rounded-md border border-slate-500 bg-slate-900 pb-0.5 text-2xl font-bold leading-none text-slate-100 active:bg-sky-400 active:text-slate-950"
                 onClick={() => nudge(direction)}>{mark}</button>)}
             </div>
             {dateHeadings}
           </div>}
           {/* The forward chart draws no vertical grid so the brighter row lines carry the eye from the machine name to its bars. */}
-          {!forward && visibleDays.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', weekend && 'bg-slate-950/50')}
+          {!forward && visibleDays.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-6 border-l border-slate-800/70', weekend && 'bg-slate-950/50')}
             style={{ left: labelWidth + (day - layout.start) * dayWidth, width: dayWidth }} />)}
-          {!forward && showHours && visibleDays.flatMap(({ day }) => hourTicks.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
+          {!forward && showHours && visibleDays.flatMap(({ day }) => hourTicks.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-6 border-l border-dashed border-slate-700/60"
             style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
-          {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
+          {!forward && <div className="pointer-events-none absolute bottom-0 top-6 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
           <div ref={pieceLayer} className="pointer-events-none absolute inset-0" aria-hidden="true" />
           {renderedGroups.map((group, index) => <PlanningBoardForwardLaneFrame key={group.key} store={dragStore} fallback={selectionFallback} laneResource={group.resource}

@@ -64,7 +64,7 @@ function nodeBreakdown(container: HTMLElement) {
     else if (node.dataset.ganttDecoration) kind = node.dataset.ganttDecoration;
     else if (node.classList.contains('bg-slate-950/55')) kind = 'offHourBands';
     else if (node.parentElement?.hasAttribute('data-gantt-track') && node.className === 'pointer-events-none') kind = 'dailyBandWrappers';
-    else if (node.classList.contains('border-dotted') && node.classList.contains('top-9')) kind = 'connectors';
+    else if (node.classList.contains('border-dotted') && node.classList.contains('border-amber-400')) kind = 'connectors';
     else if (testId === 'planning-gantt-now') kind = 'nowLines';
     else if (node.closest('[data-testid^="planning-gantt-send-out"]')) kind = 'sendOutStars';
     else if (testId.startsWith('planning-gantt-bar-')) kind = 'barSegments';
