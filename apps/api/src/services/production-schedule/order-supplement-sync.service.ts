@@ -4,7 +4,7 @@ import {
   dedupeSupplementRows,
   loadSupplementSourceRows,
   loadExistingSupplementsByKey,
-  resolveWinnerIdByKey,
+  resolveSupplementWinners,
   buildReplacementCreateInputs,
   collectExpiredUnmatchedSupplementSourceRowIds,
   deleteExpiredUnmatchedSupplementSourceRows,
@@ -22,28 +22,25 @@ export class ProductionScheduleOrderSupplementSyncService {
   async syncFromSupplementDashboard(): Promise<ProductionScheduleOrderSupplementSyncResult> {
     const { scanned, normalizedRows } = await loadSupplementSourceRows(prisma);
     const dedupedRows = dedupeSupplementRows(normalizedRows);
-    const winnerIdByKey = await resolveWinnerIdByKey(prisma, dedupedRows);
+    const { winnerIdByKey, fallbackMatches } = await resolveSupplementWinners(prisma, normalizedRows);
     const expiredUnmatchedSourceRowIds = collectExpiredUnmatchedSupplementSourceRowIds({
       normalizedRows,
       winnerIdByKey,
       now: new Date(),
     });
     const existingByKey = await loadExistingSupplementsByKey(prisma);
-    const { matched, unmatched, createInputs, updateInputs, pieceQuantityByRowId } = buildReplacementCreateInputs(
+    const plan = buildReplacementCreateInputs(
       dedupedRows,
       winnerIdByKey,
       existingByKey,
-      new Date()
+      new Date(),
+      fallbackMatches
     );
 
     const result = await runOrderSupplementReplacementTransaction(prisma, {
       scanned,
       normalized: dedupedRows.length,
-      matched,
-      unmatched,
-      createInputs,
-      updateInputs,
-      pieceQuantityByRowId,
+      ...plan,
     });
 
     let sourceRowsPruned = 0;
