@@ -704,7 +704,7 @@ describe('Kiosk inquiry inbox API', () => {
     expect(cleared.json().settings.devices.every((device: { inquiryReceiverEnabled: boolean }) => !device.inquiryReceiverEnabled)).toBe(true);
   });
 
-  it.each([true, false])('persists canViewScreen=%s and exposes it only to badge-authorized receivers', async canViewScreen => {
+  it.each([true, false])('persists badge canViewScreen=%s and grants screen viewing to privileged receiver logins', async canViewScreen => {
     const saved = await putSettings({
       receiverClientDeviceIds: [receiver.id],
       employees: [{ employeeCode: allowedEmployee.employeeCode, canViewScreen }]
@@ -719,8 +719,8 @@ describe('Kiosk inquiry inbox API', () => {
     const thread = await sendSupport();
     for (const [device, payload, token, expected] of [
       [receiver, tag(), undefined, canViewScreen],
-      [receiver, {}, admin.token, false],
-      [receiver, {}, manager.token, false],
+      [receiver, {}, admin.token, true],
+      [receiver, {}, manager.token, true],
       [sender, {}, undefined, false],
       [sender, tag(), undefined, false]
     ] as const) {

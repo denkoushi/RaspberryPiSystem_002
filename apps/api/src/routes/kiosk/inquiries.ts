@@ -63,11 +63,12 @@ export async function registerKioskInquiryRoutes(app: FastifyInstance): Promise<
     return openKioskInquiry(clientDevice, threadId, body.employeeTagUid, loginUser);
   });
 
-  app.post('/kiosk/inquiries/:threadId/watch', { config: { rateLimit: inquiryRateLimit } }, async request => {
+  app.post('/kiosk/inquiries/:threadId/watch', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const { threadId } = threadParamsSchema.parse(request.params);
-    const { employeeTagUid } = employeeTagSchema.required().parse(request.body);
-    return kioskScreenWatchService.request(clientDevice, threadId, employeeTagUid);
+    const { employeeTagUid } = employeeTagSchema.parse(request.body === undefined ? {} : request.body);
+    const loginUser = employeeTagUid ? undefined : await resolveLoginUser(request, reply);
+    return kioskScreenWatchService.request(clientDevice, threadId, employeeTagUid, loginUser);
   });
 
   app.post('/kiosk/inquiries/:threadId/reply', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {

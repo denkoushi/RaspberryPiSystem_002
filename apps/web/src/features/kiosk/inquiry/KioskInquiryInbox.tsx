@@ -185,7 +185,7 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
         {detail.canViewScreen && detailReceiver && detail.thread.kind === 'INQUIRY' && detail.thread.senderClientDeviceName ? (
           <Button type="button" variant="ghostOnDark" onClick={() => {
             const uid = access.current.employeeTagUid;
-            if (uid) void startWatch(detail.thread.id, uid, detail.thread.senderClientDeviceName!);
+            if (uid || loginUnlock) void startWatch(detail.thread.id, uid, detail.thread.senderClientDeviceName!);
           }}>画面を見る</Button>
         ) : null}
       </div>

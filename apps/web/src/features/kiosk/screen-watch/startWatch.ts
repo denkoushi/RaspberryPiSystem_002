@@ -1,4 +1,4 @@
-type Starter = (threadId: string, employeeTagUid: string, targetLabel: string) => Promise<void>;
+type Starter = (threadId: string, employeeTagUid: string | undefined, targetLabel: string) => Promise<void>;
 let starter: Starter | undefined;
 
 export function registerWatchStarter(handler: Starter): () => void {
@@ -7,6 +7,6 @@ export function registerWatchStarter(handler: Starter): () => void {
 }
 
 /** The badge UID is passed directly to HTTP; it is never retained in global state. */
-export async function startWatch(threadId: string, employeeTagUid: string, targetLabel: string): Promise<void> {
+export async function startWatch(threadId: string, employeeTagUid: string | undefined, targetLabel: string): Promise<void> {
   await starter?.(threadId, employeeTagUid, targetLabel);
 }

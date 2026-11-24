@@ -132,6 +132,7 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
             const watchId = (data.payload as { watchId?: unknown } | undefined)?.watchId;
             socket.send(JSON.stringify({ type: 'error', payload: {
               watchId: typeof watchId === 'string' ? watchId : undefined,
+              ...(data.type === 'watch.input' || data.type.startsWith('watch.control.') ? { requestType: data.type } : {}),
               message: error instanceof Error ? error.message : 'Invalid watch message'
             } }));
           }

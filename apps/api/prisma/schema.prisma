@@ -988,6 +988,7 @@ model User {
   auditLogsActor              RoleAuditLog[] @relation("RoleAuditActor")
   auditLogsTarget             RoleAuditLog[] @relation("RoleAuditTarget")
   photoToolHumanReviewedLoans Loan[]         @relation("PhotoToolHumanReviewer")
+  screenWatchSessions         KioskScreenWatchSession[]
 }
 
 model AuthLoginAttempt {
@@ -6264,15 +6265,18 @@ model KioskScreenWatchSession {
   id                   String                 @id @default(uuid())
   threadId             String
   viewerEmployeeId     String?
+  viewerUserId         String?
   viewerClientDeviceId String
   targetClientDeviceId String
   status               KioskScreenWatchStatus @default(REQUESTED)
   requestedAt          DateTime               @default(now())
   acceptedAt           DateTime?
+  controlGrantedAt     DateTime?
   endedAt              DateTime?
   endReason            String?
   thread               KioskInquiryThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
   viewerEmployee       Employee?              @relation(fields: [viewerEmployeeId], references: [id], onDelete: SetNull)
+  viewerUser           User?                  @relation(fields: [viewerUserId], references: [id], onDelete: SetNull)
   viewerClientDevice   ClientDevice           @relation("ScreenWatchViewer", fields: [viewerClientDeviceId], references: [id])
   targetClientDevice   ClientDevice           @relation("ScreenWatchTarget", fields: [targetClientDeviceId], references: [id])
 

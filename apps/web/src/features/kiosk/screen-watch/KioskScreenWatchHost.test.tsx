@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { publishSignaling, registerSignalingSender } from '../../webrtc/signalingBus';
@@ -7,11 +8,16 @@ import { ScreenWatchHost } from './KioskScreenWatchHost';
 import { MockPeerConnection, mockStream } from './peerTestHelpers';
 import { startWatch } from './startWatch';
 
-const mocks = vi.hoisted(() => ({ post: vi.fn() }));
+import type { WatchMessageType } from '../../webrtc/types';
+
+const mocks = vi.hoisted(() => ({ post: vi.fn(), useAuth: vi.fn() }));
 vi.mock('../../../api/client', () => ({ api: { post: mocks.post }, getResolvedClientKey: () => 'device' }));
+vi.mock('../../../contexts/AuthContext', () => ({ useAuth: mocks.useAuth }));
+const loggedIn = { user: { role: 'MANAGER' }, token: 'token' };
+const loggedOut = { user: null, token: null };
 const send = vi.fn(() => true);
 let release: () => void;
-const receive = (type: 'watch.request' | 'watch.accepted' | 'watch.denied' | 'watch.stopped', reason?: string) => {
+const receive = (type: WatchMessageType, reason?: string) => {
   act(() => publishSignaling({ type, payload: { watchId: 'watch-1', viewerName: 'StoneBase01', reason } }));
 };
 beforeEach(() => {
@@ -20,6 +26,7 @@ beforeEach(() => {
   send.mockReset().mockReturnValue(true);
   release = registerSignalingSender(send);
   mocks.post.mockReset().mockResolvedValue({ data: { watchId: 'watch-1' } });
+  mocks.useAuth.mockReset().mockReturnValue(loggedOut);
 });
 afterEach(() => { release(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
@@ -70,6 +77,53 @@ describe('screen watch UI', () => {
     expect(send).toHaveBeenLastCalledWith({ type: 'watch.stop', payload: { watchId: 'watch-1' } });
     expect(screen.queryByRole('region')).not.toBeInTheDocument();
   });
+  it('uses the same HTTP client without a badge for a login watch', async () => {
+    mocks.useAuth.mockReturnValue(loggedIn);
+    render(<ScreenWatchHost clientKey="device" />);
+    await act(() => startWatch('thread', undefined, '加工キオスク'));
+    expect(mocks.post).toHaveBeenCalledWith('/kiosk/inquiries/thread/watch', {}, { headers: { 'x-client-key': 'device' } });
+  });
+  it.each(['viewing', 'operating'])('stops a login watch on logout while %s', async mode => {
+    mocks.useAuth.mockReturnValue(loggedIn);
+    const { rerender } = render(<ScreenWatchHost clientKey="device" />);
+    await act(() => startWatch('thread', undefined, '加工キオスク'));
+    receive('watch.accepted');
+    if (mode === 'operating') {
+      fireEvent.click(screen.getByRole('button', { name: '操作' }));
+      receive('watch.control.accepted');
+    }
+    mocks.useAuth.mockReturnValue(loggedOut);
+    rerender(<ScreenWatchHost clientKey="device" />);
+    expect(send).toHaveBeenLastCalledWith({ type: 'watch.stop', payload: { watchId: 'watch-1' } });
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(MockPeerConnection.instances[0].close).toHaveBeenCalledOnce();
+    expect(fireEvent.keyDown(document.body, { key: 'A' })).toBe(true);
+  });
+  it('stops a login watch that receives its ID after login is lost', async () => {
+    mocks.useAuth.mockReturnValue(loggedIn);
+    let resolve!: (data: unknown) => void;
+    mocks.post.mockReturnValue(new Promise(done => { resolve = done; }));
+    const { rerender } = render(<ScreenWatchHost clientKey="device" />);
+    let request!: Promise<void>;
+    act(() => { request = startWatch('thread', undefined, '加工キオスク'); });
+    expect(screen.getByRole('region')).toBeInTheDocument();
+    mocks.useAuth.mockReturnValue({ ...loggedIn, token: null });
+    rerender(<ScreenWatchHost clientKey="device" />);
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    await act(async () => { resolve({ data: { watchId: 'watch-1' } }); await request; });
+    expect(send).toHaveBeenLastCalledWith({ type: 'watch.stop', payload: { watchId: 'watch-1' } });
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  });
+  it('keeps a badge watch open when login is lost', async () => {
+    mocks.useAuth.mockReturnValue(loggedIn);
+    const { rerender } = render(<ScreenWatchHost clientKey="device" />);
+    await act(() => startWatch('thread', 'badge', '加工キオスク'));
+    receive('watch.accepted');
+    mocks.useAuth.mockReturnValue(loggedOut);
+    rerender(<ScreenWatchHost clientKey="device" />);
+    expect(screen.getByLabelText('画面の映像')).toBeInTheDocument();
+    expect(send).not.toHaveBeenCalledWith({ type: 'watch.stop', payload: { watchId: 'watch-1' } });
+  });
   it.each([
     ['watch.denied', undefined, '断られました'],
     ['watch.stopped', 'target', '相手が止めました'],
@@ -111,6 +165,349 @@ describe('screen watch UI', () => {
     render(<ScreenWatchHost clientKey="device" />); await act(() => startWatch('thread', 'badge', '加工キオスク'));
     act(() => release());
     expect(screen.queryByRole('region')).not.toBeInTheDocument(); expect(screen.getByRole('status')).toHaveTextContent('接続が切れました');
+  });
+});
+
+describe('screen watch remote control', () => {
+  const beginTargetWatch = async () => {
+    receive('watch.request');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '見せる' })));
+    receive('watch.control.request');
+  };
+  const input = (payload: Record<string, unknown>) =>
+    act(() => publishSignaling({ type: 'watch.input', payload: { watchId: 'watch-1', ...payload } }));
+  const acceptControl = async () => {
+    await beginTargetWatch();
+    fireEvent.click(screen.getByRole('button', { name: '任せる' }));
+  };
+
+  it('focuses refusal immediately when control consent opens', async () => {
+    render(<ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />);
+    await beginTargetWatch();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '断る' }));
+  });
+
+  it('asks for control consent, forwards clicks and stops control before viewing', async () => {
+    const clicks = vi.fn();
+    const blurred = vi.fn();
+    const { container } = render(<>
+      <button type="button" onClick={clicks}>現場のボタン</button>
+      <input aria-label="保存する欄" onBlur={blurred} />
+      <div>余白</div>
+      <ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />
+    </>);
+    await beginTargetWatch();
+    const dialog = screen.getByRole('dialog', { name: 'StoneBase01 が この画面を操作します' });
+    fireEvent.mouseDown(dialog);
+    expect(dialog).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '任せる' }));
+    expect(send).toHaveBeenLastCalledWith({ type: 'watch.control.accept', payload: { watchId: 'watch-1' } });
+    expect(screen.getByText('StoneBase01 が操作しています')).toBeInTheDocument();
+    expect(dialog).not.toBeInTheDocument();
+
+    const button = screen.getByRole('button', { name: '現場のボタン' });
+    const events: string[] = [];
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      button.addEventListener(type, event => events.push(event.type));
+    }
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    const elementFromPoint = vi.fn().mockReturnValue(button);
+    const previousHitTest = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: elementFromPoint });
+    try {
+      input({ kind: 'move', x: .25, y: .75 });
+      expect(container.querySelector('.screen-watch__cursor')).toHaveTextContent('StoneBase01');
+      expect(container.querySelector('.screen-watch__cursor')).toHaveStyle({ left: '25vw', top: '75vh' });
+      expect(elementFromPoint).not.toHaveBeenCalled();
+      input({ kind: 'click', x: .5, y: .25 });
+      expect(elementFromPoint).toHaveBeenCalledWith(window.innerWidth * .5, window.innerHeight * .25);
+      expect(events).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+      expect(clicks).toHaveBeenCalledOnce();
+      expect(button).toHaveFocus();
+      expect(container.querySelector('.screen-watch__ripple')).toHaveStyle({ left: '50vw', top: '25vh' });
+
+      const field = screen.getByRole('textbox', { name: '保存する欄' });
+      field.focus();
+      elementFromPoint.mockReturnValue(screen.getByText('余白'));
+      input({ kind: 'click', x: .5, y: .25 });
+      expect(field).not.toHaveFocus();
+      expect(blurred).toHaveBeenCalledOnce();
+
+      const stop = screen.getByRole('button', { name: '止める' });
+      elementFromPoint.mockReturnValue(stop);
+      input({ kind: 'click', x: .9, y: .1 });
+      expect(screen.getByText('StoneBase01 が操作しています')).toBeInTheDocument();
+      fireEvent.click(stop);
+      expect(send).toHaveBeenLastCalledWith({ type: 'watch.control.stop', payload: { watchId: 'watch-1' } });
+      expect(screen.getByText('StoneBase01 が見ています')).toBeInTheDocument();
+      expect(container.querySelector('.screen-watch__cursor')).not.toBeInTheDocument();
+      expect(container.querySelector('.screen-watch__ripple')).not.toBeInTheDocument();
+      expect(MockPeerConnection.instances[0].close).not.toHaveBeenCalled();
+      elementFromPoint.mockReturnValue(button);
+      input({ kind: 'click', x: .5, y: .25 });
+      expect(clicks).toHaveBeenCalledOnce();
+      fireEvent.click(stop);
+      expect(send).toHaveBeenLastCalledWith({ type: 'watch.stop', payload: { watchId: 'watch-1' } });
+    } finally {
+      if (previousHitTest) Object.defineProperty(document, 'elementFromPoint', previousHitTest);
+      else Reflect.deleteProperty(document, 'elementFromPoint');
+    }
+  });
+
+  it('types into a React controlled input, handles Enter and leaves password fields alone', async () => {
+    const changed = vi.fn();
+    const keydown = vi.fn();
+    const submitted = vi.fn();
+    function Field() {
+      const [value, setValue] = useState('ab');
+      return <form onSubmit={event => { event.preventDefault(); submitted(); }}>
+        <input aria-label="入力欄" value={value} onKeyDown={event => keydown(event.key)}
+          onChange={event => { setValue(event.target.value); changed(event.target.value); }} />
+        <input aria-label="パスワード" type="password" />
+        <button>送信</button>
+      </form>;
+    }
+    render(<><Field /><ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} /></>);
+    await beginTargetWatch();
+    fireEvent.click(screen.getByRole('button', { name: '任せる' }));
+    const field = screen.getByRole('textbox', { name: '入力欄' }) as HTMLInputElement;
+    field.focus();
+    field.setSelectionRange(1, 1);
+    input({ kind: 'key', key: 'Z' });
+    expect(field).toHaveValue('aZb');
+    expect(changed).toHaveBeenLastCalledWith('aZb');
+    input({ kind: 'key', key: 'Backspace' });
+    expect(field).toHaveValue('ab');
+    expect(changed).toHaveBeenLastCalledWith('ab');
+    input({ kind: 'key', key: 'ArrowLeft' });
+    expect(keydown).toHaveBeenLastCalledWith('ArrowLeft');
+    expect(field.selectionStart).toBe(0);
+    input({ kind: 'key', key: 'ArrowRight' });
+    expect(field.selectionStart).toBe(1);
+    input({ kind: 'key', key: 'Escape' });
+    expect(keydown).toHaveBeenLastCalledWith('Escape');
+    input({ kind: 'key', key: 'Enter' });
+    expect(keydown).toHaveBeenLastCalledWith('Enter');
+    expect(submitted).toHaveBeenCalledOnce();
+    const password = screen.getByLabelText('パスワード');
+    password.focus();
+    input({ kind: 'key', key: 'a' });
+    input({ kind: 'key', key: 'Enter' });
+    expect(password).toHaveValue('');
+    expect(submitted).toHaveBeenCalledOnce();
+  });
+
+  it.each(['1.5', '-3'])('types %s into a controlled number field without emitting incomplete values', async value => {
+    const changed = vi.fn();
+    function Field() {
+      const [text, setText] = useState('');
+      return <input type="number" value={text} onChange={event => {
+        setText(event.target.value); changed(event.target.value);
+      }} />;
+    }
+    render(<><Field /><ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} /></>);
+    await acceptControl();
+    const field = screen.getByRole('spinbutton');
+    field.focus();
+    for (const key of value) input({ kind: 'key', key });
+    expect(field).toHaveValue(Number(value));
+    expect(changed.mock.calls.flat()).toEqual(value === '1.5' ? ['1', '1.5'] : ['-3']);
+  });
+
+  it('discards an unfinished number after focus leaves the field', async () => {
+    render(<>
+      <input type="number" /><input aria-label="別の欄" />
+      <ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />
+    </>);
+    await acceptControl();
+    const field = screen.getByRole('spinbutton');
+    field.focus();
+    input({ kind: 'key', key: '-' });
+    screen.getByRole('textbox', { name: '別の欄' }).focus();
+    field.focus();
+    input({ kind: 'key', key: '3' });
+    expect(field).toHaveValue(3);
+  });
+
+  it.each([
+    ['disabled first submitter', 0],
+    ['one field without a submitter', 1],
+    ['two fields without a submitter', 0]
+  ] as const)('uses implicit form submission with %s', async (scenario, submitCount) => {
+    const submitted = vi.fn();
+    render(<>
+      <form onSubmit={event => { event.preventDefault(); submitted(); }}>
+        <input aria-label="入力欄" />
+        {scenario === 'disabled first submitter' && <><button disabled>送信</button><input type="submit" /></>}
+        {scenario === 'two fields without a submitter' && <input aria-label="別の欄" />}
+      </form>
+      <ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />
+    </>);
+    await acceptControl();
+    screen.getByRole('textbox', { name: '入力欄' }).focus();
+    input({ kind: 'key', key: 'Enter' });
+    expect(submitted).toHaveBeenCalledTimes(submitCount);
+  });
+
+  it('inserts a newline into a textarea without submitting the form', async () => {
+    const submitted = vi.fn();
+    render(<>
+      <form onSubmit={event => { event.preventDefault(); submitted(); }}>
+        <textarea defaultValue="ab" /><button>送信</button>
+      </form>
+      <ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />
+    </>);
+    await acceptControl();
+    const field = screen.getByRole('textbox') as HTMLTextAreaElement;
+    field.focus();
+    field.setSelectionRange(1, 1);
+    input({ kind: 'key', key: 'Enter' });
+    expect(field).toHaveValue('a\nb');
+    expect(field.selectionStart).toBe(2);
+    expect(submitted).not.toHaveBeenCalled();
+  });
+
+  it('tabs between page fields and buttons, skipping disabled and screen-watch controls', async () => {
+    render(<>
+      <input aria-label="入力欄" /><button disabled>無効</button>
+      <ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />
+      <button>次の要素</button>
+    </>);
+    await acceptControl();
+    const field = screen.getByRole('textbox');
+    field.focus();
+    input({ kind: 'key', key: 'Tab' });
+    expect(screen.getByRole('button', { name: '次の要素' })).toHaveFocus();
+    input({ kind: 'key', key: 'Tab' });
+    expect(field).toHaveFocus();
+  });
+
+  it.each(['on', 'requested'])('goes off on a control accept error when control is %s', async control => {
+    render(<ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />);
+    await acceptControl();
+    if (control === 'requested') {
+      receive('watch.control.stopped');
+      receive('watch.control.request');
+    }
+    act(() => publishSignaling({ type: 'error', payload: { watchId: 'watch-1', requestType: 'watch.control.accept' } }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('StoneBase01 が見ています')).toBeInTheDocument();
+    receive('watch.control.request');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('denies target consent without ending viewing', async () => {
+    render(<ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />);
+    await beginTargetWatch();
+    fireEvent.click(screen.getByRole('button', { name: '断る' }));
+    expect(send).toHaveBeenLastCalledWith({ type: 'watch.control.deny', payload: { watchId: 'watch-1' } });
+    expect(screen.getByText('StoneBase01 が見ています')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('waits for consent and shows denial without closing the viewer', async () => {
+    render(<ScreenWatchHost clientKey="device" />);
+    await act(() => startWatch('thread', 'badge', '加工キオスク'));
+    receive('watch.accepted');
+    fireEvent.click(screen.getByRole('button', { name: '操作' }));
+    expect(send).toHaveBeenLastCalledWith({ type: 'watch.control.request', payload: { watchId: 'watch-1' } });
+    expect(screen.getByRole('button', { name: '操作…' })).toBeDisabled();
+    receive('watch.control.denied');
+    expect(screen.getAllByRole('status').some(status => status.textContent === '断られました')).toBe(true);
+    expect(screen.getByLabelText('画面の映像')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '操作' })).toBeEnabled();
+  });
+
+  it('stops a control request after 30 seconds and leaves the video open', async () => {
+    vi.useFakeTimers();
+    render(<ScreenWatchHost clientKey="device" />);
+    await act(() => startWatch('thread', 'badge', '加工キオスク'));
+    receive('watch.accepted');
+    fireEvent.click(screen.getByRole('button', { name: '操作' }));
+    const stop = { type: 'watch.control.stop', payload: { watchId: 'watch-1' } };
+    act(() => { vi.advanceTimersByTime(29_999); });
+    expect(send).not.toHaveBeenCalledWith(stop);
+    expect(screen.getByRole('button', { name: '操作…' })).toBeDisabled();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(send).toHaveBeenLastCalledWith(stop);
+    expect(screen.getByText('応答がありませんでした')).toHaveAttribute('role', 'status');
+    expect(screen.getByLabelText('画面の映像')).toBeInTheDocument();
+    receive('watch.control.accepted');
+    expect(screen.getByRole('button', { name: '操作' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it.each(['watch.control.accepted', 'watch.control.denied'] as const)('cancels the control timeout on %s', async reply => {
+    vi.useFakeTimers();
+    render(<ScreenWatchHost clientKey="device" />);
+    await act(() => startWatch('thread', 'badge', '加工キオスク'));
+    receive('watch.accepted');
+    fireEvent.click(screen.getByRole('button', { name: '操作' }));
+    receive(reply);
+    act(() => { vi.advanceTimersByTime(30_000); });
+    expect(send).not.toHaveBeenCalledWith({ type: 'watch.control.stop', payload: { watchId: 'watch-1' } });
+    expect(screen.queryByText('応答がありませんでした')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '操作' })).toHaveAttribute('aria-pressed', String(reply === 'watch.control.accepted'));
+  });
+
+  it('sends normalized clicks, throttled moves and allowed keys only while operating', async () => {
+    render(<ScreenWatchHost clientKey="device" />);
+    await act(() => startWatch('thread', 'badge', '加工キオスク'));
+    receive('watch.accepted');
+    const pointing = screen.getByRole('button', { name: '指さし' });
+    fireEvent.click(pointing);
+    fireEvent.click(screen.getByRole('button', { name: '操作' }));
+    receive('watch.control.accepted');
+    const operation = screen.getByRole('button', { name: '操作' });
+    expect(operation).toHaveAttribute('aria-pressed', 'true');
+    expect(pointing).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('region', { name: '画面を見る' })).toHaveClass('screen-watch__viewer--operating');
+    const video = screen.getByLabelText('画面の映像');
+    Object.defineProperties(video, { videoWidth: { value: 400 }, videoHeight: { value: 200 } });
+    vi.spyOn(video, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 400, height: 400 } as DOMRect);
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    try {
+      send.mockClear();
+      fireEvent.click(video, { clientX: 100, clientY: 50 });
+      expect(send).not.toHaveBeenCalled();
+      fireEvent.click(video, { clientX: 100, clientY: 150 });
+      expect(send).toHaveBeenLastCalledWith({ type: 'watch.input', payload: { watchId: 'watch-1', kind: 'click', x: .25, y: .25 } });
+      fireEvent.mouseMove(video, { clientX: 200, clientY: 200 });
+      expect(send).toHaveBeenLastCalledWith({ type: 'watch.input', payload: { watchId: 'watch-1', kind: 'move', x: .5, y: .5 } });
+      now.mockReturnValue(1049);
+      fireEvent.mouseMove(video, { clientX: 300, clientY: 250 });
+      expect(send).toHaveBeenCalledTimes(2);
+      now.mockReturnValue(1050);
+      fireEvent.mouseMove(video, { clientX: 300, clientY: 250 });
+      expect(send).toHaveBeenLastCalledWith({ type: 'watch.input', payload: { watchId: 'watch-1', kind: 'move', x: .75, y: .75 } });
+      expect(fireEvent.keyDown(document.body, { key: 'A' })).toBe(false);
+      expect(send).toHaveBeenLastCalledWith({ type: 'watch.input', payload: { watchId: 'watch-1', kind: 'key', key: 'A' } });
+      for (const init of [{ key: 'あ' }, { key: 'a', isComposing: true }, { key: 'a', ctrlKey: true },
+        { key: 'a', metaKey: true }, { key: 'a', altKey: true }, { key: 'ArrowUp' }, { key: 'Tab', shiftKey: true }]) {
+        expect(fireEvent.keyDown(document.body, init)).toBe(true);
+      }
+      expect(send).toHaveBeenCalledTimes(4);
+    } finally {
+      now.mockRestore();
+    }
+    fireEvent.click(pointing);
+    expect(send).toHaveBeenLastCalledWith({ type: 'watch.control.stop', payload: { watchId: 'watch-1' } });
+    act(() => publishSignaling({ type: 'error', payload: { watchId: 'watch-1', requestType: 'watch.input' } }));
+    expect(video).toBeInTheDocument();
+    expect(operation).toHaveAttribute('aria-pressed', 'false');
+    expect(pointing).toHaveAttribute('aria-pressed', 'true');
+    expect(fireEvent.keyDown(document.body, { key: 'A' })).toBe(true);
+  });
+
+  it('stops only control when the viewer presses the operation button again', async () => {
+    render(<ScreenWatchHost clientKey="device" />);
+    await act(() => startWatch('thread', 'badge', '加工キオスク'));
+    receive('watch.accepted');
+    fireEvent.click(screen.getByRole('button', { name: '操作' }));
+    receive('watch.control.accepted');
+    fireEvent.click(screen.getByRole('button', { name: '操作' }));
+    expect(send).toHaveBeenLastCalledWith({ type: 'watch.control.stop', payload: { watchId: 'watch-1' } });
+    expect(screen.getByLabelText('画面の映像')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '操作' })).toHaveAttribute('aria-pressed', 'false');
   });
 });
 
