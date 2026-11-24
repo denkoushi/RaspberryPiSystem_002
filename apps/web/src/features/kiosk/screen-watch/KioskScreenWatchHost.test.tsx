@@ -77,6 +77,60 @@ describe('screen watch UI', () => {
     expect(send).toHaveBeenLastCalledWith({ type: 'watch.stop', payload: { watchId: 'watch-1' } });
     expect(screen.queryByRole('region')).not.toBeInTheDocument();
   });
+  it.each([
+    { role: 'target', pointerType: 'touch', stopName: '止める', startLeft: 700, startTop: 16, maxLeft: 824, maxTop: 728 },
+    { role: 'viewer', pointerType: 'mouse', stopName: '■ 止める', startLeft: 36, startTop: 400, maxLeft: 400, maxTop: 440 }
+  ])('drags the $role pill inside its bounds and keeps its stop button clickable', async ({
+    role, pointerType, stopName, startLeft, startTop, maxLeft, maxTop
+  }) => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    vi.stubGlobal('innerWidth', 1024);
+    vi.stubGlobal('innerHeight', 768);
+    render(<ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />);
+    if (role === 'target') {
+      receive('watch.request');
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: '見せる' })));
+    } else {
+      await act(() => startWatch('thread', 'badge', '加工キオスク'));
+      receive('watch.accepted');
+      const section = screen.getByRole('region', { name: '画面を見る' });
+      Object.defineProperties(section, { clientWidth: { value: 600 }, clientHeight: { value: 480 } });
+      section.getBoundingClientRect = () => new DOMRect(20, 30, 600, 480);
+    }
+    const stop = screen.getByRole('button', { name: stopName });
+    const pill = stop.parentElement!;
+    pill.getBoundingClientRect = () => new DOMRect(startLeft, startTop, 200, 40);
+    pill.setPointerCapture = vi.fn();
+    const pointer = (type: string, element: Element, clientX: number, clientY: number) =>
+      fireEvent(element, Object.assign(new MouseEvent(type, { bubbles: true, clientX, clientY }), { pointerId: 1, pointerType }));
+
+    pointer('pointerdown', stop, 50, 50);
+    pointer('pointermove', pill, 100, 100);
+    pointer('pointerup', stop, 100, 100);
+    expect(pill.setPointerCapture).not.toHaveBeenCalled();
+    expect(pill.style.left).toBe('');
+    expect(pill.style.top).toBe('');
+
+    pointer('pointerdown', pill.querySelector('span')!, 50, 50);
+    expect(pill.setPointerCapture).toHaveBeenCalledWith(1);
+    pointer('pointermove', pill, 52, 51);
+    expect(pill.style.left).toBe('');
+    expect(pill.style.top).toBe('');
+    pointer('pointermove', pill, 60, 70);
+    expect(pill).toHaveStyle({
+      left: `${startLeft + (role === 'viewer' ? -10 : 10)}px`,
+      top: `${startTop + (role === 'viewer' ? -10 : 20)}px`
+    });
+    pointer('pointermove', pill, 2000, 2000);
+    expect(pill).toHaveStyle({ left: `${maxLeft}px`, top: `${maxTop}px` });
+    pointer('pointermove', pill, -2000, -2000);
+    expect(pill).toHaveStyle({ left: '0px', top: '0px' });
+    pointer('pointerup', pill, -2000, -2000);
+    pointer('pointermove', pill, 2000, 2000);
+    expect(pill).toHaveStyle({ left: '0px', top: '0px' });
+    fireEvent.click(stop);
+    expect(send).toHaveBeenLastCalledWith({ type: 'watch.stop', payload: { watchId: 'watch-1' } });
+  });
   it('uses the same HTTP client without a badge for a login watch', async () => {
     mocks.useAuth.mockReturnValue(loggedIn);
     render(<ScreenWatchHost clientKey="device" />);
@@ -207,34 +261,39 @@ describe('screen watch remote control', () => {
 
     const button = screen.getByRole('button', { name: '現場のボタン' });
     const events: string[] = [];
-    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+    for (const type of ['pointermove', 'mousemove', 'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
       button.addEventListener(type, event => events.push(event.type));
     }
     vi.stubGlobal('PointerEvent', MouseEvent);
-    const elementFromPoint = vi.fn().mockReturnValue(button);
-    const previousHitTest = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
-    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: elementFromPoint });
+    const stop = screen.getByRole('button', { name: '止める' });
+    const pointerRing = document.createElement('div');
+    pointerRing.className = 'screen-watch__pointer';
+    const elementsFromPoint = vi.fn().mockReturnValue([stop, stop.parentElement, button]);
+    const previousHitTest = Object.getOwnPropertyDescriptor(document, 'elementsFromPoint');
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: elementsFromPoint });
     try {
       input({ kind: 'move', x: .25, y: .75 });
       expect(container.querySelector('.screen-watch__cursor')).toHaveTextContent('StoneBase01');
       expect(container.querySelector('.screen-watch__cursor')).toHaveStyle({ left: '25vw', top: '75vh' });
-      expect(elementFromPoint).not.toHaveBeenCalled();
+      expect(elementsFromPoint).toHaveBeenCalledWith(window.innerWidth * .25, window.innerHeight * .75);
+      expect(events).toEqual(['pointermove', 'mousemove']);
+      const cursor = container.querySelector('.screen-watch__cursor span');
+      elementsFromPoint.mockReturnValue([pointerRing, cursor, stop, stop.parentElement, button]);
       input({ kind: 'click', x: .5, y: .25 });
-      expect(elementFromPoint).toHaveBeenCalledWith(window.innerWidth * .5, window.innerHeight * .25);
-      expect(events).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+      expect(elementsFromPoint).toHaveBeenCalledWith(window.innerWidth * .5, window.innerHeight * .25);
+      expect(events).toEqual(['pointermove', 'mousemove', 'pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
       expect(clicks).toHaveBeenCalledOnce();
       expect(button).toHaveFocus();
       expect(container.querySelector('.screen-watch__ripple')).toHaveStyle({ left: '50vw', top: '25vh' });
 
       const field = screen.getByRole('textbox', { name: '保存する欄' });
       field.focus();
-      elementFromPoint.mockReturnValue(screen.getByText('余白'));
+      elementsFromPoint.mockReturnValue([container.querySelector('.screen-watch__ripple'), screen.getByText('余白')]);
       input({ kind: 'click', x: .5, y: .25 });
       expect(field).not.toHaveFocus();
       expect(blurred).toHaveBeenCalledOnce();
 
-      const stop = screen.getByRole('button', { name: '止める' });
-      elementFromPoint.mockReturnValue(stop);
+      elementsFromPoint.mockReturnValue([stop]);
       input({ kind: 'click', x: .9, y: .1 });
       expect(screen.getByText('StoneBase01 が操作しています')).toBeInTheDocument();
       fireEvent.click(stop);
@@ -243,14 +302,41 @@ describe('screen watch remote control', () => {
       expect(container.querySelector('.screen-watch__cursor')).not.toBeInTheDocument();
       expect(container.querySelector('.screen-watch__ripple')).not.toBeInTheDocument();
       expect(MockPeerConnection.instances[0].close).not.toHaveBeenCalled();
-      elementFromPoint.mockReturnValue(button);
+      elementsFromPoint.mockReturnValue([button]);
       input({ kind: 'click', x: .5, y: .25 });
       expect(clicks).toHaveBeenCalledOnce();
       fireEvent.click(stop);
       expect(send).toHaveBeenLastCalledWith({ type: 'watch.stop', payload: { watchId: 'watch-1' } });
     } finally {
-      if (previousHitTest) Object.defineProperty(document, 'elementFromPoint', previousHitTest);
-      else Reflect.deleteProperty(document, 'elementFromPoint');
+      if (previousHitTest) Object.defineProperty(document, 'elementsFromPoint', previousHitTest);
+      else Reflect.deleteProperty(document, 'elementsFromPoint');
+    }
+  });
+
+  it.each(['consent-overlay', 'notice'])('blocks remote pointer input over the %s', async overlay => {
+    const clicks = vi.fn();
+    const moves = vi.fn();
+    render(<>
+      <div className={`screen-watch__${overlay}`}><span>覆い</span></div>
+      <button type="button" onClick={clicks} onMouseMove={moves}>現場のボタン</button>
+      <ScreenWatchHost clientKey="device" startCapture={async () => mockStream().stream} />
+    </>);
+    await acceptControl();
+    const cover = screen.getByText('覆い');
+    const button = screen.getByRole('button', { name: '現場のボタン' });
+    const previousHitTest = Object.getOwnPropertyDescriptor(document, 'elementsFromPoint');
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true, value: () => [cover, cover.parentElement, button]
+    });
+    try {
+      input({ kind: 'click', x: .5, y: .25 });
+      input({ kind: 'move', x: .5, y: .25 });
+      expect(clicks).not.toHaveBeenCalled();
+      expect(moves).not.toHaveBeenCalled();
+      expect(button).not.toHaveFocus();
+    } finally {
+      if (previousHitTest) Object.defineProperty(document, 'elementsFromPoint', previousHitTest);
+      else Reflect.deleteProperty(document, 'elementsFromPoint');
     }
   });
 
@@ -523,7 +609,7 @@ describe('screen watch video and pointer', () => {
     vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia: capture } });
     render(<ScreenWatchHost clientKey="device" />); receive('watch.request');
     fireEvent.click(screen.getByRole('button', { name: '見せる' }));
-    expect(capture).toHaveBeenCalledWith({ video: { frameRate: { ideal: 5, max: 5 }, displaySurface: 'browser' },
+    expect(capture).toHaveBeenCalledWith({ video: { frameRate: { ideal: 15, max: 15 }, displaySurface: 'browser' },
       selfBrowserSurface: 'include', audio: false, preferCurrentTab: true });
     expect(send).not.toHaveBeenCalled();
     await waitFor(() => expect(send).toHaveBeenCalledWith({ type: 'watch.signal', payload: { watchId: 'watch-1', description: { type: 'offer', sdp: 'screen-offer' } } }));

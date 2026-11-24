@@ -10,12 +10,13 @@ import { sendSignalingMessage, subscribeSignaling } from '../../webrtc/signaling
 
 import { normalizeVideoPointer, validPointer } from './pointer';
 import { registerWatchStarter } from './startWatch';
+import { useDraggablePill } from './useDraggablePill';
 import { startCapture as captureDisplay, stopStream, useScreenWatchPeer } from './useScreenWatchPeer';
 
 import type { PointerPosition } from './pointer';
 import type { SignalingEvent } from '../../webrtc/signalingBus';
 import type { WatchMessage } from '../../webrtc/types';
-import type { RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import './screen-watch.css';
 
 type WatchState = { watchId: string; label: string; active: boolean; control: 'off' | 'requested' | 'on' };
@@ -29,6 +30,7 @@ const numberValue = /^-?(?:\d+|\d*\.\d+)(?:[eE][+-]?\d+)?$/;
 const incompleteNumber = /^(?:-|-?\d*\.|-?(?:\d+|\d*\.\d+)[eE][+-]?)$/;
 const remoteKeyEvents = new WeakSet<KeyboardEvent>();
 const watchUi = '.screen-watch__viewer, .screen-watch__target-pill, .screen-watch__consent-overlay, .screen-watch__notice';
+const passThroughUi = '.screen-watch__target-pill, .screen-watch__cursor, .screen-watch__ripple, .screen-watch__pointer';
 const focusableSelector = 'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"], [contenteditable=""], summary, audio[controls], video[controls]';
 
 function canFocus(element: HTMLElement) {
@@ -36,13 +38,18 @@ function canFocus(element: HTMLElement) {
     && element.checkVisibility?.({ visibilityProperty: true }) !== false;
 }
 
-function clickScreenPoint({ x, y }: PointerPosition) {
+function applyScreenPointer({ x, y }: PointerPosition, kind: 'click' | 'move') {
   const clientX = x * window.innerWidth;
   const clientY = y * window.innerHeight;
-  const element = document.elementFromPoint(clientX, clientY);
-  if (!element || element.closest(watchUi)) return;
+  const element = document.elementsFromPoint(clientX, clientY).find(hit => !hit.closest(passThroughUi));
+  if (!element || element.closest(watchUi)) return false;
   const event = { clientX, clientY, bubbles: true, cancelable: true };
   const pointer = { ...event, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+  if (kind === 'move') {
+    element.dispatchEvent(new PointerEvent('pointermove', { ...pointer, button: -1 }));
+    element.dispatchEvent(new MouseEvent('mousemove', event));
+    return true;
+  }
   element.dispatchEvent(new PointerEvent('pointerdown', { ...pointer, buttons: 1 }));
   element.dispatchEvent(new MouseEvent('mousedown', { ...event, buttons: 1 }));
   const previous = document.activeElement;
@@ -53,6 +60,7 @@ function clickScreenPoint({ x, y }: PointerPosition) {
   element.dispatchEvent(new PointerEvent('pointerup', pointer));
   element.dispatchEvent(new MouseEvent('mouseup', event));
   element.dispatchEvent(new MouseEvent('click', event));
+  return true;
 }
 
 function submitFromInput(form: HTMLFormElement) {
@@ -144,6 +152,13 @@ const stoppedText = (reason?: string) => reason === 'target' ? '相手が止め�
   : reason === 'timeout' ? '応答がありませんでした'
   : reason === 'NotAllowedError' || reason === 'NotReadableError' ? '相手の端末で 画面を取れませんでした'
   : reason === 'disconnect' || reason === 'stale' ? '接続が切れました' : reason === 'viewer' ? '' : '画面を見られませんでした';
+
+function DraggablePill({ className, withinParent = false, children }: {
+  className: string; withinParent?: boolean; children: ReactNode;
+}) {
+  const dragProps = useDraggablePill(withinParent);
+  return <div className={className} {...dragProps}>{children}</div>;
+}
 
 export function KioskScreenWatchHost() {
   const { pathname } = useLocation();
@@ -303,10 +318,9 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
             applyScreenKey(payload.key, numberDraft);
           } else if ((payload.kind === 'move' || payload.kind === 'click') && validPointer(payload)) {
             const point = { x: payload.x, y: payload.y };
-            setCursor(point);
-            if (payload.kind === 'click') {
-              setRipple({ ...point, at: performance.now() });
-              clickScreenPoint(point);
+            if (applyScreenPointer(point, payload.kind)) {
+              setCursor(point);
+              if (payload.kind === 'click') setRipple({ ...point, at: performance.now() });
             }
           }
         }
@@ -492,15 +506,15 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
         <Button ref={denyControlRef} type="button" variant="ghost" onClick={() => respondToControl(false)}>断る</Button>
       </div>
     </Dialog> : null}
-    {target?.active ? <div className={`screen-watch__target-pill${target.control === 'on' ? ' screen-watch__target-pill--operating' : ''}`}>
+    {target?.active ? <DraggablePill key={target.watchId} className={`screen-watch__target-pill${target.control === 'on' ? ' screen-watch__target-pill--operating' : ''}`}>
       <span>{target.label} {target.control === 'on' ? 'が操作しています' : 'が見ています'}</span>
       <button type="button" onClick={() => target.control === 'on' ? stopControl('target') : stop('target')}>止める</button>
-    </div> : null}
+    </DraggablePill> : null}
     {viewer ? <section className={`screen-watch__viewer${viewerOperating ? ' screen-watch__viewer--operating' : ''}`} aria-label="画面を見る">
       {viewer.active ? <video ref={videoRef} className="screen-watch__video" aria-label="画面の映像" autoPlay playsInline muted
         onClick={event => inputAtVideo(event, 'click')} onMouseMove={viewerOperating ? event => inputAtVideo(event, 'move') : undefined} />
         : <p className="screen-watch__waiting" role="status">相手の「見せる」を待っています</p>}
-      <div className="screen-watch__viewer-pill">
+      <DraggablePill className="screen-watch__viewer-pill" withinParent>
         {viewer.active ? <>
           <span>● {viewer.label}</span><span>遅れ <output>{delay}</output></span>
           <button type="button" aria-pressed={pointing} onClick={togglePointing}>指さし</button>
@@ -508,7 +522,7 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
             disabled={viewer.control === 'requested'} onClick={toggleControl}>{viewer.control === 'requested' ? '操作…' : '操作'}</button>
         </> : null}
         <button type="button" onClick={() => stop('viewer')}>■ 止める</button>
-      </div>
+      </DraggablePill>
     </section> : null}
     {ring ? <div className="screen-watch__pointer" data-testid="screen-watch-pointer" aria-hidden="true"
       style={{ pointerEvents: 'none', left: ring.role === 'target' ? `${ring.x * 100}vw` : ring.x,
