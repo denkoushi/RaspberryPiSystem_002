@@ -275,6 +275,14 @@ def start_rank_startup_logs(profile: ModelProfile, identity: tuple, state_path: 
                         stopped.wait(0.05)
         except Exception:
             tails.clear()
+        finally:
+            if not stopped.is_set():
+                # An unread attach can fill Docker's buffer and stall the engine.
+                for process in processes.values():
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
 
     def stop(*, keep_tail=False):
         if stopped.is_set():
@@ -373,7 +381,7 @@ def capture_rank_exit(profile: ModelProfile, state_path: str, *,
                     # An attached Docker CLI returns the container's exit status.
                     # A daemon or SSH failure may also produce diagnostic output.
                     if (attach_exit in (None, entry['state']['ExitCode']) and attach_exit != 255
-                            and not tail.startswith(('Error response from daemon:', 'cannot attach to a ',
+                            and not tail.startswith(('Error response from daemon:', 'cannot attach to a ', 'You cannot attach to a ',
                                                      'Cannot connect to the Docker daemon', 'failed to connect to the docker API',
                                                      'permission denied while trying to connect', 'timeout: ', 'unknown flag: '))):
                         record['logTail'] = tail

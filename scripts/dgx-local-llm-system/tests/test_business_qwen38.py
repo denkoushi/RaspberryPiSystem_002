@@ -122,6 +122,20 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
             self.assertTrue(child.stdout.closed)
             self.assertEqual(spawn.call_count, 2)
 
+    def test_startup_reader_exit_kills_unread_attach(self):
+        identity, _ = self.startup_identity()
+        import active_model_state
+        script = 'import os, time; os.write(1, b"x"); time.sleep(30)'
+        with subprocess.Popen([sys.executable, '-c', script],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE) as child:
+            with patch.object(qwen.subprocess, 'Popen', side_effect=[child, FileNotFoundError()]), \
+                    patch.object(active_model_state, 'business_selection_state', side_effect=RuntimeError('unreadable')):
+                stop = qwen.start_rank_startup_logs(self.profile, identity, self.state, 1200)
+                self.addCleanup(stop)
+                # The reader stops on its own; the attach must not be left unread.
+                self.assertEqual(child.wait(timeout=5), -signal.SIGKILL)
+            self.assertEqual(stop(keep_tail=True), {})
+
     def test_rank_exit_tails_stay_in_private_history_and_exclude_failed_attaches(self):
         path = Path(self.state + '.qwen38-rank-exit.json')
         for bad_tail, bad_exit in [('ssh transport failure', 255), ('cannot attach to a stopped container', 1)]:
