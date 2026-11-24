@@ -2,11 +2,14 @@ from dataclasses import replace
 import io
 import json
 import os
+import shlex
+import signal
 import stat
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -47,6 +50,100 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
             status = qwen.runtime_status(self.profile, 'generation-1', self.state, sharing=sharing)
         prepared.assert_not_called()
         return status
+
+    def startup_identity(self):
+        ids = ['0' * 64, '1' * 64]
+        identity = (qwen.PROFILE, 1, 'generation-1')
+        Path(self.state).write_text(json.dumps({
+            'activeProfileId': qwen.PROFILE, 'selectedBusinessProfileId': identity[0],
+            'selectionRevision': identity[1], 'businessGeneration': identity[2],
+            'businessTransition': 'loading',
+        }))
+        Path(self.state + '.lock').touch()
+        Path(self.state + '.qwen38-runtime.json').write_text(json.dumps({
+            'generation': identity[2], 'containerIds': ids,
+        }))
+        return identity, ids
+
+    def test_startup_attach_holds_bounded_output_and_uses_safe_commands(self):
+        identity, ids = self.startup_identity()
+        popen, thread = subprocess.Popen, threading.Thread
+        readers = []
+        processes = []
+
+        def open_process(command, **kwargs):
+            rank = int(command[0] == 'ssh')
+            script = 'import os; os.write(1, b"x" * 9000 + b"end"); os._exit(137)'
+            if rank == 0:
+                script = script.replace('os._exit(137)', 'os.write(2, b"stderr"); os._exit(137)')
+            process = popen([sys.executable, '-c', script], **kwargs)
+            processes.append(process)
+            return process
+
+        def make_reader(**kwargs):
+            reader = thread(**kwargs)
+            readers.append(reader)
+            return reader
+
+        with patch.object(qwen.subprocess, 'Popen', side_effect=open_process) as spawn, \
+                patch.object(qwen.threading, 'Thread', side_effect=make_reader):
+            stop = qwen.start_rank_startup_logs(self.profile, identity, self.state, 1200)
+        self.addCleanup(stop)
+        reader, = readers
+        reader.join(timeout=5)
+        self.assertFalse(reader.is_alive())
+        for process in processes:
+            self.assertEqual(process.wait(timeout=5), 137)
+        self.assertEqual(stop(keep_tail=True), {
+            ids[0]: ('x' * (8192 - len('endstderr')) + 'endstderr', 137),
+            ids[1]: ('x' * (8192 - len('end')) + 'end', 137),
+        })
+        head, worker = spawn.call_args_list
+        attach = ['docker', 'attach', '--no-stdin', '--sig-proxy=false']
+        self.assertEqual(head.args[0], [*attach, ids[0]])
+        command = worker.args[0]
+        self.assertEqual(command[0], 'ssh')
+        self.assertEqual(command[-3:-1], ['--', self.profile.launcher_hints['blueWorkerSshTarget']])
+        script = shlex.split(command[-1])[-1]
+        self.assertIn(shlex.join(['timeout', '--foreground', '--kill-after=2s', '1200s', *attach, ids[1]]), script)
+        self.assertIn('</dev/null', script)
+        for call in (head, worker):
+            self.assertEqual(call.kwargs['stdin'], subprocess.DEVNULL)
+
+    def test_startup_attach_kills_client_and_tolerates_spawn_failure(self):
+        identity, _ = self.startup_identity()
+        with subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE) as child:
+            with patch.object(qwen.subprocess, 'Popen', side_effect=[child, FileNotFoundError()]) as spawn:
+                stop = qwen.start_rank_startup_logs(self.profile, identity, self.state, 1200)
+            self.addCleanup(stop)
+            self.assertEqual(stop(), {})
+            self.assertEqual(child.returncode, -signal.SIGKILL)
+            self.assertTrue(child.stdout.closed)
+            self.assertEqual(spawn.call_count, 2)
+
+    def test_rank_exit_tails_stay_in_private_history_and_exclude_failed_attaches(self):
+        path = Path(self.state + '.qwen38-rank-exit.json')
+        for bad_tail, bad_exit in [('ssh transport failure', 255), ('cannot attach to a stopped container', 1)]:
+            with self.subTest(bad_exit=bad_exit):
+                observations = [{
+                    'containerId': container_id, 'profile': qwen.PROFILE, 'running': False,
+                    'state': {'Status': 'exited', 'ExitCode': exit_code, 'OOMKilled': False,
+                              'Error': '', 'StartedAt': 'start', 'FinishedAt': 'end'},
+                } for container_id, exit_code in (('head-id', 1), ('worker-id', bad_exit))]
+                runner = Mock(side_effect=[subprocess.CompletedProcess([], 0, stdout=json.dumps(value))
+                                           for value in observations])
+                tails = {'head-id': ('engine traceback', 1), 'worker-id': (bad_tail, bad_exit),
+                         'stale-container': ('stale output', 1)}
+                with patch.object(qwen.sys, 'stderr', new_callable=io.StringIO) as stderr:
+                    qwen.capture_rank_exit(self.profile, self.state, log_tails=tails, runner=runner)
+                head, worker = json.loads(path.read_text())[-2:]
+                self.assertEqual(head['logTail'], 'engine traceback')
+                self.assertNotIn('logTail', worker)
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+                self.assertEqual(json.loads(stderr.getvalue())['entries'], [
+                    {key: value for key, value in head.items() if key != 'logTail'}, worker])
+                self.assertNotIn('engine traceback', stderr.getvalue())
 
     def test_capture_rank_exit_records_only_stopped_business_containers(self):
         path = Path(self.state + '.qwen38-rank-exit.json')

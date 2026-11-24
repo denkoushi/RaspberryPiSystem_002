@@ -374,8 +374,9 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
     # Detached start stays within the existing command timeout. Readiness is
     # fenced by selection + generation and never probes through a loading gateway.
     from business_tensorfold import runtime_status
-    from business_qwen38 import capture_rank_exit, runtime_status as qwen_runtime_status
-    deadline = time.monotonic() + 1200
+    from business_qwen38 import capture_rank_exit, runtime_status as qwen_runtime_status, start_rank_startup_logs
+    startup_timeout = 1200
+    deadline = time.monotonic() + startup_timeout
     failure = "business_readiness_timeout"
     last_error = TimeoutError(failure)
     base = ("http://192.168.100.11:8889" if profile.id == DEEPSEEK_PROFILE else
@@ -389,65 +390,77 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
             deadline = 0
         headers["Authorization"] = "Bearer " + key
     rank_exited = False
-    while time.monotonic() < deadline:
-        previously_exited, rank_exited = rank_exited, False
-        try:
-            with business_state_lock(config.active_model_state_path, exclusive=False):
-                state = business_selection_state(config.active_model_state_path)
-                if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) != identity or state["businessTransition"] != "loading":
-                    return
-                if profile.id == BUSINESS_QWEN38_PROFILE_ID:
-                    # The Qwen monitor is registered only after record_generation succeeds.
-                    status = qwen_runtime_status(profile, identity[2], config.active_model_state_path)
-                    rank_exited = any(r["running"] is False for r in status["ranks"])
-                    if rank_exited and previously_exited:
-                        failure = "business_rank_exited"
-                        last_error = RuntimeError(failure)
-                        break
-                    if rank_exited or not status["prepared"] or status["failureReason"]:
-                        raise ValueError("runtime not ready")
-                with urllib.request.urlopen(urllib.request.Request(base + "/v1/models", headers=headers), timeout=8) as response:
-                    models = json.load(response)["data"]
-                if not any(m.get("id") == "system-prod-primary" for m in models):
-                    raise ValueError("alias mismatch")
-                body = {"model": "system-prod-primary", "messages": [{"role": "user", "content": "Reply OK."}], "max_tokens": 16, "temperature": 0}
-                if profile.id == GLM_PROFILE:
-                    body["chat_template_kwargs"] = {"reasoning_effort": "low"}
-                elif profile.id == BUSINESS_QWEN38_PROFILE_ID:
-                    body["chat_template_kwargs"] = {"enable_thinking": False}
-                request = urllib.request.Request(base + "/v1/chat/completions", data=json.dumps(body).encode(), headers={**headers, "Content-Type": "application/json"})
-                with urllib.request.urlopen(request, timeout=30) as response:
-                    message = json.load(response)["choices"][0]["message"]
-                # The short probe budget can be spent on reasoning alone (vLLM names it reasoning or reasoning_content).
-                if not any(isinstance(message.get(k), str) and message[k].strip() for k in ("content", "reasoning_content", "reasoning")):
-                    raise ValueError("empty inference probe")
-                if profile.id == DEEPSEEK_PROFILE:
-                    status = runtime_status(identity[2])
-                    if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
-                        raise ValueError("runtime not ready")
-                elif profile.id == BUSINESS_QWEN38_PROFILE_ID:
-                    status = qwen_runtime_status(profile, identity[2], config.active_model_state_path)
-                    if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
-                        raise ValueError("runtime not ready")
-            with business_state_lock(config.active_model_state_path):
-                state = business_selection_state(config.active_model_state_path)
-                if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
-                    state["businessTransition"] = "ready"
-                    replace_active_payload(config.active_model_state_path, state)
-                    write_resource_state_best_effort(config, owner="business", status="ready",
-                        action="start", reason=None, profile=profile, backend=profile.backend,
-                        guarantee_level="post_only")
-            return
-        except Exception as exc:
-            last_error = exc
-            time.sleep(5)
+    stop_rank_logs = None
+    log_tails = None
+    try:
+        while time.monotonic() < deadline:
+            previously_exited, rank_exited = rank_exited, False
+            try:
+                with business_state_lock(config.active_model_state_path, exclusive=False):
+                    state = business_selection_state(config.active_model_state_path)
+                    if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) != identity or state["businessTransition"] != "loading":
+                        return
+                    if profile.id == BUSINESS_QWEN38_PROFILE_ID:
+                        # The Qwen monitor is registered only after record_generation succeeds.
+                        if stop_rank_logs is None:
+                            stop_rank_logs = start_rank_startup_logs(
+                                profile, identity, config.active_model_state_path, startup_timeout)
+                        status = qwen_runtime_status(profile, identity[2], config.active_model_state_path)
+                        rank_exited = any(r["running"] is False for r in status["ranks"])
+                        if rank_exited and previously_exited:
+                            failure = "business_rank_exited"
+                            last_error = RuntimeError(failure)
+                            break
+                        if rank_exited or not status["prepared"] or status["failureReason"]:
+                            raise ValueError("runtime not ready")
+                    with urllib.request.urlopen(urllib.request.Request(base + "/v1/models", headers=headers), timeout=8) as response:
+                        models = json.load(response)["data"]
+                    if not any(m.get("id") == "system-prod-primary" for m in models):
+                        raise ValueError("alias mismatch")
+                    body = {"model": "system-prod-primary", "messages": [{"role": "user", "content": "Reply OK."}], "max_tokens": 16, "temperature": 0}
+                    if profile.id == GLM_PROFILE:
+                        body["chat_template_kwargs"] = {"reasoning_effort": "low"}
+                    elif profile.id == BUSINESS_QWEN38_PROFILE_ID:
+                        body["chat_template_kwargs"] = {"enable_thinking": False}
+                    request = urllib.request.Request(base + "/v1/chat/completions", data=json.dumps(body).encode(), headers={**headers, "Content-Type": "application/json"})
+                    with urllib.request.urlopen(request, timeout=30) as response:
+                        message = json.load(response)["choices"][0]["message"]
+                    # The short probe budget can be spent on reasoning alone (vLLM names it reasoning or reasoning_content).
+                    if not any(isinstance(message.get(k), str) and message[k].strip() for k in ("content", "reasoning_content", "reasoning")):
+                        raise ValueError("empty inference probe")
+                    if profile.id == DEEPSEEK_PROFILE:
+                        status = runtime_status(identity[2])
+                        if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
+                            raise ValueError("runtime not ready")
+                    elif profile.id == BUSINESS_QWEN38_PROFILE_ID:
+                        status = qwen_runtime_status(profile, identity[2], config.active_model_state_path)
+                        if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
+                            raise ValueError("runtime not ready")
+                with business_state_lock(config.active_model_state_path):
+                    state = business_selection_state(config.active_model_state_path)
+                    if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
+                        if stop_rank_logs is not None:
+                            stop_rank_logs()
+                            stop_rank_logs = None
+                        state["businessTransition"] = "ready"
+                        replace_active_payload(config.active_model_state_path, state)
+                        write_resource_state_best_effort(config, owner="business", status="ready",
+                            action="start", reason=None, profile=profile, backend=profile.backend,
+                            guarantee_level="post_only")
+                return
+            except Exception as exc:
+                last_error = exc
+                time.sleep(5)
+    finally:
+        if stop_rank_logs is not None:
+            log_tails = stop_rank_logs(keep_tail=failure == "business_rank_exited")
     while True:
         try:
             with business_state_lock(config.active_model_state_path):
                 state = business_selection_state(config.active_model_state_path)
                 if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
                     if failure == "business_rank_exited":
-                        capture_rank_exit(profile, config.active_model_state_path)
+                        capture_rank_exit(profile, config.active_model_state_path, log_tails=log_tails)
                     state.update(businessTransition="failed", businessFailureReason=failure)
                     replace_active_payload(config.active_model_state_path, state)
                     write_resource_state_best_effort(config, owner="business", status="failed",
