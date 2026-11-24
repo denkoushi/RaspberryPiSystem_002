@@ -1,6 +1,7 @@
 import type { BackupConfig } from '../backup/backup-config.js';
 import { WORK_INSTRUCTION_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
 import type { WorkInstructionImportMessageView, WorkInstructionImportOutcome } from './domain/types.js';
+import { extractEmailAddress } from '../gmail/gmail-from-address.js';
 
 export const WORK_INSTRUCTION_IMPORT_JOB_TYPE = 'WORK_INSTRUCTION_GMAIL';
 export const WORK_INSTRUCTION_POLL_INTERVAL_MINUTES = 5;
@@ -75,10 +76,6 @@ export function isDueRetry(record: WorkInstructionImportMessageView, now: Date):
     (!record.nextRetryAt || record.nextRetryAt.getTime() <= now.getTime());
 }
 
-const MAX_FROM_HEADER_LENGTH = 998;
-
 export function extractEmail(from: string | undefined): string | undefined {
-  if (!from || from.length > MAX_FROM_HEADER_LENGTH) return undefined;
-  const bracketed = from.match(/<([^<>]+)>\s*$/);
-  return (bracketed?.[1] ?? from).trim().toLowerCase();
+  return extractEmailAddress(from);
 }
