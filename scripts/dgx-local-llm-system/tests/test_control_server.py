@@ -1246,7 +1246,7 @@ class BusinessQwenSwitchTests(unittest.TestCase):
                         servedAlias='system-prod-primary')
         manifest['runtimeProfile']['openaiModelId'] = 'system-prod-primary'
         manifest['runtimeProfile'].pop('guaranteeLevel')
-        target = self.manifest.parent.parent / 'qwen/manifest.json'
+        target = self.manifest.parent.parent / self.qwen / 'manifest.json'
         target.parent.mkdir()
         target.write_text(json.dumps(manifest))
         self.qwen_prepared = patch('business_qwen38.check_prepared')
@@ -1255,6 +1255,9 @@ class BusinessQwenSwitchTests(unittest.TestCase):
         self.record = patch('business_qwen38.record_generation')
         self.record_mock = self.record.start()
         self.addCleanup(self.record.stop)
+        capture = patch('business_qwen38.capture_rank_exit')
+        self.capture_mock = capture.start()
+        self.addCleanup(capture.stop)
 
     def test_unprepared_qwen_refuses_before_any_stop_or_selection_change(self):
         before = self.state_value()
@@ -1319,6 +1322,108 @@ class BusinessQwenSwitchTests(unittest.TestCase):
             body = json.loads(requests[1].data)
             self.assertEqual(body['chat_template_kwargs'], {'enable_thinking': False})
             self.assertNotIn('reasoning_effort', body)
+
+    def test_qwen_monitor_fails_after_two_rank_exit_observations(self):
+        from unittest.mock import patch
+        self.assertEqual(self.request(modelProfileId=self.qwen, reason='business-model-selection')[0], 200)
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        self.capture_mock.reset_mock()
+        exited = {'prepared': True, 'failureReason': 'business_rank_state_inconsistent',
+                  'ranks': [{'running': True}, {'running': False}]}
+        with patch('business_qwen38.runtime_status', return_value=exited) as inspect, \
+                patch.object(self.module.time, 'monotonic', side_effect=[0, 0, 5]), \
+                patch.object(self.module.time, 'sleep') as sleep, \
+                patch.object(self.module.urllib.request, 'urlopen') as probe, \
+                patch.object(self.module, 'log_business_failure') as log:
+            self.monitor.temp_original(config, identity, profile)
+        self.assertEqual(inspect.call_count, 2)
+        sleep.assert_called_once_with(5)
+        probe.assert_not_called()
+        self.capture_mock.assert_called_once_with(profile, config.active_model_state_path)
+        self.assertEqual(self.state_value()['businessTransition'], 'failed')
+        self.assertEqual(self.state_value()['businessFailureReason'], 'business_rank_exited')
+        resource = json.loads(Path(config.resource_state_path).read_text())
+        self.assertEqual((resource['status'], resource['reason']), ('failed', 'business_rank_exited'))
+        self.assertEqual(str(log.call_args.args[3]), 'business_rank_exited')
+
+    def test_qwen_monitor_recovers_after_isolated_exit_observations(self):
+        from unittest.mock import patch
+        self.assertEqual(self.request(modelProfileId=self.qwen, reason='business-model-selection')[0], 200)
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        self.capture_mock.reset_mock()
+        ready = {'prepared': True, 'failureReason': None, 'ranks': [{'running': True}, {'running': True}]}
+        exited = {**ready, 'failureReason': 'business_rank_state_inconsistent',
+                  'ranks': [{'running': True}, {'running': False}]}
+        replies = [io.BytesIO(b'{"data":[{"id":"system-prod-primary"}]}'),
+                   io.BytesIO(b'{"choices":[{"message":{"content":"OK"}}]}')]
+        with patch('business_qwen38.runtime_status', side_effect=[
+                exited, subprocess.CalledProcessError(255, 'ssh'), exited, ready, ready]) as inspect, \
+                patch.object(self.module.time, 'monotonic', side_effect=[0, 0, 5, 10, 15]), \
+                patch.object(self.module.time, 'sleep') as sleep, \
+                patch.object(self.module.urllib.request, 'urlopen', side_effect=replies):
+            self.monitor.temp_original(config, identity, profile)
+        self.assertEqual(inspect.call_count, 5)
+        self.assertEqual([call.args for call in sleep.call_args_list], [(5,), (5,), (5,)])
+        self.assertEqual(self.state_value()['businessTransition'], 'ready')
+        self.assertNotIn('businessFailureReason', self.state_value())
+        self.capture_mock.assert_not_called()
+
+    def test_qwen_start_failure_captures_before_blue_cleanup_and_status_is_readable(self):
+        from unittest.mock import patch
+        initial = self.state_value()
+        absent = {'id': None, 'profile': None, 'running': False, 'closed': True, 'startedAt': None}
+        running = {'id': 'worker-id', 'profile': self.qwen, 'running': True, 'closed': True, 'startedAt': 'start'}
+        for failed_step in ('adapter', 'record_generation'):
+            with self.subTest(failed_step=failed_step):
+                self.state.write_text(json.dumps(initial))
+                events = []
+                nodes = [absent, absent]
+                self.capture_mock.side_effect = lambda *args: events.append('capture')
+                self.record_mock.side_effect = None if failed_step == 'adapter' else RuntimeError('record failed')
+
+                def run(command, extra_env=None):
+                    events.append(command)
+                    if command == 'blue-start':
+                        nodes[1] = running
+                        if failed_step == 'adapter':
+                            raise subprocess.CalledProcessError(1, command)
+                    elif command == 'blue-stop':
+                        nodes[:] = [absent, absent]
+
+                self.handler = self.module.make_handler(self.config, run)
+                with patch('business_qwen38._observations', return_value=nodes):
+                    status, payload = self.request(modelProfileId=self.qwen, reason='business-model-selection')
+                    self.assertEqual((status, payload['code']), (503, 'business_runtime_start_failed'))
+                    status, payload = self.request('/system/resource-state', method='GET')
+                self.assertEqual(events, ['capture', 'blue-stop', 'green-stop', 'blue-start', 'capture', 'blue-stop'])
+                self.assertEqual(self.state_value()['businessTransition'], 'failed')
+                self.assertEqual(status, 200)
+                runtime = payload['businessRuntime']
+                self.assertTrue(runtime['apiListenerClosed'])
+                self.assertTrue(all(not rank['running'] for rank in runtime['ranks']))
+                self.assertEqual(runtime['failureReason'], 'business_runtime_start_failed')
+
+    def test_qwen_stop_records_before_commands(self):
+        from unittest.mock import patch
+        self.assertEqual(self.request(modelProfileId=self.qwen, reason='business-model-selection')[0], 200)
+        config = replace(self.config, blue_stop_mode='on_demand')
+        self.handler = self.module.make_handler(config, lambda cmd, env=None: self.calls.append((cmd, env)))
+        self.capture_mock.side_effect = lambda *args: self.calls.append(('capture', None))
+        for path, flags, commands in (
+                ('/stop-force', {}, ['blue-stop', 'green-stop']),
+                ('/stop', {}, ['blue-stop']),
+                ('/stop-force', {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'false'}, ['blue-stop'])):
+            with self.subTest(path=path, flags=flags), patch.dict('os.environ', flags):
+                self.calls.clear()
+                self.assertEqual(self.request(path)[0], 200)
+                self.assertEqual([cmd for cmd, _ in self.calls], ['capture', *commands])
+
+    def test_switch_from_qwen_records_before_blue_stop(self):
+        self.assertEqual(self.request(modelProfileId=self.qwen, reason='business-model-selection')[0], 200)
+        self.calls.clear()
+        self.capture_mock.side_effect = lambda *args: self.calls.append(('capture', None))
+        self.assertEqual(self.request(modelProfileId=self.profile.id, reason='business-model-selection')[0], 200)
+        self.assertEqual([cmd for cmd, _ in self.calls], ['capture', 'blue-stop', 'green-stop', 'blue-start'])
 
     def test_qwen_sharing_inspection_only_requested_when_enabled_and_ready(self):
         from unittest.mock import patch

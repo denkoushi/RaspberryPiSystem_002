@@ -1,6 +1,7 @@
 """Prepared-only business Qwen runtime evidence, separate from private state."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,8 @@ import re
 import shlex
 import stat
 import subprocess
+import sys
+import threading
 
 from model_profiles import ModelProfile
 
@@ -19,6 +22,7 @@ IMAGE = 'eugr/spark-vllm-b12x@sha256:03a956544e9f9b4b7ba91690469fbe7848bdbef29a7
 IMAGE_VLLM_ENV = frozenset({'VLLM_BASE_DIR=/workspace/vllm', 'VLLM_WSL2_ENABLE_PIN_MEMORY=1'})
 WEIGHTS_REVISION = '5638ef95592d5c0b6a83791f55b09051565cfd9b'
 RUNTIME_IDENTITY = 'vllm:qwen38_fp8_tp2:38083'
+_rank_exit_lock = threading.Lock()
 
 
 def sharing_evidence(generation: str) -> dict:
@@ -209,6 +213,62 @@ def _observations(profile: ModelProfile, runner) -> list[dict]:
         value['closed'] = lines[1] == 'true'
         result.append(value)
     return result
+
+
+def capture_rank_exit(profile: ModelProfile, state_path: str, *, runner=subprocess.run) -> None:
+    """Preserve Docker exit metadata before a lifecycle command removes the ranks."""
+    entries = []
+    recorded_at = datetime.now(timezone.utc).isoformat()
+    try:
+        nodes = _nodes(profile)
+    except Exception as error:
+        nodes = ()
+        entries.append({'recordedAt': recorded_at, 'error': type(error).__name__})
+    fields = ('Status', 'ExitCode', 'OOMKilled', 'Error', 'StartedAt', 'FinishedAt')
+    state_template = ','.join(f'"{field}":{{{{json .State.{field}}}}}' for field in fields)
+    template = ('{"containerId":{{json .Id}},"profile":{{json (index .Config.Labels "dgx.profile")}},'
+                '"running":{{json .State.Running}},"state":{' + state_template + '}}')
+    for rank, (target, _, name) in enumerate(nodes):
+        entry = {'rank': rank, 'recordedAt': recorded_at}
+        try:
+            script = ('id=$(docker ps -aq --no-trunc --filter ' + shlex.quote('name=^/' + name + '$')
+                      + ' --filter ' + shlex.quote('label=dgx.profile=' + PROFILE) + ')\n'
+                      + 'if test -n "$id"; then docker inspect -f ' + shlex.quote(template) + ' "$id"; fi')
+            output = _run(script, target, runner).strip()
+            if output:
+                observed = json.loads(output)
+                if observed['profile'] == PROFILE and observed['running'] is False:
+                    entry.update(containerId=observed['containerId'],
+                                 state={field: observed['state'][field] for field in fields},
+                                 logs='unavailable (log driver none)')
+                    entries.append(entry)
+        except Exception as error:
+            # Avoid copying SSH output or command text into the journal.
+            entry['error'] = type(error).__name__
+            if isinstance(error, subprocess.CalledProcessError):
+                entry['error'] += f' (exit {error.returncode})'
+            entries.append(entry)
+    if not entries:
+        return
+    event = {'event': 'business_qwen38_rank_exit', 'entries': entries}
+    try:
+        path = Path(state_path + '.qwen38-rank-exit.json')
+        with _rank_exit_lock:
+            try:
+                history = json.loads(path.read_text(encoding='utf-8'))
+            except (FileNotFoundError, ValueError):
+                history = []
+            if not isinstance(history, list):
+                history = []
+            temporary = path.with_suffix(path.suffix + '.tmp')
+            temporary.write_text(json.dumps((history + entries)[-20:]) + '\n', encoding='utf-8')
+            temporary.replace(path)
+    except Exception as error:
+        event['error'] = type(error).__name__
+    try:
+        sys.stderr.write(json.dumps(event) + '\n')
+    except Exception:
+        pass
 
 
 def record_generation(profile: ModelProfile, generation: str, state_path: str, *, runner=subprocess.run) -> None:

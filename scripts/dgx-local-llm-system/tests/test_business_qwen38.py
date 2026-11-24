@@ -1,4 +1,5 @@
 from dataclasses import replace
+import io
 import json
 import os
 import stat
@@ -46,6 +47,55 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
             status = qwen.runtime_status(self.profile, 'generation-1', self.state, sharing=sharing)
         prepared.assert_not_called()
         return status
+
+    def test_capture_rank_exit_records_only_stopped_business_containers(self):
+        path = Path(self.state + '.qwen38-rank-exit.json')
+        state = {'Status': 'exited', 'ExitCode': 137, 'OOMKilled': True, 'Error': '',
+                 'StartedAt': '2026-11-24T00:00:00Z', 'FinishedAt': '2026-11-24T00:01:00Z'}
+        exited = {'containerId': 'worker-id', 'profile': qwen.PROFILE, 'running': False,
+                  'state': {**state, 'Health': {'Log': ['excluded']}}}
+        running = {**exited, 'containerId': 'head-id', 'running': True}
+        other = {**exited, 'profile': 'private_other'}
+        runner = Mock(side_effect=[
+            subprocess.CompletedProcess([], 0, stdout=json.dumps(observed))
+            for observed in (running, other, running, exited)
+        ])
+        with patch.object(qwen.sys, 'stderr', new_callable=io.StringIO) as stderr:
+            qwen.capture_rank_exit(self.profile, self.state, runner=runner)
+            self.assertFalse(path.exists())
+            self.assertEqual(stderr.getvalue(), '')
+            qwen.capture_rank_exit(self.profile, self.state, runner=runner)
+        entry, = json.loads(path.read_text())
+        self.assertEqual(entry['containerId'], 'worker-id')
+        self.assertEqual(entry['rank'], 1)
+        self.assertEqual(entry['state'], state)
+        self.assertTrue(entry['recordedAt'].endswith('+00:00'))
+        self.assertEqual(entry['logs'], 'unavailable (log driver none)')
+        line, = stderr.getvalue().splitlines()
+        self.assertEqual(json.loads(line)['entries'], [entry])
+        for call in runner.call_args_list:
+            script = ' '.join(call.args[0])
+            self.assertIn('label=dgx.profile=' + qwen.PROFILE, script)
+            self.assertIn('docker inspect', script)
+            self.assertNotIn('docker logs', script)
+            self.assertNotIn('.Config.Env', script)
+
+    def test_capture_rank_exit_keeps_latest_20_and_records_ssh_failure(self):
+        path = Path(self.state + '.qwen38-rank-exit.json')
+        history = [{'containerId': str(i)} for i in range(20)]
+        path.write_text(json.dumps(history))
+        error = subprocess.CalledProcessError(255, 'ssh', stderr='transport details')
+        runner = Mock(side_effect=[subprocess.CompletedProcess([], 0, stdout=''),
+                                   error, subprocess.CompletedProcess([], 0), error])
+        with patch.object(qwen.sys, 'stderr', new_callable=io.StringIO) as stderr:
+            qwen.capture_rank_exit(self.profile, self.state, runner=runner)
+        entries = json.loads(path.read_text())
+        self.assertEqual(entries[:-1], history[1:])
+        self.assertEqual(entries[-1]['rank'], 1)
+        self.assertEqual(entries[-1]['error'], 'CalledProcessError (exit 255)')
+        self.assertEqual(json.loads(stderr.getvalue())['entries'], entries[-1:])
+        self.assertNotIn('transport details', stderr.getvalue())
+        self.assertFalse(path.with_suffix(path.suffix + '.tmp').exists())
 
     def test_remote_run_uses_secure_multiplexing_and_preserves_ssh_contract(self):
         runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout='fresh'))
