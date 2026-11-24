@@ -1,4 +1,4 @@
-import { normalizeMachineName } from '../productionSchedule/machineName';
+import { normalizeFullMachineName } from '../productionSchedule/machineName';
 
 import type { OutsourceNamedTarget, ProductionScheduleLoadBalancingWorkspaceRow as Row } from '../../../api/client';
 
@@ -7,7 +7,7 @@ export function partKey(row: Row): string {
 }
 
 export function namedTargetKey(kind: OutsourceNamedTarget['kind'], row: Row): string {
-  return kind === 'machine' ? normalizeMachineName(row.machineName, { maxChars: Number.MAX_SAFE_INTEGER }) : kind === 'seiban' ? row.fseiban.trim() : partKey(row);
+  return kind === 'machine' ? normalizeFullMachineName(row.machineName) : kind === 'seiban' ? row.fseiban.trim() : partKey(row);
 }
 
 export function namedTargetMatches(target: OutsourceNamedTarget, row: Row): boolean {

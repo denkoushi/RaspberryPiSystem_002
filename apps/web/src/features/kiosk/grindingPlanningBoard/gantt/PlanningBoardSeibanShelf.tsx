@@ -84,7 +84,7 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
   const visibleColumns = useMemo(() => columns.filter(column => {
     if (remaining && column.placed >= column.total) return false;
     if (!searchValue) return true;
-    const searchText = searchMode === '製番' ? column.seiban.toLowerCase() : column.modelDigits;
+    const searchText = searchMode === '製番' ? column.seiban : column.modelDigits;
     return searchText.includes(searchValue);
   }), [columns, remaining, searchMode, searchValue]);
   const { viewport: shelfViewport, window: shelfWindow, reveal: revealSeiban, scrollPage } = usePlanningBoardShelfWindow(visibleColumns, open, focusedSeiban, highlightedSeiban ?? null, highlightedItemId);
