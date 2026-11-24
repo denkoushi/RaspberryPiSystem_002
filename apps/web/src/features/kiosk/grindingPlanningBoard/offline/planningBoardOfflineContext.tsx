@@ -1,8 +1,8 @@
-import { isAxiosError } from 'axios';
 import { useCallback, createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 
 import { api, getResolvedClientKey } from '../../../../api/client';
+import { isStalePlanningBoardSnapshotError } from '../../../../api/hooks/production-schedule/stalePlanningBoardSnapshotError';
 
 import { createPlanningBoardConnectivity } from './planningBoardConnectivity';
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from './planningBoardOfflineConfig';
@@ -19,9 +19,6 @@ export type BoardReadParticipant = {
 const disabledSnapshot: BoardConnectivitySnapshot = { phase: 'online', generation: 0, recoveredUntil: null };
 const noop = () => undefined;
 const DATA_CHANGED_RETRY_MS = 1_000;
-/** The server rejected the read because the board data changed mid-read; the connection itself is fine. */
-const isDataChangedError = (error: unknown) => isAxiosError(error) && error.response?.status === 409 &&
-  (error.response.data as { errorCode?: unknown } | undefined)?.errorCode === 'STALE_PLANNING_BOARD_SNAPSHOT';
 const disabled = {
   enabled: false, frozen: false, snapshot: disabledSnapshot, gate: passThroughPlanningBoardWriteGate,
   displayedAt: null as number | null, now: () => Date.now(), notification: null as string | null,
@@ -224,7 +221,7 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
             report(true);
           });
         } catch (error) {
-          dataChanged = !reported && !disposed && isDataChangedError(error);
+          dataChanged = !reported && !disposed && isStalePlanningBoardSnapshotError(error);
           abort.abort();
           if (!dataChanged) report(false);
         } finally {
