@@ -2,6 +2,7 @@ import { GmailSenderVerificationSession } from '../../gmail/gmail-sender-verific
 import { createHash, randomUUID } from 'node:crypto';
 
 import { ApiError } from '../../../lib/errors.js';
+import { MAX_XLSX_BYTES } from '../../assembly/check-sheet/check-sheet-import.constants.js';
 import { prisma } from '../../../lib/prisma.js';
 import type { BackupConfig } from '../../backup/backup-config.js';
 import { collectGmailAttachments, type GmailApiClient } from '../../backup/gmail-api-client.js';
@@ -177,6 +178,7 @@ export class DScheduleMinutesGmailIngestionService {
         for (const attachment of collectGmailAttachments(message).filter((item) => /\.xlsx$/i.test(item.filename))) {
           try {
             const buffer = await gmail.getAttachment(gmailMessageId, attachment.attachmentId);
+            if (buffer.length > MAX_XLSX_BYTES) throw new InvalidMinutesError(`添付ファイルが大きすぎます: ${attachment.filename}`);
             const imported = await this.parseAndApply(buffer, { gmailMessageId, filename: attachment.filename, receivedAt, subject }, runs);
             if (imported) runs.set(imported.kind, imported.run);
           } catch (error) {

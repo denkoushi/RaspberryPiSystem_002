@@ -85,4 +85,9 @@ describe('item inventory Gmail ingestion policy', () => {
     expect(extractEmail(undefined)).toBeUndefined();
     expect(extractEmail('')).toBeUndefined();
   });
+
+  it('ignores From headers longer than one header line', () => {
+    expect(extractEmail('<'.repeat(5000))).toBeUndefined();
+    expect(extractEmail(`${'x'.repeat(980)} <ops@example.com>`)).toBe('ops@example.com');
+  });
 });

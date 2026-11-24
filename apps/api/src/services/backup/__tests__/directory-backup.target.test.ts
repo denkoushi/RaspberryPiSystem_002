@@ -63,8 +63,9 @@ describe('DirectoryBackupTarget', () => {
     expect(result.success).toBe(true);
     const extracted = path.join(workDir, 'extracted');
     await fs.mkdir(extracted);
-    const archive = path.join(workDir, 'restored.tar.gz');
-    expect((await service.restore(result.path!, { destination: archive })).success).toBe(true);
+    vi.stubEnv('BACKUP_STORAGE_DIR', workDir);
+    const archive = path.join(workDir, 'restored', 'restored.tar.gz');
+    expect((await service.restore(result.path!, { destination: 'restored.tar.gz' })).success).toBe(true);
     await execFileAsync('tar', ['-xzf', archive, '-C', extracted]);
     expect(await fs.readFile(path.join(extracted, 'nested', 'file.txt'), 'utf-8')).toBe(content);
     expect(await fs.readdir(tempDir)).toEqual([]);

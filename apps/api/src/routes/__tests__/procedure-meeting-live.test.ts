@@ -10,7 +10,10 @@ import {
 const mocks = vi.hoisted(() => ({ enabled: true }));
 vi.mock('../../config/env.js', () => ({ env: { get PROCEDURE_SPEECH_TO_TEXT_ENABLED() { return mocks.enabled; } } }));
 vi.mock('../../services/clients/client-device-auth.service.js', () => ({
-  findClientDeviceIdRecordByApiKey: async (key: string) => (key === 'good' ? { id: 'dev' } : null)
+  findClientDeviceIdRecordByApiKey: async (key: string) => {
+    if (key === 'slow') await new Promise(r => setTimeout(r, 200));
+    return key === 'good' || key === 'slow' ? { id: 'dev' } : null;
+  }
 }));
 vi.mock('../../services/inference/inference-runtime.js', () => ({
   getInferenceRuntime: () => ({ router: { resolve: () => ({ provider: { baseUrl: 'https://dgx.example:8443', sharedToken: 't' } }) } })
@@ -52,6 +55,16 @@ describe('meeting-live websocket', () => {
     const ws = await app.injectWS('/assembly/procedure-documents/meeting-live?clientKey=bad');
     const code = await new Promise(r => ws.once('close', c => r(c)));
     expect(code).toBe(1008);
+    expect(upstreams).toHaveLength(0);
+  });
+
+  it('closes the socket when data sent before the key check exceeds the buffer limit', async () => {
+    const ws = await app.injectWS('/assembly/procedure-documents/meeting-live?clientKey=slow');
+    const closed = new Promise(r => ws.once('close', c => r(c)));
+    const chunk = Buffer.alloc(60 * 1024, 1);
+    for (let i = 0; i < 40; i += 1) ws.send(chunk, { binary: true });
+    expect(await closed).toBe(1009);
+    await new Promise(r => setTimeout(r, 300));
     expect(upstreams).toHaveLength(0);
   });
 

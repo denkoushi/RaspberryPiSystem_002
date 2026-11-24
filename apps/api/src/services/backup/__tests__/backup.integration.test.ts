@@ -35,8 +35,10 @@ describe('BackupService integration (mock storage)', () => {
     expect(result.success).toBe(true);
     expect(result.path).toBeDefined();
 
-    const dest = path.join(tmp(), 'restored.txt');
-    const restored = await backupService.restore(result.path!, { destination: dest });
+    const baseDir = tmp();
+    vi.stubEnv('BACKUP_STORAGE_DIR', baseDir);
+    const dest = path.join(baseDir, 'restored', 'restored.txt');
+    const restored = await backupService.restore(result.path!, { destination: 'restored.txt' });
     expect(restored.success).toBe(true);
 
     const fs = await import('fs/promises');

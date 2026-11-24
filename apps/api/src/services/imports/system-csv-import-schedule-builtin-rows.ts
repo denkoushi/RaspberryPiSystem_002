@@ -191,5 +191,5 @@ export const SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS: Record<string, () => C
 export function resolveSystemCsvImportDefaultBuilder(
   id: string
 ): (() => CsvImportScheduleRow) | null {
-  return SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS[id] ?? null;
+  return Object.hasOwn(SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS, id) ? SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS[id] : null;
 }

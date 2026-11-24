@@ -35,8 +35,8 @@ describe('BackupService with LocalStorageProvider', () => {
     expect(result.success).toBe(true);
     expect(result.path).toBeDefined();
 
-    const restoredPath = path.join(workDir, 'restored.txt');
-    const restore = await backupService.restore(result.path!, { destination: restoredPath });
+    const restoredPath = path.join(workDir, 'restored', 'restored.txt');
+    const restore = await backupService.restore(result.path!, { destination: 'restored.txt' });
     expect(restore.success).toBe(true);
 
     const restoredContent = await fs.readFile(restoredPath, 'utf-8');

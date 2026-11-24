@@ -23,7 +23,9 @@ export function buildItemInventoryGmailSearchQuery(
   return clauses.join(' ');
 }
 
+const MAX_FROM_HEADER_LENGTH = 998;
+
 export function extractEmail(from: string | undefined): string | undefined {
-  if (!from) return undefined;
-  return (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLocaleLowerCase('en-US');
+  if (!from || from.length > MAX_FROM_HEADER_LENGTH) return undefined;
+  return (from.match(/<([^<>]+)>/)?.[1] ?? from).trim().toLocaleLowerCase('en-US');
 }

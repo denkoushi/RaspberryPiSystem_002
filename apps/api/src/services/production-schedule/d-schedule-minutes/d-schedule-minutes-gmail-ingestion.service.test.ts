@@ -111,6 +111,13 @@ describe('minutes Gmail attachments by kind', () => {
     expect(gmail.trashMessage).not.toHaveBeenCalled(); expect(gmail.markAsRead).toHaveBeenCalledOnce();
   });
 
+  it('rejects an oversized attachment as a permanent failure without parsing it', async () => {
+    dBuffer = Buffer.alloc(12 * 1024 * 1024 + 1);
+    messages = [mail('mail-1', ['d'])];
+    await expect(cycle()).rejects.toMatchObject({ permanentFailures: [expect.stringContaining('大きすぎます')] });
+    expect(runs.size).toBe(0);
+  });
+
   it('does not mark read if permanent and transient attachment failures coexist', async () => {
     dBuffer = Buffer.from('unrelated');
     gmail.getAttachment.mockImplementation(async (_id: string, attachmentId: string) => {

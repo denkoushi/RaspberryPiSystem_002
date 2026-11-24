@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { createReadStream, promises as fs } from 'fs';
 import { validateBackupForRestore } from './backup-restore-validation.js';
 import { requireBackupEncryptionKey } from './storage/backup-encryption.js';
+import { resolveRestoreDestination } from './restore-destination.js';
 import type { BackupProvider } from './backup-provider.interface.js';
 import type { BackupTarget } from './backup-target.interface.js';
 import type {
@@ -102,8 +103,9 @@ export class BackupService implements BackupProvider {
       const data = await validateBackupForRestore(await this.storage.download(backupId));
 
       if (options?.destination) {
-        await fs.mkdir(path.dirname(options.destination), { recursive: true });
-        await fs.writeFile(options.destination, data, { mode: 0o600 });
+        const destination = resolveRestoreDestination(options.destination);
+        await fs.mkdir(path.dirname(destination), { recursive: true });
+        await fs.writeFile(destination, data, { mode: 0o600 });
       }
 
       return {
