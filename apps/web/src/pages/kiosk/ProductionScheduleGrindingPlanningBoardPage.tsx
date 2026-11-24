@@ -706,11 +706,11 @@ export function PlanningBoardPage() {
         specialDueMode={view === 'resource' ? specialDueMode : null}
         onSpecialDueModeChange={view === 'resource' ? (mode) => { if (gate.attempt()) setSpecialDueMode(mode); } : undefined}
         specialDueDisabled={allocation === 'original' || interactionLocked || resourceDragDisabled}
-        feedback={offline.notification ? <div role="status" className="flex h-full items-center px-2 text-xs text-amber-200">{offline.notification}</div> : feedback || refreshRequired ? (
+        notice={offline.notification ? <div role="status" className="flex h-full items-center rounded-md bg-amber-950 px-2 text-xs text-amber-200">{offline.notification}</div> : feedback || refreshRequired ? (
           <div className={`flex h-full min-w-0 items-center gap-1 rounded-md px-2 text-xs ${
-            !feedback || feedbackKind === 'error' ? 'bg-rose-950/70 text-rose-100'
-              : feedbackKind === 'processing' ? 'bg-sky-950/60 text-sky-100'
-                : 'bg-emerald-950/60 text-emerald-100'
+            !feedback || feedbackKind === 'error' ? 'bg-rose-950 text-rose-100'
+              : feedbackKind === 'processing' ? 'bg-sky-950 text-sky-100'
+                : 'bg-emerald-950 text-emerald-100'
           }`} role="status">
             <span className="min-w-0 flex-1 truncate">{feedback ?? '表示中のデータが更新されています。最新状態を取得してください。'}</span>
             {refreshRequired ? (
@@ -719,8 +719,8 @@ export function PlanningBoardPage() {
             {feedback ? <button type="button" className="h-11 w-11 shrink-0 text-slate-300" onClick={clearFeedback} aria-label="通知を閉じる">✕</button> : null}
           </div>
         ) : boardQuery.appendError ? (
-          <div className="flex h-full items-center px-2 text-xs text-rose-200" role="alert"><span className="truncate">一覧の追加取得に失敗しました。再読み込みしてください。</span></div>
-        ) : boardQuery.isLoading || !scopeReady || boardQuery.isAppending ? (
+          <div className="flex h-full items-center rounded-md bg-rose-950 px-2 text-xs text-rose-200" role="alert"><span className="truncate">一覧の追加取得に失敗しました。再読み込みしてください。</span></div>
+        ) : null} feedback={!offline.notification && !feedback && !refreshRequired && !boardQuery.appendError && (boardQuery.isLoading || !scopeReady || boardQuery.isAppending) ? (
           <div className="flex h-full items-center px-2 text-xs text-slate-400" role="status"><span className="truncate">{boardQuery.isLoading || !scopeReady ? '一覧を読み込み中…' : '一覧を追加取得中…'}</span></div>
         ) : null}
         specialDueCounts={specialDueCounts}

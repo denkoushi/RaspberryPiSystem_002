@@ -50,13 +50,13 @@ describe('PlanningBoardToolbar forward controls', () => {
   it('reserves the same toolbar height across Gantt and focus controls', () => {
     const values = props();
     const { container, rerender } = render(<PlanningBoardToolbar {...values} />);
-    expect(container.firstElementChild).toHaveClass('h-[66px]', 'overflow-x-auto');
+    expect(container.querySelector('[data-planning-board-toolbar]')).toHaveClass('h-[66px]', 'overflow-x-auto');
     rerender(<PlanningBoardToolbar {...values} ganttEnabled={false} focusedSeiban="26-1041" />);
-    expect(container.firstElementChild).toHaveClass('h-[66px]');
+    expect(container.querySelector('[data-planning-board-toolbar]')).toHaveClass('h-[66px]');
   });
   it('scrolls the one-row toolbar sideways with a vertical mouse wheel', () => {
     const { container } = render(<PlanningBoardToolbar {...props()} />);
-    const toolbar = container.firstElementChild as HTMLDivElement;
+    const toolbar = container.querySelector('[data-planning-board-toolbar]') as HTMLDivElement;
     Object.defineProperty(toolbar, 'scrollWidth', { value: 1500, configurable: true });
     Object.defineProperty(toolbar, 'clientWidth', { value: 1000, configurable: true });
     const wheel = (deltaY: number) => fireEvent.wheel(toolbar, { deltaY, cancelable: true });
@@ -192,7 +192,7 @@ describe('PlanningBoardToolbar forward controls', () => {
     fireEvent.click(trigger);
     fireEvent.scroll(screen.getByTestId('gantt-scroll'));
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.scroll(container.firstElementChild!);
+    fireEvent.scroll(container.querySelector('[data-planning-board-toolbar]')!);
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
   it('toggles mode and navigates late work', () => {
@@ -287,6 +287,13 @@ describe('PlanningBoardToolbar forward controls', () => {
     render(<PlanningBoardToolbar {...props()} canUndoOrder={false} feedback={<span>保存中</span>} />);
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
     expect(screen.getByText('保存中').parentElement).toHaveClass('min-w-0', 'flex-1');
+  });
+  it('floats the notice below the scrolling toolbar so it stays visible', () => {
+    const { container } = render(<PlanningBoardToolbar {...props()} notice={<span>移動できません</span>} />);
+    const notice = screen.getByText('移動できません');
+    expect(notice.closest('[data-planning-board-toolbar]')).toBeNull();
+    expect(notice.closest('[data-planning-board-notice]')).toHaveClass('absolute', 'top-full');
+    expect(container.querySelector('[data-planning-board-toolbar]')?.parentElement).toHaveClass('relative');
   });
 });
 
