@@ -74,7 +74,8 @@ WORKDIR /app
 COPY --from=hermes-search-runtime /opt/hermes-node /opt/hermes-node
 COPY --from=hermes-search-runtime /opt/hermes-runtime /opt/hermes-runtime
 ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
-ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
+# NDLOCR-Lite 2.0.0 (tag commit).
+ARG NDLOCR_LITE_COMMIT=1f3adc7af311af1ce4cbbd4d9089f30781d01313
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
 ARG APT_CACHE_BUST=2026-11-24
@@ -109,18 +110,26 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && zlib_version="$(dpkg-query -W -f='${Version}' zlib1g)" \
   && dpkg --compare-versions "${zlib_version}" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' \
     || { echo "zlib1g is below the required fixed version: ${zlib_version}" >&2; exit 1; } \
-  # ndlocr-lite pins PyYAML 6.0.1; pip cannot uninstall Debian's python3-yaml (no RECORD), so install beside it.
-  && python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed "PyYAML==6.0.1" \
+  # ndlocr-lite pins PyYAML 6.0.1 and cryptography 50.0.2; pip cannot uninstall Debian's python3-yaml / python3-cryptography (no RECORD), so install beside them.
+  && python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed "PyYAML==6.0.1" "cryptography==50.0.2" \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
   && python3 -m pip install --no-cache-dir --break-system-packages "protobuf>=6.33.5,<7" "pillow>=13.0.0,<14" "lxml>=6.1.0,<7" \
-  # ndlocr-lite pins flet 0.27.6 (oauthlib<4) for its GUI only; the API uses the CLI, so take the CVE-2026-49272 fix.
+  # Keep oauthlib (pulled in by ndlocr-lite's GUI dependency flet) on the CVE-2026-49272 fix; the API uses the CLI only.
   && python3 -m pip install --no-cache-dir --break-system-packages "oauthlib>=4.0.0,<5" \
   && python3 -m pip install --no-cache-dir --break-system-packages "rapidocr==3.8.4" "onnxruntime==1.20.1" \
   # Bundled package test suites are never imported at runtime; dropping them keeps the image within its budget.
   && find /usr/local/lib/python3*/dist-packages -depth -type d -name tests -exec rm -rf {} + \
   && command -v ndlocr-lite \
   && ndlocr-lite --help >/dev/null \
+  # ndlocr-lite 2.x fetches its OCR models on first use; bake them into its bundled model dir so the API never downloads at runtime.
+  && ndl_model_dir="$(python3 -c 'import ocr, os; print(os.path.join(os.path.dirname(ocr.__file__), "model"))')" \
+  && mkdir -p /tmp/ndl-warmup-out "${ndl_model_dir}" \
+  && python3 -c "from PIL import Image; Image.new('RGB', (400, 200), 'white').save('/tmp/ndl-warmup.png')" \
+  && XDG_CACHE_HOME=/tmp/ndl-model-cache ndlocr-lite --sourceimg /tmp/ndl-warmup.png --output /tmp/ndl-warmup-out >/dev/null \
+  && mv /tmp/ndl-model-cache/ndlocr-lite/models/v2/*.onnx "${ndl_model_dir}/" \
+  && chmod 0644 "${ndl_model_dir}"/*.onnx \
+  && rm -rf /tmp/ndl-model-cache /tmp/ndl-warmup.png /tmp/ndl-warmup-out \
   && python3 -c "from rapidocr import RapidOCR; print('rapidocr-ok')" \
   && python3 -c "import oauthlib; assert int(oauthlib.__version__.split('.')[0]) >= 4, oauthlib.__version__" \
   && apt-get purge -y python3-pip curl gpg \
