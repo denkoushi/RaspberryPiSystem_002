@@ -1,5 +1,4 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -8,6 +7,7 @@ import {
   snapFseibanTokens,
   verifyMobilePlacementSlipMatch
 } from '../../api/client';
+import { getApiErrorMessage } from '../../api/errors';
 import {
   BARCODE_FORMAT_PRESET_ALL_COMMON,
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE
@@ -26,16 +26,6 @@ import { createSlipVerifyRecorder } from './verify-records/recordSlipVerify';
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
 import type { ActualSlipOcrResponse, MobilePlacementSlipMatchResponse } from '../../api/domains/mobile-placement';
-
-function errorMessageOf(e: unknown, fallback: string): string {
-  return isAxiosError(e)
-    ? typeof e.response?.data?.message === 'string'
-      ? e.response.data.message
-      : e.message
-    : e instanceof Error
-      ? e.message
-      : fallback;
-}
 
 function isBranchSelectionEmpty(branchId: string | null): branchId is '' | null {
   return branchId == null || branchId.length === 0;
@@ -176,7 +166,7 @@ export function useMobilePlacementPageState() {
       const res = await read();
       if (res) applyActualSlipOcrResponse(res);
     } catch (e: unknown) {
-      const msg = errorMessageOf(e, '読取に失敗しました');
+      const msg = getApiErrorMessage(e, '読取に失敗しました');
       setActualSlipOcrFeedback({
         ...initialActualSlipOcrFeedback,
         status: 'error',
@@ -259,7 +249,7 @@ export function useMobilePlacementPageState() {
       void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
       void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.orderPlacementBranchesAll });
     } catch (e: unknown) {
-      const msg = errorMessageOf(e, '登録に失敗しました');
+      const msg = getApiErrorMessage(e, '登録に失敗しました');
       setRegisterError(msg);
     } finally {
       setRegisterSubmitting(false);

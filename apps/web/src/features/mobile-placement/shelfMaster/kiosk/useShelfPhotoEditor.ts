@@ -1,9 +1,9 @@
 import { composeArea, type ShelfDirection } from '@raspi-system/shelf-layout-core';
 import { useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import { useEffect, useRef, useState } from 'react';
 
 import { deleteMobilePlacementShelf, getMobilePlacementShelfPhoto, patchMobilePlacementShelfMemo, putMobilePlacementShelfPhoto } from '../../../../api/client';
+import { getApiErrorMessage } from '../../../../api/errors';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
 import { resizeShelfPhoto, rotateShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
 import { useShelfMachines } from '../../useShelfMachines';
@@ -61,7 +61,7 @@ export function useShelfPhotoEditor({ shelf, shelves, machinesQuery, devicesQuer
       onClose();
       onMessage?.(`${shelf.shelfCodeRaw} を消しました`);
     } catch (e) {
-      setError(isAxiosError(e) && typeof e.response?.data?.message === 'string' ? e.response.data.message : e instanceof Error ? e.message : '削除できませんでした');
+      setError(getApiErrorMessage(e, '削除できませんでした'));
       setConfirmDelete(false);
     } finally {
       setBusy(false);
@@ -92,7 +92,7 @@ export function useShelfPhotoEditor({ shelf, shelves, machinesQuery, devicesQuer
       }
       onClose();
     } catch (e) {
-      setError(isAxiosError(e) && typeof e.response?.data?.message === 'string' ? e.response.data.message : e instanceof Error ? e.message : '保存できませんでした');
+      setError(getApiErrorMessage(e, '保存できませんでした'));
     } finally {
       void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
       setBusy(false);
