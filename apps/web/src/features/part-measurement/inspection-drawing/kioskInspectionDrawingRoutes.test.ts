@@ -4,6 +4,7 @@ import {
   isKioskInspectionDrawingPath,
   isKioskPartMeasurementHubPath,
   kioskInspectionDrawingCreatePathWithSource,
+  kioskInspectionDrawingCreatePathWithVisual,
   kioskInspectionDrawingPaperReportPrintPath,
   kioskInspectionDrawingTemplateEditPath,
   kioskInspectionDrawingTemplatePrintPath,
@@ -12,6 +13,7 @@ import {
   normalizeKioskInspectionDrawingPrintReturnTo,
   parseKioskInspectionDrawingPrintReturnToFromSearch,
   parseInspectionDrawingPrintPlannedQuantityFromSearch,
+  parseInspectionDrawingProcessGroupFromSearch,
   parseInspectionDrawingSourceTemplateIdFromSearch
 } from './kioskInspectionDrawingRoutes';
 
@@ -22,6 +24,19 @@ describe('kioskInspectionDrawingRoutes', () => {
 
   it('create path constant', () => {
     expect(KIOSK_INSPECTION_DRAWING_CREATE_PATH).toBe('/kiosk/part-measurement/inspection/create');
+  });
+
+  it.each(['grinding', 'cutting'] as const)('passes %s through the visual create URL', (processGroup) => {
+    const path = kioskInspectionDrawingCreatePathWithVisual('visual&1', processGroup);
+    expect(path).toBe(`${KIOSK_INSPECTION_DRAWING_CREATE_PATH}?visualTemplateId=visual%261&processGroup=${processGroup}`);
+    expect(parseInspectionDrawingProcessGroupFromSearch(new URL(path, 'https://test.invalid').search)).toBe(processGroup);
+  });
+
+  it('ignores missing and invalid process groups', () => {
+    expect(parseInspectionDrawingProcessGroupFromSearch('?visualTemplateId=visual-1')).toBeNull();
+    expect(parseInspectionDrawingProcessGroupFromSearch('?processGroup=')).toBeNull();
+    expect(parseInspectionDrawingProcessGroupFromSearch('?processGroup=GRINDING')).toBeNull();
+    expect(parseInspectionDrawingProcessGroupFromSearch('?processGroup=other')).toBeNull();
   });
 
   it('template edit path helper', () => {

@@ -21,7 +21,12 @@ import {
 import { KioskInspectionDrawingVisualRenameModal } from './KioskInspectionDrawingVisualRenameModal';
 import { useInspectionDrawingVisualLibrary } from './useInspectionDrawingVisualLibrary';
 
-import type { PartMeasurementVisualTemplateDto } from '../types';
+import type { PartMeasurementProcessGroup, PartMeasurementVisualTemplateDto } from '../types';
+
+const CREATE_PROCESS_OPTIONS = [
+  ['grinding', '研削'],
+  ['cutting', '切削']
+] as const;
 
 type Props = {
   refreshToken?: number;
@@ -32,6 +37,7 @@ type Props = {
   previewVisuals?: PartMeasurementVisualTemplateDto[];
   /** 図面 ID ごとの資源 CD（未指定時はチップ行を描画しない） */
   resourceCdsByVisualId?: Record<string, string[]>;
+  processGroupsByVisualId?: Record<string, PartMeasurementProcessGroup[]>;
   resourceNameMap?: Record<string, string[]>;
   /** メニューバー数字テンキーのクライアント絞り込み（数字部分一致） */
   digitQuery?: string;
@@ -43,6 +49,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
   onVisualRenamed,
   previewVisuals,
   resourceCdsByVisualId,
+  processGroupsByVisualId,
   resourceNameMap = {},
   digitQuery = ''
 }: Props) {
@@ -144,9 +151,9 @@ export function KioskInspectionDrawingVisualLibrarySection({
         ) : (
           <table className="w-full table-fixed border-collapse text-left text-xs" aria-label="図面ライブラリ">
             <colgroup>
-              <col className="w-[60%]" data-testid="inspection-visual-name-column" />
-              <col className="w-[22%]" />
-              <col className="w-[18%]" />
+              <col className="w-[46%]" data-testid="inspection-visual-name-column" />
+              <col className="w-[20%]" />
+              <col className="w-[34%]" />
             </colgroup>
             <thead className="sticky top-0 bg-slate-900 text-xs text-white/70">
               <tr className="border-b border-white/10">
@@ -159,6 +166,7 @@ export function KioskInspectionDrawingVisualLibrarySection({
               {visuals.map((visual) => {
                 const resourceCds = resourceCdsByVisualId?.[visual.id];
                 const showResourceRow = resourceCds != null && resourceCds.length > 0;
+                const processGroups = processGroupsByVisualId?.[visual.id];
 
                 return (
                   <Fragment key={visual.id}>
@@ -171,42 +179,47 @@ export function KioskInspectionDrawingVisualLibrarySection({
                       </td>
                       <td className="px-2 pb-0.5 pt-1.5">
                         <div className="flex justify-end gap-1">
-                            {showResourceRow ? (
-                              <span
-                                className={buttonClassName(
-                                  'ghostOnDark',
-                                  'inline-flex shrink-0 cursor-not-allowed items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap opacity-45'
-                                )}
-                                title="有効テンプレあり。右の一覧から編集してください"
-                                aria-disabled="true"
-                              >
-                                新規
-                              </span>
-                            ) : (
-                              <Link
-                                {...inspectionDrawingSopTargetProps('create-from-visual')}
-                                to={kioskInspectionDrawingCreatePathWithVisual(visual.id)}
-                                state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
-                                title="新規作成"
-                                className={buttonClassName(
-                                  'primary',
-                                  clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
-                                )}
-                              >
-                                新規
-                              </Link>
+                          <div className="flex shrink-0 gap-1" {...inspectionDrawingSopTargetProps('create-from-visual')}>
+                            {CREATE_PROCESS_OPTIONS.map(([processGroup, label]) =>
+                              processGroups?.includes(processGroup) ? (
+                                <span
+                                  key={processGroup}
+                                  className={buttonClassName(
+                                    'ghostOnDark',
+                                    'inline-flex shrink-0 cursor-not-allowed items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap opacity-45'
+                                  )}
+                                  title={`${label}の有効テンプレあり。右の一覧から編集してください`}
+                                  aria-disabled="true"
+                                >
+                                  {label}
+                                </span>
+                              ) : (
+                                <Link
+                                  key={processGroup}
+                                  to={kioskInspectionDrawingCreatePathWithVisual(visual.id, processGroup)}
+                                  state={INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE}
+                                  title={`${label}で新規作成`}
+                                  className={buttonClassName(
+                                    'primary',
+                                    clsx(kioskButtonPrimaryClassName, 'inline-flex shrink-0 items-center justify-center !px-1.5 !py-0 text-xs leading-none whitespace-nowrap')
+                                  )}
+                                >
+                                  {label}
+                                </Link>
+                              )
                             )}
-                            <button
-                              {...inspectionDrawingSopTargetProps('rename-visual')}
-                              type="button"
-                              title="名称変更"
-                              className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
-                              disabled={isPreview}
-                              onClick={() => setRenameTarget(visual)}
-                            >
-                              名称
-                            </button>
                           </div>
+                          <button
+                            {...inspectionDrawingSopTargetProps('rename-visual')}
+                            type="button"
+                            title="名称変更"
+                            className={clsx(kioskButtonSecondaryClassName, 'min-h-11 shrink-0 whitespace-nowrap !px-1.5 !py-0 text-xs leading-none')}
+                            disabled={isPreview}
+                            onClick={() => setRenameTarget(visual)}
+                          >
+                            名称
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {showResourceRow ? (

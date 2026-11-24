@@ -152,6 +152,7 @@ export {
   INSPECTION_DRAWING_RETURN_TO_LIBRARY_STATE,
   normalizeKioskInspectionDrawingPrintReturnTo,
   parseKioskInspectionDrawingPrintReturnToFromSearch,
+  parseInspectionDrawingProcessGroupFromSearch,
   parseInspectionDrawingSourceTemplateIdFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch
 } from './kioskInspectionDrawingRoutes';

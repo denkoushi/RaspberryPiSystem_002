@@ -14,8 +14,8 @@ describe('kioskInspectionDrawingRoutes visualTemplateId', () => {
 
   it('kioskInspectionDrawingCreatePathWithVisual builds create URL', () => {
     const id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-    expect(kioskInspectionDrawingCreatePathWithVisual(id)).toBe(
-      `/kiosk/part-measurement/inspection/create?visualTemplateId=${id}`
+    expect(kioskInspectionDrawingCreatePathWithVisual(id, 'cutting')).toBe(
+      `/kiosk/part-measurement/inspection/create?visualTemplateId=${id}&processGroup=cutting`
     );
   });
 });

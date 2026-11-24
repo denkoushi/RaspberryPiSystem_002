@@ -30,6 +30,11 @@ import { transferItemsSemantically, unplacedSemanticItems } from './part-measure
 import { siblingMatchesSchema, SIBLING_MATCH_VERSION } from './part-measurement-drawing-sibling-match.js';
 import { PartMeasurementDrawingSiblingMatchService } from './part-measurement-drawing-sibling-match.service.js';
 
+const BASELINE_KINDS_BY_PROCESS_GROUP: Partial<Record<PartMeasurementProcessGroup, readonly string[]>> = {
+  GRINDING: ['外寸', '幾何公差'],
+  CUTTING: ['外寸', 'ピッチ', '深さ', 'はめあい']
+};
+
 export const currentPlacementVersion = (processGroup: PartMeasurementProcessGroup) =>
   processGroup === 'CUTTING' && env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED ? 'layout-v1' :
     env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED ? 'semantic-v1' : 'transfer-v2';
@@ -354,9 +359,15 @@ export class PartMeasurementDrawingPlacementService {
       include: runInclude
     });
     if (!run) return null;
+    const kinds = BASELINE_KINDS_BY_PROCESS_GROUP[processGroup];
+    if (!kinds) return null;
     const existingItems = await this.baselineExistingItems(visualTemplateId, processGroup);
     const proposals = run.proposals
-      .filter((row) => row.status === 'PROPOSED')
+      .filter(({ status, dimension }) =>
+        (status === 'PROPOSED' || status === 'APPROVED') &&
+        dimension !== null && typeof dimension === 'object' && 'kind' in dimension &&
+        typeof dimension.kind === 'string' && kinds.includes(dimension.kind)
+      )
       .map((row) => ({ ...toEditorProposal(row), markerAtRatio: true as const }))
       .filter((row) => !baselineItemAlreadyExists(row, existingItems));
     if (proposals.length === 0) return null;

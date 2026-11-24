@@ -3,6 +3,7 @@ import { KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX } from '../../kiosk/leaderOrderBoa
 import { INSPECTION_DRAWING_PRINT_MAX_ENTRY_COUNT } from './inspectionDrawingPrintConstants';
 import { normalizeInternalInspectionDrawingReturnPath } from './inspectionDrawingReturnNavigation';
 
+import type { PartMeasurementProcessGroup } from '../types';
 import type { InspectionDrawingLocationReturn } from './inspectionDrawingReturnNavigation';
 
 /** キオスクヘッダー「検査図面」タブのルート接頭辞 */
@@ -123,6 +124,7 @@ function normalizeInspectionDrawingPrintPlannedQuantity(value: number | null | u
 
 const KIOSK_INSPECTION_DRAWING_SOURCE_TEMPLATE_ID_QUERY = 'sourceTemplateId';
 const KIOSK_INSPECTION_DRAWING_VISUAL_TEMPLATE_ID_QUERY = 'visualTemplateId';
+const KIOSK_INSPECTION_DRAWING_PROCESS_GROUP_QUERY = 'processGroup';
 
 export function parseInspectionDrawingSourceTemplateIdFromSearch(search: string): string | null {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
@@ -136,6 +138,11 @@ export function parseInspectionDrawingVisualTemplateIdFromSearch(search: string)
   return raw && raw.length > 0 ? raw : null;
 }
 
+export function parseInspectionDrawingProcessGroupFromSearch(search: string): PartMeasurementProcessGroup | null {
+  const raw = new URLSearchParams(search).get(KIOSK_INSPECTION_DRAWING_PROCESS_GROUP_QUERY);
+  return raw === 'cutting' || raw === 'grinding' ? raw : null;
+}
+
 export function kioskInspectionDrawingCreatePathWithSource(sourceTemplateId: string): string {
   const params = new URLSearchParams({
     [KIOSK_INSPECTION_DRAWING_SOURCE_TEMPLATE_ID_QUERY]: sourceTemplateId
@@ -143,9 +150,13 @@ export function kioskInspectionDrawingCreatePathWithSource(sourceTemplateId: str
   return `${KIOSK_INSPECTION_DRAWING_CREATE_PATH}?${params.toString()}`;
 }
 
-export function kioskInspectionDrawingCreatePathWithVisual(visualTemplateId: string): string {
+export function kioskInspectionDrawingCreatePathWithVisual(
+  visualTemplateId: string,
+  processGroup: PartMeasurementProcessGroup
+): string {
   const params = new URLSearchParams({
-    [KIOSK_INSPECTION_DRAWING_VISUAL_TEMPLATE_ID_QUERY]: visualTemplateId
+    [KIOSK_INSPECTION_DRAWING_VISUAL_TEMPLATE_ID_QUERY]: visualTemplateId,
+    [KIOSK_INSPECTION_DRAWING_PROCESS_GROUP_QUERY]: processGroup
   });
   return `${KIOSK_INSPECTION_DRAWING_CREATE_PATH}?${params.toString()}`;
 }
