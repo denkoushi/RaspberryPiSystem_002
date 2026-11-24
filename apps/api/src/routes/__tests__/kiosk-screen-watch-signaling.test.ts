@@ -53,6 +53,15 @@ describe('single signaling socket routes', () => {
     expect(read(viewer)).toEqual([{ type: 'error', payload: { watchId: 'watch', message: 'Unauthorized watch participant' } }]);
     expect(target.send).not.toHaveBeenCalled();
   });
+  it('identifies a rejected input so the viewer can keep watching', async () => {
+    const message = { type: 'watch.input', payload: { watchId: 'watch', kind: 'key', key: 'a' } };
+    handle.mockRejectedValueOnce(new Error('Watch control is not active'));
+    await viewer.receive(message);
+    expect(handle).toHaveBeenCalledWith('viewer', message);
+    expect(read(viewer)).toEqual([{ type: 'error', payload: {
+      watchId: 'watch', requestType: 'watch.input', message: 'Watch control is not active'
+    } }]);
+  });
   it('preserves call invite, accept, SDP relay and hangup behavior', async () => {
     await viewer.receive({ type: 'invite', to: 'target' });
     const incoming = read(target).at(-1);

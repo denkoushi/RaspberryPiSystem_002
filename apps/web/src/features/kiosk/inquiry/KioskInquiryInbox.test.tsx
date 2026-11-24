@@ -165,6 +165,13 @@ describe('KioskInquiryInbox', () => {
     await waitFor(() => expect(mocks.reply).toHaveBeenCalledWith('thread-1', '行きます', undefined, expect.any(AbortSignal)));
     expect(mocks.open).toHaveBeenCalledWith('thread-1', undefined, expect.any(AbortSignal));
   });
+  it('starts a screen watch without a badge after login unlock', async () => {
+    mocks.open.mockResolvedValue({ ...detail, canViewScreen: true, thread: { ...detail.thread, kind: 'INQUIRY', isReceiver: true } });
+    renderInbox(true, true);
+    fireEvent.click(await screen.findByRole('button', { name: /加工キオスク/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '画面を見る' }));
+    expect(startWatch).toHaveBeenLastCalledWith('thread-1', undefined, '加工キオスク');
+  });
 
   it.each(['list', 'open', 'reply'] as const)('relocks with a login prompt on login-unlocked %s access errors', async action => {
     const failure = { isAxiosError: true, response: { status: 401, data: { errorCode: 'KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED' } } };

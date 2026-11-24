@@ -11,11 +11,58 @@ import { normalizeVideoPointer, validPointer } from './pointer';
 import { registerWatchStarter } from './startWatch';
 import { startCapture as captureDisplay, stopStream, useScreenWatchPeer } from './useScreenWatchPeer';
 
+import type { PointerPosition } from './pointer';
 import type { SignalingEvent } from '../../webrtc/signalingBus';
 import type { WatchMessage } from '../../webrtc/types';
 import './screen-watch.css';
 
-type WatchState = { watchId: string; label: string; active: boolean };
+type WatchState = { watchId: string; label: string; active: boolean; control: 'off' | 'requested' | 'on' };
+const allowedKeys = new Set(['Backspace', 'Enter', 'Tab', 'Escape', 'ArrowLeft', 'ArrowRight']);
+const printableKey = (key: string) => key.length === 1 && /^[\x20-\x7e]$/.test(key);
+const editableInputTypes = new Set(['text', 'search', 'number', 'tel', 'url', 'email']);
+const remoteKeyEvents = new WeakSet<KeyboardEvent>();
+const watchUi = '.screen-watch__viewer, .screen-watch__target-pill, .screen-watch__consent-overlay, .screen-watch__notice';
+
+function clickScreenPoint({ x, y }: PointerPosition) {
+  const clientX = x * window.innerWidth;
+  const clientY = y * window.innerHeight;
+  const element = document.elementFromPoint(clientX, clientY);
+  if (!element || element.closest(watchUi)) return;
+  const event = { clientX, clientY, bubbles: true, cancelable: true };
+  const pointer = { ...event, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+  element.dispatchEvent(new PointerEvent('pointerdown', { ...pointer, buttons: 1 }));
+  element.dispatchEvent(new MouseEvent('mousedown', { ...event, buttons: 1 }));
+  element.closest<HTMLElement>('a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]')?.focus();
+  element.dispatchEvent(new PointerEvent('pointerup', pointer));
+  element.dispatchEvent(new MouseEvent('mouseup', event));
+  element.dispatchEvent(new MouseEvent('click', event));
+}
+
+function applyScreenKey(key: string) {
+  const field = document.activeElement;
+  if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) return;
+  const isInput = field instanceof HTMLInputElement;
+  if ((isInput && !editableInputTypes.has(field.type)) || field.disabled || field.closest(watchUi)) return;
+  if (key !== 'Backspace' && !printableKey(key)) {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    remoteKeyEvents.add(event);
+    if (field.dispatchEvent(event) && key === 'Enter' && isInput) field.form?.requestSubmit();
+    return;
+  }
+  if (field.readOnly) return;
+  const { value, selectionStart, selectionEnd } = field;
+  const start = selectionStart ?? value.length;
+  const end = selectionEnd ?? start;
+  const inserted = key === 'Backspace' ? '' : key;
+  const from = key === 'Backspace' && start === end ? start - (Array.from(value.slice(0, start)).at(-1)?.length ?? 0) : start;
+  const nextValue = value.slice(0, from) + inserted + value.slice(end);
+  if (value === nextValue || (inserted && field.maxLength >= 0 && nextValue.length > field.maxLength)) return;
+  const prototype = isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(field, nextValue);
+  if (selectionStart !== null) field.setSelectionRange(from + inserted.length, from + inserted.length);
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 const stoppedText = (reason?: string) => reason === 'target' ? '相手が止めました'
   : reason === 'timeout' ? '応答がありませんでした'
   : reason === 'NotAllowedError' || reason === 'NotReadableError' ? '相手の端末で 画面を取れませんでした'
@@ -43,7 +90,10 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
   const [notice, setNotice] = useState('');
   const [pointing, setPointing] = useState(false);
   const [ring, setRing] = useState<{ x: number; y: number; role: 'target' | 'viewer' } | null>(null);
+  const [cursor, setCursor] = useState<PointerPosition | null>(null);
+  const [ripple, setRipple] = useState<(PointerPosition & { at: number }) | null>(null);
   const lastPointer = useRef(-Infinity);
+  const lastMove = useRef(-Infinity);
   const viewerSignals = useRef<WatchMessage['payload'][]>([]);
   const targetRef = useRef(target);
   const viewerRef = useRef(viewer);
@@ -63,6 +113,7 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
   });
   const updateTarget = useCallback((value: WatchState | null) => {
     if (!value) { targetPeer.close(); setRing(null); }
+    if (value?.control !== 'on') { setCursor(null); setRipple(null); }
     targetRef.current = value; setTarget(value);
   }, [targetPeer]);
   const updateViewer = useCallback((value: WatchState | null) => {
@@ -80,6 +131,26 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
     const timer = window.setTimeout(() => setRing(null), ring.role === 'target' ? 2500 : 700);
     return () => window.clearTimeout(timer);
   }, [ring]);
+  useEffect(() => {
+    if (!ripple) return;
+    const timer = window.setTimeout(() => setRipple(null), 400);
+    return () => window.clearTimeout(timer);
+  }, [ripple]);
+
+  const viewerOperating = viewer?.control === 'on';
+  useEffect(() => {
+    if (!viewerOperating) return;
+    const forwardKey = (event: KeyboardEvent) => {
+      const session = viewerRef.current;
+      if (session?.control !== 'on' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey
+        || remoteKeyEvents.has(event) || (!printableKey(event.key) && !allowedKeys.has(event.key))) return;
+      event.preventDefault();
+      event.stopPropagation();
+      sendSignalingMessage({ type: 'watch.input', payload: { watchId: session.watchId, kind: 'key', key: event.key } });
+    };
+    window.addEventListener('keydown', forwardKey, true);
+    return () => window.removeEventListener('keydown', forwardKey, true);
+  }, [viewerOperating]);
 
   useEffect(() => {
     if (!notice) return;
@@ -99,33 +170,70 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
       const payload = message.payload as WatchMessage['payload'] | undefined;
       if (!payload || typeof payload.watchId !== 'string') return;
       if (message.type === 'watch.request' && typeof payload.viewerName === 'string') {
-        updateTarget({ watchId: payload.watchId, label: payload.viewerName, active: false });
+        updateTarget({ watchId: payload.watchId, label: payload.viewerName, active: false, control: 'off' });
         return;
       }
       if (pendingRequest.current && !viewerRef.current?.watchId) buffered.current.push(message);
-      if (targetRef.current?.watchId === payload.watchId && targetRef.current.active) {
+      const targetSession = targetRef.current;
+      const viewerSession = viewerRef.current;
+      if (message.type === 'error' && typeof payload.requestType === 'string') {
+        // Late input or consent can cross a stop notification while the video is still active.
+        if (payload.requestType === 'watch.control.request' && viewerSession?.watchId === payload.watchId && viewerSession.control === 'requested') {
+          updateViewer({ ...viewerSession, control: 'off' });
+        }
+        if (payload.requestType === 'watch.control.accept' && targetSession?.watchId === payload.watchId && targetSession.control === 'on') {
+          updateTarget({ ...targetSession, control: 'requested' });
+        }
+        return;
+      }
+      if (targetSession?.watchId === payload.watchId && targetSession.active) {
         if (message.type === 'watch.signal') targetPeer.signal(payload);
-        if (message.type === 'watch.pointer' && validPointer(payload)) setRing({ ...payload, role: 'target' });
+        if (message.type === 'watch.pointer' && targetSession.control !== 'on' && validPointer(payload)) setRing({ ...payload, role: 'target' });
+        if (message.type === 'watch.control.request' && targetSession.control === 'off') {
+          updateTarget({ ...targetSession, control: 'requested' });
+        }
+        if (message.type === 'watch.control.stopped') updateTarget({ ...targetSession, control: 'off' });
+        if (message.type === 'watch.input' && targetSession.control === 'on') {
+          if (payload.kind === 'key' && typeof payload.key === 'string' && (printableKey(payload.key) || allowedKeys.has(payload.key))) {
+            applyScreenKey(payload.key);
+          } else if ((payload.kind === 'move' || payload.kind === 'click') && validPointer(payload)) {
+            const point = { x: payload.x, y: payload.y };
+            setCursor(point);
+            if (payload.kind === 'click') {
+              setRipple({ ...point, at: performance.now() });
+              clickScreenPoint(point);
+            }
+          }
+        }
       }
       if (targetRef.current?.watchId === payload.watchId && (message.type === 'watch.stopped' || message.type === 'watch.denied' || message.type === 'error')) {
         updateTarget(null);
         if (message.type === 'error') setNotice('画面を見せられませんでした');
       }
-      if (viewerRef.current?.watchId !== payload.watchId) return;
+      if (viewerSession?.watchId !== payload.watchId) return;
       if (message.type === 'watch.signal') {
-        if (viewerRef.current.active) viewerPeer.signal(payload);
+        if (viewerSession.active) viewerPeer.signal(payload);
         else viewerSignals.current.push(payload);
       }
-      if (message.type === 'watch.accepted' && !viewerRef.current.active) {
+      if (message.type === 'watch.accepted' && !viewerSession.active) {
         try {
           viewerPeer.start(payload.watchId, 'viewer');
-          updateViewer({ ...viewerRef.current, active: true });
+          updateViewer({ ...viewerSession, active: true });
           for (const signal of viewerSignals.current.splice(0)) viewerPeer.signal(signal);
         } catch {
           sendSignalingMessage({ type: 'watch.stop', payload: { watchId: payload.watchId } });
           updateViewer(null); setNotice('映像が届きませんでした');
         }
       }
+      if (message.type === 'watch.control.accepted' && viewerSession.control === 'requested') {
+        lastMove.current = -Infinity;
+        updateViewer({ ...viewerSession, control: 'on' });
+      }
+      if (message.type === 'watch.control.denied' && viewerSession.control === 'requested') {
+        updateViewer({ ...viewerSession, control: 'off' });
+        setNotice('断られました');
+      }
+      if (message.type === 'watch.control.stopped') updateViewer({ ...viewerSession, control: 'off' });
       if (message.type === 'watch.denied' || message.type === 'watch.stopped' || message.type === 'error') {
         updateViewer(null);
         setNotice(message.type === 'watch.denied' ? '断られました'
@@ -139,15 +247,15 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
       cancelledRequest.current = false;
       buffered.current = [];
       setNotice('');
-      updateViewer({ watchId: '', label: targetLabel, active: false });
+      updateViewer({ watchId: '', label: targetLabel, active: false, control: 'off' });
       try {
         const { data } = await api.post<{ watchId: string }>(`/kiosk/inquiries/${encodeURIComponent(threadId)}/watch`,
-          { employeeTagUid }, { headers: { 'x-client-key': clientKey } });
+          employeeTagUid ? { employeeTagUid } : {}, { headers: { 'x-client-key': clientKey } });
         if (!mounted || cancelledRequest.current) {
           sendSignalingMessage({ type: 'watch.stop', payload: { watchId: data.watchId } });
           return;
         }
-        updateViewer({ watchId: data.watchId, label: targetLabel, active: false });
+        updateViewer({ watchId: data.watchId, label: targetLabel, active: false, control: 'off' });
         pendingRequest.current = false;
         for (const message of buffered.current) receive(message);
       } catch (error) {
@@ -203,13 +311,60 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
     } finally { capturePending.current = false; setCapturing(false); }
   };
 
-  const pointAtVideo = (event: React.MouseEvent<HTMLVideoElement>) => {
+  const respondToControl = (accepted: boolean) => {
+    const session = targetRef.current;
+    if (session?.control !== 'requested') return;
+    const sent = sendSignalingMessage({
+      type: accepted ? 'watch.control.accept' : 'watch.control.deny', payload: { watchId: session.watchId }
+    });
+    if (!sent) setNotice('接続が切れました');
+    if (accepted && sent) setRing(null);
+    updateTarget({ ...session, control: accepted && sent ? 'on' : 'off' });
+  };
+
+  const stopControl = (session: WatchState, role: 'viewer' | 'target') => {
+    if (!sendSignalingMessage({ type: 'watch.control.stop', payload: { watchId: session.watchId } })) setNotice('接続が切れました');
+    const update = role === 'viewer' ? updateViewer : updateTarget;
+    update({ ...session, control: 'off' });
+  };
+
+  const toggleControl = () => {
+    const session = viewerRef.current;
+    if (!session?.active || session.control === 'requested') return;
+    if (session.control === 'on') {
+      stopControl(session, 'viewer');
+      return;
+    }
+    if (sendSignalingMessage({ type: 'watch.control.request', payload: { watchId: session.watchId } })) {
+      setPointing(false); setRing(null);
+      updateViewer({ ...session, control: 'requested' });
+    } else {
+      setNotice('接続が切れました');
+    }
+  };
+
+  const togglePointing = () => {
+    const session = viewerRef.current;
+    if (!pointing && session && session.control !== 'off') stopControl(session, 'viewer');
+    setPointing(!pointing);
+  };
+
+  const inputAtVideo = (event: React.MouseEvent<HTMLVideoElement>, kind: 'click' | 'move') => {
     const video = event.currentTarget;
     const session = viewerRef.current;
-    if (!pointing || !session?.active || performance.now() - lastPointer.current < 100) return;
+    if (!session?.active) return;
+    const operating = session.control === 'on';
+    const now = performance.now();
+    if (operating ? kind === 'move' && now - lastMove.current < 50
+      : !pointing || kind === 'move' || now - lastPointer.current < 100) return;
     const point = normalizeVideoPointer(event.clientX, event.clientY, video.getBoundingClientRect(), video.videoWidth, video.videoHeight);
     if (!point) return;
-    lastPointer.current = performance.now();
+    if (operating) {
+      if (kind === 'move') lastMove.current = now;
+      sendSignalingMessage({ type: 'watch.input', payload: { watchId: session.watchId, kind, ...point } });
+      return;
+    }
+    lastPointer.current = now;
     sendSignalingMessage({ type: 'watch.pointer', payload: { watchId: session.watchId, ...point } });
     setRing({ x: event.clientX, y: event.clientY, role: 'viewer' });
   };
@@ -222,20 +377,38 @@ export function ScreenWatchHost({ clientKey, startCapture = captureDisplay }: {
         <Button type="button" variant="ghost" onClick={deny}>断る</Button>
       </div>
     </Dialog> : null}
-    {target?.active ? <div className="screen-watch__target-pill">
-      <span>{target.label} が見ています</span><button type="button" onClick={() => stop('target')}>止める</button>
+    {target?.control === 'requested' ? <Dialog isOpen onClose={() => respondToControl(false)} title={`${target.label} が この画面を操作します`}
+      size="sm" overlayZIndex={130} overlayClassName="screen-watch__consent-overlay" className="screen-watch__consent" closeOnBackdrop={false}>
+      <div className="screen-watch__actions">
+        <Button type="button" onClick={() => respondToControl(true)}>任せる</Button>
+        <Button type="button" variant="ghost" onClick={() => respondToControl(false)}>断る</Button>
+      </div>
+    </Dialog> : null}
+    {target?.active ? <div className={`screen-watch__target-pill${target.control === 'on' ? ' screen-watch__target-pill--operating' : ''}`}>
+      <span>{target.label} {target.control === 'on' ? 'が操作しています' : 'が見ています'}</span>
+      <button type="button" onClick={() => target.control === 'on' ? stopControl(target, 'target') : stop('target')}>止める</button>
     </div> : null}
-    {viewer ? <section className="screen-watch__viewer" aria-label="画面を見る">
-      {viewer.active ? <video ref={videoRef} className="screen-watch__video" aria-label="画面の映像" autoPlay playsInline muted onClick={pointAtVideo} />
+    {viewer ? <section className={`screen-watch__viewer${viewerOperating ? ' screen-watch__viewer--operating' : ''}`} aria-label="画面を見る">
+      {viewer.active ? <video ref={videoRef} className="screen-watch__video" aria-label="画面の映像" autoPlay playsInline muted
+        onClick={event => inputAtVideo(event, 'click')} onMouseMove={viewerOperating ? event => inputAtVideo(event, 'move') : undefined} />
         : <p className="screen-watch__waiting" role="status">相手の「見せる」を待っています</p>}
       <div className="screen-watch__viewer-pill">
-        {viewer.active ? <><span>● {viewer.label}</span><span>遅れ <output>{delay}</output></span><button type="button" aria-pressed={pointing} onClick={() => setPointing(value => !value)}>指さし</button></> : null}
+        {viewer.active ? <>
+          <span>● {viewer.label}</span><span>遅れ <output>{delay}</output></span>
+          <button type="button" aria-pressed={pointing} onClick={togglePointing}>指さし</button>
+          <button type="button" className="screen-watch__operation" aria-pressed={viewerOperating}
+            disabled={viewer.control === 'requested'} onClick={toggleControl}>{viewer.control === 'requested' ? '操作…' : '操作'}</button>
+        </> : null}
         <button type="button" onClick={() => stop('viewer')}>■ 止める</button>
       </div>
     </section> : null}
     {ring ? <div className="screen-watch__pointer" data-testid="screen-watch-pointer" aria-hidden="true"
       style={{ pointerEvents: 'none', left: ring.role === 'target' ? `${ring.x * 100}vw` : ring.x,
         top: ring.role === 'target' ? `${ring.y * 100}vh` : ring.y }} /> : null}
+    {cursor && target?.control === 'on' ? <div className="screen-watch__cursor" aria-hidden="true"
+      style={{ left: `${cursor.x * 100}vw`, top: `${cursor.y * 100}vh` }}><span>{target.label}</span></div> : null}
+    {ripple ? <div key={ripple.at} className="screen-watch__ripple" aria-hidden="true"
+      style={{ left: `${ripple.x * 100}vw`, top: `${ripple.y * 100}vh` }} /> : null}
     {notice ? <div className="screen-watch__notice" role="status">{notice}</div> : null}
   </>;
 }

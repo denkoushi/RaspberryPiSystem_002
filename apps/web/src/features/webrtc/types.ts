@@ -28,7 +28,9 @@ export interface CallInfo {
 
 
 export type WatchMessageType = 'watch.request' | 'watch.accept' | 'watch.accepted' | 'watch.deny' | 'watch.denied'
-  | 'watch.stop' | 'watch.stopped' | 'watch.fail' | 'watch.signal' | 'watch.pointer';
+  | 'watch.stop' | 'watch.stopped' | 'watch.fail' | 'watch.signal' | 'watch.pointer'
+  | 'watch.control.request' | 'watch.control.accept' | 'watch.control.accepted' | 'watch.control.deny' | 'watch.control.denied'
+  | 'watch.control.stop' | 'watch.control.stopped' | 'watch.input';
 
 export interface WatchMessage {
   type: WatchMessageType;
@@ -36,7 +38,7 @@ export interface WatchMessage {
     watchId: string;
     viewerName?: string;
     reason?: string;
-    // Stage 3/4: opaque SDP/ICE or normalized pointer data; never call signaling types.
+    // Opaque SDP/ICE, normalized pointer data or remote input.
     [key: string]: unknown;
   };
 }

@@ -5,7 +5,7 @@ import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
 import { kioskScreenWatchService } from '../../services/kiosk-screen-watch/kiosk-screen-watch.service.js';
 import { signalingRegistry } from '../../services/kiosk-screen-watch/signaling-registry.js';
-import { createTestClientDevice, createTestEmployee } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 // Requires a migrated PostgreSQL database; intentionally separate from the no-DB state tests.
 describe('screen watch HTTP and persistence', () => {
@@ -50,6 +50,25 @@ describe('screen watch HTTP and persistence', () => {
   it('403 for a badge outside the receiver allowlist', async () => {
     await prisma.kioskInquiryReceiverEmployee.delete({ where: { employeeId: employee.id } });
     expect((await post()).statusCode).toBe(403);
+  });
+  it('403 without either a badge or a login', async () => {
+    const response = await app.inject({ method: 'POST', url: `/api/kiosk/inquiries/${threadId}/watch`,
+      headers: { 'x-client-key': viewer.apiKey } });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().errorCode).toBe('KIOSK_SCREEN_WATCH_NOT_ALLOWED');
+  });
+  it.each(['ADMIN', 'MANAGER'] as const)('starts a watch without a badge and records the %s user', async role => {
+    await connect();
+    const { user, token } = await createTestUser(role);
+    try {
+      const response = await app.inject({ method: 'POST', url: `/api/kiosk/inquiries/${threadId}/watch`,
+        headers: { 'x-client-key': viewer.apiKey, ...createAuthHeader(token) }, payload: {} });
+      expect(response.statusCode).toBe(200);
+      expect(await prisma.kioskScreenWatchSession.findUniqueOrThrow({ where: { id: response.json().watchId } }))
+        .toMatchObject({ viewerUserId: user.id, viewerEmployeeId: null });
+    } finally {
+      await prisma.user.delete({ where: { id: user.id } });
+    }
   });
   it('409 when the sender is offline', async () => {
     const response = await post();
@@ -96,13 +115,19 @@ describe('screen watch HTTP and persistence', () => {
     await prisma.kioskInquiryThread.update({ where: { id: threadId }, data: { kind: 'SYSTEM_NOTICE', senderClientDeviceId: null } });
     expect((await post()).statusCode).toBe(404);
   });
-  it('persists SYSTEM messages and audit dates for accept and stop', async () => {
+  it('persists SYSTEM messages and audit dates for viewing and control', async () => {
     await connect(); const { watchId } = (await post()).json();
     await kioskScreenWatchService.handle(target.id, { type: 'watch.accept', payload: { watchId } });
+    await kioskScreenWatchService.handle(viewer.id, { type: 'watch.control.request', payload: { watchId } });
+    await kioskScreenWatchService.handle(target.id, { type: 'watch.control.accept', payload: { watchId } });
     await kioskScreenWatchService.handle(viewer.id, { type: 'watch.stop', payload: { watchId } });
     const session = await prisma.kioskScreenWatchSession.findUniqueOrThrow({ where: { id: watchId } });
-    expect(session).toMatchObject({ status: 'ENDED', acceptedAt: expect.any(Date), endedAt: expect.any(Date), endReason: 'viewer' });
+    expect(session).toMatchObject({
+      status: 'ENDED', acceptedAt: expect.any(Date), controlGrantedAt: expect.any(Date), endedAt: expect.any(Date), endReason: 'viewer'
+    });
     const messages = await prisma.kioskInquiryMessage.findMany({ where: { threadId }, orderBy: { createdAt: 'asc' } });
-    expect(messages.map(m => [m.side, m.body])).toEqual([['SYSTEM', '画面を見ています'], ['SYSTEM', '見るのを止めました']]);
+    expect(messages.map(m => [m.side, m.body])).toEqual([
+      ['SYSTEM', '画面を見ています'], ['SYSTEM', '操作を始めました'], ['SYSTEM', '操作を止めました'], ['SYSTEM', '見るのを止めました']
+    ]);
   });
 });

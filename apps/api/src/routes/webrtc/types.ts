@@ -36,7 +36,9 @@ export interface CallState {
 
 
 export type WatchMessageType = 'watch.request' | 'watch.accept' | 'watch.accepted' | 'watch.deny' | 'watch.denied'
-  | 'watch.stop' | 'watch.stopped' | 'watch.fail' | 'watch.signal' | 'watch.pointer';
+  | 'watch.stop' | 'watch.stopped' | 'watch.fail' | 'watch.signal' | 'watch.pointer'
+  | 'watch.control.request' | 'watch.control.accept' | 'watch.control.accepted' | 'watch.control.deny' | 'watch.control.denied'
+  | 'watch.control.stop' | 'watch.control.stopped' | 'watch.input';
 
 export interface WatchMessage {
   type: WatchMessageType;

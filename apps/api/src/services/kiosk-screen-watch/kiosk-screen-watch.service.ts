@@ -1,22 +1,53 @@
-import type { KioskScreenWatchSession, KioskScreenWatchStatus, PrismaClient } from '@prisma/client';
+import type { KioskScreenWatchSession, KioskScreenWatchStatus, Prisma, PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import { authorizeReceiver } from '../kiosk-inquiry/kiosk-inquiry.service.js';
+import { authorizeReceiver, type InquiryLoginUser } from '../kiosk-inquiry/kiosk-inquiry.service.js';
 import { signalingRegistry, type SignalingRegistry, type SignalingEnvelope } from './signaling-registry.js';
 
 const liveStatuses: KioskScreenWatchStatus[] = ['REQUESTED', 'ACTIVE'];
-const payloadSchema = z.object({ watchId: z.string().guid(), reason: z.string().max(200).optional() }).passthrough();
+const watchIdSchema = z.object({ watchId: z.string().guid() });
+const payloadSchema = watchIdSchema.extend({ reason: z.string().max(200).optional() }).passthrough();
+const coordinate = z.number().finite().min(0).max(1);
+const point = z.object({ x: coordinate, y: coordinate });
+const inputPoint = watchIdSchema.extend(point.shape);
+const inputSchema = z.discriminatedUnion('kind', [
+  inputPoint.extend({ kind: z.literal('click') }),
+  inputPoint.extend({ kind: z.literal('move') }),
+  watchIdSchema.extend({ kind: z.literal('key'), key: z.union([
+    z.string().length(1).regex(/^[\x20-\x7e]$/),
+    z.enum(['Backspace', 'Enter', 'Tab', 'Escape', 'ArrowLeft', 'ArrowRight'])
+  ]) })
+]);
 const clock = {
   now: () => new Date(),
   setTimeout: (callback: () => void, ms: number) => setTimeout(callback, ms),
   clearTimeout: (timer: ReturnType<typeof setTimeout>) => clearTimeout(timer)
 };
 type ViewerDevice = { id: string; name: string; inquiryReceiverEnabled: boolean; systemNoticeReceiverEnabled: boolean };
+type LiveSession = {
+  viewerDeviceId: string;
+  viewerName: string;
+  targetDeviceId: string;
+  threadId: string;
+  status: KioskScreenWatchStatus;
+  control: 'off' | 'requested' | 'on';
+};
+
+async function recordMessages(tx: Prisma.TransactionClient, threadId: string, now: Date, ...bodies: string[]) {
+  // Inquiry messages are read in timestamp order.
+  const messages = bodies.map((body, index) => ({
+    side: 'SYSTEM' as const, body, createdAt: new Date(now.getTime() + index)
+  }));
+  await tx.kioskInquiryThread.update({ where: { id: threadId }, data: {
+    lastMessageAt: messages.at(-1)?.createdAt ?? now, receiverUnread: true, senderUnread: true,
+    messages: { create: messages }
+  } });
+}
 
 export class KioskScreenWatchService {
-  private liveSessions = new Map<string, { viewerDeviceId: string; targetDeviceId: string; threadId: string; status: KioskScreenWatchStatus }>();
+  private liveSessions = new Map<string, LiveSession>();
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   // Serialize asynchronous transitions and notifications, including disconnect during request creation.
   private pending: Promise<unknown> = Promise.resolve();
@@ -37,12 +68,12 @@ export class KioskScreenWatchService {
     return result;
   }
 
-  request(device: ViewerDevice, threadId: string, employeeTagUid: string): Promise<{ watchId: string }> {
+  request(device: ViewerDevice, threadId: string, employeeTagUid?: string, loginUser?: InquiryLoginUser): Promise<{ watchId: string }> {
     return this.enqueue(async () => {
-      const access = await authorizeReceiver(device, employeeTagUid);
-      if (!device.inquiryReceiverEnabled || !access.canViewScreen) {
-        throw new ApiError(403, '画面を見る権限がありません', undefined, 'KIOSK_SCREEN_WATCH_NOT_ALLOWED');
-      }
+      const notAllowed = () => new ApiError(403, '画面を見る権限がありません', undefined, 'KIOSK_SCREEN_WATCH_NOT_ALLOWED');
+      if (!device.inquiryReceiverEnabled || (!employeeTagUid && !loginUser)) throw notAllowed();
+      const access = await authorizeReceiver(device, employeeTagUid, loginUser);
+      if (!access.canViewScreen) throw notAllowed();
       const thread = await this.db.kioskInquiryThread.findUnique({ where: { id: threadId } });
       if (!thread || thread.kind !== 'INQUIRY' || !thread.senderClientDeviceId) {
         throw new ApiError(404, 'お問い合わせが見つかりません', undefined, 'KIOSK_INQUIRY_NOT_FOUND');
@@ -65,7 +96,7 @@ export class KioskScreenWatchService {
       let session: KioskScreenWatchSession;
       try {
         session = await this.db.kioskScreenWatchSession.create({ data: {
-          threadId, viewerEmployeeId: access.employeeId, viewerClientDeviceId: device.id,
+          threadId, viewerEmployeeId: access.employeeId, viewerUserId: access.userId, viewerClientDeviceId: device.id,
           targetClientDeviceId, requestedAt: this.time.now()
         } });
       } catch (error) {
@@ -73,7 +104,8 @@ export class KioskScreenWatchService {
         throw error;
       }
       this.liveSessions.set(session.id, {
-        viewerDeviceId: device.id, targetDeviceId: targetClientDeviceId, threadId, status: session.status
+        viewerDeviceId: device.id, viewerName: device.name, targetDeviceId: targetClientDeviceId,
+        threadId, status: session.status, control: 'off'
       });
       if (!this.registry.sendToClientDevice(targetClientDeviceId, {
         type: 'watch.request', payload: { watchId: session.id, viewerName: device.name }
@@ -90,7 +122,19 @@ export class KioskScreenWatchService {
 
   async handle(deviceId: string, message: SignalingEnvelope): Promise<void> {
     if (Buffer.byteLength(JSON.stringify(message.payload) ?? '', 'utf8') > 64 * 1024) throw new Error('Watch payload too large');
+    // Input never waits for the transition queue or reads the database, including for invalid sessions.
+    if (message.type === 'watch.input') {
+      const payload = inputSchema.parse(message.payload);
+      const live = this.liveSessions.get(payload.watchId);
+      if (!live || deviceId !== live.viewerDeviceId) throw new Error('Unauthorized watch input');
+      if (live.status !== 'ACTIVE' || live.control !== 'on') throw new Error('Watch control is not active');
+      this.registry.sendToClientDevice(live.targetDeviceId, { type: message.type, payload });
+      return;
+    }
     const { watchId, reason } = payloadSchema.parse(message.payload);
+    if (message.type.startsWith('watch.control.')) {
+      return this.enqueue(() => this.handleControl(deviceId, message.type, watchId));
+    }
     const live = this.liveSessions.get(watchId);
     // The hot path never waits for the transition queue or reads the database.
     if ((message.type === 'watch.signal' || message.type === 'watch.pointer') && live) {
@@ -100,7 +144,7 @@ export class KioskScreenWatchService {
       }
       if (message.type === 'watch.pointer') {
         if (deviceId !== live.viewerDeviceId) throw new Error('Only viewer can point');
-        z.object({ x: z.number().finite().min(0).max(1), y: z.number().finite().min(0).max(1) }).parse(message.payload);
+        point.parse(message.payload);
       }
       const other = deviceId === live.targetDeviceId ? live.viewerDeviceId : live.targetDeviceId;
       this.registry.sendToClientDevice(other, message);
@@ -153,6 +197,53 @@ export class KioskScreenWatchService {
     });
   }
 
+  private async handleControl(deviceId: string, type: string, watchId: string): Promise<void> {
+    const live = this.liveSessions.get(watchId);
+    if (!live || (deviceId !== live.viewerDeviceId && deviceId !== live.targetDeviceId)) {
+      throw new Error('Unauthorized watch participant');
+    }
+    if (live.status !== 'ACTIVE') throw new Error('Watch session is not active');
+    const target = deviceId === live.targetDeviceId;
+    const other = target ? live.viewerDeviceId : live.targetDeviceId;
+    switch (type) {
+      case 'watch.control.request':
+        if (target || live.control !== 'off') throw new Error('Invalid watch control request');
+        if (!this.registry.sendToClientDevice(other, {
+          type, payload: { watchId, viewerName: live.viewerName }
+        })) throw new Error('Watch target is offline');
+        live.control = 'requested';
+        return;
+      case 'watch.control.accept':
+      case 'watch.control.deny': {
+        if (!target || live.control !== 'requested') throw new Error('Invalid watch control consent');
+        const accepted = type === 'watch.control.accept';
+        if (accepted) {
+          const now = this.time.now();
+          await this.db.$transaction(async tx => {
+            await tx.kioskScreenWatchSession.updateMany({
+              where: { id: watchId, status: 'ACTIVE', controlGrantedAt: null }, data: { controlGrantedAt: now }
+            });
+            await recordMessages(tx, live.threadId, now, '操作を始めました');
+          });
+        }
+        live.control = accepted ? 'on' : 'off';
+        this.registry.sendToClientDevice(other, {
+          type: accepted ? 'watch.control.accepted' : 'watch.control.denied', payload: { watchId }
+        });
+        return;
+      }
+      case 'watch.control.stop': {
+        if (live.control === 'off') return;
+        const wasOperating = live.control === 'on';
+        live.control = 'off';
+        this.registry.sendToClientDevice(other, { type: 'watch.control.stopped', payload: { watchId } });
+        if (wasOperating) await recordMessages(this.db, live.threadId, this.time.now(), '操作を止めました');
+        return;
+      }
+      default: throw new Error('Invalid watch message type');
+    }
+  }
+
   private async transition(session: KioskScreenWatchSession, status: KioskScreenWatchStatus, reason?: string): Promise<boolean> {
     const now = this.time.now();
     const changed = await this.db.$transaction(async tx => {
@@ -161,12 +252,12 @@ export class KioskScreenWatchService {
         data: { status, ...(status === 'ACTIVE' ? { acceptedAt: now } : { endedAt: now, endReason: reason }) }
       });
       if (!updated.count) return false;
-      const body = status === 'ACTIVE' ? '画面を見ています' : session.status === 'ACTIVE' ? '見るのを止めました' : null;
-      if (body) {
-        await tx.kioskInquiryThread.update({ where: { id: session.threadId }, data: {
-          lastMessageAt: now, receiverUnread: true, senderUnread: true,
-          messages: { create: { side: 'SYSTEM', body, createdAt: now } }
-        } });
+      if (status === 'ACTIVE') {
+        await recordMessages(tx, session.threadId, now, '画面を見ています');
+      } else if (session.status === 'ACTIVE') {
+        const bodies = this.liveSessions.get(session.id)?.control === 'on'
+          ? ['操作を止めました', '見るのを止めました'] : ['見るのを止めました'];
+        await recordMessages(tx, session.threadId, now, ...bodies);
       }
       return true;
     });

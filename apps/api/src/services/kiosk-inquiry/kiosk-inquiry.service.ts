@@ -5,6 +5,7 @@ import { prisma } from '../../lib/prisma.js';
 import { EmployeeService } from '../tools/employee.service.js';
 
 type InquiryDevice = { id: string; inquiryReceiverEnabled: boolean; systemNoticeReceiverEnabled: boolean };
+export type InquiryLoginUser = Pick<User, 'id' | 'role'>;
 const employees = new EmployeeService();
 const threadInclude = {
   senderClientDevice: { select: { name: true, location: true } },
@@ -70,10 +71,10 @@ function notFound(): ApiError {
   return new ApiError(404, 'お問い合わせが見つかりません', undefined, 'KIOSK_INQUIRY_NOT_FOUND');
 }
 
-export async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>): Promise<{ employeeId: string | null; canViewScreen: boolean }> {
-  if (!isReceiver(device)) return { employeeId: null, canViewScreen: false };
+export async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string, loginUser?: InquiryLoginUser): Promise<{ employeeId: string | null; userId: string | null; canViewScreen: boolean }> {
+  if (!isReceiver(device)) return { employeeId: null, userId: null, canViewScreen: false };
   if (!employeeTagUid) {
-    if (loginUser?.role === 'ADMIN' || loginUser?.role === 'MANAGER') return { employeeId: null, canViewScreen: false };
+    if (loginUser?.role === 'ADMIN' || loginUser?.role === 'MANAGER') return { employeeId: null, userId: loginUser.id, canViewScreen: true };
     throw new ApiError(401, '社員証が必要です', undefined, 'KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED');
   }
   const employee = await employees.findByNfcTagUid(employeeTagUid);
@@ -83,7 +84,7 @@ export async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: 
   if (!allowed) {
     throw new ApiError(403, 'この社員証は利用できません', undefined, 'KIOSK_INQUIRY_EMPLOYEE_NOT_ALLOWED');
   }
-  return { employeeId: allowed.employeeId, canViewScreen: allowed.canViewScreen };
+  return { employeeId: allowed.employeeId, userId: null, canViewScreen: allowed.canViewScreen };
 }
 
 export async function createKioskInquiryThread(
@@ -131,7 +132,7 @@ export async function markAllKioskInquiriesRead(
   device: InquiryDevice,
   { threads }: { threads: { id: string; lastMessageAt: string }[] },
   employeeTagUid?: string,
-  loginUser?: Pick<User, 'role'>
+  loginUser?: InquiryLoginUser
 ) {
   await authorizeReceiver(device, employeeTagUid, loginUser);
   if (threads.length === 0) return { updatedCount: 0 };
@@ -151,7 +152,7 @@ export async function markAllKioskInquiriesRead(
   });
 }
 
-export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {
+export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?: string, loginUser?: InquiryLoginUser) {
   const { canViewScreen } = await authorizeReceiver(device, employeeTagUid, loginUser);
   const pageSize = isReceiver(device) ? 50 : 20;
   const { inquiry, systemNotice } = unreadThreadWhere(device);
@@ -175,7 +176,7 @@ export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?:
   return { canViewScreen, unreadElsewhere, threads: threads.map((thread) => presentThread(thread, receivesThread(device, thread.kind))) };
 }
 
-export async function openKioskInquiry(device: InquiryDevice, threadId: string, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {
+export async function openKioskInquiry(device: InquiryDevice, threadId: string, employeeTagUid?: string, loginUser?: InquiryLoginUser) {
   const { canViewScreen } = await authorizeReceiver(device, employeeTagUid, loginUser);
   return prisma.$transaction(async (tx) => {
     const accessible = await tx.kioskInquiryThread.findFirst({ where: accessibleThreadWhere(device, threadId), select: { kind: true } });
@@ -197,7 +198,7 @@ export async function replyToKioskInquiry(
   threadId: string,
   body: string,
   employeeTagUid?: string,
-  loginUser?: Pick<User, 'role'>
+  loginUser?: InquiryLoginUser
 ) {
   const { employeeId: authorEmployeeId } = await authorizeReceiver(device, employeeTagUid, loginUser);
   return prisma.$transaction(async (tx) => {
