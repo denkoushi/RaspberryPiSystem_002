@@ -237,6 +237,28 @@ describe('PlanningBoardOfflineProvider', () => {
     expect(mocks.commit).not.toHaveBeenCalled();
     expect(screen.getByTestId('data')).toHaveTextContent('initial:initial');
   });
+  it.each(['bootstrapping', 'refreshing'] as const)('reads again instead of going offline when the server reports changed data during %s', async (phase) => {
+    if (phase === 'refreshing') await offline();
+    mocks.get.mockResolvedValue(capacity);
+    const changed = { isAxiosError: true, response: { status: 409, data: { errorCode: 'STALE_PLANNING_BOARD_SNAPSHOT' } } };
+    mocks.board.mockReset().mockRejectedValueOnce(changed).mockRejectedValueOnce(changed).mockResolvedValue('fresh');
+    mocks.aux.mockResolvedValue('fresh');
+    mocks.commit.mockClear();
+    if (phase === 'refreshing') { await eventProbe(); await eventProbe(); }
+    else { render(<PlanningBoardOfflineProvider config={config}><Harness /></PlanningBoardOfflineProvider>); await flush(); }
+    expect(current.snapshot.phase).toBe(phase);
+    await advance(1000); expect(current.snapshot.phase).toBe(phase);
+    await advance(1000); await flush();
+    expect(mocks.board).toHaveBeenCalledTimes(3);
+    expect(current.snapshot.phase).toBe('online');
+    expect(screen.getByTestId('data')).toHaveTextContent('fresh:fresh');
+  });
+  it('still goes offline when a refresh read fails for another reason', async () => {
+    await offline(); mocks.get.mockResolvedValue(capacity);
+    mocks.board.mockReset().mockRejectedValue({ isAxiosError: true, response: { status: 500, data: {} } });
+    await eventProbe(); await eventProbe();
+    expect(current.snapshot.phase).toBe('offline');
+  });
   it('aborts a hanging refresh at forty-five seconds despite successful probes and ignores its later result', async () => {
     await offline(); mocks.get.mockResolvedValue(capacity);
     let finish!: (value: string) => void; let signal!: AbortSignal;
