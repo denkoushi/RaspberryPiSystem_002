@@ -7,12 +7,12 @@ import {
   kioskButtonSecondaryClassName,
   kioskInputClassName
 } from '../../../features/kiosk/kioskTheme';
+import { readApiErrorMessage } from '../selfInspectionRecordApproval/selfInspectionRecordApprovalViewModel';
 
 import {
   inspectionDrawingKioskDialogClassName,
   inspectionDrawingKioskDialogTitleClassName
 } from './inspectionDrawingKioskUi';
-import { readApiErrorMessage } from './inspectionDrawingVisualLibraryHelpers';
 
 import type { PartMeasurementVisualTemplateDto } from '../types';
 

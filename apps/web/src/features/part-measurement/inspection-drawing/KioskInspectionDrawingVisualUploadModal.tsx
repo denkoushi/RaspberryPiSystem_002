@@ -14,13 +14,14 @@ import {
   PART_MEASUREMENT_DRAWING_FILE_LABEL
 } from '../partMeasurementDrawingFileInput';
 import { partMeasurementDrawingPreviewConvertingLabel } from '../partMeasurementDrawingLocalPreview';
+import { readApiErrorMessage } from '../selfInspectionRecordApproval/selfInspectionRecordApprovalViewModel';
 import { usePartMeasurementDrawingLocalPreview } from '../usePartMeasurementDrawingLocalPreview';
 
 import {
   inspectionDrawingKioskDialogClassName,
   inspectionDrawingKioskDialogTitleClassName
 } from './inspectionDrawingKioskUi';
-import { defaultVisualNameFromFileName, readApiErrorMessage } from './inspectionDrawingVisualLibraryHelpers';
+import { defaultVisualNameFromFileName } from './inspectionDrawingVisualLibraryHelpers';
 
 import type { PartMeasurementVisualTemplateDto } from '../types';
 

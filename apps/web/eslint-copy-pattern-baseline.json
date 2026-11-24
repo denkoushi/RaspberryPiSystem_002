@@ -18,7 +18,6 @@
     "src/features/mobile-placement/shelfMaster/kiosk/useShelfPhotoEditor.ts": 4,
     "src/features/mobile-placement/useMobilePlacementPageState.ts": 2,
     "src/features/part-measurement/admin/InspectionDrawingMeasurementLabelSettingsSection.tsx": 1,
-    "src/features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryHelpers.ts": 1,
     "src/features/part-measurement/inspection-drawing/useInspectionDrawingTemplateLibrary.ts": 1,
     "src/features/part-measurement/inspection-drawing/useInspectionDrawingVisualLibrary.ts": 1,
     "src/features/part-measurement/selfInspectionRecordApproval/selfInspectionRecordApprovalViewModel.ts": 1,
