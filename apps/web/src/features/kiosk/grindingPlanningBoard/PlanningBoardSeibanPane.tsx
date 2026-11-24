@@ -1,7 +1,6 @@
 import clsx from 'clsx';
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 
-import { useScrollIntoViewOnChange } from '../../../hooks/useScrollIntoViewOnChange';
 import { DScheduleMinutesChips, useDScheduleMinutesExtras } from '../productionSchedule/DScheduleMinutesContext';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
@@ -93,7 +92,10 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   bulkDisabled = false
 }: PlanningBoardSeibanPaneProps) {
   const { extras, dueSource } = useDScheduleMinutesExtras(fseiban);
-  const paneRef = useScrollIntoViewOnChange<HTMLElement>([highlighted, isOpen, scanFocusKey], highlighted && isOpen);
+  const paneRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (highlighted && isOpen) paneRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [highlighted, isOpen, scanFocusKey]);
   const selectableItems = useMemo(() => items.filter((item) => !item.standardHoursMissing && !item.isCompleted), [items]);
   const selectedSelectableCount = useMemo(
     () => selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length,

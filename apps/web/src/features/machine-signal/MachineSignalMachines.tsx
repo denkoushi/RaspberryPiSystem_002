@@ -1,7 +1,7 @@
 import clsx from 'clsx';
+import { useEffect, useRef } from 'react';
 
 import { useMachineSignalTrend } from '../../api/hooks';
-import { useScrollIntoViewOnChange } from '../../hooks/useScrollIntoViewOnChange';
 
 import {
   buildSignalStopBucketLabels,
@@ -34,7 +34,10 @@ function MachineList({
   selected: number | null;
   onSelect: (signalNo: number) => void;
 }) {
-  const selectedRow = useScrollIntoViewOnChange<HTMLDivElement>([selected]);
+  const selectedRow = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    selectedRow.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [selected]);
 
   return (
     <section className={clsx(signalPanelClass, 'flex min-h-0 flex-col')}>

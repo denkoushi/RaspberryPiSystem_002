@@ -2,7 +2,6 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 
 import { getAssemblyProcedureDocument, listAssemblyProcedureDocumentSummaries } from '../../../api/client';
 import { Dialog } from '../../../components/ui/Dialog';
-import { useScrollIntoViewOnChange } from '../../../hooks/useScrollIntoViewOnChange';
 import { KioskDigitTenkey, ASCENDING_DIGIT_KEYS } from '../../kiosk/KioskDigitTenkey';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { procedureManualButtonBase, procedureManualButtonUnselected } from '../procedure-manuals/procedure-manual-button-styles';
@@ -50,7 +49,11 @@ export function AssemblyProcedureDocumentPageImportDialog({
   const [listError, setListError] = useState<string | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const initialPositionRef = useScrollIntoViewOnChange<HTMLButtonElement>([]);
+  const initialPositionRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    initialPositionRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

@@ -1,6 +1,5 @@
 import clsx from 'clsx';
-
-import { useScrollIntoViewOnChange } from '../../../hooks/useScrollIntoViewOnChange';
+import { useEffect, useRef } from 'react';
 
 import type { DrawingProposalTab, InspectionDrawingPlacementProposals } from './useInspectionDrawingPlacementProposals';
 import type { DrawingPlacementRow } from '../../../api/domains/part-measurement-placement';
@@ -35,7 +34,10 @@ export function InspectionDrawingProposalLegend() {
 
 export function InspectionDrawingProposalPanel({ placement, confirmedCount, disabled = false, children }: Props) {
   const { proposals, unplaced, tab, selectedProposalId } = placement;
-  const selectedRowRef = useScrollIntoViewOnChange<HTMLLIElement>([selectedProposalId, tab]);
+  const selectedRowRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    selectedRowRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [selectedProposalId, tab]);
   if (!proposals.length && !unplaced.length) return <>{children}</>;
   const tabs: { id: DrawingProposalTab; label: string; count: number }[] = [
     { id: 'proposals', label: 'AI案', count: proposals.length },
