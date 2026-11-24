@@ -41,8 +41,7 @@ export function sortGuidedTrialPointsStable(points: InspectionDrawingPoint[]): I
     .map((point, index) => ({ point, index }))
     .sort((a, b) => {
       if (a.point.markerNo !== b.point.markerNo) return a.point.markerNo - b.point.markerNo;
-      if (a.index !== b.index) return a.index - b.index;
-      return a.point.id.localeCompare(b.point.id);
+      return a.index - b.index;
     })
     .map(({ point }) => point);
 }

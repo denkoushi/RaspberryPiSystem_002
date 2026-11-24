@@ -27,6 +27,20 @@ import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent }
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
 import type { ActualSlipOcrResponse, MobilePlacementSlipMatchResponse } from '../../api/domains/mobile-placement';
 
+function errorMessageOf(e: unknown, fallback: string): string {
+  return isAxiosError(e)
+    ? typeof e.response?.data?.message === 'string'
+      ? e.response.data.message
+      : e.message
+    : e instanceof Error
+      ? e.message
+      : fallback;
+}
+
+function isBranchSelectionEmpty(branchId: string | null): branchId is '' | null {
+  return branchId == null || branchId.length === 0;
+}
+
 /**
  * 配膳ページの状態と API 呼び出し（UI から分離してテスト・再利用しやすくする）
  */
@@ -162,13 +176,7 @@ export function useMobilePlacementPageState() {
       const res = await read();
       if (res) applyActualSlipOcrResponse(res);
     } catch (e: unknown) {
-      const msg = isAxiosError(e)
-        ? typeof e.response?.data?.message === 'string'
-          ? e.response.data.message
-          : e.message
-        : e instanceof Error
-          ? e.message
-          : '読取に失敗しました';
+      const msg = errorMessageOf(e, '読取に失敗しました');
       setActualSlipOcrFeedback({
         ...initialActualSlipOcrFeedback,
         status: 'error',
@@ -226,7 +234,7 @@ export function useMobilePlacementPageState() {
     setRegisterSubmitting(true);
     try {
       if (orderPlacementIntent === 'move_existing') {
-        if (selectedBranchId == null || selectedBranchId.length === 0) {
+        if (isBranchSelectionEmpty(selectedBranchId)) {
           setRegisterError('移動する分配枝を一覧から選んでください');
           return;
         }
@@ -251,13 +259,7 @@ export function useMobilePlacementPageState() {
       void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
       void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.orderPlacementBranchesAll });
     } catch (e: unknown) {
-      const msg = isAxiosError(e)
-        ? typeof e.response?.data?.message === 'string'
-          ? e.response.data.message
-          : e.message
-        : e instanceof Error
-          ? e.message
-          : '登録に失敗しました';
+      const msg = errorMessageOf(e, '登録に失敗しました');
       setRegisterError(msg);
     } finally {
       setRegisterSubmitting(false);
@@ -268,8 +270,7 @@ export function useMobilePlacementPageState() {
     registerSubmitting ||
     shelfCode.trim().length === 0 ||
     orderBarcode.trim().length === 0 ||
-    (orderPlacementIntent === 'move_existing' &&
-      (selectedBranchId == null || selectedBranchId.length === 0));
+    (orderPlacementIntent === 'move_existing' && isBranchSelectionEmpty(selectedBranchId));
 
   const selectShelf = useCallback((code: string) => {
     setShelfCode(code);

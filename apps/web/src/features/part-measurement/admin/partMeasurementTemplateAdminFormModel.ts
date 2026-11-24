@@ -85,8 +85,7 @@ export function buildTemplateItemsPayload(
   items: AdminTemplateFormItemRow[]
 ): ReviseApiItem[] | { error: string } {
   const trimmedItems = items
-    .map((it, idx) => ({
-      sortOrder: idx,
+    .map((it) => ({
       datumSurface: it.datumSurface.trim(),
       measurementPoint: it.measurementPoint.trim(),
       measurementLabel: it.measurementLabel.trim(),
