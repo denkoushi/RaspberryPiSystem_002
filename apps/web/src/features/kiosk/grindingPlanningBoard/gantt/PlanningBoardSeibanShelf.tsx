@@ -1,6 +1,8 @@
+import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { KioskDigitTenkey } from '../../KioskDigitTenkey';
 import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { comparePlanningBoardBarOrder } from '../sortGrindingPlanningBoardItems';
 
@@ -18,6 +20,10 @@ import type { ShelfDropResolver, SeibanShelfHandle, ShelfPlacementActions, Shelf
 import type { PointerEvent, RefObject } from 'react';
 
 const EMPTY_SELECTED: ReadonlySet<string> = new Set();
+const SEARCH_MODES = ['製番', '機種名'] as const;
+const SEARCH_DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+const SEARCH_KEY_CLASS = 'flex h-[30px] w-10 items-center justify-center rounded border border-slate-700 bg-slate-900 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40';
+const SCROLL_BUTTON_CLASS = 'h-[30px] w-9 rounded border border-slate-600 text-slate-200 disabled:opacity-30';
 
 type Props = {
   columns: readonly SeibanShelfColumn[];
@@ -45,6 +51,8 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
 }, ref) {
   const { open, changeOpen } = usePersistedPlanningBoardShelf();
   const [remaining, setRemaining] = useState(false);
+  const [searchMode, setSearchMode] = useState<(typeof SEARCH_MODES)[number]>('製番');
+  const [searchValue, setSearchValue] = useState('');
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const { gate, frozen } = usePlanningBoardOffline();
   const bars = useMemo(() => new Map(columns.flatMap(column => column.parts.flatMap(part => part.units.flat().map(tile => {
@@ -74,8 +82,15 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
   useLayoutEffect(() => { previousSelection.current = selectedBySeiban; }, [selectedBySeiban]);
   const highlightedBar = highlightedItemId ? bars.get(highlightedItemId) : undefined;
   const highlightedSeiban = highlightedBar && highlightedBar.item.kind !== 'test' ? highlightedBar.item.fseiban : null;
-  const visibleColumns = useMemo(() => columns.filter(column => !remaining || column.placed < column.total), [columns, remaining]);
-  const { viewport: shelfViewport, window: shelfWindow, reveal: revealSeiban } = usePlanningBoardShelfWindow(visibleColumns, open, focusedSeiban, highlightedSeiban ?? null, highlightedItemId);
+  const visibleColumns = useMemo(() => columns.filter(column => {
+    if (remaining && column.placed >= column.total) return false;
+    if (!searchValue) return true;
+    const searchText = searchMode === '製番' ? column.seiban.toLowerCase() : extractInspectionDrawingAsciiDigits(column.model);
+    return searchText.includes(searchValue);
+  }), [columns, remaining, searchMode, searchValue]);
+  const { viewport: shelfViewport, window: shelfWindow, reveal: revealSeiban, scrollPage } = usePlanningBoardShelfWindow(visibleColumns, open, focusedSeiban, highlightedSeiban ?? null, highlightedItemId);
+  // Filtering can shorten the strip before the window measures the new content.
+  const windowStart = Math.min(shelfWindow.start, visibleColumns.length);
   type Placement = { ids: string[]; resource: string; targetId: string | null; placement: 'before' | 'after'; sawPending?: boolean; waiting?: { id: string; signature: string } };
   const pending = useRef<Placement | null>(null);
   const placementFrame = useRef<number | null>(null);
@@ -258,19 +273,37 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
         onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={onFocusSeiban} /></div>
       <button type="button" aria-label="製番の棚を開く" onClick={() => changeOpen(true)} className="m-1 h-11 w-9 rounded border border-slate-600 text-slate-200">⌃</button>
     </div> : <>
-      <div className="flex h-10 items-center gap-2.5 border-b border-slate-700 px-2.5">
-        <div className="flex h-[30px] overflow-hidden rounded-lg border border-slate-600">
+      <div className="flex h-10 items-center gap-2.5 overflow-x-auto border-b border-slate-700 px-2.5 [scrollbar-width:none]">
+        <div className="flex shrink-0 gap-1">
+          <button type="button" aria-label="製番の棚を左へ送る" disabled={!shelfWindow.canScrollLeft} onClick={() => scrollPage(-1)} className={SCROLL_BUTTON_CLASS}>‹</button>
+          <button type="button" aria-label="製番の棚を右へ送る" disabled={!shelfWindow.canScrollRight} onClick={() => scrollPage(1)} className={SCROLL_BUTTON_CLASS}>›</button>
+        </div>
+        {activeSelected.size > 0 && <span className="inline-flex h-[30px] shrink-0 items-center gap-2 rounded-full bg-white pl-3 pr-1 text-[15px] font-extrabold text-slate-950">{activeSelected.size}件
+          <button type="button" aria-label="選択を外す" onClick={() => { cancelPlacement(); setSelected(new Set()); }} className="h-6 w-6 rounded-full bg-slate-950 text-white">✕</button>
+        </span>}
+        <div className="flex h-[30px] shrink-0 overflow-hidden rounded-lg border border-slate-600">
+          {SEARCH_MODES.map(mode => <button key={mode} type="button" aria-pressed={searchMode === mode} onClick={() => setSearchMode(mode)}
+            className={clsx('px-3 text-sm font-bold', searchMode === mode ? 'bg-slate-200 text-slate-950' : 'text-slate-400')}>{mode}</button>)}
+        </div>
+        <div className={clsx('flex h-[30px] w-28 shrink-0 items-center overflow-hidden rounded-md border bg-slate-900 px-2 font-mono text-sm text-white',
+          searchValue ? 'border-emerald-400 ring-1 ring-emerald-400/20' : 'border-slate-700')}>
+          {searchValue ? <span className="truncate">{searchValue}</span> : <span className="text-slate-500">—</span>}
+        </div>
+        <div className="flex shrink-0 gap-1">
+          <KioskDigitTenkey value={searchValue} onChange={setSearchValue} digits={SEARCH_DIGITS} showReset={false} maxLength={100}
+            className="flex gap-1" keyClassName={SEARCH_KEY_CLASS} />
+          <button type="button" aria-label="入力を1文字削除" disabled={!searchValue} onClick={() => setSearchValue(value => value.slice(0, -1))} className={SEARCH_KEY_CLASS}>⌫</button>
+          <button type="button" aria-label="入力をリセット" disabled={!searchValue} onClick={() => setSearchValue('')} className={SEARCH_KEY_CLASS}>↺</button>
+        </div>
+        <div className="ml-auto flex h-[30px] shrink-0 overflow-hidden rounded-lg border border-slate-600">
           {[false, true].map(rest => <button key={String(rest)} type="button" aria-pressed={remaining === rest} onClick={() => setRemaining(rest)}
             className={clsx('px-3 text-sm font-bold', remaining === rest ? 'bg-slate-200 text-slate-950' : 'text-slate-400')}>{rest ? '残り' : 'すべて'}</button>)}
         </div>
-        {activeSelected.size > 0 && <span className="inline-flex h-[30px] items-center gap-2 rounded-full bg-white pl-3 pr-1 text-[15px] font-extrabold text-slate-950">{activeSelected.size}件
-          <button type="button" aria-label="選択を外す" onClick={() => { cancelPlacement(); setSelected(new Set()); }} className="h-6 w-6 rounded-full bg-slate-950 text-white">✕</button>
-        </span>}
-        <button type="button" aria-label="製番の棚を畳む" onClick={() => changeOpen(false)} className="ml-auto h-[30px] w-9 rounded border border-slate-600 text-slate-200">⌄</button>
+        <button type="button" aria-label="製番の棚を畳む" onClick={() => changeOpen(false)} className="h-[30px] w-9 shrink-0 rounded border border-slate-600 text-slate-200">⌄</button>
       </div>
       <div ref={shelfViewport} role="group" aria-label="製番の棚" data-shelf-focus={focusedSeiban !== null ? '' : undefined} className="[&[data-shelf-focus]_[data-shelf-unfocused]]:opacity-[.35] flex h-[min(420px,39dvh)] min-h-0 gap-2 overflow-x-auto overflow-y-hidden p-2">
-        {shelfWindow.start > 0 && <div aria-hidden="true" className="shrink-0" style={{ width: shelfWindow.start * SHELF_COLUMN_STRIDE - 8 }} />}
-        {visibleColumns.slice(shelfWindow.start, shelfWindow.end).map(column => <PlanningBoardSeibanShelfColumn key={column.seiban}
+        {windowStart > 0 && <div aria-hidden="true" className="shrink-0" style={{ width: windowStart * SHELF_COLUMN_STRIDE - 8 }} />}
+        {visibleColumns.slice(windowStart, shelfWindow.end).map(column => <PlanningBoardSeibanShelfColumn key={column.seiban}
           column={column} remaining={remaining} focused={focusedSeiban === column.seiban}
           highlightedItemId={highlightedSeiban === column.seiban ? highlightedItemId : null}
           selected={selectedBySeiban.get(column.seiban) ?? EMPTY_SELECTED} showPlaceButton={canPlaceSelected && lastSelectedSeiban === column.seiban} {...columnActions} />)}

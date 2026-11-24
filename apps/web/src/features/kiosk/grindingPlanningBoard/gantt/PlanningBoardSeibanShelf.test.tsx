@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PlanningBoardSeibanShelf } from './PlanningBoardSeibanShelf';
 import { buildPlanningBoardSeibanShelf } from './planningBoardSeibanShelfData';
 import { SEIBAN_SHELF_STORAGE_KEY, usePersistedPlanningBoardShelf } from './usePersistedPlanningBoardShelf';
+import { SHELF_COLUMN_STRIDE } from './usePlanningBoardShelfWindow';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { SeibanShelfHandle } from './usePlanningBoardShelfInteraction';
@@ -32,6 +33,18 @@ const colors = new Map([['S1', 'bg-sky-400']]);
 const columns = buildPlanningBoardSeibanShelf(items, [{ item: items[1], tone: 'late' }] as GanttBar[], ['021'], colors);
 const props = { columns, seibanColors: colors, focusedSeiban: null, highlightedItemId: null,
   onFocusedSeibanChange: vi.fn(), onFocusSeiban: vi.fn() };
+const searchableItems = [
+  ...items,
+  { ...items[0]!, itemId: 'd', fseiban: 'S21', machineName: 'MX-12' },
+  { ...items[2]!, itemId: 'e', fseiban: 'S30', machineName: 'ＭＸ－１Ａ２' }
+];
+const searchableColors = new Map(searchableItems.map(item => [item.fseiban, 'bg-sky-400']));
+const searchProps = { ...props, seibanColors: searchableColors,
+  columns: buildPlanningBoardSeibanShelf(searchableItems, [], ['021'], searchableColors) };
+const pressShelfDigits = (...digits: string[]) => {
+  const tenkey = within(screen.getByRole('group', { name: '数字テンキー' }));
+  for (const digit of digits) fireEvent.click(tenkey.getByRole('button', { name: digit, exact: true }));
+};
 beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); columnRenders.length = 0; });
 afterEach(() => vi.restoreAllMocks());
 
@@ -66,6 +79,65 @@ it('selects only the first unplaced tile from a part header, then deselects it, 
   expect(screen.queryByText('1件')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'すべて', exact: true }));
   expect(screen.getByTestId('planning-shelf-tile-a')).toBeVisible();
+});
+
+it('filters by a substring of the seiban and retains a hidden selection', () => {
+  render(<PlanningBoardSeibanShelf {...searchProps} />);
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-e'));
+  expect(screen.getByRole('button', { name: '製番', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  pressShelfDigits('1');
+  expect(screen.getByRole('button', { name: 'S1', exact: true })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'S21', exact: true })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'S30', exact: true })).not.toBeInTheDocument();
+  expect(screen.getByText('1件')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '入力をリセット' }));
+  expect(screen.getByTestId('planning-shelf-tile-e')).toHaveAttribute('aria-pressed', 'true');
+});
+
+it('matches only the digits from the normalized model name', () => {
+  render(<PlanningBoardSeibanShelf {...searchProps} />);
+  fireEvent.click(screen.getByRole('button', { name: '機種名', exact: true }));
+  pressShelfDigits('1', '2');
+  expect(screen.getByRole('button', { name: 'S21', exact: true })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'S30', exact: true })).toHaveTextContent('MX-1A2');
+  expect(screen.queryByRole('button', { name: 'S1', exact: true })).not.toBeInTheDocument();
+});
+
+it('keeps the entered digits when switching the search mode in either direction', () => {
+  render(<PlanningBoardSeibanShelf {...searchProps} />);
+  pressShelfDigits('2', '1');
+  expect(screen.getByRole('button', { name: 'S21', exact: true })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '機種名', exact: true }));
+  expect(screen.getByText('21', { exact: true })).toBeVisible();
+  expect(screen.getByRole('group', { name: '製番の棚' })).toBeEmptyDOMElement();
+  fireEvent.click(screen.getByRole('button', { name: '製番', exact: true }));
+  expect(screen.getByText('21', { exact: true })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'S21', exact: true })).toBeVisible();
+});
+
+it('deletes the last digit and resets the search', () => {
+  render(<PlanningBoardSeibanShelf {...searchProps} />);
+  const backspace = screen.getByRole('button', { name: '入力を1文字削除' });
+  const reset = screen.getByRole('button', { name: '入力をリセット' });
+  pressShelfDigits('1', '2');
+  expect(screen.getByRole('group', { name: '製番の棚' })).toBeEmptyDOMElement();
+  fireEvent.click(backspace);
+  expect(screen.getByRole('button', { name: 'S1', exact: true })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'S30', exact: true })).not.toBeInTheDocument();
+  fireEvent.click(reset);
+  expect(backspace).toBeDisabled();
+  expect(reset).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'S30', exact: true })).toBeVisible();
+});
+
+it('shows only columns that match both the search and the remaining filter', () => {
+  render(<PlanningBoardSeibanShelf {...searchProps} />);
+  pressShelfDigits('1');
+  expect(screen.getByRole('button', { name: 'S21', exact: true })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '残り', exact: true }));
+  expect(screen.getByRole('button', { name: 'S1', exact: true })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'S21', exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'S30', exact: true })).not.toBeInTheDocument();
 });
 
 it('keeps only one tile selected: a second tile replaces the first and a pressed tile deselects', () => {
@@ -177,6 +249,56 @@ const manyProps = { ...props, columns: manyColumns, seibanColors: manyColors };
 const nextFrame = () => act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
 const measureShelf = () => vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
   return this.getAttribute('aria-label') === '製番の棚' ? 464 : 0;
+});
+
+it('scrolls by a page, updates the virtual window, and disables arrows at the edges', async () => {
+  const width = measureShelf();
+  const contentWidth = manyColumns.length * SHELF_COLUMN_STRIDE + 8;
+  const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(contentWidth);
+  render(<PlanningBoardSeibanShelf {...manyProps} />);
+  const strip = screen.getByRole('group', { name: '製番の棚' });
+  const scrollBy = vi.fn(({ left }: ScrollToOptions) => {
+    strip.scrollLeft = Math.max(0, Math.min(strip.scrollWidth - strip.clientWidth, strip.scrollLeft + (left ?? 0)));
+    fireEvent.scroll(strip);
+  });
+  Object.defineProperty(strip, 'scrollBy', { value: scrollBy });
+  const left = screen.getByRole('button', { name: '製番の棚を左へ送る' });
+  const right = screen.getByRole('button', { name: '製番の棚を右へ送る' });
+  expect(left).toBeDisabled();
+  expect(right).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'S5', exact: true })).not.toBeInTheDocument();
+  fireEvent.click(right);
+  expect(scrollBy).toHaveBeenLastCalledWith({ left: 2 * SHELF_COLUMN_STRIDE, behavior: 'smooth' });
+  await nextFrame();
+  expect(screen.getByRole('button', { name: 'S5', exact: true })).toBeVisible();
+  expect(left).toBeEnabled();
+
+  strip.scrollLeft = contentWidth - strip.clientWidth;
+  fireEvent.scroll(strip);
+  await nextFrame();
+  expect(right).toBeDisabled();
+  fireEvent.click(left);
+  expect(scrollBy).toHaveBeenLastCalledWith({ left: -2 * SHELF_COLUMN_STRIDE, behavior: 'smooth' });
+  await nextFrame();
+  expect(right).toBeEnabled();
+
+  width.mockReturnValue(contentWidth);
+  fireEvent(window, new Event('resize'));
+  await nextFrame();
+  expect(left).toBeDisabled();
+  expect(right).toBeDisabled();
+
+  width.mockReturnValue(464);
+  fireEvent(window, new Event('resize'));
+  await nextFrame();
+  expect(right).toBeEnabled();
+  scrollWidth.mockReturnValue(3 * SHELF_COLUMN_STRIDE + 8);
+  pressShelfDigits('1');
+  scrollWidth.mockReturnValue(SHELF_COLUMN_STRIDE + 8);
+  pressShelfDigits('1');
+  expect(screen.getByRole('button', { name: 'S11', exact: true })).toBeVisible();
+  expect(left).toBeDisabled();
+  expect(right).toBeDisabled();
 });
 
 it('mounts only visible columns plus two on each side and batches passive scroll events in one frame', async () => {

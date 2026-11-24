@@ -13,7 +13,7 @@ export function usePlanningBoardShelfWindow(columns: readonly SeibanShelfColumn[
   const viewport = useRef<HTMLDivElement>(null);
   const latestColumns = useRef(columns);
   useLayoutEffect(() => { latestColumns.current = columns; }, [columns]);
-  const [window, setWindow] = useState({ start: 0, end: 0 });
+  const [window, setWindow] = useState({ start: 0, end: 0, canScrollLeft: false, canScrollRight: false });
   const measure = useCallback(() => {
     const columns = latestColumns.current;
     const element = viewport.current;
@@ -24,8 +24,18 @@ export function usePlanningBoardShelfWindow(columns: readonly SeibanShelfColumn[
     const left = Math.max(0, element.scrollLeft - PADDING);
     const start = Math.min(columns.length, Math.max(0, Math.floor((left + SHELF_COLUMN_STRIDE - COLUMN_WIDTH) / SHELF_COLUMN_STRIDE) - OVERSCAN));
     const end = Math.min(columns.length, Math.ceil((left + width) / SHELF_COLUMN_STRIDE) + OVERSCAN);
-    setWindow(current => current.start === start && current.end === end ? current : { start, end });
+    const canScrollLeft = element.scrollLeft > 0.5;
+    const canScrollRight = element.scrollWidth - element.clientWidth - element.scrollLeft > 0.5;
+    setWindow(current => current.start === start && current.end === end &&
+      current.canScrollLeft === canScrollLeft && current.canScrollRight === canScrollRight
+      ? current : { start, end, canScrollLeft, canScrollRight });
   }, []);
+  const scrollPage = (direction: -1 | 1) => {
+    const element = viewport.current;
+    if (!element) return;
+    const columnsPerPage = Math.max(1, Math.floor(element.clientWidth / SHELF_COLUMN_STRIDE));
+    element.scrollBy({ left: direction * columnsPerPage * SHELF_COLUMN_STRIDE, behavior: 'smooth' });
+  };
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element) return;
@@ -60,5 +70,5 @@ export function usePlanningBoardShelfWindow(columns: readonly SeibanShelfColumn[
   // Reveal only when focus/selection changes or the strip reopens.
   useLayoutEffect(() => { if (open) reveal(focusedSeiban); }, [open, focusedSeiban, reveal]);
   useLayoutEffect(() => { if (open) reveal(highlightedSeiban); }, [open, highlightedItemId, highlightedSeiban, reveal]);
-  return { viewport, window, reveal };
+  return { viewport, window, reveal, scrollPage };
 }
