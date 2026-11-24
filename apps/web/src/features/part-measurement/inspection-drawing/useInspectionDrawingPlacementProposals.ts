@@ -166,7 +166,7 @@ export function useInspectionDrawingPlacementProposals({
   const reject = (row: DrawingPlacementProposal) => {
     if (!enabled || !visualTemplateId) return;
     setSession({ ...current, dismissed: [...current.dismissed, row.id], selectedId: null });
-    void postInspectionDrawingPlacementDecisions(visualTemplateId, { rejectedIds: [row.id] }, clientKey)
+    void postInspectionDrawingPlacementDecisions(visualTemplateId, { rejectedIds: [row.id], processGroup }, clientKey)
       .catch((error: unknown) => console.warn('AI案の却下記録に失敗しました。', error));
   };
   const arm = (row: DrawingPlacementUnplaced) => {
