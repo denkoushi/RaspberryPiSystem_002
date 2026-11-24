@@ -1,3 +1,4 @@
+import { GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT as RESOURCE_ORDER_ITEM_LIMIT } from '@raspi-system/shared-types';
 import { useMemo } from 'react';
 
 import { isVisibleByArrival } from '../isVisibleByArrival';
@@ -136,7 +137,7 @@ export function usePlanningBoardPageGantt({
     const sourceById = new Map<string, GrindingPlanningBoardBar>([...sourceItems, ...tests.bars].map((item) => [item.itemId, item]));
     const items = snapshot.itemIds.map((id) => sourceById.get(id));
     if (items.some((item) => item?.kind !== 'test' && item?.standardHoursMissing)) return false;
-    if (!items.length || items.length > 500 || items.some((item) => !item || isPendingPlanningTestBar(item) || item.isCompleted ||
+    if (!items.length || items.length > RESOURCE_ORDER_ITEM_LIMIT || items.some((item) => !item || isPendingPlanningTestBar(item) || item.isCompleted ||
       (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || (item.kind !== 'test' && hasPendingSeiban(item.fseiban, true)))) return false;
     const members = items as GrindingPlanningBoardBar[];
     const ranks = new Map(snapshot.itemIds.map((id, index) => [id, index + 1]));
@@ -177,8 +178,8 @@ export function usePlanningBoardPageGantt({
     if (targetItem && (!target || target.isCompleted || !before[1]!.itemIds.includes(target.itemId))) return;
     const affected = currentItemsRef.current.filter((candidate) => before.some((snapshot) => snapshot.itemIds.includes(candidate.itemId)));
     if (affected.some((candidate) => hasPendingSeiban(candidate.fseiban, true))) return;
-    if (before[0]!.itemIds.length > 500 || before[1]!.itemIds.length >= 500) {
-      notify('移動する対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
+    if (before[0]!.itemIds.length > RESOURCE_ORDER_ITEM_LIMIT || before[1]!.itemIds.length >= RESOURCE_ORDER_ITEM_LIMIT) {
+      notify(`移動する対象は資源ごとに${RESOURCE_ORDER_ITEM_LIMIT}件までです。表示を確認してください。`, 'error'); return;
     }
     const sameBand = !target || (item.specialDue?.expiresAt ?? null) === (target.specialDue?.expiresAt ?? null);
     const proposed = [...before[1]!.itemIds];
@@ -239,7 +240,7 @@ export function usePlanningBoardPageGantt({
       const before = snapshotResourceOrder(resourceCd);
       const itemIds = mergeVisibleResourceOrder(before.itemIds, sorted.map((item) => item.itemId));
       if (!enqueueResourceOrder({ resourceCd, itemIds }, '納期順', () => rememberResourceOrder(id, before))) {
-        notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error');
+        notify(`並べ替える対象は資源ごとに${RESOURCE_ORDER_ITEM_LIMIT}件までです。表示を確認してください。`, 'error');
       }
     }
   };
@@ -260,8 +261,8 @@ export function usePlanningBoardPageGantt({
         visibleItemIds: new Set(orderItems.map(item => item.itemId)), canMoveResource,
         hasPendingSeiban: (fseiban) => hasPendingSeiban(fseiban, true)
       });
-      if (resources.some(resource => proposal[resource]!.length > 500 || (current[resource]?.length ?? 0) > 500) || resourceChanges.length > 2000) {
-        notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
+      if (resources.some(resource => proposal[resource]!.length > RESOURCE_ORDER_ITEM_LIMIT || (current[resource]?.length ?? 0) > RESOURCE_ORDER_ITEM_LIMIT) || resourceChanges.length > 2000) {
+        notify(`並べ替える対象は資源ごとに${RESOURCE_ORDER_ITEM_LIMIT}件までです。表示を確認してください。`, 'error'); return;
       }
       const changes = new Map(resourceChanges.map(change => [change.itemId, change]));
       const previewOptions = { ...base, items: base.items.map(item => {
@@ -282,8 +283,8 @@ export function usePlanningBoardPageGantt({
       [resource, mergeVisibleResourceOrder(itemIds, visibleProposal[resource] ?? [])]));
     const changed = Object.keys(proposal).filter((resource) => proposal[resource]!.some((id, index) => id !== current[resource]?.[index]));
     if (!changed.length) { notify('並べ替える必要はありません', 'success'); return; }
-    if (changed.some((resource) => proposal[resource]!.length > 500)) {
-      notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
+    if (changed.some((resource) => proposal[resource]!.length > RESOURCE_ORDER_ITEM_LIMIT)) {
+      notify(`並べ替える対象は資源ごとに${RESOURCE_ORDER_ITEM_LIMIT}件までです。表示を確認してください。`, 'error'); return;
     }
     const layout = buildForwardPlanningBoardGanttLayout({ ...options, laneOrder: proposal });
     setPinMode(false);
@@ -310,8 +311,8 @@ export function usePlanningBoardPageGantt({
       // Unchecked seibans are absent from the proposal; keep them in their full-lane slots.
       const fullProposal = Object.fromEntries(before.map(snapshot => [snapshot.resourceCd,
         mergeUnitOrderLane(snapshot.itemIds, preview.current[snapshot.resourceCd] ?? [], preview.proposal[snapshot.resourceCd] ?? [])]));
-      if (resources.some(resource => fullProposal[resource]!.length > 500) || changes.length > 2000) {
-        notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
+      if (resources.some(resource => fullProposal[resource]!.length > RESOURCE_ORDER_ITEM_LIMIT) || changes.length > 2000) {
+        notify(`並べ替える対象は資源ごとに${RESOURCE_ORDER_ITEM_LIMIT}件までです。表示を確認してください。`, 'error'); return;
       }
       const members = originals as GrindingPlanningBoardItem[];
       const requests = members.map((item, index) => ({ itemId: item.itemId, itemRevision: item.itemRevision,

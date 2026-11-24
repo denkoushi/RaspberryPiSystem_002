@@ -8,6 +8,7 @@ import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardRes
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT } from '@raspi-system/shared-types';
 import type { GrindingPlanningBoardProcessChipsRequest, GrindingPlanningBoardProcessChipsResponse } from '@raspi-system/shared-types';
 
 import { buildLeaderboardPartFooterChipLookupKey } from '../../../services/production-schedule/leaderboard/leaderboard-part-footer-chip-key.js';
@@ -141,7 +142,7 @@ const resourceOrderBulkBodySchema = z.object({
     itemId: z.string().min(1).max(2_000),
     itemRevision: z.string().min(1).max(200),
     overrideVersion: z.number().int().min(0).optional()
-  })).min(1).max(500)
+  })).min(1).max(GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT)
 }).refine((value) => new Set(value.items.map((item) => item.itemId)).size === value.items.length, { message: 'アイテムIDが重複しています' });
 
 const resourceMoveBodySchema = z.object({
@@ -158,7 +159,7 @@ const resourceMoveBodySchema = z.object({
     itemId: z.string().min(1).max(2_000),
     itemRevision: z.string().min(1).max(200),
     overrideVersion: z.number().int().min(0).optional()
-  })).min(1).max(500)
+  })).min(1).max(GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT)
 }).refine((value) => new Set(value.items.map((item) => item.itemId)).size === value.items.length &&
   value.items.some((item) => item.itemId === value.move.itemId && item.itemRevision === value.move.itemRevision && item.overrideVersion === value.move.overrideVersion),
 { message: '移動するアイテムを含む重複しない並び順を指定してください' });

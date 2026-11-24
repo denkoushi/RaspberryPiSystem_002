@@ -522,7 +522,7 @@ describe('bulk resource order route', () => {
       expect(mocks.updateResourceOrderBulk).toHaveBeenCalledWith({ ...payload, dueSource: 'excel', siteKey: 'site-a', scheduleSource: 'both' });
     } finally { await app.close(); }
   });
-  it.each([0, 501, 2])('rejects invalid size or duplicate IDs: %i', async (count) => {
+  it.each([0, 2001, 2])('rejects invalid size or duplicate IDs: %i', async (count) => {
     const app = await createApp(async () => ({ id: 'device-1' }));
     try {
       const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', payload: { ...payload, items: Array.from({ length: count }, () => payload.items[0]) } });
@@ -809,7 +809,7 @@ describe('resource move route', () => {
       expect(mocks.rewarm).toHaveBeenCalledOnce();
     } finally { await app.close(); }
   });
-  it.each([[], [item, item], [{ ...item, itemId: 'other' }], [{ ...item, itemRevision: 'different' }], Array(501).fill(item)])('rejects invalid destination items %#', async (items) => {
+  it.each([[], [item, item], [{ ...item, itemId: 'other' }], [{ ...item, itemRevision: 'different' }], Array(2001).fill(item)])('rejects invalid destination items %#', async (items) => {
     const app = await createApp(async () => ({ id: 'device-1' }));
     try {
       const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-move', payload: { ...payload, items } });

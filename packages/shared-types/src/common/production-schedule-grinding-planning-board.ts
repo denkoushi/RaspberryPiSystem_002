@@ -1,4 +1,6 @@
 export const PLANNING_BOARD_MAX_DUE_OFFSET_DAYS = 3650;
+/** Items one resource-order or resource-move request may carry for a single resource (a busy cutting machine can hold several hundred). */
+export const GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT = 2000;
 
 /** キオスク研削順位ボードのページ専用API契約。既存順位ボードの順位・割当とは別管理。 */
 export type GrindingPlanningBoardView = 'seiban' | 'resource';

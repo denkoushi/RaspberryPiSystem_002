@@ -1,5 +1,6 @@
 import { assertWritablePlanningItemIds } from '../missing-standard-hours-process.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardTestBar } from '@prisma/client';
+import { GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT } from '@raspi-system/shared-types';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardItemReference, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderResponse, GrindingPlanningBoardTestBar, GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarPartCandidatesResponse, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -186,7 +187,7 @@ export async function reorderPlanningTestBarLane(params: (GrindingPlanningBoardR
   return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, current, tests) => {
     const byId = new Map<string, GrindingPlanningBoardBar>([...current.byItemId.values(), ...tests.testBars].map((item) => [item.itemId, item]));
     const requests = 'items' in params ? params.items : [params, { itemId: params.targetItemId, itemRevision: params.targetItemRevision, overrideVersion: params.targetOverrideVersion }];
-    if (!requests.length || requests.length > 500 || new Set(requests.map((item) => item.itemId)).size !== requests.length) throw new ApiError(400, '重複しない棒を指定してください', undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
+    if (!requests.length || requests.length > GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT || new Set(requests.map((item) => item.itemId)).size !== requests.length) throw new ApiError(400, '重複しない棒を指定してください', undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
     const members = requests.map((reference) => assertReference(reference, byId.get(reference.itemId)));
     const resource = 'resourceCd' in params ? params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd) : planningBarResource(members[0]!);
     if (members.some((item) => planningBarResource(item) !== resource || (item.kind !== 'test' && excluded.has(item.fseiban)))) throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');

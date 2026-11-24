@@ -1,3 +1,4 @@
+import { GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT } from '@raspi-system/shared-types';
 import { discoverSourceRows } from './write-source.js';
 import { assertWritablePlanningItemIds } from '../missing-standard-hours-process.js';
 import { hasPlanningTestBars, reorderPlanningTestBarLane } from './test-bars.js';
@@ -451,8 +452,8 @@ async function saveGrindingPlanningBoardResourceOrderBulk(params: { siteKey: str
   assertWritablePlanningItemIds(params.items.map((item) => item.itemId));
   if (!move && (params.items.some((item) => item.itemId.startsWith('test:')) || await hasPlanningTestBars(params.siteKey, params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd)))) return reorderPlanningTestBarLane(params);
   const itemIds = params.items.map((item) => item.itemId);
-  if (itemIds.length < 1 || itemIds.length > 500 || new Set(itemIds).size !== itemIds.length) {
-    throw new ApiError(400, '1〜500件の重複しないアイテムを指定してください', undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
+  if (itemIds.length < 1 || itemIds.length > GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT || new Set(itemIds).size !== itemIds.length) {
+    throw new ApiError(400, `1〜${GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT}件の重複しないアイテムを指定してください`, undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
   }
   const sourceRows = await discoverSourceRows(itemIds);
   await ensurePlanningBoardState(params.siteKey);

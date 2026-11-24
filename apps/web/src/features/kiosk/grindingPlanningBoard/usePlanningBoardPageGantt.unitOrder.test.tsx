@@ -390,13 +390,13 @@ describe('unit order preview and writes', () => {
     }
   );
 
-  it.each(['group', 'balance'] as const)('rejects a lane over 500 items before saving, preserving undo capacity (%s)', method => {
+  it.each(['group', 'balance'] as const)('rejects a lane over 2000 items before saving, preserving undo capacity (%s)', method => {
     if (method === 'balance') selection.resource = '021+022';
-    const h = setup(fixture(501));
+    const h = setup(fixture(2001));
     act(() => h.result.current.page.proposeResourceOrder());
     if (method === 'balance') act(() => h.result.current.page.changeOrderMethod('balance'));
     expect(h.result.current.preview).toBeNull();
-    expect(h.notify).toHaveBeenCalledWith(expect.stringContaining('500件'), 'error');
+    expect(h.notify).toHaveBeenCalledWith(expect.stringContaining('2000件'), 'error');
     expect(h.saveOrder).not.toHaveBeenCalled();
     h.unmount();
   });
