@@ -1,5 +1,6 @@
 import clsx from 'clsx';
-import { useEffect, useRef } from 'react';
+
+import { useScrollIntoViewOnChange } from '../../hooks/useScrollIntoViewOnChange';
 
 import { SignalDailyRunBars } from './MachineSignalRangeOverview';
 import { buildSignalRangeAxis, formatSignalAverageRun, formatSignalRangeStopStart, signalRangeHeatColor, signalRunRatio } from './machineSignalRangeViewModel';
@@ -44,8 +45,7 @@ export function MachineSignalRangeMachines({ range, machines, selected, onSelect
   emptyMessage?: string;
 }) {
   const machine = machines.find((candidate) => candidate.signalNo === selected) ?? machines[0];
-  const selectedRow = useRef<HTMLDivElement>(null);
-  useEffect(() => { selectedRow.current?.scrollIntoView?.({ block: 'nearest' }); }, [machine?.signalNo]);
+  const selectedRow = useScrollIntoViewOnChange<HTMLDivElement>([machine?.signalNo]);
   return <div className="grid min-h-0 flex-1 gap-2.5 min-[1100px]:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
     <section className={clsx(signalPanelClass, 'flex min-h-0 flex-col')}>
       <div className={clsx(ROW_GRID, 'h-[34px] shrink-0 border-b border-[#243347] text-[13px] text-[#8b9cb2]')}>

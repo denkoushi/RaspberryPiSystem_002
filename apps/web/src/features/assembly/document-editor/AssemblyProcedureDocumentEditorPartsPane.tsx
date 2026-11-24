@@ -1,5 +1,6 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 
+import { useScrollIntoViewOnChange } from '../../../hooks/useScrollIntoViewOnChange';
 import { AssemblyProcedureOverlayLayer, assemblyProcedureOverlayElementLabel } from '../AssemblyProcedureOverlayLayer';
 
 import { EditorIconButton } from './EditorIconButton';
@@ -46,11 +47,8 @@ export const AssemblyProcedureDocumentEditorPartsPane = memo(function AssemblyPr
   const otherRows = sorted.filter(({ element }) => element.pageIndex !== pageIndex)
     .sort((a, b) => a.element.pageIndex - b.element.pageIndex);
   const rows = source === 'current' ? currentRows : otherRows;
-  const selectedRow = useRef<HTMLButtonElement | null>(null);
   const selectedIndex = rows.findIndex(({ element }) => element.id === selectedOverlayId);
-  useEffect(() => {
-    selectedRow.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [selectedOverlayId, selectedIndex, source]);
+  const selectedRow = useScrollIntoViewOnChange<HTMLButtonElement>([selectedOverlayId, selectedIndex, source]);
   const disabled = selectedIndex < 0 || readOnly || busy;
   const hidden = selectedOverlayId != null && hiddenOverlayIds.has(selectedOverlayId);
   const pageNumbers = new Map<number, number>();

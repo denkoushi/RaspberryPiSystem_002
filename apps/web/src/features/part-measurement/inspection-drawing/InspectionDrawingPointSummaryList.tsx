@@ -1,6 +1,7 @@
 import { isInspectionDrawingThroughDepthMode } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { useEffect, useRef } from 'react';
+
+import { useScrollIntoViewOnChange } from '../../../hooks/useScrollIntoViewOnChange';
 
 import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
 import {
@@ -78,10 +79,7 @@ export function InspectionDrawingPointSummaryList({
   layout = 'oneColumn',
   scrollSelectedIntoView = false
 }: Props) {
-  const selectedItemRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (scrollSelectedIntoView) selectedItemRef.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [scrollSelectedIntoView, selectedPointId]);
+  const selectedItemRef = useScrollIntoViewOnChange<HTMLDivElement>([selectedPointId], scrollSelectedIntoView);
   if (variant !== 'sidebar') {
     return null;
   }
