@@ -27,8 +27,11 @@ export async function pruneCompletedGrindingPlanningBoardSeibans(): Promise<void
   }
 }
 
-async function findCompletedSeibans(siteKey: string, order: string[]): Promise<Set<string>> {
-  if (order.length === 0) return new Set();
+type MachiningCompletion = 'unfinished' | 'completed' | 'no-machining';
+
+export async function readMachiningCompletionBySeiban(siteKey: string, order: readonly string[]): Promise<Map<string, MachiningCompletion>> {
+  const completion = new Map<string, MachiningCompletion>(order.map((fseiban) => [fseiban, 'no-machining']));
+  if (order.length === 0) return completion;
   const policy = await getResourceCategoryPolicy({ siteKey });
   // Heavy reads stay outside the locking transaction, like the order write path.
   const rows = await readWinnerRowsByFseibans(prisma, order);
@@ -38,18 +41,29 @@ async function findCompletedSeibans(siteKey: string, order: string[]): Promise<S
   const isMachineRow = (rowData: unknown) => /^(MH|SH)/.test(valueAsString(asRowData(rowData), 'FHINCD').trim().toUpperCase());
   const parts = rows.filter((row) => !isMachineRow(row.rowData));
   const { allItems } = projectGrindingPlanningBoard({
-    missingStandardHoursRows: (await readMissingStandardHoursBoardRows(prisma)).filter((row) => !isMachineRow(row.rowData)),
+    missingStandardHoursRows: (await readMissingStandardHoursBoardRows(prisma)).filter((row) =>
+      completion.has(valueAsString(asRowData(row.rowData), 'FSEIBAN')) && !isMachineRow(row.rowData)),
     rows: parts, details, pieceSets, includePieces: true, ranks: { rows: new Map() }, overrides: new Map(),
     category: 'all', allocation: 'original', seibanOrder: order,
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy)
   });
-  const complete = new Map<string, boolean>();
   for (const row of parts) {
     const data = asRowData(row.rowData);
-    if (isCategoryResource(valueAsString(data, 'FSIGENCD'), 'all', policy) && !details.has(row.id)) complete.set(valueAsString(data, 'FSEIBAN'), false);
+    if (isCategoryResource(valueAsString(data, 'FSIGENCD'), 'all', policy) && !details.has(row.id)) {
+      completion.set(valueAsString(data, 'FSEIBAN'), 'unfinished');
+    }
   }
-  for (const item of allItems) complete.set(item.fseiban, (complete.get(item.fseiban) ?? true) && item.isCompleted);
-  return new Set([...complete].filter(([, done]) => done).map(([fseiban]) => fseiban));
+  for (const item of allItems) {
+    if (completion.get(item.fseiban) !== 'unfinished') {
+      completion.set(item.fseiban, item.isCompleted ? 'completed' : 'unfinished');
+    }
+  }
+  return completion;
+}
+
+async function findCompletedSeibans(siteKey: string, order: string[]): Promise<Set<string>> {
+  const completion = await readMachiningCompletionBySeiban(siteKey, order);
+  return new Set([...completion].filter(([, status]) => status === 'completed').map(([fseiban]) => fseiban));
 }
 
 async function pruneBoard(siteKey: string, snapshotOrder: string[]): Promise<void> {
