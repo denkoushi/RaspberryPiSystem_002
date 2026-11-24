@@ -366,7 +366,8 @@ export class PartMeasurementDrawingPlacementService {
       .filter(({ status, dimension }) =>
         (status === 'PROPOSED' || status === 'APPROVED') &&
         dimension !== null && typeof dimension === 'object' && 'kind' in dimension &&
-        typeof dimension.kind === 'string' && kinds.includes(dimension.kind)
+        typeof dimension.kind === 'string' && kinds.includes(dimension.kind) &&
+        !(Array.isArray(dimension.rejectedProcessGroups) && dimension.rejectedProcessGroups.includes(processGroup))
       )
       .map((row) => ({ ...toEditorProposal(row), markerAtRatio: true as const }))
       .filter((row) => !baselineItemAlreadyExists(row, existingItems));
@@ -405,9 +406,11 @@ export class PartMeasurementDrawingPlacementService {
   async recordDecisions(visualTemplateId: string, input: {
     approvedIds: string[]; rejectedIds: string[];
     approvedPositions?: Array<{ id: string; xRatio: number; yRatio: number }>;
+    processGroup?: PartMeasurementProcessGroup;
   }): Promise<{ updated: number }> {
     const decidedAt = new Date();
-    // Approval wins if a caller supplies an ID in both lists. Only PROPOSED rows can transition.
+    const { processGroup } = input;
+    // Approval wins if a caller supplies an ID in both lists.
     return prisma.$transaction(async (tx) => {
       const positions = new Map((input.approvedPositions ?? [])
         .filter((position) => input.approvedIds.includes(position.id))
@@ -429,11 +432,42 @@ export class PartMeasurementDrawingPlacementService {
         where: { visualTemplateId, id: { in: input.approvedIds }, status: 'PROPOSED' },
         data: { status: 'APPROVED', decidedAt }
       });
+      let processRejectedCount = 0;
+      const processRejectedIds = processGroup ? input.rejectedIds.filter((id) => !input.approvedIds.includes(id)) : [];
+      if (processGroup && processRejectedIds.length > 0) {
+        // Lock before reading dimension so concurrent decisions preserve both process groups.
+        const rows = await tx.$queryRaw<Array<{ id: string; dimension: Prisma.JsonValue }>>`
+          SELECT p."id", p."dimension"
+          FROM "PartMeasurementDrawingPlacementProposal" p
+          JOIN "PartMeasurementDrawingPlacementRun" r ON r."id" = p."runId"
+          WHERE p."visualTemplateId" = ${visualTemplateId}
+            AND p."id" IN (${Prisma.join(processRejectedIds)})
+            AND p."status" IN ('PROPOSED', 'APPROVED')
+            AND r."placementVersion" = ${BASELINE_PLACEMENT_VERSION}
+          ORDER BY p."id"
+          FOR UPDATE OF p
+        `;
+        for (const row of rows) {
+          const dimension = row.dimension !== null && typeof row.dimension === 'object' && !Array.isArray(row.dimension)
+            ? row.dimension : {};
+          const groups = Array.isArray(dimension.rejectedProcessGroups)
+            ? dimension.rejectedProcessGroups.filter((group) => typeof group === 'string') : [];
+          // eslint-disable-next-line no-await-in-loop
+          await tx.partMeasurementDrawingPlacementProposal.update({
+            where: { id: row.id },
+            data: { dimension: { ...dimension, rejectedProcessGroups: [...new Set([...groups, processGroup])] }, decidedAt }
+          });
+        }
+        processRejectedCount = rows.length;
+      }
       const rejected = await tx.partMeasurementDrawingPlacementProposal.updateMany({
-        where: { visualTemplateId, id: { in: input.rejectedIds }, status: 'PROPOSED' },
+        where: {
+          visualTemplateId, id: { in: input.rejectedIds }, status: 'PROPOSED',
+          ...(processGroup && { run: { placementVersion: { not: BASELINE_PLACEMENT_VERSION } } })
+        },
         data: { status: 'REJECTED', decidedAt }
       });
-      return { updated: positionedCount + approved.count + rejected.count };
+      return { updated: positionedCount + approved.count + rejected.count + processRejectedCount };
     });
   }
 

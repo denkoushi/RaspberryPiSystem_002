@@ -47,6 +47,7 @@ export async function postInspectionDrawingPlacementDecisions(
   body: {
     approvedIds?: string[];
     rejectedIds?: string[];
+    processGroup?: PartMeasurementProcessGroup;
     approvedPositions?: Array<{ id: string; xRatio: number; yRatio: number }>;
   },
   clientKey?: string

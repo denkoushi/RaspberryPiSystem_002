@@ -12,7 +12,7 @@ import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
 } from './constants.js';
-import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
+import { DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS, normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 import {
   buildMaxProductNoLogicalKeyPartitionExprs,
   buildMaxProductNoWinnerSelectionOrderBySql,
@@ -44,10 +44,12 @@ type WinnerKeyRow = {
   processOrder: string | null;
 };
 
-type SupplementWinnerLookupKey = {
+type QuantityFallbackMatch = {
+  winnerRowId: string;
   productNo: string;
   resourceCd: string;
   processOrder: string;
+  plannedQuantity: number;
 };
 
 export type OrderSupplementSyncResult = {
@@ -200,34 +202,38 @@ export async function loadSupplementSourceRows(client: PrismaClient): Promise<{
   return { scanned: sourceRows.length, normalizedRows };
 }
 
-export async function resolveWinnerIdByKey(
+export async function resolveSupplementWinners(
   client: PrismaClient,
-  dedupedRows: SupplementNormalizedRow[]
-): Promise<Map<string, string>> {
-  if (dedupedRows.length === 0) {
-    return new Map();
-  }
+  normalizedRows: SupplementNormalizedRow[]
+): Promise<{ winnerIdByKey: Map<string, string>; fallbackMatches: QuantityFallbackMatch[] }> {
+  const winnerIdByKey = new Map<string, string>();
+  const fallbackByKey = new Map<string, QuantityFallbackMatch>();
+  if (normalizedRows.length === 0) return { winnerIdByKey, fallbackMatches: [] };
 
-  const lookupKeys = dedupedRows.map(
-    (row): SupplementWinnerLookupKey => ({
-      productNo: row.productNo,
-      resourceCd: row.resourceCd,
-      processOrder: row.processOrder,
-    })
-  );
-  const lookupKeysJson = JSON.stringify(lookupKeys);
+  const exactKeys = new Set<string>();
+  const quantityByOrderAndProcess = new Map<string, number | null>();
+  const lookupKeys = new Map<string, { productNo: string; processOrder: string }>();
+  for (const row of normalizedRows) {
+    exactKeys.add(buildOrderSupplementKey(row));
+    const key = JSON.stringify([row.productNo, row.processOrder]);
+    lookupKeys.set(key, { productNo: row.productNo, processOrder: row.processOrder });
+    if (row.plannedQuantity === null) continue;
+    const previous = quantityByOrderAndProcess.get(key);
+    // Check all source rows before exact-key deduplication can hide a conflict.
+    quantityByOrderAndProcess.set(
+      key,
+      previous === undefined || previous === row.plannedQuantity ? row.plannedQuantity : null
+    );
+  }
+  const lookupKeysJson = JSON.stringify([...lookupKeys.values()]);
   const logicalKeyPartitionExprs = buildMaxProductNoLogicalKeyPartitionExprs('schedule_row');
   const winnerOrderBy = buildMaxProductNoWinnerSelectionOrderBySql('schedule_row');
 
   const winnerRows = await client.$queryRaw<WinnerKeyRow[]>(Prisma.sql`
     WITH input_keys AS MATERIALIZED (
-      SELECT DISTINCT
-        "productNo",
-        "resourceCd",
-        "processOrder"
+      SELECT "productNo", "processOrder"
       FROM jsonb_to_recordset(CAST(${lookupKeysJson} AS jsonb)) AS key(
         "productNo" text,
-        "resourceCd" text,
         "processOrder" text
       )
     ),
@@ -252,20 +258,28 @@ export async function resolveWinnerIdByKey(
     FROM ranked_schedule
     INNER JOIN input_keys
       ON input_keys."productNo" = ranked_schedule."productNo"
-      AND input_keys."resourceCd" = ranked_schedule."resourceCd"
       AND input_keys."processOrder" = ranked_schedule."processOrder"
     WHERE ranked_schedule."winnerRank" = 1
   `);
 
-  const winnerIdByKey = new Map<string, string>();
   for (const row of winnerRows) {
     const productNo = normalizeToken(row.productNo);
     const resourceCd = normalizeProductionScheduleResourceCd(normalizeToken(row.resourceCd));
     const processOrder = normalizeToken(row.processOrder);
     if (productNo.length === 0 || resourceCd.length === 0 || processOrder.length === 0) continue;
-    winnerIdByKey.set(buildOrderSupplementKey({ productNo, resourceCd, processOrder }), row.id);
+    const key = buildOrderSupplementKey({ productNo, resourceCd, processOrder });
+    if (exactKeys.has(key)) {
+      // Keep the resource comparison used by the previous SQL join.
+      if (row.resourceCd === resourceCd) winnerIdByKey.set(key, row.id);
+      continue;
+    }
+    // Only machine rows shown on the planning boards borrow a sibling quantity; '10'/'MSZ' rows stay as imported.
+    if ((DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS as readonly string[]).includes(resourceCd)) continue;
+    const plannedQuantity = quantityByOrderAndProcess.get(JSON.stringify([productNo, processOrder]));
+    if (plannedQuantity == null) continue;
+    fallbackByKey.set(key, { winnerRowId: row.id, productNo, resourceCd, processOrder, plannedQuantity });
   }
-  return winnerIdByKey;
+  return { winnerIdByKey, fallbackMatches: [...fallbackByKey.values()] };
 }
 
 /**
@@ -322,13 +336,15 @@ export function buildReplacementCreateInputs(
   dedupedRows: SupplementNormalizedRow[],
   winnerIdByKey: Map<string, string>,
   existingByKey: ExistingSupplementMap,
-  now: Date
+  now: Date,
+  fallbackMatches: QuantityFallbackMatch[] = []
 ): {
   matched: number;
   unmatched: number;
   createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[];
   updateInputs: ReplacementUpdateInput[];
   pieceQuantityByRowId: Map<string, number | null>;
+  fallbackIdsToRetain: string[];
 } {
   let matched = 0;
   let unmatched = 0;
@@ -395,7 +411,48 @@ export function buildReplacementCreateInputs(
     }
   }
 
-  return { matched, unmatched, createInputs, updateInputs, pieceQuantityByRowId };
+  const exactUpdateIds = new Set(updateInputs.map(({ id }) => id));
+  const fallbackKeys = new Set(fallbackMatches.map(buildOrderSupplementKey));
+  const fallbackIdsToRetain: string[] = [];
+  for (const { winnerRowId, plannedQuantity, ...targetKey } of fallbackMatches) {
+    const existingByTargetKey = existingByKey.get(buildOrderSupplementKey(targetKey));
+    const existingByWinner = existingByWinnerRowId.get(winnerRowId);
+    // A schedule row can already be linked to a different supplement during a winner change.
+    if (existingByTargetKey && existingByWinner && existingByTargetKey.id !== existingByWinner.id) continue;
+    if (!existingByTargetKey && existingByWinner && fallbackKeys.has(buildOrderSupplementKey(existingByWinner))) continue;
+    const existing = existingByTargetKey ?? existingByWinner;
+    if (existing && exactUpdateIds.has(existing.id)) continue;
+
+    pieceQuantityByRowId.set(winnerRowId, plannedQuantity);
+    if (existing) {
+      updateInputs.push({
+        id: existing.id,
+        data: {
+          ...(!existingByTargetKey ? targetKey : {}),
+          ...(existing.csvDashboardRowId !== winnerRowId ? { csvDashboardRowId: winnerRowId } : {}),
+          plannedQuantity,
+          lastSeenAt: now,
+        },
+      });
+      if (existing.plannedStartDate && !existing.plannedStartDateManuallySet) {
+        fallbackIdsToRetain.push(existing.id);
+      }
+    } else {
+      createInputs.push({
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: winnerRowId,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+        ...targetKey,
+        plannedQuantity,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        plannedStartDateManuallySet: false,
+        lastSeenAt: now,
+      });
+    }
+  }
+
+  return { matched, unmatched, createInputs, updateInputs, pieceQuantityByRowId, fallbackIdsToRetain };
 }
 
 export async function runOrderSupplementReplacementTransaction(
@@ -408,6 +465,7 @@ export async function runOrderSupplementReplacementTransaction(
     createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[];
     updateInputs: ReplacementUpdateInput[];
     pieceQuantityByRowId?: ReadonlyMap<string, number | null>;
+    fallbackIdsToRetain?: string[];
   }
 ): Promise<OrderSupplementSyncResult> {
   const retentionCutoff = new Date();
@@ -459,10 +517,18 @@ export async function runOrderSupplementReplacementTransaction(
       const audits = await client.$transaction(
         async (tx) => {
           const previous = await tx.productionScheduleOrderSupplement.findMany({ where: { id: { in: chunk.map((entry) => entry.id) } }, select: { id: true, csvDashboardRowId: true } });
-          const nextRowIds = chunk.flatMap((entry) => typeof entry.data.csvDashboardRowId === 'string' ? [entry.data.csvDashboardRowId] : []);
-          const keys = await lockSessakuPieceSourceRows(tx, [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds]);
+          const previousRowIdBySupplementId = new Map(previous.map((entry) => [entry.id, entry.csvDashboardRowId]));
+          const nextRowIdBySupplementId = new Map<string, string>();
+          for (const entry of chunk) {
+            const rowId = typeof entry.data.csvDashboardRowId === 'string'
+              ? entry.data.csvDashboardRowId
+              : previousRowIdBySupplementId.get(entry.id);
+            if (rowId) nextRowIdBySupplementId.set(entry.id, rowId);
+          }
+          const nextRowIds = [...nextRowIdBySupplementId.values()];
+          const targetIds = [...previousRowIdBySupplementId.values(), ...nextRowIds];
+          const keys = await lockSessakuPieceSourceRows(tx, targetIds);
           if (keys.length) await assertSessakuPieceWinnerTargets(tx, nextRowIds);
-          const targetIds = [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds];
           const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: targetIds } }, select: { id: true, rowData: true } }) : [];
           const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
           const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
@@ -477,7 +543,7 @@ export async function runOrderSupplementReplacementTransaction(
           const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
           const before = await readLaterPieceAuditSnapshots(tx, keys);
           for (const entry of chunk) {
-            const targetRowId = !keys.length ? undefined : typeof entry.data.csvDashboardRowId === 'string' ? entry.data.csvDashboardRowId : previous.find((p) => p.id === entry.id)?.csvDashboardRowId;
+            const targetRowId = keys.length ? nextRowIdBySupplementId.get(entry.id) : undefined;
             await tx.productionScheduleOrderSupplement.update({
               where: { id: entry.id },
               data: targetRowId && (liveRowIds.has(targetRowId) || rowsWithSets.has(targetRowId) && params.pieceQuantityByRowId?.get(targetRowId) === 0) && params.pieceQuantityByRowId?.has(targetRowId) ? { ...entry.data, plannedQuantity: params.pieceQuantityByRowId.get(targetRowId) } : entry.data,
@@ -502,6 +568,7 @@ export async function runOrderSupplementReplacementTransaction(
             sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
             plannedStartDate: { lt: retentionCutoff },
             plannedStartDateManuallySet: false,
+            ...(params.fallbackIdsToRetain?.length ? { id: { notIn: params.fallbackIdsToRetain } } : {}),
           },
         });
         return pruneResult.count;
