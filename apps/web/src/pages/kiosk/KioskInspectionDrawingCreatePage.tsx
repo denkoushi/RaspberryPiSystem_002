@@ -50,6 +50,7 @@ import {
   inspectionDrawingCreateDirtySnapshotsEqual,
   inspectionDrawingSopTargetProps,
   parseInspectionDrawingSourceTemplateIdFromSearch,
+  parseInspectionDrawingProcessGroupFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch,
   normalizeUniqueInspectionDrawingResourceCds,
   resolveInspectionDrawingCreateKeyCollisionForResources,
@@ -482,7 +483,10 @@ export function KioskInspectionDrawingCreatePage() {
 
   const drawingReplacePendingRef = useRef(false);
   const prevSourceTemplateIdRef = useRef<string | null>(null);
-  const prevVisualTemplateIdFromSearchRef = useRef<string | null>(null);
+  const prevVisualFromSearchRef = useRef<{
+    visualTemplateId: string;
+    processGroup: PartMeasurementProcessGroup | null;
+  } | null>(null);
   const visualSearchRequestSeqRef = useRef(0);
   const ocrCandidateRequestSeqRef = useRef(0);
 
@@ -771,32 +775,35 @@ export function KioskInspectionDrawingCreatePage() {
     };
   }, [applyCreateDraft, clientKey, isEditing, location.search, resetBlankCreateForm]);
 
+  const sourceIdFromSearch = parseInspectionDrawingSourceTemplateIdFromSearch(location.search);
+  const visualIdFromSearch = parseInspectionDrawingVisualTemplateIdFromSearch(location.search);
+  const processGroupFromSearch = parseInspectionDrawingProcessGroupFromSearch(location.search);
+
   useEffect(() => {
     if (isEditing) return;
 
-    const sourceId = parseInspectionDrawingSourceTemplateIdFromSearch(location.search);
-    if (sourceId) {
-      prevVisualTemplateIdFromSearchRef.current = null;
+    if (sourceIdFromSearch) {
+      prevVisualFromSearchRef.current = null;
       return;
     }
 
-    const visualIdFromSearch = parseInspectionDrawingVisualTemplateIdFromSearch(location.search);
-    const prevVisualId = prevVisualTemplateIdFromSearchRef.current;
-    prevVisualTemplateIdFromSearchRef.current = visualIdFromSearch;
-
+    const previous = prevVisualFromSearchRef.current;
     if (!visualIdFromSearch) {
-      if (prevVisualId) {
+      prevVisualFromSearchRef.current = null;
+      if (previous) {
         resetBlankCreateForm();
         setMessage(null);
       }
       return;
     }
 
-    if (prevVisualId === visualIdFromSearch) {
+    if (previous?.visualTemplateId === visualIdFromSearch && previous.processGroup === processGroupFromSearch) {
       return;
     }
 
+    prevVisualFromSearchRef.current = { visualTemplateId: visualIdFromSearch, processGroup: processGroupFromSearch };
     resetBlankCreateForm();
+    if (processGroupFromSearch) setProcessGroup(processGroupFromSearch);
     setMessage(null);
 
     let cancelled = false;
@@ -823,8 +830,10 @@ export function KioskInspectionDrawingCreatePage() {
     applyInitialVisualPick,
     clientKey,
     isEditing,
-    location.search,
-    resetBlankCreateForm
+    processGroupFromSearch,
+    resetBlankCreateForm,
+    sourceIdFromSearch,
+    visualIdFromSearch
   ]);
 
   useEffect(() => {

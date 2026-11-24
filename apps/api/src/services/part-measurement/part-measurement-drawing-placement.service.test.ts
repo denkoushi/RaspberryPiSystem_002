@@ -716,9 +716,8 @@ describe('baseline placement', () => {
   const baselineRun = () => run({
     sourceTemplateId: null, sourceVisualTemplate: null,
     proposals: [
-      { ...proposal(), id: 'baseline-1', dimension: { text: 'Φ10', xRatio: 0.2, yRatio: 0.3, kind: 'dia', leader: null } },
-      { ...proposal(), id: 'baseline-saved', measurementLabel: '幅' },
-      { ...proposal(), id: 'baseline-approved', status: 'APPROVED' }
+      { ...proposal(), id: 'baseline-1', dimension: { text: 'Φ10', xRatio: 0.2, yRatio: 0.3, kind: '外寸', leader: null } },
+      { ...proposal(), id: 'baseline-saved', measurementLabel: '幅', dimension: { kind: '外寸' } }
     ]
   });
   afterEach(() => { delete (mocks.env as Record<string, unknown>).INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS; });
@@ -775,13 +774,52 @@ describe('baseline placement', () => {
     expect(mocks.vision.completeMany).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['GRINDING', ['外寸', '幾何公差']],
+    ['CUTTING', ['外寸', 'ピッチ', '深さ', 'はめあい']]
+  ] as const)('returns only the applicable baseline kinds for %s', async (processGroup, expectedIds) => {
+    mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(run({
+      sourceTemplateId: null, sourceVisualTemplate: null,
+      proposals: [
+        ...['外寸', 'ピッチ', '深さ', '幾何公差', 'はめあい', '未知'].map((kind) => ({
+          ...proposal(), id: kind, dimension: { kind }
+        })),
+        { ...proposal(), id: 'missing-kind', dimension: { text: 'Φ10' } },
+        { ...proposal(), id: 'rejected', dimension: { kind: '外寸' }, status: 'REJECTED' }
+      ]
+    }));
+    const result = await service.listForEditor('target', processGroup, { clientIdentifiers: ['kiosk-a'] });
+    expect(result.proposals.map((row) => row.id)).toEqual(expectedIds);
+  });
+
+  it('keeps an approved outer dimension visible in the process that has not saved it', async () => {
+    mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(run({
+      sourceTemplateId: null, sourceVisualTemplate: null,
+      proposals: [
+        { ...proposal(), id: 'approved', dimension: { kind: '外寸' }, status: 'APPROVED' },
+        { ...proposal(), id: 'geometric', dimension: { kind: '幾何公差' }, measurementLabel: '平面度' }
+      ]
+    }));
+    db.partMeasurementTemplateItem.findMany.mockImplementation(async ({ where }) =>
+      where.template.processGroup === 'GRINDING'
+        ? [{ measurementLabel: '長さ', nominalValue: decimal(10) }]
+        : []);
+
+    const grinding = await service.listForEditor('target', 'GRINDING', { clientIdentifiers: ['kiosk-a'] });
+    const cutting = await service.listForEditor('target', 'CUTTING', { clientIdentifiers: ['kiosk-a'] });
+    expect(grinding.proposals.map((row) => row.id)).toEqual(['geometric']);
+    expect(cutting.proposals.map((row) => row.id)).toEqual(['approved']);
+  });
+
   it('keeps a twin proposal far from an existing item and hides a near one', async () => {
     mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
     db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(run({
       sourceTemplateId: null, sourceVisualTemplate: null,
       proposals: [
-        { ...proposal(), id: 'near', dimension: { xRatio: 0.2, yRatio: 0.3 } },
-        { ...proposal(), id: 'far', markerXRatio: decimal(0.9), markerYRatio: decimal(0.9), dimension: { xRatio: 0.8, yRatio: 0.8 } }
+        { ...proposal(), id: 'near', dimension: { kind: '外寸', xRatio: 0.2, yRatio: 0.3 } },
+        { ...proposal(), id: 'far', markerXRatio: decimal(0.9), markerYRatio: decimal(0.9), dimension: { kind: '外寸', xRatio: 0.8, yRatio: 0.8 } }
       ]
     }));
     db.partMeasurementTemplateItem.findMany.mockResolvedValue([
@@ -795,7 +833,7 @@ describe('baseline placement', () => {
     mocks.env.INSPECTION_DRAWING_BASELINE_PLACEMENT_CLIENTS = ['kiosk-a'] as never;
     db.partMeasurementDrawingPlacementRun.findUnique.mockImplementation(async ({ where }) =>
       where.visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion.placementVersion === 'baseline-v1'
-        ? run({ sourceTemplateId: null, sourceVisualTemplate: null, proposals: [{ ...proposal(), id: 'b1' }] })
+        ? run({ sourceTemplateId: null, sourceVisualTemplate: null, proposals: [{ ...proposal(), id: 'b1', dimension: { kind: '外寸' }, status: 'APPROVED' }] })
         : run());
     db.partMeasurementTemplateItem.findMany.mockResolvedValue([{ measurementLabel: '長さ', nominalValue: decimal(10) }]);
     const result = await service.listForEditor('target', 'CUTTING', { clientIdentifiers: ['kiosk-a'] });

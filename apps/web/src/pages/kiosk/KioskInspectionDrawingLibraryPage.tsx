@@ -64,7 +64,7 @@ export function KioskInspectionDrawingLibraryPage() {
     digitQuery: debouncedDigitQuery,
     showInactiveTemplates
   });
-  const resourceCdsByVisualId = useInspectionDrawingResourceCdsByVisualId(
+  const { resourceCdsByVisualId, processGroupsByVisualId } = useInspectionDrawingResourceCdsByVisualId(
     visualLibraryRefreshToken + resourceCdsMapRefreshToken
   );
   const { filters, templates } = templateLibrary;
@@ -202,6 +202,7 @@ export function KioskInspectionDrawingLibraryPage() {
           onRegisterClick={() => setVisualUploadOpen(true)}
           onVisualRenamed={handleVisualRenamed}
           resourceCdsByVisualId={resourceCdsByVisualId}
+          processGroupsByVisualId={processGroupsByVisualId}
           resourceNameMap={resourceNameMap}
           digitQuery={debouncedDigitQuery}
         />

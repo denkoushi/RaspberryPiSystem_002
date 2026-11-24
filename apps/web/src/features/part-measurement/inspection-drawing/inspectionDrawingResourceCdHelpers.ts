@@ -1,4 +1,4 @@
-import type { KioskInspectionDrawingTemplateSummaryDto } from '../types';
+import type { KioskInspectionDrawingTemplateSummaryDto, PartMeasurementProcessGroup } from '../types';
 
 export function activeResourceCdsForTemplate(
   template: KioskInspectionDrawingTemplateSummaryDto
@@ -31,4 +31,19 @@ export function buildResourceCdsByVisualId(
     result[visualId] = [...cds].sort((a, b) => a.localeCompare(b, 'ja'));
   }
   return result;
+}
+
+export function buildProcessGroupsByVisualId(
+  templates: KioskInspectionDrawingTemplateSummaryDto[]
+): Record<string, PartMeasurementProcessGroup[]> {
+  const map = new Map<string, Set<PartMeasurementProcessGroup>>();
+
+  for (const { isActive, visualTemplateId, processGroup } of templates) {
+    if (!isActive || !visualTemplateId || !processGroup) continue;
+    const groups = map.get(visualTemplateId) ?? new Set<PartMeasurementProcessGroup>();
+    groups.add(processGroup);
+    map.set(visualTemplateId, groups);
+  }
+
+  return Object.fromEntries(Array.from(map, ([visualId, groups]) => [visualId, [...groups]]));
 }

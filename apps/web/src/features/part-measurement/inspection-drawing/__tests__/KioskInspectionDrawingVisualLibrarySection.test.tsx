@@ -40,12 +40,14 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('flex-1');
     expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('min-h-0');
     expect(screen.getByTestId('inspection-visual-library-scroll')).toHaveClass('overflow-auto');
-    expect(screen.getByTestId('inspection-visual-name-column')).toHaveClass('w-[60%]');
+    expect(screen.getByTestId('inspection-visual-name-column')).toHaveClass('w-[46%]');
     for (const header of ['図面名', '登録', '操作']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
     expect(screen.getByText('7161テーブル')).toHaveAttribute('title', '7161テーブル');
-    expect(screen.getByRole('link', { name: '新規' })).toHaveAttribute('title', '新規作成');
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual(['研削', '切削']);
+    expect(screen.getByRole('link', { name: '研削' })).toHaveAttribute('title', '研削で新規作成');
+    expect(screen.getByRole('link', { name: '切削' })).toHaveAttribute('title', '切削で新規作成');
     expect(screen.getByRole('button', { name: '名称' })).toHaveAttribute('title', '名称変更');
     expect(screen.getByRole('button', { name: '名称' })).toBeDisabled();
   });
@@ -68,13 +70,42 @@ describe('KioskInspectionDrawingVisualLibrarySection', () => {
     expect(screen.getByText('R001')).toBeInTheDocument();
     expect(screen.getByText('+1')).toBeInTheDocument();
     expect(screen.queryByText('資源CD')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: '新規' })).not.toBeInTheDocument();
-    expect(screen.getByText('新規')).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.queryByText(/既存テンプレあり/)).not.toBeInTheDocument();
-    expect(screen.getByText('新規')).toHaveAttribute(
-      'title',
-      '有効テンプレあり。右の一覧から編集してください'
+    expect(screen.getByRole('link', { name: '研削' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '切削' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['grinding', '研削', 'cutting', '切削'],
+    ['cutting', '切削', 'grinding', '研削']
+  ] as const)('disables only the process with an active template (%s)', (existing, disabledLabel, available, linkLabel) => {
+    const { container } = render(
+      <MemoryRouter>
+        <KioskInspectionDrawingVisualLibrarySection
+          previewVisuals={visuals}
+          onRegisterClick={vi.fn()}
+          processGroupsByVisualId={{ 'visual-1': [existing] }}
+        />
+      </MemoryRouter>
     );
+
+    expect(screen.queryByRole('link', { name: disabledLabel })).not.toBeInTheDocument();
+    const disabled = screen.getByText(disabledLabel);
+    expect(disabled.tagName).toBe('SPAN');
+    expect(disabled).toHaveAttribute('aria-disabled', 'true');
+    expect(disabled).toHaveClass('opacity-45');
+    expect(disabled).toHaveAttribute(
+      'title',
+      `${disabledLabel}の有効テンプレあり。右の一覧から編集してください`
+    );
+    const link = screen.getByRole('link', { name: linkLabel });
+    expect(link).toHaveAttribute(
+      'href',
+      `/kiosk/part-measurement/inspection/create?visualTemplateId=visual-1&processGroup=${available}`
+    );
+    const sopTargets = container.querySelectorAll('[data-kiosk-sop-target="create-from-visual"]');
+    expect(sopTargets).toHaveLength(1);
+    expect(sopTargets[0]).toContainElement(disabled);
+    expect(sopTargets[0]).toContainElement(link);
   });
 
   it('does not render a resource chip row when the visual has no mapped resource CDs', () => {

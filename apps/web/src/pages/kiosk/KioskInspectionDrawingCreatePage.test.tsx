@@ -1,7 +1,7 @@
 import { buildDefaultInspectionDrawingMeasurementLabelSettings } from '@raspi-system/shared-types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KioskInspectionDrawingCreatePage } from './KioskInspectionDrawingCreatePage';
@@ -182,12 +182,13 @@ const expectedItem = {
 const createPath = '/kiosk/part-measurement/inspection/create';
 const editPath = '/kiosk/part-measurement/inspection/templates/template-1/edit';
 
-async function renderPage(path = createPath) {
+async function renderPage(path = createPath, nextPath?: string) {
   await act(async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
+          {nextPath && <Link to={nextPath}>別工程で新規作成</Link>}
           <Routes>
             <Route path={createPath} element={<KioskInspectionDrawingCreatePage />} />
             <Route
@@ -267,6 +268,19 @@ describe('KioskInspectionDrawingCreatePage', () => {
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'テスト入力' })).toBeDisabled();
     expect(apiMocks.getTemplate).not.toHaveBeenCalled();
+  });
+
+  it('uses the URL process and updates it when only the process query changes', async () => {
+    const visualPath = `${createPath}?visualTemplateId=visual-1`;
+    await renderPage(`${visualPath}&processGroup=grinding`, `${visualPath}&processGroup=cutting`);
+    expect(screen.getByRole('button', { name: '研削' })).toHaveAttribute('aria-pressed', 'true');
+    expect(apiMocks.placementProposals).toHaveBeenCalledWith('visual-1', 'grinding', 'test-client-key');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('link', { name: '別工程で新規作成' }));
+    });
+    expect(screen.getByRole('button', { name: '切削' })).toHaveAttribute('aria-pressed', 'true');
+    expect(apiMocks.placementProposals).toHaveBeenLastCalledWith('visual-1', 'cutting', 'test-client-key');
   });
 
   it('requests proposals for the selected process on a new drawing', async () => {
