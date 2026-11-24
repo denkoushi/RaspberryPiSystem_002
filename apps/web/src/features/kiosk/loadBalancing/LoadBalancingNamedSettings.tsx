@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { normalizeMachineName } from '../productionSchedule/machineName';
+import { normalizeFullMachineName } from '../productionSchedule/machineName';
 
 import { formatHours } from './loadBalancingFormat';
 import { namedTargetKey, namedTargetMatches, resolveNamedTarget } from './loadBalancingNamedTargets';
@@ -49,7 +49,7 @@ export function LoadBalancingNamedSettings({ settings, rows, months, today, sele
   const remove = (target: OutsourceNamedTarget) => onChange(targets.filter((item) => item.kind !== target.kind || item.key !== target.key));
   const label = (targetKind: OutsourceNamedTarget['kind'], key: string, row?: Row) => <>
     <span className="block truncate font-extrabold">{targetKind === 'part' && row ? row.fhinmei : key}</span>
-    {row && targetKind !== 'machine' ? <small className="block truncate text-xs text-white/45">{targetKind === 'part' ? `${row.fhincd}\u3000${row.fseiban}\u3000` : ''}{normalizeMachineName(row.machineName, { maxChars: Number.MAX_SAFE_INTEGER })}</small> : null}
+    {row && targetKind !== 'machine' ? <small className="block truncate text-xs text-white/45">{targetKind === 'part' ? `${row.fhincd}\u3000${row.fseiban}\u3000` : ''}{normalizeFullMachineName(row.machineName)}</small> : null}
   </>;
   return <>
     <header className="flex h-16 shrink-0 flex-nowrap items-center gap-2 whitespace-nowrap border-b border-white/15 px-3">

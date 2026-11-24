@@ -3,17 +3,18 @@ import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, use
 
 import { useSingleFlight } from '../../../hooks/useSingleFlight';
 import { KioskDigitTenkey } from '../KioskDigitTenkey';
-import { normalizeMachineName } from '../productionSchedule/machineName';
+import { normalizeFullMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
 import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
+import { PLANNING_BOARD_KEY_CLASS } from './planningBoardKeyClass';
 
 import type { GrindingPlanningBoardSeibanCandidate } from '@raspi-system/shared-types';
 
 const UNSET_MACHINE_NAME = '未設定';
 const LETTER_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const LIST_ICON_CLASS = 'grid h-11 w-11 place-items-center text-base text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-25 disabled:hover:bg-transparent';
-const KEY_CLASS = 'flex h-11 min-w-0 items-center justify-center rounded border border-slate-700 bg-slate-900 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40';
+const KEY_CLASS = `h-11 ${PLANNING_BOARD_KEY_CLASS}`;
 
 function formatCandidateDate(value: string): string {
   return value.slice(5).replace('-', '/');
@@ -24,7 +25,7 @@ function isCandidateOverdue(candidate: GrindingPlanningBoardSeibanCandidate, tod
 }
 
 function normalizeCandidateMachineName(value: string | null | undefined): string {
-  return normalizeMachineName(value, { maxChars: Number.MAX_SAFE_INTEGER });
+  return normalizeFullMachineName(value);
 }
 
 export type PlanningBoardSeibanDrawerProps = {

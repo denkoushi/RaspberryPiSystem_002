@@ -1,3 +1,4 @@
+import { ASCENDING_DIGIT_KEYS } from '../../features/kiosk/KioskDigitTenkey';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 
@@ -9,7 +10,7 @@ type KioskKeyboardModalProps = {
   onConfirm: () => void;
 };
 
-const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+const NUMBER_KEYS = ASCENDING_DIGIT_KEYS;
 const LETTER_ROWS = [
   ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'],
   ['K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'],
