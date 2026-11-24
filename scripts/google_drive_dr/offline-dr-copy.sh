@@ -2,6 +2,8 @@
 # Pi5: copy the encrypted DR repository from Google Drive to a USB stick, verify it, unmount.
 # Never deletes anything on Google Drive (read-only there). On the stick it only deletes key files
 # that are gone from Google Drive, so a replaced password stops opening the stick too.
+# It stops before touching the stick if our password no longer opens Google Drive, and never
+# overwrites a file already on the stick (restic files never change, so a changed one fails the check).
 # See KB-416 for the install location and procedure.
 set -euo pipefail
 export LC_ALL=C
@@ -42,14 +44,17 @@ mkdir -p "$DEST"
 # source sanity: a restic repository has a config file and snapshots
 rclone --config "$CONF" lsf "$SRC" | tee "$D/source-top.txt"
 grep -qx config "$D/source-top.txt" || fail "source has no restic config file"
+# touch nothing on the stick unless our password still opens the source
+RCLONE_CONFIG="$CONF" timeout 300 restic -r "rclone:$SRC" --password-file "$PASS" --no-cache --no-lock cat config >/dev/null \
+  || fail "our password does not open the source; the stick was left unchanged"
 SRC_SIZE=$(rclone --config "$CONF" size --json "$SRC")
 echo "source: $SRC_SIZE"
 need=$(echo "$SRC_SIZE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bytes"])')
 free=$(df -B1 --output=avail "$MNT" | tail -1)
 [ "$free" -gt $(( need * 2 )) ] || fail "not enough free space on the stick"
 
-# copy (no deletions), then compare
-rclone --config "$CONF" copy "$SRC" "$DEST" --exclude "locks/**" --transfers 4 --stats 30s --stats-one-line -v 2>&1 | grep -v ": Copied (new)" || true
+# copy (no deletions, no overwrites), then compare
+rclone --config "$CONF" copy "$SRC" "$DEST" --exclude "locks/**" --immutable --transfers 4 --stats 30s --stats-one-line -v 2>&1 | grep -v ": Copied (new)" || true
 rclone --config "$CONF" check "$SRC" "$DEST" --exclude "locks/**" --one-way 2>&1 | tail -3
 rclone --config "$CONF" sync "$SRC/keys" "$DEST/keys" -v 2>&1 | tail -5
 sync

@@ -63,6 +63,8 @@ The script only reads Google Drive, copies without deleting (except stale key fi
 
 The [dedicated DR playbook](../../infrastructure/ansible/playbooks/deploy-google-drive-disaster-recovery.yml) installs the [copy script](../../scripts/google_drive_dr/offline-dr-copy.sh) and the daily 09:00 Asia/Tokyo check. The check sends a kiosk system notice when the last successful copy is over 30 days old or missing. A successful copy stops new reminders, and the notice closes automatically 48 hours after the last reminder.
 
+The copy script first checks that the Pi5's restic password still opens the Google Drive repository and stops without touching the stick if it does not. It never overwrites a file already on the stick (`rclone copy --immutable`); restic files never change, so a changed file fails the following `rclone check` and the run stops. Changes to the script reach the Pi5 only through the dedicated DR playbook, not the standard rolling update.
+
 ## Prevention
 
 - Force the locale in every check that parses command output, and read results, not schedules.
