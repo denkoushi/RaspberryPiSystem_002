@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 
 import { getAssemblyProcedureDocument, listAssemblyProcedureDocumentSummaries } from '../../../api/client';
 import { Dialog } from '../../../components/ui/Dialog';
-import { KioskDigitTenkey } from '../../kiosk/KioskDigitTenkey';
+import { KioskDigitTenkey, ASCENDING_DIGIT_KEYS } from '../../kiosk/KioskDigitTenkey';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { procedureManualButtonBase, procedureManualButtonUnselected } from '../procedure-manuals/procedure-manual-button-styles';
 
@@ -18,7 +18,7 @@ import type {
 
 const importTitle = 'ほかの要領書から入れる';
 const columnClassName = 'min-h-0 min-w-0 overflow-auto bg-[#161c22] p-3';
-const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] as const;
+const digits = ASCENDING_DIGIT_KEYS;
 const keyClassName = `${procedureManualButtonBase} ${procedureManualButtonUnselected} !min-h-0 bg-[#1b222a] text-2xl font-bold leading-none disabled:opacity-35`;
 const graphemes = new Intl.Segmenter();
 
