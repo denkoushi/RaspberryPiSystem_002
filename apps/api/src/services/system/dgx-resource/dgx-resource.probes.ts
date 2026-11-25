@@ -22,10 +22,12 @@ export type MetricsPayload = {
   memoryMetricSource?: string;
   gpuProcessCount?: number;
   gpuProcessMemoryUsedGiB?: number;
+  gpuProcessHostMemoryGiB?: number;
   gpuProcesses?: Array<{
     pid?: number;
     processName?: string;
     usedMemoryGiB?: number;
+    hostMemoryGiB?: number;
   }>;
 };
 
@@ -56,8 +58,11 @@ export async function fetchJsonMetrics(
           ...(toNum(item.usedMemoryGiB ?? item.used_memory_gib) !== undefined
             ? { usedMemoryGiB: toNum(item.usedMemoryGiB ?? item.used_memory_gib)! }
             : {}),
+          ...(toNum(item.hostMemoryGiB ?? item.host_memory_gib) !== undefined
+            ? { hostMemoryGiB: toNum(item.hostMemoryGiB ?? item.host_memory_gib)! }
+            : {}),
         }))
-        .filter((item) => item.pid !== undefined || item.processName !== undefined || item.usedMemoryGiB !== undefined);
+        .filter((item) => Object.keys(item).length > 0);
       return rows.length > 0 ? rows : undefined;
     };
     const payload: MetricsPayload = {
@@ -134,6 +139,7 @@ export async function fetchJsonMetrics(
       memoryMetricSource: toStr(o.memoryMetricSource ?? o.memory_metric_source),
       gpuProcessCount: toNum(o.gpuProcessCount ?? o.gpu_process_count),
       gpuProcessMemoryUsedGiB: toNum(o.gpuProcessMemoryUsedGiB ?? o.gpu_process_memory_used_gib),
+      gpuProcessHostMemoryGiB: toNum(o.gpuProcessHostMemoryGiB ?? o.gpu_process_host_memory_gib),
       gpuProcesses: toGpuProcesses(o.gpuProcesses ?? o.gpu_processes),
     };
     const hasAtLeastOneMetric = Object.values(payload).some((value) => value !== undefined);
