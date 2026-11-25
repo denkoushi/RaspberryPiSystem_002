@@ -223,6 +223,7 @@ all:
               client_server_cert_pin_enabled: true
               ansible_host: "{{ kiosk_ip }}"
               ansible_user: tools03
+              client_agents_hardened: true
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え4回目)
               kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
@@ -266,6 +267,7 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
               ansible_host: "{{ current_network.raspi4_robodrill01_ip | default(local_network.raspi4_robodrill01_ip) }}"
               ansible_user: tools04
+              client_agents_hardened: true
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え2回目)
               kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
@@ -307,6 +309,7 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_fjv60_80_ip を定義
               ansible_host: "{{ current_network.raspi4_fjv60_80_ip | default(local_network.raspi4_fjv60_80_ip) }}"
               ansible_user: raspi4-fjv60-80
+              client_agents_hardened: true
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え2回目)
               kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
@@ -420,6 +423,7 @@ all:
               # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_sessaku_01_ip | default(local_network.raspi4_sessaku_01_ip) }}"
               ansible_user: raspi4-sessaku-01
+              client_agents_hardened: true
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え2回目)
               kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
@@ -457,6 +461,7 @@ all:
               # NOTE: Tailscale IP 登録前は local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_assembly_01_ip | default(local_network.raspi4_assembly_01_ip) }}"
               ansible_user: raspi4-assembly-01
+              client_agents_hardened: true
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え3回目)
               kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
@@ -519,6 +524,7 @@ all:
               client_server_cert_pin_enabled: true
               ansible_host: "{{ current_network.raspi4_kensaku_02_ip | default(local_network.raspi4_kensaku_02_ip) }}"
               ansible_user: raspi4-kensaku-02
+              client_agents_hardened: true
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え1回目)
               kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
@@ -557,6 +563,7 @@ all:
               # Assembly-02 キオスク（Pi4 8台目）
               ansible_host: "{{ current_network.raspi4_assembly_02_ip | default(local_network.raspi4_assembly_02_ip) }}"
               ansible_user: raspi4-assembly-02
+              client_agents_hardened: true
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え3回目)
               kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"

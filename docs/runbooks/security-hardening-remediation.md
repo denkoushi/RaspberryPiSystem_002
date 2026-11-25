@@ -187,8 +187,9 @@ When a terminal has neither the agent data volume nor an existing agent containe
 `<project>_<service>-data` with Compose project, volume and version labels, then sets ownership to `10001:10001`
 before Compose recreation. A conflicting same-name volume is rejected before changing ownership.
 
-Enable only the trial terminal by setting `client_agents_hardened: true` in that terminal's inventory host vars. Follow the standard
-release procedure in [deployment.md](../guides/deployment.md), inspect its plan and limit the release to that exact host:
+Enable a terminal by setting `client_agents_hardened: true` in that terminal's inventory host vars (all Pi4 kiosks are enabled;
+the role default stays false). Roll out one exact host at a time first, following the standard release procedure in
+[deployment.md](../guides/deployment.md), inspecting its plan and limiting the release to that exact host:
 
 ```bash
 scripts/update-all-clients.sh <release-branch> infrastructure/ansible/inventory.yml --print-plan --limit <terminal-host>

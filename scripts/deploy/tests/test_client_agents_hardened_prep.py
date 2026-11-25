@@ -57,7 +57,7 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
         self.assertTrue(runs(client_agents_hardened=True, release_torque_cutover=False))
         self.assertFalse(runs(client_agents_hardened=True, release_torque_cutover=True))
 
-    def test_inventory_enables_only_the_trial_host(self):
+    def test_inventory_enables_every_pi4_kiosk(self):
         inventory = yaml.safe_load((ROOT / 'infrastructure/ansible/inventory.yml').read_text())
         enabled = []
 
@@ -70,7 +70,16 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
 
         for group in inventory.values():
             walk(group)
-        self.assertEqual(enabled, ['raspi4-kensaku-stonebase01'])
+        self.assertEqual(sorted(enabled), sorted([
+            'raspberrypi4',
+            'raspi4-robodrill01',
+            'raspi4-fjv60-80',
+            'raspi4-kensaku-stonebase01',
+            'raspi4-sessaku-01',
+            'raspi4-assembly-01',
+            'raspi4-kensaku-02',
+            'raspi4-assembly-02',
+        ]))
 
     def test_prepare_gate_and_switch_prep_precede_recreation(self):
         prepare = (TASKS / 'prepare.yml').read_text()
