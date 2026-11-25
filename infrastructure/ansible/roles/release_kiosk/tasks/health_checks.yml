@@ -89,7 +89,8 @@
 
 - name: Verify the kiosk Web endpoint
   ansible.builtin.uri:
-    url: "{{ kiosk_url }}"
+    # Probe the page without its query string so the check never carries the client key.
+    url: "{{ kiosk_url | regex_replace('[?#].*$', '') }}"
     method: GET
     validate_certs: false
     status_code: 200
