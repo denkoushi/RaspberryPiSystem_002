@@ -12,6 +12,7 @@ import {
   listProductionScheduleResourceCategorySettingsLocations,
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
   upsertDueManagementAccessPassword,
+  ACCESS_PASSWORD_MIN_LENGTH,
   upsertProductionScheduleResourceCodeMappings,
   upsertProductionScheduleProcessingTypeOptions,
   upsertProductionScheduleResourceCategorySettings
@@ -87,7 +88,7 @@ const dueManagementAccessPasswordQuerySchema = z.object({
 
 const dueManagementAccessPasswordBodySchema = z.object({
   location: z.string().min(1).max(100).default(SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION),
-  password: z.string().min(1).max(128)
+  password: z.string().trim().min(ACCESS_PASSWORD_MIN_LENGTH).max(128)
 });
 
 const loadBalancingLocationQuerySchema = z.object({

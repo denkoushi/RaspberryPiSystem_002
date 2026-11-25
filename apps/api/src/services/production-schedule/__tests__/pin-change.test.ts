@@ -20,4 +20,8 @@ describe('operation PIN changes', () => {
     await expect(upsertDueManagementAccessPassword({ location: 'shared', password: '  ' })).rejects.toThrow();
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
+  it('rejects PINs shorter than the minimum length without writing', async () => {
+    await expect(upsertDueManagementAccessPassword({ location: 'shared', password: ' 123 ' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
 });

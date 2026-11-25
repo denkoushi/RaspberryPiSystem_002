@@ -443,6 +443,9 @@ export async function importProductionScheduleResourceCodeMappingsFromCsv(params
   };
 }
 
+/** キオスクの操作パスワードは数字4桁の入力欄でも使うため、登録時は4文字以上とする。 */
+export const ACCESS_PASSWORD_MIN_LENGTH = 4;
+
 export async function getDueManagementAccessPasswordSettings(location: string): Promise<{
   location: string;
   configured: boolean;
@@ -466,8 +469,8 @@ export async function upsertDueManagementAccessPassword(params: {
 }): Promise<{ location: string; configured: boolean; defaultPasswordActive: boolean }> {
   const location = normalizeLocation(params.location);
   const password = params.password.trim();
-  if (password.length === 0) {
-    throw new Error('パスワードは必須です');
+  if (password.length < ACCESS_PASSWORD_MIN_LENGTH) {
+    throw new ApiError(400, `パスワードは${ACCESS_PASSWORD_MIN_LENGTH}文字以上で入力してください`);
   }
   const dueManagementPasswordHash = await bcrypt.hash(password, 10);
   const passwordChangedAt = new Date();
