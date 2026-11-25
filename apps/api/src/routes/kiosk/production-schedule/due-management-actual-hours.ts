@@ -14,6 +14,7 @@ import {
   productionScheduleDueManagementActualHoursStatsQuerySchema,
   type KioskRouteDeps,
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export async function registerProductionScheduleDueManagementActualHoursRoute(
   app: FastifyInstance,
@@ -24,7 +25,7 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
 
   app.post(
     '/kiosk/production-schedule/due-management/actual-hours/import',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       await requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
@@ -49,7 +50,7 @@ export async function registerProductionScheduleDueManagementActualHoursRoute(
 
   app.get(
     '/kiosk/production-schedule/due-management/actual-hours/stats',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);

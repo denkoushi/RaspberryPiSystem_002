@@ -20,12 +20,13 @@ import {
   productionScheduleDueManagementTriageSelectionBodySchema,
   type KioskRouteDeps
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export async function registerProductionScheduleDueManagementTriageRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/production-schedule/due-management/triage', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/due-management/triage', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
@@ -54,7 +55,7 @@ export async function registerProductionScheduleDueManagementTriageRoute(
     };
   });
 
-  app.put('/kiosk/production-schedule/due-management/triage/selection', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/due-management/triage/selection', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     await requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
@@ -71,7 +72,7 @@ export async function registerProductionScheduleDueManagementTriageRoute(
     };
   });
 
-  app.get('/kiosk/production-schedule/due-management/daily-plan', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/due-management/daily-plan', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
@@ -98,7 +99,7 @@ export async function registerProductionScheduleDueManagementTriageRoute(
     };
   });
 
-  app.put('/kiosk/production-schedule/due-management/daily-plan', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/due-management/daily-plan', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     await requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);

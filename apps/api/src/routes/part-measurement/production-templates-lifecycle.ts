@@ -22,6 +22,7 @@ import {
   serializeTemplate,
   type PartMeasurementRouteDeps
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 export function registerProductionTemplateLifecycleRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
@@ -32,7 +33,7 @@ export function registerProductionTemplateLifecycleRoutes(app: FastifyInstance, 
 
     app.post(
       '/part-measurement/templates/clone-for-schedule-key',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const body = cloneTemplateForScheduleBodySchema.parse(request.body);
         const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';

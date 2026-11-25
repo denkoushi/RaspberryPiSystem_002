@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { LoanClientAssignmentService } from '../../../services/tools/loan-client-assignment.service.js';
 import { assignLoanClientBodySchema, assignLoanClientParamsSchema } from './schemas.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export function registerLoanAssignClientRoute(
   app: FastifyInstance,
@@ -11,7 +12,7 @@ export function registerLoanAssignClientRoute(
 ): void {
   const canWrite = authorizeRoles('ADMIN', 'MANAGER');
 
-  app.put('/:id/client', { preHandler: canWrite, config: { rateLimit: false } }, async (request) => {
+  app.put('/:id/client', { preHandler: canWrite, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const params = assignLoanClientParamsSchema.parse(request.params);
     const body = assignLoanClientBodySchema.parse(request.body);
 

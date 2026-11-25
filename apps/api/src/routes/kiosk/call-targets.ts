@@ -6,6 +6,7 @@ import {
   listClientDevicesForCallTargets,
   listClientStatusesForCallTargets
 } from '../../services/kiosk/kiosk-call-targets.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 type CallTargetsRouteDeps = {
   normalizeClientKey: (rawKey: unknown) => string | undefined;
@@ -22,7 +23,7 @@ export async function registerKioskCallTargetsRoute(
    * - 通話IDは ClientDevice.id を使用
    * - ClientStatus は補助情報として利用
    */
-  app.get('/kiosk/call/targets', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/call/targets', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const clientKey = deps.normalizeClientKey(request.headers['x-client-key']);
     if (!clientKey) {
       throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');

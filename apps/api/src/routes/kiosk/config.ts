@@ -4,6 +4,7 @@ import { redactHeadersForLog } from '../../lib/log-headers.js';
 
 import { getKioskHeaderTabOrderSettings } from '../../services/kiosk/kiosk-header-tab-order.service.js';
 import { resolveKioskConfigClientState } from '../../services/kiosk/kiosk-config.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 type ConfigRouteDeps = {
   normalizeClientKey: (rawKey: unknown) => string | undefined;
@@ -13,7 +14,7 @@ export async function registerKioskConfigRoute(
   app: FastifyInstance,
   deps: ConfigRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/config', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/config', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     // クライアントキーからクライアント端末を特定
     const rawClientKey = request.headers['x-client-key'];
     const clientKey = deps.normalizeClientKey(rawClientKey);

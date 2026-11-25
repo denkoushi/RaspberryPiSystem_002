@@ -8,6 +8,7 @@ import {
   type KioskRouteDeps
 } from './shared.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const LEADERBOARD_PAGE_SIZE_HARD_CAP = 900;
 
@@ -15,7 +16,7 @@ export async function registerProductionScheduleListRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/production-schedule', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;

@@ -2,6 +2,7 @@ import { sendStorageReadError } from './shared.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { PalletMachineIllustrationStorage } from '../../lib/pallet-machine-illustration-storage.js';
 import { ApiError } from '../../lib/errors.js';
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 
 /**
  * GET /api/storage/pallet-machine-illustrations/*
@@ -9,7 +10,7 @@ import { ApiError } from '../../lib/errors.js';
  * `<img src>` やサイネージ画像取得で Authorization / x-client-key を付けられないため認可しない。
  */
 export function registerPalletMachineIllustrationStorageRoutes(app: FastifyInstance): void {
-  app.get('/storage/pallet-machine-illustrations/*', { config: { rateLimit: false } }, async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/pallet-machine-illustrations/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     const urlPath = decodeURIComponent(((request.params as { '*': string | undefined })['*']) ?? '');
     if (!urlPath) {
       return reply.status(400).send({ message: 'イラストのパスが指定されていません' });

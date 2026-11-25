@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { EmployeeService } from '../../services/tools/employee.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 type EmployeesRouteDeps = {
   requireClientDevice: (rawClientKey: unknown) => Promise<unknown>;
@@ -13,7 +14,7 @@ export async function registerKioskEmployeesRoute(
   const employeeService = new EmployeeService();
 
   // キオスク専用の従業員リスト取得エンドポイント（x-client-key認証のみ）
-  app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/employees', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const rawClientKey = request.headers['x-client-key'];
     await deps.requireClientDevice(rawClientKey);
 

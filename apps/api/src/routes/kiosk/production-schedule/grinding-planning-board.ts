@@ -38,6 +38,7 @@ import {
   updateGrindingPlanningBoardResourceCapacity
 } from '../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js';
 import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const scheduleSourceSchema = z.enum(['general', 'dCompany', 'both']).default('both');
 
@@ -196,7 +197,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.post('/kiosk/production-schedule/grinding-planning-board/process-chips', { config: { rateLimit: false } }, async (request): Promise<GrindingPlanningBoardProcessChipsResponse> => {
+  app.post('/kiosk/production-schedule/grinding-planning-board/process-chips', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request): Promise<GrindingPlanningBoardProcessChipsResponse> => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const { parts } = processChipsBodySchema.parse(request.body);
@@ -222,7 +223,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return { chipsByPartKey: chipsByPartKey ?? {} };
   });
 
-  app.get('/kiosk/production-schedule/grinding-planning-board', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/grinding-planning-board', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const query = querySchema.parse(request.query);
@@ -243,53 +244,53 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     });
   });
 
-  app.get('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
     if (siteKey === 'shared') throw new ApiError(400, '同型機の組には工場を選択してください');
     return getSameModelResourceGroupsForSite(siteKey);
   });
-  app.put('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
     if (siteKey === 'shared') throw new ApiError(400, '同型機の組には工場を選択してください');
     return replaceSameModelResourceGroupsForSite(siteKey, kioskSameModelGroupsSchema.parse(request.body));
   });
 
-  app.get('/kiosk/production-schedule/grinding-planning-board/resource-minutes', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/grinding-planning-board/resource-minutes', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     return getGrindingPlanningBoardResourceMinutes({ siteKey: scope.siteKey });
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/resource-minutes/source', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-minutes/source', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceMinutesSourceSchema.parse(request.body);
     return updateGrindingPlanningBoardResourceMinutesSource({ siteKey: scope.siteKey, ...body });
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/resource-minutes/value', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-minutes/value', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourcePartMinutesSchema.parse(request.body);
     return updateGrindingPlanningBoardResourcePartMinutes({ siteKey: scope.siteKey, ...body });
   });
 
-  app.get('/kiosk/production-schedule/grinding-planning-board/resource-capacity', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/grinding-planning-board/resource-capacity', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     return getGrindingPlanningBoardResourceCapacity({ siteKey: scope.siteKey });
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/resource-capacity', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-capacity', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceCapacityBodySchema.parse(request.body);
     return updateGrindingPlanningBoardResourceCapacity({ siteKey: scope.siteKey, ...body });
   });
 
-  app.get('/kiosk/production-schedule/grinding-planning-board/load', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/grinding-planning-board/load', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     // Older clients may send includePieces; load always includes pieces, so accept and ignore it.
@@ -297,14 +298,14 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category, scheduleSource: query.scheduleSource });
   });
 
-  app.get('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-detail', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-detail', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const params = seibanParamSchema.parse(request.params);
     return getGrindingPlanningBoardDueScope({ siteKey: scope.siteKey, deviceScopeKey: scope.deviceScopeKey, fseiban: params.fseiban });
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-scope', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-scope', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const params = seibanParamSchema.parse(request.params);
@@ -314,14 +315,14 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return result;
   });
 
-  app.get('/kiosk/production-schedule/grinding-planning-board/test-bars/part-candidates', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/grinding-planning-board/test-bars/part-candidates', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const query = z.object({ resourceCd: z.string().trim().min(1).max(20) }).parse(request.query);
     return getPlanningTestBarPartCandidates({ siteKey: scope.siteKey, resourceCd: query.resourceCd });
   });
 
-  app.post('/kiosk/production-schedule/grinding-planning-board/test-bars', { config: { rateLimit: false } }, async (request) => {
+  app.post('/kiosk/production-schedule/grinding-planning-board/test-bars', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = z.object({ sourceRevision: sourceRevisionSchema, dueSource: grindingPlanningBoardDueSourceSchema,
@@ -339,7 +340,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     { method: 'PUT', suffix: '/completion', action: 'completion' }
   ] as const) {
     app.route({ method: operation.method, url: `/kiosk/production-schedule/grinding-planning-board/test-bars/:id${operation.suffix}`,
-      config: { rateLimit: false }, handler: async (request) => {
+      config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT }, handler: async (request) => {
         const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
         const scope = deps.resolveLocationScopeContext(clientDevice);
         const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
@@ -353,7 +354,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     });
   }
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/overrides', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/overrides', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = overridesBodySchema.parse(request.body);
@@ -363,7 +364,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
   });
 
   for (const method of ['PUT', 'DELETE'] as const) {
-    app.route({ method, url: '/kiosk/production-schedule/grinding-planning-board/arrival', config: { rateLimit: false },
+    app.route({ method, url: '/kiosk/production-schedule/grinding-planning-board/arrival', config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT },
       handler: async (request) => {
         const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
         const scope = deps.resolveLocationScopeContext(clientDevice);
@@ -373,14 +374,14 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     });
   }
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/first-process-arrival', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/first-process-arrival', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = arrivalBodySchema.extend({ state: z.enum(['arrived', 'excluded']).nullable() }).parse(request.body);
     return updateGrindingPlanningBoardFirstProcessArrival({ siteKey: scope.siteKey, ...body });
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/pins', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/pins', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = pinsBodySchema.parse(request.body);
@@ -389,7 +390,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return result;
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/rank', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/rank', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = rankBodySchema.parse(request.body);
@@ -398,7 +399,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return result;
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/resource-order', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-order', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceOrderBodySchema.parse(request.body);
@@ -407,7 +408,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return result;
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/resource-move', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-move', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceMoveBodySchema.parse(request.body);
@@ -416,7 +417,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return result;
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceOrderBulkBodySchema.parse(request.body);
@@ -425,7 +426,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return result;
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/seiban-checks', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/seiban-checks', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = z.object({ sourceRevision: sourceRevisionSchema,
@@ -436,7 +437,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return result;
   });
 
-  app.put('/kiosk/production-schedule/grinding-planning-board/seiban-order', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/grinding-planning-board/seiban-order', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = orderBodySchema.parse(request.body);

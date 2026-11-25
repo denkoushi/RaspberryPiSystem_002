@@ -8,6 +8,7 @@ import {
   recordKioskSupportMessage
 } from '../../services/kiosk/kiosk-support.service.js';
 import type { ClientDeviceForScopeResolution, LocationScopeContext } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const supportMessageSchema = z.object({
   message: z.string().min(1).max(1000),
@@ -24,7 +25,7 @@ export async function registerKioskSupportRoute(
   app: FastifyInstance,
   deps: SupportRouteDeps
 ): Promise<void> {
-  app.post('/kiosk/support', { config: { rateLimit: false } }, async (request) => {
+  app.post('/kiosk/support', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const rawClientKey = request.headers['x-client-key'];
     const clientKey = deps.normalizeClientKey(rawClientKey);
 

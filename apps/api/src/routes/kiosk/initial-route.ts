@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { prisma } from '../../lib/prisma.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const initialRouteBodySchema = z.object({
   initialRoute: z.enum(KIOSK_INITIAL_ROUTE_IDS).nullable()
@@ -13,7 +14,7 @@ type InitialRouteDeps = {
 };
 
 export async function registerKioskInitialRoute(app: FastifyInstance, deps: InitialRouteDeps): Promise<void> {
-  app.put('/kiosk/initial-route', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/initial-route', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const { initialRoute } = initialRouteBodySchema.parse(request.body);
     const updated = await prisma.clientDevice.update({

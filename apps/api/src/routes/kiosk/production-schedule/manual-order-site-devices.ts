@@ -6,6 +6,7 @@ import { listRegisteredDeviceScopeKeysForSite } from '../../../lib/manual-order-
 import { canProxyTargetLocation } from '../shared.js';
 import { env } from '../../../config/env.js';
 import type { KioskRouteDeps } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const querySchema = z.object({
   siteKey: z.string().min(1).max(100)
@@ -17,7 +18,7 @@ export async function registerProductionScheduleManualOrderSiteDevicesRoute(
 ): Promise<void> {
   app.get(
     '/kiosk/production-schedule/manual-order/site-devices',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       if (!env.KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED) {
         throw new ApiError(404, 'このエンドポイントは無効です', undefined, 'FEATURE_DISABLED');

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { ApiError } from '../../lib/errors.js';
 import { isLoopbackAddress } from '../../lib/loopback-address.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const requestSchema = z.object({
   action: z.enum(['pause-signage', 'resume-signage']),
@@ -49,7 +50,7 @@ export function registerDeployWorkloadRoute(app: FastifyInstance): void {
   };
 
   app.post('/system/deploy-workload/internal', {
-    config: { rateLimit: false },
+    config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT },
   }, async (request, reply) => {
     const remoteAddress = request.socket.remoteAddress;
     if (!isLoopbackAddress(remoteAddress)) {

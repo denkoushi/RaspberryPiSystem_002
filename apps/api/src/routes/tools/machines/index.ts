@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { MachineService } from '../../../services/tools/machine.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const machineListQuerySchema = z.object({
   search: z.string().optional(),
@@ -45,30 +46,30 @@ export async function registerMachineRoutes(app: FastifyInstance): Promise<void>
   const canEdit = authorizeRoles('ADMIN', 'MANAGER');
   const service = new MachineService();
 
-  app.get('/machines', { preHandler: canView, config: { rateLimit: false } }, async (request) => {
+  app.get('/machines', { preHandler: canView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const query = machineListQuerySchema.parse(request.query);
     const machines = await service.findAll(query);
     return { machines };
   });
 
-  app.get('/machines/resource-choices', { preHandler: canEdit, config: { rateLimit: false } }, async () => {
+  app.get('/machines/resource-choices', { preHandler: canEdit, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async () => {
     const resources = await service.findResourceChoices();
     return { resources };
   });
 
-  app.get('/machines/uninspected', { preHandler: canView, config: { rateLimit: false } }, async (request) => {
+  app.get('/machines/uninspected', { preHandler: canView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const query = uninspectedQuerySchema.parse(request.query);
     const result = await service.findUninspected(query);
     return result;
   });
 
-  app.post('/machines', { preHandler: canEdit, config: { rateLimit: false } }, async (request) => {
+  app.post('/machines', { preHandler: canEdit, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const payload = createMachineSchema.parse(request.body);
     const machine = await service.create(payload);
     return { machine };
   });
 
-  app.put('/machines/:id', { preHandler: canEdit, config: { rateLimit: false } }, async (request) => {
+  app.put('/machines/:id', { preHandler: canEdit, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { id } = request.params as { id: string };
     const payload = updateMachineSchema.parse(request.body);
     const machine = await service.update(id, payload);
@@ -87,7 +88,7 @@ export async function registerMachineRoutes(app: FastifyInstance): Promise<void>
     return { success: true };
   });
 
-  app.delete('/machines/:id', { preHandler: canEdit, config: { rateLimit: false } }, async (request) => {
+  app.delete('/machines/:id', { preHandler: canEdit, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { id } = request.params as { id: string };
     await service.delete(id);
     return { success: true };

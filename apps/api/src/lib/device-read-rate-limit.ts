@@ -1,7 +1,7 @@
 import type { RateLimitOptions } from '@fastify/rate-limit';
 import type { FastifyRequest } from 'fastify';
 import { normalizeClientKey } from './client-key.js';
-import { createRateLimitDeviceCache } from '../plugins/rate-limit-device-cache.js';
+import { createClientDeviceIdLookup, createRateLimitDeviceCache } from '../plugins/rate-limit-device-cache.js';
 
 export const DEVICE_READ_MAX_PER_MINUTE = 12_000;
 export const DEVICE_READ_IP_MAX_PER_MINUTE = 96_000;
@@ -16,7 +16,7 @@ export function createDeviceReadRateLimit({ queryKey = false } = {}): RateLimitO
   };
 
   const lookupDevice = createRateLimitDeviceCache({
-    lookup: async (apiKey) => (await import('./prisma.js')).prisma.clientDevice.findUnique({ where: { apiKey }, select: { id: true } })
+    lookup: createClientDeviceIdLookup()
   });
   const deviceId = async (request: FastifyRequest) => {
     const key = clientKey(request);

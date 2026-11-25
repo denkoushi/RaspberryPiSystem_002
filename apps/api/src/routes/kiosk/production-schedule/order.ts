@@ -14,6 +14,7 @@ import {
   toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export async function registerProductionScheduleOrderRoute(
   app: FastifyInstance,
@@ -96,7 +97,7 @@ export async function registerProductionScheduleOrderRoute(
     return { body, actorLocation, targetLocation, actorClientDeviceId: clientDevice.id };
   };
 
-  app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { body: input, actorLocation, targetLocation, actorClientDeviceId } = await resolveOrderTarget(request, () => {
       const { rowId } = productionScheduleOrderParamsSchema.parse(request.params);
       return { ...productionScheduleOrderBodySchema.parse(request.body), rowId };
@@ -126,7 +127,7 @@ export async function registerProductionScheduleOrderRoute(
     });
   });
 
-  app.put('/kiosk/production-schedule/order/auto-rank', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/order/auto-rank', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { body, actorLocation, targetLocation, actorClientDeviceId } = await resolveOrderTarget(
       request, () => productionScheduleAutoRankBodySchema.parse(request.body)
     );

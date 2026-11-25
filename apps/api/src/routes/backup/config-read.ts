@@ -6,6 +6,7 @@ import { isLoopbackAddress } from '../../lib/loopback-address.js';
 import { redactBackupConfig } from '../../services/backup/backup-config-history.service.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { getBackupTargetTemplates } from '../../services/backup/backup-target-templates.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 export async function registerBackupConfigReadRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
@@ -30,7 +31,7 @@ export async function registerBackupConfigReadRoutes(app: FastifyInstance): Prom
   // 設定の健全性チェック（内部用: localhostからのみ、認証不要）
   // backup/restore手順や事前チェックで利用するためのエンドポイント
   app.get('/backup/config/health/internal', {
-    config: { rateLimit: false },
+    config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT },
   }, async (request, reply) => {
     // Docker bridge (172.*) は Caddy 経由の外部リクエストや同居コンテナも含むため許可しない
     if (!isLoopbackAddress(request.socket.remoteAddress)) {

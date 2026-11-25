@@ -13,6 +13,7 @@ import {
 } from '../../services/backup/backup-execution.service.js';
 import { BackupTargetFactory } from '../../services/backup/backup-target-factory.js';
 import { cleanupBackupsAfterManualExecution } from '../../services/backup/post-backup-cleanup.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   accessToken?: string;
@@ -33,7 +34,7 @@ export async function registerBackupExecutionRoutes(app: FastifyInstance): Promi
   // 内部バックアップエンドポイント（localhostからのみ、認証不要）
   // backup.shスクリプトから使用するためのエンドポイント
   app.post('/backup/internal', {
-    config: { rateLimit: false },
+    config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT },
   }, async (request, reply) => {
     // localhostからのアクセスのみ許可
     const remoteAddress = request.socket.remoteAddress;

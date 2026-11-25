@@ -31,6 +31,7 @@ import {
 } from './shared.js';
 import { parseLeaderboardBoardListParamsBase, parseLeaderboardListParams } from './leaderboard-list-params.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const LEADERBOARD_SHELL_PAGE_SIZE_CAP = 160;
 
@@ -87,7 +88,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/production-schedule/leaderboard-shell', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/leaderboard-shell', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
 
@@ -111,7 +112,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     );
   });
 
-  app.post('/kiosk/production-schedule/leaderboard-shell/continue', { config: { rateLimit: false } }, async (request) => {
+  app.post('/kiosk/production-schedule/leaderboard-shell/continue', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
 
@@ -135,7 +136,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     );
   });
 
-  app.get('/kiosk/production-schedule/leaderboard-total', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/leaderboard-total', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
 
@@ -152,7 +153,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     return { total };
   });
 
-  app.post('/kiosk/production-schedule/leaderboard-decorations', { config: { rateLimit: false } }, async (request) => {
+  app.post('/kiosk/production-schedule/leaderboard-decorations', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;
@@ -172,7 +173,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     });
   });
 
-  app.post('/kiosk/production-schedule/leaderboard-board/client-perf', { config: { rateLimit: false } }, async (request, reply) => {
+  app.post('/kiosk/production-schedule/leaderboard-board/client-perf', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const body = productionScheduleLeaderboardClientPerfBodySchema.parse(request.body ?? {});
 
@@ -192,7 +193,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     return reply.status(204).send();
   });
 
-  app.post('/kiosk/production-schedule/leaderboard-board/labor-metadata', { config: { rateLimit: false } }, async (request) => {
+  app.post('/kiosk/production-schedule/leaderboard-board/labor-metadata', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;
@@ -216,7 +217,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     );
   });
 
-  app.get('/kiosk/production-schedule/leaderboard-board', { config: { rateLimit: false } }, async (request, reply) => {
+  app.get('/kiosk/production-schedule/leaderboard-board', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
 
@@ -254,7 +255,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     );
   });
 
-  app.post('/kiosk/production-schedule/leaderboard-board/continue', { config: { rateLimit: false } }, async (request, reply) => {
+  app.post('/kiosk/production-schedule/leaderboard-board/continue', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
 

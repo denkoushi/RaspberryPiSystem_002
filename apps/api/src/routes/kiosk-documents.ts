@@ -20,6 +20,7 @@ import type { KioskDocumentDetail } from '../services/kiosk-documents/kiosk-docu
 import { KioskDocumentService } from '../services/kiosk-documents/kiosk-document.service.js';
 import { isValidKioskDocumentNumber } from '../services/kiosk-documents/kiosk-document-number.js';
 import { normalizeDocumentText } from '../services/kiosk-documents/kiosk-document-text-normalizer.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../lib/terminal-route-rate-limit.js';
 
 async function readMultipartFile(part: MultipartFile): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -180,7 +181,7 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
 
   app.get(
     '/kiosk-documents',
-    { config: { rateLimit: false }, preHandler: preView },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT }, preHandler: preView },
     async (request) => {
       const query = listQuerySchema.parse(request.query ?? {});
       const sourceType = query.sourceType as KioskDocumentSource | undefined;
@@ -226,7 +227,7 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
 
   app.get(
     '/kiosk-documents/:id',
-    { config: { rateLimit: false }, preHandler: preView },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT }, preHandler: preView },
     async (request) => {
       const { id } = z.object({ id: z.string().guid() }).parse(request.params);
       const hasClientKey = Boolean(request.headers['x-client-key']);

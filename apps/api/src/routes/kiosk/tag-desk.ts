@@ -18,6 +18,7 @@ import { LoanService } from '../../services/tools/loan.service.js';
 import { baseItemSchema } from '../tools/items/schemas.js';
 import { instrumentBaseSchema } from '../measuring-instruments/schemas.js';
 import { riggingGearBaseSchema } from '../rigging/schemas.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const { EmployeeStatus } = pkg;
 
@@ -96,7 +97,7 @@ export async function registerKioskTagDeskRoutes(app: FastifyInstance): Promise<
     return pin.verify(request, body.password);
   });
 
-  app.get('/kiosk/tag-desk/registry', { ...withPin, config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/tag-desk/registry', { ...withPin, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { kind } = kindQuery.parse(request.query ?? {});
     return { rows: await desk.listRegistry(kind) };
   });
@@ -110,7 +111,7 @@ export async function registerKioskTagDeskRoutes(app: FastifyInstance): Promise<
 
   app.get('/kiosk/tag-desk/options', withPin, async () => desk.listOptions());
 
-  app.get('/kiosk/tag-desk/tags/:uid', { ...withPin, config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/tag-desk/tags/:uid', { ...withPin, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { uid } = uidParams.parse(request.params);
     return { uid, bindings: await desk.resolve(uid) };
   });
