@@ -1,3 +1,4 @@
+import { isPreferredPurchaseDateCandidate } from '@raspi-system/slip-match-core';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
@@ -52,9 +53,10 @@ export async function findEarliestPlannedStartDatesForPurchaseRows(
 export type SelectedPurchaseCandidate = { productNo: bigint; completed: boolean; date: Date };
 
 function isPreferredPurchaseCandidate(candidate: SelectedPurchaseCandidate, previous: SelectedPurchaseCandidate): boolean {
-  if (candidate.completed !== previous.completed) return !candidate.completed;
-  if (candidate.date.getTime() !== previous.date.getTime()) return candidate.date < previous.date;
-  return candidate.productNo > previous.productNo;
+  return isPreferredPurchaseDateCandidate(
+    { ...candidate, date: candidate.date.getTime() },
+    { ...previous, date: previous.date.getTime() }
+  );
 }
 
 /** Shared selection for purchase lookup dates and current-placement completion. */

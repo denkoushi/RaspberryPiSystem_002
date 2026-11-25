@@ -3,6 +3,16 @@ import { normalizePurchaseFhinCdForMatching, normalizePurchaseFhinCdForScheduleL
 
 import type { LocalPurchaseRow, PurchaseEnrichmentTuple } from './snapshot.js';
 
+/** Date candidate rank shared with the server: `date` is a YYYY-MM-DD string or epoch milliseconds. */
+export type PurchaseDateCandidateRank = { completed: boolean; date: string | number; productNo: bigint };
+
+/** Incomplete processes first, then the earliest date; an identical date is decided by the larger order number. */
+export function isPreferredPurchaseDateCandidate(candidate: PurchaseDateCandidateRank, previous: PurchaseDateCandidateRank): boolean {
+  if (candidate.completed !== previous.completed) return !candidate.completed;
+  if (candidate.date !== previous.date) return candidate.date < previous.date;
+  return candidate.productNo > previous.productNo;
+}
+
 /** Join display fields without changing purchase matching inputs or row order. */
 export function enrichLocalPurchaseRows<T extends LocalPurchaseRow>(rows: T[], enrichment: PurchaseEnrichmentTuple[]): T[] {
   const names = { match: new Map<string, string>(), normalized: new Map<string, string>(), machine: new Map<string, string>() };
@@ -16,11 +26,7 @@ export function enrichLocalPurchaseRows<T extends LocalPurchaseRow>(rows: T[], e
     if (!seiban.trim() || !part.trim()) return;
     const k = key(seiban, part);
     const previous = map.get(k);
-    if (!previous || (candidate.completed !== previous.completed ? !candidate.completed
-      : candidate.date !== previous.date ? candidate.date < previous.date
-        : candidate.productNo > previous.productNo)) {
-      map.set(k, candidate);
-    }
+    if (!previous || isPreferredPurchaseDateCandidate(candidate, previous)) map.set(k, candidate);
   };
   for (const item of enrichment) {
     if (item[0] !== 'date') { names[item[0]].set(item[1], item[2]); continue; }
