@@ -452,14 +452,17 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     { preHandler: options.allowWriteKiosk },
     async (request) => {
       const params = idParamsSchema.parse(request.params);
-      const body = assemblyProcedureOverlayRegionInputSchema.parse(request.body ?? {});
+      const body = assemblyProcedureOverlayRegionInputSchema.extend({
+        photoOnly: z.boolean().optional()
+      }).parse(request.body ?? {});
       const candidates = await assetsService.findTextCandidates({
         ...await resolveAssemblyProcedureEditWriter(request),
         documentId: params.id,
         accessPassword: body.accessPassword,
         pageIndex: body.pageIndex,
         bbox: body.bbox,
-        ...(body.overlays ? { overlays: body.overlays } : {})
+        ...(body.overlays ? { overlays: body.overlays } : {}),
+        ...(body.photoOnly ? { photoOnly: true } : {})
       });
       return { candidates };
     }

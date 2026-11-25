@@ -90,3 +90,34 @@ describe('region image overlays', () => {
     expect(overlayRegionInputSchema.safeParse({ pageIndex: 0, bbox, overlays: [{ ...overlay, ...invalid }] }).success).toBe(false);
   });
 });
+
+describe('image overlay transcript', () => {
+  const image = {
+    kind: 'IMAGE', pageIndex: 0, assetId: 'asset',
+    bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 }
+  };
+  const choice = { label: '選ぶ', color: '#0078d7', row: 1 };
+  const transcript = { assetId: 'asset', kind: 'list', title: '見出し', rows: [['一'], ['二']], sel: [1], choices: [choice] };
+
+  it('accepts a confirmed transcript, null, and older images without it', () => {
+    expect(overlayElementInputSchema.parse({ ...image, transcript })).toMatchObject({ transcript });
+    expect(overlayElementInputSchema.parse({ ...image, transcript: null })).toMatchObject({ transcript: null });
+    expect(overlayElementInputSchema.parse(image)).not.toHaveProperty('transcript');
+  });
+
+  it.each([
+    ['choice row', { choices: [{ ...choice, row: 2 }] }],
+    ['selected row', { sel: [2] }],
+    ['negative row', { sel: [-1] }],
+    ['fractional row', { choices: [{ ...choice, row: 0.5 }] }],
+    ['rows', { rows: Array.from({ length: 61 }, () => ['']) }],
+    ['columns', { kind: 'table', rows: [Array(9).fill(''), ['']] }],
+    ['list columns', { rows: [['a', 'b'], ['']] }],
+    ['cell length', { rows: [['a'.repeat(201)], ['']] }],
+    ['choices', { choices: Array(9).fill(choice) }],
+    ['label length', { choices: [{ ...choice, label: 'a'.repeat(41) }] }],
+    ['invalid color', { choices: [{ ...choice, color: '#fff' }] }]
+  ])('rejects invalid %s', (_, fields) => {
+    expect(overlayElementInputSchema.safeParse({ ...image, transcript: { ...transcript, ...fields } }).success).toBe(false);
+  });
+});

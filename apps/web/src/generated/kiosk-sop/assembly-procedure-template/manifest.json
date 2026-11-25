@@ -1,9 +1,9 @@
 {
   "artifacts": {
-    "manual.html": "584543e98ed6c790d03c8fce77091173701da0fecfb7f9f2388f8a5b5eddb4d1",
+    "manual.html": "170f5b008cfbd8c01f2f2fc23bc1d49321a6c4b361bc6fe7d6c1c5dd2af464d3",
     "screens/assembly-document-editor-auth.png": "a09e45d9c349adb50fab414983651d694687b31e9950af9d8b28f236fc243565",
     "screens/assembly-document-editor-conflict.png": "8d43abf942a5810708984e59dfa7fb833f07affc333fa8bfd6672eeb06a9e401",
-    "screens/assembly-document-editor-image-properties.png": "e1e10a0463fb88a228cf970c66820a522bc983f931f510c212e2881d23c75e90",
+    "screens/assembly-document-editor-image-properties.png": "c6d79638c5ea3d4e5b5802befbbc1539b4a1735625a8d8e3ed98b8cfee42eae7",
     "screens/assembly-document-editor-publish.png": "08cf6aef7cd6b97e134487d60f9d8f91779db83a1a3955380530bae953161e66",
     "screens/assembly-document-editor-range.png": "0b2f0695cfd1d32e8a65eed98399024b0cc83fbe8e0daefdd8b6b5ebe6ad2692",
     "screens/assembly-document-editor-shape-properties.png": "90948709377146406cdddf989495748c7ff731e8ee3229630daa456e01c49896",
@@ -21,7 +21,7 @@
     "screens/assembly-template-save.png": "2bbd66beebfebac3cce4db8ee19456a63f7454eb3d571cccb3fafe8e5c0758b5",
     "sheets/assembly-document-editor-auth.png": "f226e19d7ed92cea1cd6929c75f3a8316485c0752e59fbedbef5e9d4376585e9",
     "sheets/assembly-document-editor-conflict.png": "3d240c91aae3b0fafa4999010b981b232a2d7afd817b235d78d5241eef303af5",
-    "sheets/assembly-document-editor-image-properties.png": "2220b214309e16520e32b211dff2d0c344c3e84e6aa76dc82b0a14a28cdf33b7",
+    "sheets/assembly-document-editor-image-properties.png": "e6c27f06d898bf235a9fb4da50f31c93eac6b7d1634eb354923899707e10e8af",
     "sheets/assembly-document-editor-publish.png": "d14ac1e58e0ed017c0a85f5e46c6a4bb8b465514624dd19059ebcd9b0a4ec376",
     "sheets/assembly-document-editor-range.png": "1fa642af91e7de45a92e1d58bb40e55580c5310dee805b0c6728c66d881f65bf",
     "sheets/assembly-document-editor-shape-properties.png": "c13094c5946b9f833f252accc4825886d641b36438abe4e0bca896ee7f02f90b",
@@ -513,7 +513,7 @@
       }
     ]
   },
-  "htmlSha256": "584543e98ed6c790d03c8fce77091173701da0fecfb7f9f2388f8a5b5eddb4d1",
+  "htmlSha256": "170f5b008cfbd8c01f2f2fc23bc1d49321a6c4b361bc6fe7d6c1c5dd2af464d3",
   "schemaVersion": 1,
-  "sourceSha256": "92f5d0b6f4415149efc526ac4037eb8bb32e5c7496ae1d3b522fdd94146cd452"
+  "sourceSha256": "616d213eca674807f85f7e18f7cd13b41e4d2683ffd17ce14c14dc92bd259a7b"
 }

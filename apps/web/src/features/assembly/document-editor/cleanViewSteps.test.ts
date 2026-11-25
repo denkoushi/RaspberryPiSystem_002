@@ -1,7 +1,7 @@
 import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
 import { describe, expect, it } from 'vitest';
 
-import { buildCleanSteps } from './cleanViewSteps';
+import { buildCleanSteps, usablePhotoTranscript } from './cleanViewSteps';
 
 import type { AssemblyProcedureImageOverlayElement, AssemblyProcedureTextOverlayElement } from '@raspi-system/shared-types';
 
@@ -60,4 +60,12 @@ describe('buildCleanSteps', () => {
       { id: 'visible', heading: '表示', body: '', images: [photo] }
     ]);
   });
+});
+
+it('uses only a transcript confirmed for the current photo asset', () => {
+  const photo = image('photo', 0.1);
+  const transcript = { assetId: photo.assetId, kind: 'table' as const, rows: [['項目']], sel: [], choices: [] };
+  expect(usablePhotoTranscript(photo)).toBeNull();
+  expect(usablePhotoTranscript({ ...photo, transcript })).toBe(transcript);
+  expect(usablePhotoTranscript({ ...photo, assetId: 'rotated', transcript })).toBeNull();
 });

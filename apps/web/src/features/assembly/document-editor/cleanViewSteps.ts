@@ -13,6 +13,10 @@ export type CleanStep = {
   images: AssemblyProcedureImageOverlayElement[];
 };
 
+export function usablePhotoTranscript({ assetId, transcript }: AssemblyProcedureImageOverlayElement) {
+  return transcript?.assetId === assetId ? transcript : null;
+}
+
 function byTopThenLeft(a: AssemblyProcedureOverlayElement, b: AssemblyProcedureOverlayElement) {
   return a.bbox.yRatio - b.bbox.yRatio || a.bbox.xRatio - b.bbox.xRatio;
 }

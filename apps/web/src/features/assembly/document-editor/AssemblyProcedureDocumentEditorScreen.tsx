@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { countProcedureMaterials } from '../../../api/client';
+import { countProcedureMaterials, findAssemblyProcedureTextCandidates } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
@@ -30,6 +30,7 @@ import { useProcedureMeetingInput } from './useProcedureVoiceInput';
 import { useRotationImagePreload } from './useRotationImagePreload';
 
 import type { AssemblyProcedureDocumentPageDto } from '../types';
+import type { AssemblyProcedureImageOverlayElement } from '@raspi-system/shared-types';
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
@@ -193,6 +194,11 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     onError: error => controller.setErrorMessage(readAssemblyApiErrorMessage(error, '素材の配置に失敗しました。'))
   });
   const closeInspector = useCallback(() => setSelectedOverlayId(null), [setSelectedOverlayId]);
+  const documentId = controller.document?.id;
+  const readPhotoText = useMemo(() => documentId ? (image: AssemblyProcedureImageOverlayElement) => findAssemblyProcedureTextCandidates({
+    id: documentId, accessPassword: controller.passwordInput, pageIndex: image.pageIndex, bbox: image.bbox, photoOnly: true,
+    overlays: [{ assetId: image.assetId, bbox: image.bbox, zIndex: image.zIndex, objectFit: image.objectFit }]
+  }) : undefined, [documentId, controller.passwordInput]);
   const replaceImage = useCallback(() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }, []);
   const rotateImage = useCallback((direction: 'left' | 'right') => {
     const layer = overlayLayerRef.current;
@@ -393,6 +399,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           voiceContext={voiceContext}
           documentId={controller.document?.id}
           holderToken={controller.editLeaseToken}
+          readPhotoText={readPhotoText}
           element={controller.selectedElement}
           onClose={closeInspector}
           onDuplicate={controller.duplicateSelectedOverlay}

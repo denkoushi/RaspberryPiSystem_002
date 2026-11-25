@@ -429,6 +429,32 @@ describe('assembly procedure region assets service', () => {
     expect(storage.read).toHaveBeenCalledWith({ storageKey: 'source.pdf' });
   });
 
+  it('reads just the selected photo over a blank background when the page has embedded PDF text', async () => {
+    mocks.db.assemblyProcedureDocument.findUnique.mockResolvedValue({ ...document, revisionMetadata: {
+      ...document.revisionMetadata, sourceAsset: { kind: 'SOURCE', contentType: 'application/pdf', storageKey: 'source.pdf' }
+    } });
+    mocks.pageImage.mockResolvedValue({ buffer: await image('blue') });
+    storage.read.mockResolvedValue(await image('red', 50, 25));
+    layoutOcr.runLayoutOcrOnImage.mockResolvedValue({ text: '写真', engine: 'mock', words: [
+      { text: '写真', confidence: 90, bbox: { x0: 5, y0: 15, x1: 20, y1: 25 } }
+    ] });
+
+    const result = await service().findTextCandidates({ ...params, photoOnly: true, overlays: [{ ...overlay, bbox: roi }] });
+    expect(result).toMatchObject([{ text: '写真' }]);
+    expect(pdfTextCandidates.extractCandidates).not.toHaveBeenCalled();
+    const { data, info } = await sharp(layoutOcr.runLayoutOcrOnImage.mock.calls[0][0].imageBytes).raw().toBuffer({ resolveWithObject: true });
+    // JPEG chroma subsampling can slightly tint the white letterbox near a red photo.
+    expect(Math.min(...data.subarray(0, 3))).toBeGreaterThan(240);
+    const middle = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels;
+    expect(data[middle]).toBeGreaterThan(240);
+    expect(data[middle + 2]).toBeLessThan(15);
+  });
+
+  it('rejects photo-only reading without one overlapping photo', async () => {
+    await expect(service().findTextCandidates({ ...params, photoOnly: true, overlays: [] })).rejects.toMatchObject({ statusCode: 400 });
+    expect(layoutOcr.runLayoutOcrOnImage).not.toHaveBeenCalled();
+  });
+
   it('falls back to composed image OCR when PDF text is empty', async () => {
     mocks.db.assemblyProcedureDocument.findUnique.mockResolvedValue({ ...document, revisionMetadata: {
       ...document.revisionMetadata, sourceAsset: { kind: 'SOURCE', contentType: 'application/pdf', storageKey: 'source.pdf' }
