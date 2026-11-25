@@ -27,13 +27,13 @@ describe('planning board process chip data', () => {
     expect(collectPlanningBoardProcessChipParts([...items].reverse())).toEqual(expected);
   });
 
-  it('uses the first nonempty chips for a normal board part and deduplicates repeated rows', () => {
+  it('keeps each manufacturing order separate and deduplicates repeated rows', () => {
     const result = buildPlanningBoardProcessChipsByPart(
       [item('A', 'missing'), item('A', 'empty'), item(' A ', ' 1 '), item('A', '1'), item('A', '2'), item('B', '1')],
       { ['A\0empty\0PART']: [], ['A\0' + '1\0PART']: completed, ['A\0' + '2\0PART']: pending }
     );
-    expect([...result]).toEqual([['A\0PART', completed]]);
-    expect(result.get('A\0PART')).toBe(completed);
+    expect([...result]).toEqual([['A\0PART\0' + '1', completed], ['A\0PART\0' + '2', pending]]);
+    expect(result.get('A\0PART\0' + '1')).toBe(completed);
   });
 
   it('keeps unassigned seibans separate by productNo', () => {
@@ -48,6 +48,6 @@ describe('planning board process chip data', () => {
     expect(buildPlanningBoardProcessChipsByPart([item('A', '1')], undefined).size).toBe(0);
     expect(buildPlanningBoardProcessChipsByPart([], { ['A\0\0PART']: completed }).size).toBe(0);
     expect(collectPlanningBoardProcessChipParts([])).toEqual([]);
-    expect([...buildPlanningBoardProcessChipsByPart([item('A', '')], { ['A\0\0PART']: completed })]).toEqual([['A\0PART', completed]]);
+    expect([...buildPlanningBoardProcessChipsByPart([item('A', '')], { ['A\0\0PART']: completed })]).toEqual([['A\0PART\0', completed]]);
   });
 });

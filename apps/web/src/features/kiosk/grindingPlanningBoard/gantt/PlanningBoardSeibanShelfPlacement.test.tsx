@@ -13,7 +13,7 @@ import type { GrindingPlanningBoardItem, GrindingPlanningBoardTestBar } from '@r
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 const source = (itemId: string, resource: string, rank: number): GrindingPlanningBoardItem => ({
   itemId, kind: 'piece', itemRevision: 'r1', version: 1, sourceRowId: itemId, pieceId: itemId, piecePosition: rank,
-  fseiban: 'S1', fhincd: 'P1', fhinmei: 'フランジ', machineName: 'MX-520', productNo: itemId, processOrder: '10',
+  fseiban: 'S1', fhincd: 'P1', fhinmei: 'フランジ', machineName: 'MX-520', productNo: '1', processOrder: '10',
   originalResourceCd: resource, effectiveResourceCd: null, originalDueDate: '2026-11-13', effectiveDueDate: null,
   originalRank: rank, alternateRank: rank, plannedQuantity: 1, parentPlannedQuantity: 3, quantity: 1,
   requiredMinutes: 30, unitRequiredMinutes: 30, lslhSurface: false, requiredMinutesKnown: true, isCompleted: false,

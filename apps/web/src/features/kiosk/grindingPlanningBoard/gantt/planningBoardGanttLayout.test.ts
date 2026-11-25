@@ -86,8 +86,10 @@ describe('planningBoardGanttLayout', () => {
     expect(result.overlapCount).toBe(1);
     expect(bars(result).every((bar) => bar.flagged && !bar.overlaps.length)).toBe(true);
   });
-  it('部品キーは製番・品番、未採番だけ製品番号を加える', () => {
-    expect(planningBoardPartKey(item())).toBe(planningBoardPartKey(item({ productNo: '2' })));
+  it('部品キーは製番・品番・製造オーダー番号', () => {
+    expect(planningBoardPartKey(item())).not.toBe(planningBoardPartKey(item({ productNo: '2' })));
+    expect(planningBoardPartKey(item({ productNo: ' 1 ' }))).toBe(planningBoardPartKey(item({ productNo: '1' })));
+    expect(layout([item(), item({ itemId: 'b', productNo: '2' })]).overlapCount).toBe(0);
     expect(planningBoardPartKey(item())).not.toBe(planningBoardPartKey(item({ fhincd: 'P2' })));
     expect(planningBoardPartKey(item())).not.toBe(planningBoardPartKey(item({ fseiban: '26-1002' })));
     expect(planningBoardPartKey(item({ fseiban: ' ******** ', productNo: '1' }))).not.toBe(planningBoardPartKey(item({ fseiban: '********', productNo: '2' })));
