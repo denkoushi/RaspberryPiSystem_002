@@ -618,6 +618,21 @@ describe('grinding planning board service orchestration', () => {
     }));
   });
 
+  it('uses the newer first-process record between a piece and its parent', async () => {
+    const projection = mocks.projectGrindingPlanningBoard();
+    mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection,
+      items: [{ ...projection.items[0], itemId: 'piece:a', parentItemId: 'row:item-a' }] });
+    vi.mocked(enrichRowsWithProcessArrival).mockImplementation(async (rows) => rows.map((row) => ({ ...row, arrived: true, isFirstProcess: true })));
+    const findMany = mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany;
+    const own = { itemKey: 'piece:a', state: 'excluded', recordedAt: new Date('2026-11-06T00:00:00Z') };
+    findMany.mockResolvedValue([own, { itemKey: 'row:item-a', state: 'arrived', recordedAt: new Date('2026-11-07T00:00:00Z') }]);
+    expect((await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' })).items[0])
+      .toMatchObject({ arrived: true, firstProcessState: 'arrived' });
+    findMany.mockResolvedValue([own, { itemKey: 'row:item-a', state: 'arrived', recordedAt: new Date('2026-11-05T00:00:00Z') }]);
+    expect((await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' })).items[0])
+      .toMatchObject({ arrived: false, firstProcessState: 'excluded' });
+  });
+
   it('uses the latest date across the two keys and keeps arrivals on separate pieces', async () => {
     const projection = mocks.projectGrindingPlanningBoard();
     const parentItemId = 'row:item-a';
@@ -642,7 +657,7 @@ describe('grinding planning board service orchestration', () => {
     expect(await dates()).toEqual([[true, '2026-11-07'], [true, '2026-11-07']]);
   });
 
-  it('uses an older first-process piece record before the parent record', async () => {
+  it('keeps a newer first-process piece record over the parent record', async () => {
     const projection = mocks.projectGrindingPlanningBoard();
     const parentItemId = 'row:item-a';
     const items = ['piece:a', 'piece:b'].map((itemId) => ({ ...projection.items[0], itemId, parentItemId }));
@@ -651,7 +666,7 @@ describe('grinding planning board service orchestration', () => {
       rows.map((row) => ({ ...row, arrived: false, isFirstProcess: true })));
     mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue([
       { itemKey: parentItemId, state: 'arrived', recordedAt: new Date('2026-11-07') },
-      { itemKey: 'piece:a', state: 'excluded', recordedAt: new Date('2026-11-06') }
+      { itemKey: 'piece:a', state: 'excluded', recordedAt: new Date('2026-11-08') }
     ]);
     const result = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
     expect(result.items.map(({ arrived, firstProcessState }) => [arrived, firstProcessState]))

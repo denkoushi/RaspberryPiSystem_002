@@ -409,8 +409,9 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
     const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
     const placement = placementByProductNo.get(item.productNo.trim());
     const isFirstProcess = arrivalById.get(item.itemId)?.isFirstProcess ?? false;
-    const manual = isFirstProcess ? firstProcessByKey.get(item.itemId) ??
-      (item.parentItemId ? firstProcessByKey.get(item.parentItemId) : undefined) : undefined;
+    const ownManual = isFirstProcess ? firstProcessByKey.get(item.itemId) : undefined;
+    const parentManual = isFirstProcess && item.parentItemId ? firstProcessByKey.get(item.parentItemId) : undefined;
+    const manual = ownManual && parentManual && parentManual.recordedAt > ownManual.recordedAt ? parentManual : ownManual ?? parentManual;
     const verifiedAt = verifyMatchByProductNo.get(item.productNo.trim());
     const newerPlacement = manual && (placement?.shelves.some((shelf) => new Date(shelf.placedAt).getTime() > manual.recordedAt.getTime())
       || (verifiedAt != null && verifiedAt.getTime() > manual.recordedAt.getTime()));
