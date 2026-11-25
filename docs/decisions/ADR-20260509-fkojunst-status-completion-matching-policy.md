@@ -1,6 +1,7 @@
 # ADR-20260509: FKOJUNST_Status から本体生産日程への完了反映—照合キー・正規化・優先順位
 
 - **Status**: accepted
+- **Amended by**: [ADR-20261125](./ADR-20261125-fkojunst-resource-swap-completion.md)(資源を付け替えた工程は、付け替え先の C を完了として保存する。決定1と5の例外)
 - **Context**:
   - `FKOJUNST_Status`（メール CSV）と本体 `ProductionSchedule_Mishima_Grinding` は **別ソース**であり、調査では `FKOJUNST='C'` の多くが本体 winner のキー集合と交わらないことが確認された（[KB-373](../knowledge-base/KB-373-fkojunst-status-c-key-domain-mismatch.md)）。
   - 運用上は「`C` が見えないこと」自体よりも、**誤って別行を完了扱いしないこと**が重要。

@@ -14,6 +14,9 @@ type WinnerKeyRow = {
 
 export type FkojunstMailWinnerTripleClient = Pick<PrismaClient, '$queryRaw'>;
 
+/** 製造オーダ(ProductNo)と工順の組のキー。付け替えの証拠を winner のある工程に絞るのに使う。 */
+export const buildFkojunstWinnerProcessKey = (productNo: string, fkojun: string): string => `${productNo}\u0000${fkojun}`;
+
 export type FkojunstMailWinnerTripleInput = {
   fkojun: string;
   fkoteicd: string;
@@ -29,6 +32,8 @@ export async function findFkojunstMailWinnerIdsByMailTriples(params: {
   productionScheduleDashboardId: string;
   triples: FkojunstMailWinnerTripleInput[];
   chunkSize?: number;
+  /** 渡すと、全 winner の (ProductNo, FKOJUN) を入れる。 */
+  winnerProcessKeys?: Set<string>;
 }): Promise<Map<string, string>> {
   const keyToTriple = new Map<string, FkojunstMailWinnerTripleInput>();
   for (const t of params.triples) {
@@ -73,6 +78,7 @@ export async function findFkojunstMailWinnerIdsByMailTriples(params: {
     const fkoteicd = normalizeProductionScheduleResourceCd(normalizeToken(row.fkoteicd));
     const fsezono = normalizeToken(row.fsezono);
     if (fkojun.length === 0 || fkoteicd.length === 0 || fsezono.length === 0) continue;
+    params.winnerProcessKeys?.add(buildFkojunstWinnerProcessKey(fsezono, fkojun));
     const key = buildFkojunstMailStatusKey({ fkojun, fkoteicd, fsezono });
     if (requestedKeys.has(key)) {
       winnerIdByKey.set(key, row.id);

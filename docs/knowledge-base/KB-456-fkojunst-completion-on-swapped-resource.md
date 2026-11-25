@@ -9,7 +9,7 @@ category: knowledge-base
 
 # KB-456: 製番ボードで、別の資源に完了(C)が付いた工程が未完了のまま残る
 
-- Status: 調査済み・案を提示(コード変更なし。実装はユーザーの判断待ち)
+- Status: 方針決定 → [ADR-20261125](../decisions/ADR-20261125-fkojunst-resource-swap-completion.md)(付け替え先の C を保存する完了に反映。全画面に効かせる)
 - Date: 2026-11-25
 - Data: 本番 DB を `BEGIN READ ONLY; … ROLLBACK;` で読み取りのみ
 
@@ -52,30 +52,32 @@ category: knowledge-base
 [#2889](https://github.com/denkoushi/RaspberryPiSystem_002/pull/2889) の [`process-arrival-resource-swap.ts`](../../apps/api/src/services/production-schedule/process-arrival-resource-swap.ts) が、次の工程の「着」の判定だけで、同じ製造オーダ・工順の別資源の C を完了とみなしている。保存している完了(外部完了)は変えていない。
 そのため製番ボードでは、後の工程は「着」になるのに、前の工程の行は未完了のまま残る、という食い違いが起きている。
 
-## Proposal
+## Proposal(当初案と決定)
 
-### 部品の行: 製番ボードの表示だけ、付け替えの完了を完了とみなす(推奨)
+当初は、製番ボードの表示だけで付け替えの完了を完了とみなす案を推した。#2889 と同じ形で、保存する完了は変えない案だった。
+ユーザーの判断(2026-11-25)で、負荷集計・納期管理・進捗・モバイルにも効くよう、**保存する外部完了に反映する**ことに決めた。規則と理由は [ADR-20261125](../decisions/ADR-20261125-fkojunst-resource-swap-completion.md)。
 
-ADR-20260509 の決定1は「保存する完了・工順ST の上書き」の範囲を決めている。そこは変えない。#2889 と同じく、**表示の判定だけ**で次の条件をすべて満たす行を完了として扱う。
-
-1. 同じ製造オーダ・同じ工順で、別の資源の最新の状態が `C`。`X`(場外)は #2889 にそろえて含めない(今回 8 行)。
-2. 生産日程にその製造オーダ・工順の行が1行だけ。2行ある場合(今回 8 行。例 `0003840781` 工順220 の `581` と `583` に対し状態は `580:X` 1件)は、どちらの行の完了か決められないので対象外。
-3. 自分の資源に状態があるなら、`S` ではなく、別資源の `C` の方が新しいか同じ時刻(#2889 と同じ)。
+規則の要点:
+1. 同じ製造オーダ・同じ工順で、別の資源の最新の状態が `C`。`X` は含めない(今回 8 行)。
+2. 生産日程にその製造オーダ・工順の行が1行だけ。除外資源(`10`、`MSZ`、組立)の行は数えない。2行ある場合は対象外(今回 8 行。例 `0003840781` 工順220 の `581` と `583` に対し、状態は `580:X` 1件)。
+3. 自分の資源に状態があるなら、それが `S` ではなく、別資源の `C` の方が同じか新しい。
 4. どちらの資源も除外資源(`10`、`MSZ`、組立など)ではない。
 
-この条件だと今回は部品 112 行が完了になり、製番ボードの登録製番では 9 行。
+最新の取り込み(2026-11-24)だけで数えた見込みは、部品 112 行、製番ボードの登録製番で 9 行だった。
+実装と同じ規則で生産日程の全 winner を数え直すと(2026-11-25、下の2つ目の SQL)、**新しく完了になるのは 821 行、製番ボードの登録製番で 57 行**(規則を満たすのは 825 行、うち 4 行はすでに完了)。内訳:
 
-理由:
-- 製造オーダと工順は厳密一致のままで、ADR が退けた案(製番単位の推測、工順を無視した照合)には当たらない。資源だけを、相手が1つに決まるときに限って許す。
-- 同じ規則をすでに「着」で使っており、行の完了と「着」の食い違いが消える。
-- 保存する完了を変えないので、取り消しや再計算の仕組みに手を入れない。
+- 最新の取り込みの行 216 行(ボード 34 行)。自分の資源に状態が無い 106 行、`R` 107 行、`O` 2 行、`P` 1 行。最初の見込み(112 行)はこのうち「状態が無い」行にあたる。
+- それより前の取り込みの行 244 行(ボード 19 行)。状態が無い 196 行、`R` 42 行、`O` 3 行、`P` 3 行。
+- 取り込み日の無い古い行 361 行(ボード 4 行)。このうち `SKKT`→`051X` の 271 行など、番号の体系が違って見える組がある。どれも製番ボードには出ていない。
+- 多い組は機械の付け替え(`051`→`503`、`070`→`503`、`021`→`504`、`070`→`120`、`080`→`090`、`587`→`586`)。
+- 821 行のうち 514 行は、同じ工順に資源 `10` か `MSZ` の行も並ぶ。最初の数え方ではこれを「2行」として外していた。
+- 割り当て(順位)の付いた行は 0 行。組立の行は 0 行。
 
-残る影響: 負荷の集計・納期管理・進捗一覧・モバイルは保存した完了を使うので、これらの行は未完了のまま数えられる。全画面で完了にしたいなら、ADR-20260509 の決定1を改める新しい ADR が要る。
+自分の資源が `R` のまま、付け替え先が `C` の行も完了になる。別の資源で同じ製造オーダ・工順を終えたので、作業は済んでいるとみなす。
 
-### 採らない案
+証拠テーブルには、生産日程に winner のある工程(製造オーダ+工順)の状態だけを残す。状態 CSV の全履歴(約 92 万の組)のうち、残るのは約 2.8 万行。
 
-- 外部完了(`ProductionScheduleExternalCompletion` / `fkmail`)に書き込む: ADR-20260509 の決定1に反する。
-- 何もしない: 現場が手で完了にし続ければ表示は合う(今回 3 行)。ただし「着」との食い違いは残る。
+まだ完了していない付け替え(付け替え先が P/R)の負荷を、付け替え先の機械へ移すことは範囲外。完了までは元の機械に負荷が残る。
 
 ### 組立の行: 変えない
 
@@ -109,3 +111,41 @@ ROLLBACK;
 ```
 
 状態は製造オーダで先に絞ってから突き合わせる。行ごとの相関サブクエリにすると数分かかる(2026-11-25 に取り消した)。
+
+実装と同じ規則で、付け替え完了になる行を数える(数分かかる)。`done` はすでに完了している行。
+
+```sql
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '600s';
+WITH st AS MATERIALIZED (
+  SELECT DISTINCT ON (n, j, r) n, j, r, s, u FROM (
+    SELECT btrim("rowData"->>'FSEZONO') n, btrim("rowData"->>'FKOJUN') j, upper(btrim("rowData"->>'FKOTEICD')) r,
+      upper(btrim("rowData"->>'FKOJUNST')) s,
+      CASE WHEN "rowData"->>'FUPDTEDT' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}' THEN ("rowData"->>'FUPDTEDT')::timestamp END u,
+      "sourceIngestRunStartedAt" g, "sourceRowOrdinal" o
+    FROM "CsvDashboardRow" WHERE "csvDashboardId" = 'b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e') x
+  WHERE n <> '' AND j <> '' AND r <> ''
+  ORDER BY n, j, r, u DESC NULLS LAST, g DESC NULLS LAST, o DESC NULLS LAST),
+w AS MATERIALIZED (
+  SELECT c.id, btrim(c."rowData"->>'ProductNo') n, btrim(c."rowData"->>'FKOJUN') j, upper(btrim(c."rowData"->>'FSIGENCD')) r,
+    f."statusCode" os, CASE WHEN f."sourceUpdatedAt" <> '1970-01-01' THEN f."sourceUpdatedAt" END ou,
+    COALESCE(upper(f."statusCode") IN ('C', 'X'), false) OR COALESCE(p."isCompleted", false)
+      OR COALESCE(e."isExternallyCompleted", false) done
+  FROM "CsvDashboardRow" c
+  LEFT JOIN "ProductionScheduleFkojunstMailStatus" f ON f."csvDashboardRowId" = c.id
+  LEFT JOIN "ProductionScheduleProgress" p ON p."csvDashboardRowId" = c.id
+  LEFT JOIN "ProductionScheduleExternalCompletion" e ON e."csvDashboardRowId" = c.id
+  WHERE c."csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01' AND c."supersededAt" IS NULL),
+single AS (SELECT n, j FROM w WHERE n <> '' AND j <> '' AND r NOT IN ('10', 'KUMITATE1', 'KUMITATE2', 'MSZ')
+  GROUP BY n, j HAVING count(*) = 1),
+ev AS MATERIALIZED (SELECT st.* FROM st WHERE NOT EXISTS (SELECT 1 FROM w WHERE w.n = st.n AND w.j = st.j AND w.r = st.r)),
+sw AS (
+  SELECT w.id, bool_or(w.done) done
+  FROM single JOIN w USING (n, j) JOIN ev ON ev.n = w.n AND ev.j = w.j AND ev.r <> w.r
+  WHERE w.r <> '' AND w.r NOT IN ('10', 'KUMITATE1', 'KUMITATE2', 'MSZ')
+  GROUP BY w.id
+  HAVING count(*) = 1 AND bool_and(ev.s = 'C' AND ev.r NOT IN ('10', 'KUMITATE1', 'KUMITATE2', 'MSZ') AND ev.u IS NOT NULL
+    AND (w.os IS NULL OR (w.os <> 'S' AND w.ou IS NOT NULL AND ev.u >= w.ou))))
+SELECT count(*) total, count(*) FILTER (WHERE NOT done) newly FROM sw;
+ROLLBACK;
+```

@@ -2,12 +2,14 @@ import { replaceAllWinnerExternalCompletionStatesFromMailSync } from '../externa
 vi.mock('../external-completion/fkojunst-external-completion-sync.repository.js', () => ({ replaceAllWinnerExternalCompletionStatesFromMailSync: vi.fn().mockResolvedValue(undefined) }));
 import { describe, expect, it, vi } from 'vitest';
 
+import { buildFkojunstWinnerProcessKey } from '../fkojunst-mail-winner-by-triple.reader.js';
 import {
   buildFkojunstMailReplacementCreateInputs,
   buildFkojunstMailStatusKey,
   dedupeFkojunstMailRowsByLatest,
   FKOJUNST_STATUS_MAIL_SOURCE_ROW_ORDER_BY,
   parseFkojunstStatusMailFupdteDt,
+  runFkojunstMailClearTransaction,
   runFkojunstMailReplacementTransaction,
   toFkojunstMailNormalizedRow,
 } from '../fkojunst-status-mail-sync.pipeline.js';
@@ -306,7 +308,7 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
     expect(row.skippedUnparseableDate).toBe(true);
   });
 
-  it('buildFkojunstMailReplacementCreateInputs skips unmatched keys', () => {
+  it('keeps only unmatched keys as resource-swap evidence, including non-C and invalid dates', () => {
     const row: FkojunstMailNormalizedRow = {
       sourceRowId: 's1',
       fkojun: '1',
@@ -318,16 +320,27 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
     };
     const key = buildFkojunstMailStatusKey({ fkojun: '1', fkoteicd: 'R1', fsezono: 'PN' });
     const winnerIdByKey = new Map([[key, 'winner-row']]);
-    const { matched, unmatched, createInputs } = buildFkojunstMailReplacementCreateInputs([row], winnerIdByKey);
+    const { matched, unmatched, createInputs, resourceSwapEvidenceInputs } = buildFkojunstMailReplacementCreateInputs([row], winnerIdByKey);
     expect(matched).toBe(1);
     expect(unmatched).toBe(0);
     expect(createInputs).toHaveLength(1);
     expect(createInputs[0]!.csvDashboardRowId).toBe('winner-row');
+    expect(resourceSwapEvidenceInputs).toEqual([]);
 
     const empty = buildFkojunstMailReplacementCreateInputs([row], new Map());
     expect(empty.matched).toBe(0);
     expect(empty.unmatched).toBe(1);
     expect(empty.createInputs).toHaveLength(0);
+    expect(empty.resourceSwapEvidenceInputs).toEqual([expect.objectContaining({
+      productNo: 'PN', fkojun: '1', resourceCd: 'R1', statusCode: 'S', sourceUpdatedAt: row.sourceUpdatedAt,
+    })]);
+    expect(buildFkojunstMailReplacementCreateInputs([{ ...row, hasUnparseableDate: true }], new Map())
+      .resourceSwapEvidenceInputs[0]?.sourceUpdatedAt).toBeNull();
+
+    // winner の無い工程(製造オーダ+工順)は証拠に残さない。
+    expect(buildFkojunstMailReplacementCreateInputs([row], new Map(), new Set()).resourceSwapEvidenceInputs).toEqual([]);
+    expect(buildFkojunstMailReplacementCreateInputs([row], new Map(), new Set([buildFkojunstWinnerProcessKey('PN', '1')]))
+      .resourceSwapEvidenceInputs).toHaveLength(1);
   });
 
   it('replaces process-change residual evidence inside mail replacement transaction', async () => {
@@ -347,7 +360,8 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
       productionScheduleFkojunstMailStatus: {
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
         createMany: vi.fn()
-      }
+      },
+      productionScheduleFkojunstResourceSwapEvidence: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
     };
     const client = {
       $transaction: vi.fn(async (work: (txArg: typeof tx) => Promise<unknown>) => work(tx))
@@ -366,12 +380,9 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
 
     await runFkojunstMailReplacementTransaction(client as never, {
       scanned: 1,
-      normalized: 1,
-      matched: 0,
-      unmatched: 0,
+      dedupedRows: [],
       skippedInvalidStatus: 0,
       skippedUnparseableDate: 0,
-      createInputs: [],
       processChangeResidualEvidenceInputs: [evidenceInput],
       sourceRowsRevision
     });
@@ -399,14 +410,43 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
     vi.mocked(replaceAllWinnerExternalCompletionStatesFromMailSync).mockClear();
     const tx = {
       productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }), createMany: vi.fn() }, $executeRaw: vi.fn(), productionScheduleSessakuPieceSet: { findFirst: vi.fn().mockResolvedValue(hasPieces ? { id: 'set' } : null) },
+      // 同じ工程の winner は別資源(041)にある。
+      $queryRaw: vi.fn().mockResolvedValue([{ id: 'winner', fkojun: '01', fkoteicd: '041', fsezono: '123' }]),
+      productionScheduleFkojunstResourceSwapEvidence: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }), createMany: vi.fn(),
+      },
       productionScheduleFkojunstMailStatus: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) } };
     const client = { $transaction: vi.fn(async (fn: (arg: typeof tx) => Promise<unknown>) => fn(tx)) };
-    const result = await runFkojunstMailReplacementTransaction(client as never, { scanned: 1, normalized: 1, matched: 0, unmatched: 1,
-      skippedInvalidStatus: 0, skippedUnparseableDate: 0, createInputs: [] });
+    const mail = toFkojunstMailNormalizedRow('src', { FSEZONO: '123', FKOJUN: '01', FKOTEICD: '021', FKOJUNST: 'P' }).row!;
+    const result = await runFkojunstMailReplacementTransaction(client as never, { scanned: 1, dedupedRows: [mail],
+      skippedInvalidStatus: 0, skippedUnparseableDate: 1 });
+    expect(result.unmatched).toBe(1);
+    expect(tx.productionScheduleFkojunstResourceSwapEvidence.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ productNo: '123', fkojun: '01', resourceCd: '021', statusCode: 'P' })],
+    });
     expect(replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledTimes(hasPieces ? 1 : 0);
     expect(result.externalCompletionSynced).toBe(hasPieces ? true : undefined);
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1); // the original mail critical lock
-    if (hasPieces) expect(replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(tx, true);
+    if (hasPieces) {
+      expect(replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(tx, true);
+      expect(tx.productionScheduleFkojunstResourceSwapEvidence.createMany)
+        .toHaveBeenCalledBefore(vi.mocked(replaceAllWinnerExternalCompletionStatesFromMailSync));
+    }
   });
 
+  it('clears saved swap completion in the same transaction when the evidence is cleared', async () => {
+    vi.mocked(replaceAllWinnerExternalCompletionStatesFromMailSync).mockClear();
+    const deleteMany = vi.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      $executeRaw: vi.fn(),
+      productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn() },
+      productionScheduleFkojunstMailStatus: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      productionScheduleFkojunstResourceSwapEvidence: { deleteMany },
+    };
+    const client = { $transaction: vi.fn(async (fn: (arg: typeof tx) => Promise<unknown>) => fn(tx)) };
+    await runFkojunstMailClearTransaction(client as never, 0, 0, 0);
+    expect(deleteMany).toHaveBeenCalledWith({ where: { sourceCsvDashboardId: 'b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e' } });
+    expect(replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(tx, true, 'clear-resource-swap');
+    expect(deleteMany).toHaveBeenCalledBefore(vi.mocked(replaceAllWinnerExternalCompletionStatesFromMailSync));
+  });
 });
