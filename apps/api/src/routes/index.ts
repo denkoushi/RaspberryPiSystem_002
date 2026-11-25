@@ -38,7 +38,7 @@ import { registerKioskTagDeskRoutes } from './kiosk/tag-desk.js';
  * すべてのルートを登録
  *
  * 注記: レート制限プラグインの登録は `app.ts` 側で一元実施する。
- * ルート単位で無効化が必要な場合のみ、各ハンドラで `config.rateLimit = false` を使う。
+ * 端末が呼ぶ経路は、各ハンドラの `config.rateLimit` で端末向けの上限を指定する。
  */
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(
