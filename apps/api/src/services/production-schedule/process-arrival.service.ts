@@ -6,7 +6,6 @@ import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-p
 import { getResourceCategoryPolicy, isProductionScheduleExcludedCuttingResourceCd } from './policies/resource-category-policy.service.js';
 import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 import { buildProcessArrivalResourceSwapKey, findProcessArrivalResourceSwapCompletedKeys } from './process-arrival-resource-swap.js';
-import { isUnassignedProductionSeiban } from './row-resolver/constants.js';
 import type { GrindingPlanningBoardSpecialDue } from '@raspi-system/shared-types';
 
 export type ArrivalProcess = { fseiban: string; fhincd: string; productNo: string; processOrder: string; resourceCd: string; isCompleted: boolean };
@@ -16,7 +15,7 @@ const field = (data: unknown, key: string): string => {
   return value == null ? '' : String(value).trim();
 };
 const partKey = (p: Pick<ArrivalProcess, 'fseiban' | 'fhincd' | 'productNo'>) =>
-  JSON.stringify([p.fseiban.trim(), p.fhincd.trim(), isUnassignedProductionSeiban(p.fseiban) ? p.productNo.trim() : '']);
+  JSON.stringify([p.fseiban.trim(), p.fhincd.trim(), p.productNo.trim()]);
 const order = (value: string) => /^\d+$/.test(value.trim()) ? Number(value) : null;
 
 type ProcessArrival = { arrived: boolean; isFirstProcess: boolean };
@@ -68,25 +67,25 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
   const preferredIds = [...new Set(rows.map((row) => row.sourceRowId ?? row.id))];
   const fseibans = keys.map((key) => key.fseiban);
   const fhincds = keys.map((key) => key.fhincd);
-  const keyProductNos = keys.map((key) => isUnassignedProductionSeiban(key.fseiban) ? key.productNo : null);
-  // Footer chips match ProductNo even for ordinary parts; arrival intentionally spans
-  // those ProductNos. Keys are unique per ordinary part or unassigned ProductNo,
-  // so joining them keeps the same candidates as EXISTS and permits indexed lookups.
+  const keyProductNos = keys.map((key) => key.productNo);
+  // 製造オーダー番号ごとに工程を数える。同じ製番+部品に番号が2つあっても、
+  // 工程どうしを混ぜない(印の付いた古い番号は除く)。
   const processes = keys.length ? await client.$queryRaw<ArrivalProcess[]>(Prisma.sql`
     WITH "winnerRows" AS (
       SELECT DISTINCT ON (
         BTRIM("rowData"->>'FSEIBAN'), BTRIM("rowData"->>'FHINCD'),
         BTRIM("rowData"->>'FSIGENCD'), BTRIM("rowData"->>'FKOJUN'),
-        CASE WHEN BTRIM("rowData"->>'FSEIBAN') = '********' THEN BTRIM("rowData"->>'ProductNo') ELSE '' END
+        COALESCE(BTRIM("rowData"->>'ProductNo'), '')
       ) "CsvDashboardRow".*
       FROM unnest(${fseibans}::text[], ${fhincds}::text[], ${keyProductNos}::text[]) AS k(fseiban, fhincd, product_no)
       INNER JOIN "CsvDashboardRow"
         ON "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND BTRIM("rowData"->>'FSEIBAN') = k.fseiban
         AND BTRIM("rowData"->>'FHINCD') = k.fhincd
-        AND (k.product_no IS NULL OR BTRIM("rowData"->>'ProductNo') = k.product_no)
+        AND COALESCE(BTRIM("rowData"->>'ProductNo'), '') = k.product_no
+        AND "supersededAt" IS NULL
       ORDER BY BTRIM("rowData"->>'FSEIBAN'), BTRIM("rowData"->>'FHINCD'), BTRIM("rowData"->>'FSIGENCD'), BTRIM("rowData"->>'FKOJUN'),
-        CASE WHEN BTRIM("rowData"->>'FSEIBAN') = '********' THEN BTRIM("rowData"->>'ProductNo') ELSE '' END,
+        COALESCE(BTRIM("rowData"->>'ProductNo'), ''),
         ("id" IN (${Prisma.join(preferredIds)})) DESC,
         CASE WHEN ("rowData"->>'ProductNo') ~ '^[0-9]+$' THEN ("rowData"->>'ProductNo')::bigint ELSE -1 END DESC,
         "createdAt" DESC, "id" DESC

@@ -33,6 +33,7 @@ export async function fetchMaxProductNoWinnerRowIdsForDashboard(params: {
           ) AS "rn"
         FROM "CsvDashboardRow" AS "r"
         WHERE "r"."csvDashboardId" = ${params.csvDashboardId}
+          AND "r"."supersededAt" IS NULL
       )
       SELECT "id"::text FROM ranked WHERE "rn" = 1
     `

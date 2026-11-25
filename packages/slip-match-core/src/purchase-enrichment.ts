@@ -10,15 +10,15 @@ export function enrichLocalPurchaseRows<T extends LocalPurchaseRow>(rows: T[], e
   const dates = { match: new Map<string, Selected>(), normalized: new Map<string, Selected>(), name: new Map<string, Selected>() };
   const seibans = new Set(rows.flatMap((row) => row.seiban.trim() ? [row.seiban, row.seiban.trim()] : []));
   const key = (seiban: string, part: string) => `${seiban.trim()}\t${part.trim()}`;
-  // Same selection as the server: latest numeric order, then its earliest incomplete process, then earliest date.
+  // Same selection as the server: incomplete processes first, then the earliest date across all live orders;
+  // an identical date is decided by the larger order number.
   const keepPreferred = (map: Map<string, Selected>, seiban: string, part: string, candidate: Selected) => {
     if (!seiban.trim() || !part.trim()) return;
     const k = key(seiban, part);
     const previous = map.get(k);
-    if (!previous || candidate.productNo > previous.productNo ||
-      (candidate.productNo === previous.productNo &&
-        ((previous.completed && !candidate.completed) ||
-          (candidate.completed === previous.completed && candidate.date < previous.date)))) {
+    if (!previous || (candidate.completed !== previous.completed ? !candidate.completed
+      : candidate.date !== previous.date ? candidate.date < previous.date
+        : candidate.productNo > previous.productNo)) {
       map.set(k, candidate);
     }
   };

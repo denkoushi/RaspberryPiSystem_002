@@ -159,7 +159,7 @@ describe('production-schedule-query.service', () => {
     expect(result.rows[0]?.updatedAt).toEqual(updatedAt);
     const rawQueries = vi.mocked(prisma.$queryRaw).mock.calls.map(([query]) =>
       (Array.isArray(query) ? query : (query as { strings?: readonly string[] }).strings ?? []).join(' '));
-    expect(rawQueries.some((sql) => sql.includes('"supplement"."productNo" = ("CsvDashboardRow"."rowData"->>\'ProductNo\')')))
+    expect(rawQueries.some((sql) => sql.includes('"supplement"."productNo" = BTRIM(COALESCE("CsvDashboardRow"."rowData"->>\'ProductNo\', \'\'))')))
       .toBe(true);
   });
 

@@ -28,13 +28,13 @@ describe('independent purchase display data', () => {
     expect(enrichLocalPurchaseRows([{ ...row, purchasePartCodeMatchKey: 'missing' }], enrichment)[0].masterPartName).toBe('fallback');
     expect(enrichLocalPurchaseRows([row], [])).toEqual([row]);
   });
-  it('uses the latest order, then its earliest incomplete process, like the server', () => {
+  it('takes incomplete processes first, then the earliest date across all live orders, like the server', () => {
     const date = (d: string, productNo: string, completed: 0 | 1): PurchaseEnrichmentTuple => ['date', 'FS1', 'MD1', '', d, productNo, completed];
     const pick = (items: PurchaseEnrichmentTuple[]) => enrichLocalPurchaseRows([row], items)[0].plannedStartDate;
-    expect(pick([date('2026-05-01', '9', 0), date('2026-05-03', '10', 0)])).toBe('2026-05-03');
+    expect(pick([date('2026-05-01', '9', 0), date('2026-05-03', '10', 0)])).toBe('2026-05-01');
+    expect(pick([date('2026-05-01', '9', 1), date('2026-05-04', '10', 0)])).toBe('2026-05-04');
     expect(pick([date('2026-05-02', '10', 1), date('2026-05-04', '10', 0), date('2026-05-03', '10', 0)])).toBe('2026-05-03');
-    expect(pick([date('2026-05-04', '10', 1), date('2026-05-03', '10', 1), date('2026-05-01', '-1', 0)])).toBe('2026-05-03');
-    expect(pick([date('2026-05-01', '9007199254740992', 0), date('2026-05-02', '9007199254740993', 0)])).toBe('2026-05-02');
+    expect(pick([date('2026-05-04', '10', 1), date('2026-05-03', '10', 1), date('2026-05-01', '-1', 1)])).toBe('2026-05-01');
   });
   it('preserves raw FSEIBAN filtering, row order and duplicate purchase lines', () => {
     const enrichment: PurchaseEnrichmentTuple[] = [['date', ' FS1 ', 'MD1', '', '2026-10-01', '1', 0]];

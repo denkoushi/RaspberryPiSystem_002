@@ -16,6 +16,7 @@ import type {
 
 import { ApiError } from '../../lib/errors.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from './row-resolver/constants.js';
 import type { GrindingPlanningBoardPerformance } from './grinding-planning-board-performance.js';
 import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
@@ -116,7 +117,7 @@ function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverri
   try {
     const values: unknown = JSON.parse(Buffer.from(row.itemKey.slice(4), 'base64url').toString('utf8'));
     if (!Array.isArray(values) || values.some((value) => typeof value !== 'string')
-      || !(values.length === 4 && values[0] !== '********' || values.length === 5 && values[0] === '********')) return null;
+      || values.length !== PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS.length) return null;
     const canonicalItemKey = buildGrindingPlanningBoardRowItemId({
       FSEIBAN: values[0],
       FHINCD: values[1],
@@ -128,7 +129,7 @@ function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverri
     return {
       itemKind: 'row',
       fseiban: values[0],
-      productNo: values[4] ?? null,
+      productNo: values[4],
       fhincd: values[1],
       resourceCd: values[2],
       processOrder: values[3],
@@ -325,8 +326,7 @@ async function readAggregatedLoadSummary(params: {
       LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
         ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "supplement"."csvDashboardId" = ${params.dashboardId}
-        AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
-          OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
+        AND "supplement"."productNo" = BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'ProductNo', ''))
       ${SESSAKU_PIECE_LOAD_JOINS_SQL}
       ${OP_BAR_LOAD_JOINS_SQL}
       WHERE ${params.leaderboardMaterializedBaseWhere}
@@ -352,7 +352,7 @@ async function readAggregatedLoadSummary(params: {
     "deduplicatedItems" AS (
       SELECT DISTINCT ON (
         (COALESCE("items"."fseiban", '') COLLATE "C"),
-        (CASE WHEN "items"."fseiban" = '********' THEN (COALESCE("items"."productNo", '') COLLATE "C") ELSE '' END COLLATE "C"),
+        (COALESCE("items"."productNo", '') COLLATE "C"),
         (COALESCE("items"."fhincd", '') COLLATE "C"),
         (COALESCE("items"."processOrder", '') COLLATE "C"),
         (COALESCE("items"."originalResourceCd", '') COLLATE "C"),
@@ -361,7 +361,7 @@ async function readAggregatedLoadSummary(params: {
       ) "items".*
       FROM "items"
       ORDER BY (COALESCE("items"."fseiban", '') COLLATE "C"),
-        (CASE WHEN "items"."fseiban" = '********' THEN (COALESCE("items"."productNo", '') COLLATE "C") ELSE '' END COLLATE "C"),
+        (COALESCE("items"."productNo", '') COLLATE "C"),
         (COALESCE("items"."fhincd", '') COLLATE "C"),
         (COALESCE("items"."processOrder", '') COLLATE "C"),
         (COALESCE("items"."originalResourceCd", '') COLLATE "C"),
@@ -406,7 +406,7 @@ async function readAggregatedLoadSummary(params: {
         ON "deduplicatedItems"."itemKind" = 'row'
           AND "rowOverrides"."itemKind" = 'row'
           AND "rowOverrides"."fseiban" = COALESCE("deduplicatedItems"."fseiban", '')
-          AND ("deduplicatedItems"."fseiban" <> '********' OR "rowOverrides"."productNo" = COALESCE("deduplicatedItems"."productNo", ''))
+          AND "rowOverrides"."productNo" = COALESCE("deduplicatedItems"."productNo", '')
           AND "rowOverrides"."fhincd" = COALESCE("deduplicatedItems"."fhincd", '')
           AND "rowOverrides"."resourceCd" = COALESCE("deduplicatedItems"."originalResourceCd", '')
           AND "rowOverrides"."processOrder" = COALESCE("deduplicatedItems"."processOrder", '')
@@ -549,8 +549,7 @@ async function readBaseGrindingPlanningBoardLoadSummary(
       LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
         ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "supplement"."csvDashboardId" = ${dashboardId}
-        AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
-          OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
+        AND "supplement"."productNo" = BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'ProductNo', ''))
       ${SESSAKU_PIECE_LOAD_JOINS_SQL}
       ${OP_BAR_LOAD_JOINS_SQL}
       WHERE ${where}

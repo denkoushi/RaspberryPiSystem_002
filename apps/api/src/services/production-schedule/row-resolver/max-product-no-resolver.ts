@@ -1,39 +1,20 @@
 import type { NormalizedRowData } from '../../csv-dashboard/csv-dashboard.types.js';
-import {
-  PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
-  productionScheduleKeyColumnsForRow,
-} from './constants.js';
+import { productionScheduleKeyColumnsForRow } from './constants.js';
 
 const normalizeValue = (value: unknown): string => String(value ?? '').trim();
 
 const toLogicalKey = (row: NormalizedRowData): string =>
-  JSON.stringify(productionScheduleKeyColumnsForRow(row).map((column) => normalizeValue(row[column])));
+  JSON.stringify(productionScheduleKeyColumnsForRow().map((column) => normalizeValue(row[column])));
 
-const toProductNo = (row: NormalizedRowData): string => normalizeValue(row[PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN]);
-
-const compareProductNo = (a: string, b: string): number => {
-  const numA = /^\d+$/.test(a) ? parseInt(a, 10) : -1;
-  const numB = /^\d+$/.test(b) ? parseInt(b, 10) : -1;
-  return numA - numB;
-};
-
+/**
+ * 完全に同じキー(4列 + ProductNo の5要素)の重複だけを除く。ProductNo が違う行は別注文なので全部残す。
+ * 同じキーが複数あるときは、先に来た行を残す(元の挙動と同じ)。
+ */
 export function resolveToMaxProductNoPerLogicalKey<T extends { data: NormalizedRowData }>(rows: T[]): T[] {
-  const winnerByKey = new Map<string, T>();
-
+  const byKey = new Map<string, T>();
   for (const row of rows) {
-    const logicalKey = toLogicalKey(row.data);
-    const currentWinner = winnerByKey.get(logicalKey);
-    if (!currentWinner) {
-      winnerByKey.set(logicalKey, row);
-      continue;
-    }
-
-    const incomingProductNo = toProductNo(row.data);
-    const currentProductNo = toProductNo(currentWinner.data);
-    if (compareProductNo(incomingProductNo, currentProductNo) > 0) {
-      winnerByKey.set(logicalKey, row);
-    }
+    const key = toLogicalKey(row.data);
+    if (!byKey.has(key)) byKey.set(key, row);
   }
-
-  return [...winnerByKey.values()];
+  return [...byKey.values()];
 }

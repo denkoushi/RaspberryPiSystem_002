@@ -24,9 +24,18 @@ export async function discoverSourceRows(itemIds: readonly string[]): Promise<Ma
   // The logical key starts with the raw FSEIBAN, so saves read only the edited seibans instead of every winner row.
   const rows = await readWinnerRowsByLogicalKeyFseibans(prisma, [...logicalKeyByItem.values()].map(logicalKeyFseiban));
   const byLogicalKey = new Map(rows.map((row) => [buildGrindingPlanningBoardLogicalKey(asRowData(row.rowData)), row.id]));
+  // 4要素のキー(保存済みの古いID、切削の分割の親)は、同じ4列に見える行がちょうど1つのときだけ解決する。
+  // 番号が2つ以上あるときは、どちらの注文か決められないので解決しない。
+  const byLegacyKey = new Map<string, string[]>();
+  for (const row of rows) {
+    const legacyKey = JSON.stringify((JSON.parse(buildGrindingPlanningBoardLogicalKey(asRowData(row.rowData))) as string[]).slice(0, 4));
+    byLegacyKey.set(legacyKey, [...(byLegacyKey.get(legacyKey) ?? []), row.id]);
+  }
   const sourceByItem = new Map<string, string>();
   for (const itemId of itemIds) {
-    const sourceRowId = byLogicalKey.get(logicalKeyByItem.get(itemId) ?? '');
+    const logicalKey = logicalKeyByItem.get(itemId) ?? '';
+    const legacyIds = byLegacyKey.get(logicalKey);
+    const sourceRowId = byLogicalKey.get(logicalKey) ?? (legacyIds?.length === 1 ? legacyIds[0] : undefined);
     if (sourceRowId) sourceByItem.set(itemId, sourceRowId);
   }
   if (sourceByItem.size !== new Set(itemIds).size) throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');

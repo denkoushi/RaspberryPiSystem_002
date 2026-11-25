@@ -23,10 +23,7 @@ import type {
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
 
-import {
-  PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
-  isUnassignedProductionSeiban,
-} from './row-resolver/constants.js';
+import { PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from './row-resolver/constants.js';
 
 export type GrindingPlanningBoardProgress = {
   completed: number;
@@ -98,13 +95,9 @@ function isInCategory(
   return resourceCd != null && (predicate?.(resourceCd, category) ?? true);
 }
 
-/** Existing winner identity semantics: COALESCE(raw, '') and SQL text coercion. */
+/** 行の識別(4列 + ProductNo、全製番)。COALESCE(raw, '') と SQL のテキスト化に合わせる。 */
 export function buildGrindingPlanningBoardLogicalKey(rowData: GrindingPlanningBoardRowData): string {
-  const parts = PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map((column) => rowValue(rowData, column));
-  if (isUnassignedProductionSeiban(rowValue(rowData, 'FSEIBAN'))) {
-    parts.push(rowValue(rowData, 'ProductNo'));
-  }
-  return JSON.stringify(parts);
+  return JSON.stringify(PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS.map((column) => rowValue(rowData, column)));
 }
 
 export function buildGrindingPlanningBoardRowItemId(rowData: GrindingPlanningBoardRowData): string {
@@ -112,9 +105,7 @@ export function buildGrindingPlanningBoardRowItemId(rowData: GrindingPlanningBoa
 }
 
 function buildPartKey(fseiban: string, productNo: string, fhincd: string): string {
-  const parts = [fseiban.trim(), fhincd.trim()];
-  if (isUnassignedProductionSeiban(fseiban)) parts.push(productNo.trim());
-  return parts.join('\0');
+  return [fseiban.trim(), fhincd.trim(), productNo.trim()].join('\0');
 }
 
 function buildProgressProjection(

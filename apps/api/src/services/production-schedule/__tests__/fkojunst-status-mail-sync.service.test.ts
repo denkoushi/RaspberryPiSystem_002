@@ -18,7 +18,7 @@ describe('mail sync external completion publication', () => {
     pipeline.runFkojunstMailReplacementTransaction.mockResolvedValue({ ...result, ...(pieces ? { externalCompletionSynced: true } : {}) });
     const external = { syncFromDedupedStatusMailRows: vi.fn().mockResolvedValue({ skipped: false }) };
     const assignments = { reconcileStaleAssignments: vi.fn() };
-    const service = new ProductionScheduleFkojunstMailStatusSyncService(external as never, assignments as never);
+    const service = new ProductionScheduleFkojunstMailStatusSyncService(external as never, assignments as never, vi.fn().mockResolvedValue(undefined));
     expect(await service.syncFromStatusMailDashboard()).toEqual(result);
     expect(pipeline.runFkojunstMailReplacementTransaction).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ missingStandardHoursMailRows: [{}] }));
     expect(external.syncFromDedupedStatusMailRows).toHaveBeenCalledTimes(pieces ? 0 : 1);

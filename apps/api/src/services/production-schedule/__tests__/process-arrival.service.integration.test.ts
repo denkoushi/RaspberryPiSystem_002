@@ -132,16 +132,32 @@ describeIntegration('process arrival SQL integration', () => {
     expect(await arrivals([later])).toEqual([false]);
   });
 
-  it('ignores ProductNo for normal seibans and deduplicates their input keys', async () => {
-    await createRow('10', { ProductNo: '100' });
-    const later = await createRow('30', { ProductNo: '200' });
-    expect(await arrivals([later, { ...later, id: 'split:test', rowData: { ...later.rowData, ProductNo: '300' } }])).toEqual([false, false]);
+  it('does not mix the processes of two ProductNos on one normal seiban and part', async () => {
+    const earlier100 = await createRow('10', { ProductNo: '100' });
+    const earlier200 = await createRow('10', { ProductNo: '200' });
+    const later100 = await createRow('30', { ProductNo: '100' });
+    const later200 = await createRow('30', { ProductNo: '200' });
+    expect(await arrivals([later100, later200])).toEqual([false, false]);
+    await complete(earlier200);
+    expect(await arrivals([later100, later200])).toEqual([false, true]);
+    await complete(earlier100);
+    expect(await arrivals([later100, later200])).toEqual([true, true]);
+    const split = { ...later200, id: 'split:test', rowData: { ...later200.rowData } };
+    expect(await arrivals([later200, split])).toEqual([true, true]);
   });
 
-  it('picks the preferred source id over a duplicate with a larger ProductNo', async () => {
+  it('ignores a process row whose ProductNo was marked superseded', async () => {
+    const stale = await createRow('10', { ProductNo: '100' });
+    const later = await createRow('30', { ProductNo: '100' });
+    expect(await arrivals([later])).toEqual([false]);
+    await db().csvDashboardRow.update({ where: { id: stale.id }, data: { supersededAt: new Date('2026-11-07T00:00:00Z') } });
+    expect(await arrivals([later])).toEqual([true]);
+  });
+
+  it('picks the preferred source id over a duplicate on the same ProductNo', async () => {
     const preferred = await createRow('10', { ProductNo: '100' });
     await complete(preferred);
-    await createRow('10', { ProductNo: '999' });
+    await createRow('10', { ProductNo: '100' });
     const later = await createRow('30');
     expect(await arrivals([later])).toEqual([false]);
     expect(await arrivals([preferred, later])).toEqual([true, true]);
@@ -169,7 +185,8 @@ describeIntegration('process arrival SQL integration', () => {
     await createRow('10', { ProductNo: '' });
     await createRow('20', { ProductNo: '200' });
     const later = await createRow('30', { ProductNo: '' });
-    expect(await arrivals([preferred, later])).toEqual([true, false]);
+    // The incomplete process 20 belongs to another ProductNo, so it no longer blocks this order.
+    expect(await arrivals([preferred, later])).toEqual([true, true]);
 
     const { buildLeaderboardFooterChipsByPartKeyForScheduleRows } = await import(
       '../leaderboard/leaderboard-part-footer-processes.service.js'

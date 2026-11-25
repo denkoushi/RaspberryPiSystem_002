@@ -264,7 +264,7 @@ describe('grinding-planning-board-load-summary', () => {
     expect(deduplication).not.toBeNull();
     const keys = [
       `(COALESCE("items"."fseiban", '') COLLATE "C")`,
-      `(CASE WHEN "items"."fseiban" = '********' THEN (COALESCE("items"."productNo", '') COLLATE "C") ELSE '' END COLLATE "C")`,
+      `(COALESCE("items"."productNo", '') COLLATE "C")`,
       `(COALESCE("items"."fhincd", '') COLLATE "C")`,
       `(COALESCE("items"."processOrder", '') COLLATE "C")`,
       `(COALESCE("items"."originalResourceCd", '') COLLATE "C")`,

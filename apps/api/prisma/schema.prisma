@@ -1683,6 +1683,8 @@ model CsvDashboardRow {
   sourceIngestRunStartedAt             DateTime?
   createdAt                            DateTime                              @default(now())
   updatedAt                            DateTime?                             @updatedAt
+  /// 生産日程で、振り直しにより古くなった製造オーダー番号の印(その工程の工程状態が X で、同じ4列キーに X でない別番号がある)。印の付いた行は winner 条件で見えない。
+  supersededAt                         DateTime?
   orderAssignments                     ProductionScheduleOrderAssignment[]
   orderSplits                          ProductionScheduleOrderSplit[]
   rowNotes                             ProductionScheduleRowNote[]

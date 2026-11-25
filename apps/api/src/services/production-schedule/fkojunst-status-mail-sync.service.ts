@@ -8,6 +8,11 @@ import {
   runFkojunstMailClearTransaction,
   runFkojunstMailReplacementTransaction,
 } from './fkojunst-status-mail-sync.pipeline.js';
+import {
+  refreshSupersededProductionScheduleRows,
+  statusByKeyFromDedupedMailRows,
+  type StatusByTripleKey,
+} from './superseded-order-marker.js';
 import { FkojunstExternalCompletionSyncService } from './external-completion/fkojunst-external-completion-sync.service.js';
 import { ProductionScheduleOrderAssignmentReconciliationService } from './order-assignment/order-assignment-reconciliation.service.js';
 import {
@@ -19,12 +24,14 @@ export type ProductionScheduleFkojunstMailStatusSyncResult = import('./fkojunst-
 
 /**
  * Syncs `ProductionScheduleFkojunstMailStatus` from the FKOJUNST_Status CsvDashboard rows
- * onto the main production schedule dashboard (winner rows only). Latest FUPDTEDT per key is authoritative.
+ * onto the main production schedule dashboard (all rows not marked superseded). Latest FUPDTEDT per key is authoritative.
  */
 export class ProductionScheduleFkojunstMailStatusSyncService {
   constructor(
     private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService(),
-    private readonly orderAssignmentReconciliationService: ProductionScheduleOrderAssignmentReconciliationService = new ProductionScheduleOrderAssignmentReconciliationService()
+    private readonly orderAssignmentReconciliationService: ProductionScheduleOrderAssignmentReconciliationService = new ProductionScheduleOrderAssignmentReconciliationService(),
+    private readonly refreshSuperseded: (statusByKey: StatusByTripleKey) => Promise<unknown> = (statusByKey) =>
+      refreshSupersededProductionScheduleRows(prisma, { statusByKey })
   ) {}
 
   async syncFromStatusMailDashboard(): Promise<ProductionScheduleFkojunstMailStatusSyncResult> {
@@ -32,6 +39,8 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
       await loadFkojunstMailSourceRows(prisma);
 
     if (normalizedRows.length === 0) {
+      // 工程状態が無ければ X も無いので、印はすべて外れる(状態の付与より先に付け直す)
+      await this.refreshSuperseded(new Map());
       const result = await runFkojunstMailClearTransaction(
         prisma,
         scanned,
@@ -49,6 +58,8 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     }
 
     const dedupedRows = dedupeFkojunstMailRowsByLatest(normalizedRows);
+    // 順序は「印の付け直し → 状態の付与」。状態は印の無い行すべてに付く
+    await this.refreshSuperseded(statusByKeyFromDedupedMailRows(dedupedRows));
     const winnerIdByKey = await resolveFkojunstMailWinnerIdByKey(prisma, dedupedRows);
     const { matched, unmatched, createInputs } = buildFkojunstMailReplacementCreateInputs(dedupedRows, winnerIdByKey);
     const processChangeResidualMaterialization =

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ queryRaw: vi.fn() }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.queryRaw } }));
 
-import { findEarliestPlannedStartDatesForPurchaseRows, listPurchasePlannedStartCandidates } from '../purchase-order-lookup-planned-start.service.js';
+import { findEarliestPlannedStartDatesForPurchaseRows, listPurchasePlannedStartCandidates, resolvePurchasePlannedStartCandidates } from '../purchase-order-lookup-planned-start.service.js';
 
 const purchase = {
   seiban: 'BA1',
@@ -115,36 +115,47 @@ describe('findEarliestPlannedStartDatesForPurchaseRows', () => {
   it.each([
     ['0004047005', '0004151393'], ['9', '10'], ['invalid', '0'],
     ['9007199254740992', '9007199254740993'],
-  ])('ignores earlier dates of older numeric orders (%s < %s)', async (older, newer) => {
+  ])('takes the earliest date across live orders, not only the larger number (%s, %s)', async (older, newer) => {
     mocks.queryRaw.mockResolvedValue([
       candidate('MD100492280', 'シャフト', '2026-05-03', 'BA1', newer),
       candidate('MD100492280', 'シャフト', '2026-05-01', 'BA1', older),
       candidate('MD100492280', 'シャフト', null, 'BA1', '9223372036854775807'),
     ]);
-    expect(await findEarliestPlannedStartDatesForPurchaseRows([purchase])).toEqual([new Date('2026-05-03')]);
+    expect(await findEarliestPlannedStartDatesForPurchaseRows([purchase])).toEqual([new Date('2026-05-01')]);
   });
 
-  it.each([false, true])('prefers incomplete processes regardless of row order (reverse=%s)', async (reverse) => {
+  it('binds a purchase to the second live order of the same seiban and part when the first is complete', async () => {
+    mocks.queryRaw.mockResolvedValue([
+      candidate('MD100492280', 'シャフト', '2026-05-01', 'BA1', '4146538', true),
+      candidate('MD100492280', 'シャフト', '2026-05-09', 'BA1', '4146555'),
+    ]);
+    expect(await findEarliestPlannedStartDatesForPurchaseRows([purchase])).toEqual([new Date('2026-05-09')]);
+    expect(resolvePurchasePlannedStartCandidates([purchase], [
+      { ...candidate('MD100492280', 'シャフト', '2026-05-09', 'BA1', '4146555'), plannedStartDate: new Date('2026-05-09') },
+    ])[0]).toMatchObject({ completed: false, productNo: 4146555n });
+  });
+
+  it.each([false, true])('prefers incomplete processes across orders regardless of row order (reverse=%s)', async (reverse) => {
     const rows = [
-      candidate('MD100492280', 'シャフト', '2026-05-01', 'BA1', '9'),
+      candidate('MD100492280', 'シャフト', '2026-05-01', 'BA1', '9', true),
       candidate('MD100492280', 'シャフト', '2026-05-02', 'BA1', '10', true),
       candidate('MD100492280', 'シャフト', '2026-05-04', 'BA1', '10'),
-      candidate('MD100492280', 'シャフト', '2026-05-03', 'BA1', '10'),
+      candidate('MD100492280', 'シャフト', '2026-05-03', 'BA1', '9'),
     ];
     mocks.queryRaw.mockResolvedValue(reverse ? rows.reverse() : rows);
     expect(await findEarliestPlannedStartDatesForPurchaseRows([purchase])).toEqual([new Date('2026-05-03')]);
   });
 
-  it('returns the earliest latest-order date when all its processes are completed', async () => {
+  it('returns the earliest date over all orders when every process is completed', async () => {
     mocks.queryRaw.mockResolvedValue([
-      candidate('MD100492280', 'シャフト', '2026-05-01', 'BA1', '9'),
+      candidate('MD100492280', 'シャフト', '2026-05-01', 'BA1', '9', true),
       candidate('MD100492280', 'シャフト', '2026-05-04', 'BA1', '10', true),
       candidate('MD100492280', 'シャフト', '2026-05-03', 'BA1', '10', true),
     ]);
-    expect(await findEarliestPlannedStartDatesForPurchaseRows([purchase])).toEqual([new Date('2026-05-03')]);
+    expect(await findEarliestPlannedStartDatesForPurchaseRows([purchase])).toEqual([new Date('2026-05-01')]);
   });
 
-  it('selects the latest order independently for each map key and keeps fallback precedence', async () => {
+  it('selects the earliest incomplete date independently for each map key and keeps fallback precedence', async () => {
     mocks.queryRaw.mockResolvedValue([
       candidate('MATCH-001', '別名', '2026-05-03', 'BA1', '2'),
       candidate('MATCH-002', '別名', '2026-05-01', 'BA1', '1'),
@@ -157,7 +168,7 @@ describe('findEarliestPlannedStartDatesForPurchaseRows', () => {
       { ...purchase, purchasePartCodeMatchKey: 'MATCH' },
       { ...purchase, purchasePartCodeMatchKey: 'LEGACY' },
       { ...purchase, purchasePartCodeMatchKey: '', purchasePartCodeNormalized: '' },
-    ])).toEqual(['2026-05-03', '2026-05-04', '2026-05-06'].map((date) => new Date(date)));
+    ])).toEqual(['2026-05-01', '2026-05-02', '2026-05-05'].map((date) => new Date(date)));
   });
 
 
