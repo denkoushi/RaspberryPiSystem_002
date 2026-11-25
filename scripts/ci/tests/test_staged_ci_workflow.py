@@ -278,7 +278,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "signage-artifact-contract",
         ):
             self.assertIn(f"      - {dependency}\n", aggregate)
-        self.assertIn("uses: actions/checkout@v7", aggregate)
+        self.assertRegex(aggregate, r"uses: actions/checkout@[0-9a-f]{40}")
         self.assertIn("scripts/ci/validate_required_results.py", aggregate)
         self.assertIn('"api=$API_SELECTED:$API_RESULT"', aggregate)
         self.assertIn('"api-coverage=$API_SELECTED:$API_COVERAGE_RESULT"', aggregate)
@@ -300,11 +300,11 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "fromJSON(needs.change-classification.outputs.pi4_agent_matrix)",
             contract,
         )
-        self.assertIn("uses: docker/build-push-action@v7", contract)
+        self.assertRegex(contract, r"uses: docker/build\-push\-action@[0-9a-f]{40}")
         self.assertIn("platforms: ${{ matrix.platform }}", contract)
         self.assertIn("load: true", contract)
         self.assertIn("${{ github.sha }}-${{ matrix.platform_tag }}", contract)
-        self.assertIn("docker/setup-qemu-action@v4", contract)
+        self.assertRegex(contract, r"docker/setup\-qemu\-action@[0-9a-f]{40}")
         self.assertIn(
             "scope=pi4-agent-${{ matrix.service }}-${{ matrix.platform_tag }}",
             contract,
@@ -326,7 +326,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         )
         self.assertIn("platforms: linux/arm64,linux/arm/v7", publish)
         self.assertIn("packages: write", publish)
-        self.assertIn("docker/setup-qemu-action@v4", publish)
+        self.assertRegex(publish, r"docker/setup\-qemu\-action@[0-9a-f]{40}")
         self.assertIn("id: publish", publish)
         self.assertEqual(
             publish.count(
@@ -336,6 +336,33 @@ class StagedCiWorkflowTests(unittest.TestCase):
         )
         self.assertIn("TRIVY_PLATFORM: linux/arm64", publish)
         self.assertIn("TRIVY_PLATFORM: linux/arm/v7", publish)
+
+    def test_hermes_answer_cache_publishes_only_from_a_separate_main_job(self) -> None:
+        check = job_block(CI, "hermes-answer-cache")
+        publish = job_block(CI, "hermes-answer-cache-publish")
+        aggregate = job_block(CI, "ci-required")
+
+        self.assertIn("permissions:\n      contents: read\n    steps:", check)
+        for forbidden in ("packages: write", "attestations: write", "id-token: write", "docker/login-action", "push: true"):
+            self.assertNotIn(forbidden, check)
+        self.assertIn("push: false", check)
+        self.assertIn("!(github.event_name == 'push' && github.ref == 'refs/heads/main')", check)
+        self.assertIn("github.event_name == 'push' &&\n        github.ref == 'refs/heads/main'", publish)
+        self.assertIn("packages: write", publish)
+        self.assertIn("- hermes-answer-cache-publish", aggregate)
+        self.assertIn("needs['hermes-answer-cache-publish'].result", aggregate)
+
+    def test_external_actions_are_pinned_to_full_commit_shas(self) -> None:
+        workflows = list((ROOT / ".github").rglob("*.yml")) + list((ROOT / ".github").rglob("*.yaml"))
+        unpinned = []
+        for path in workflows:
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                match = re.search(r"uses:\s+([^\s#]+)", line)
+                if not match or match.group(1).startswith("./"):
+                    continue
+                if not re.fullmatch(r"[^@]+@[0-9a-f]{40}", match.group(1)):
+                    unpinned.append(f"{path.relative_to(ROOT)}:{number}: {match.group(1)}")
+        self.assertEqual(unpinned, [])
 
     def test_signage_artifact_is_read_only_on_pr_and_main_only_for_publication(self) -> None:
         contract = job_block(CI, "signage-artifact-contract")
@@ -349,7 +376,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("Require deterministic Signage artifact bytes", contract)
         self.assertIn("if: ${{ github.event_name != 'push' }}", contract)
         self.assertIn("Security scan exact Signage artifact image", contract)
-        self.assertIn("actions/upload-artifact@v7", contract)
+        self.assertRegex(contract, r"actions/upload\-artifact@[0-9a-f]{40}")
         self.assertIn("gh version 2.96.0", contract)
         self.assertIn("ProductionAttestationBoundary", contract)
         for forbidden in ("packages: write", "attestations: write", "id-token: write"):
@@ -367,7 +394,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("packages: write", publish)
         self.assertIn("attestations: write", publish)
         self.assertIn("id-token: write", publish)
-        self.assertIn("actions/download-artifact@v8", publish)
+        self.assertRegex(publish, r"actions/download\-artifact@[0-9a-f]{40}")
         self.assertIn("ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage:${{ github.sha }}", publish)
         self.assertIn("predicate-path: signage-release-attestation.json", publish)
         self.assertIn("push-to-registry: true", publish)
@@ -376,7 +403,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("${{ steps.publish.outputs.digest }}", publish)
         self.assertIn("${{ steps.identity.outputs.artifact_sha256 }}", publish)
         self.assertIn("${{ steps.identity.outputs.manifest_sha256 }}", publish)
-        self.assertEqual(release_set.count("uses: actions/attest@v4"), 3)
+        self.assertEqual(len(re.findall(r"uses: actions/attest@[0-9a-f]{40}", release_set)), 3)
 
     def test_main_release_pair_is_native_arm64_scanned_and_attested(self) -> None:
         contract = job_block(CI, "release-build-contract")
@@ -439,7 +466,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
                 f"needs['{dependency}'].result == 'success'",
                 release_set,
             )
-        self.assertEqual(release_set.count("uses: actions/attest@v4"), 3)
+        self.assertEqual(len(re.findall(r"uses: actions/attest@[0-9a-f]{40}", release_set)), 3)
 
     def test_torque_component_adoption_is_signed_scanned_and_not_rebuilt(self) -> None:
         adoption = job_block(TORQUE_RELEASE, "torque-component-adoption")
