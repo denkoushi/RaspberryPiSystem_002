@@ -69,6 +69,56 @@ describe('assertZipExpansionWithinBudget', () => {
     expect(() => assertZipExpansionWithinBudget(broken)).toThrow(ZipFormatError);
   });
 
+  describe('読み込み側(JSZip)と同じ中身だけを数える', () => {
+    const EOCD = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+    const CENTRAL = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
+    const threeEntries = async () => {
+      const zip = new JSZip();
+      for (const name of ['a.txt', 'b.txt', 'c.txt']) zip.file(name, 'x'.repeat(1000), { compression: 'DEFLATE' });
+      return zip.generateAsync({ type: 'nodebuffer' });
+    };
+
+    it('そのままなら通る', async () => {
+      const buffer = await threeEntries();
+      expect(() => assertZipExpansionWithinBudget(buffer)).not.toThrow();
+    });
+
+    it('末尾の記録の件数を書き換えたものを拒否する', async () => {
+      for (const count of [0, 1]) {
+        const forged = Buffer.from(await threeEntries());
+        const eocd = forged.lastIndexOf(EOCD);
+        forged.writeUInt16LE(count, eocd + 8);
+        forged.writeUInt16LE(count, eocd + 10);
+        expect(() => assertZipExpansionWithinBudget(forged)).toThrow(ZipFormatError);
+      }
+    });
+
+    it('中央ディレクトリが末尾の記録の直前に無いものを拒否する', async () => {
+      const buffer = await threeEntries();
+      const eocd = buffer.lastIndexOf(EOCD);
+      const dirOffset = buffer.readUInt32LE(eocd + 16);
+      // 末尾の記録は元の中央ディレクトリを指したまま、その後ろに別の中央ディレクトリを挟む。
+      const forged = Buffer.concat([buffer.subarray(0, eocd), buffer.subarray(dirOffset, eocd), buffer.subarray(eocd)]);
+      expect(() => assertZipExpansionWithinBudget(forged)).toThrow(ZipFormatError);
+    });
+
+    it('ディスク番号や ZIP64 の目印を持つものを拒否する', async () => {
+      for (const [offset, value] of [[4, 0xffff], [6, 1], [8, 0xffff]] as const) {
+        const forged = Buffer.from(await threeEntries());
+        forged.writeUInt16LE(value, forged.lastIndexOf(EOCD) + offset);
+        expect(() => assertZipExpansionWithinBudget(forged)).toThrow(ZipFormatError);
+      }
+    });
+
+    it('同じデータを複数の項目から指すものを拒否する', async () => {
+      const forged = Buffer.from(await threeEntries());
+      const first = forged.indexOf(CENTRAL);
+      const second = forged.indexOf(CENTRAL, first + 4);
+      forged.writeUInt32LE(forged.readUInt32LE(first + 42), second + 42);
+      expect(() => assertZipExpansionWithinBudget(forged)).toThrow(ZipFormatError);
+    });
+  });
+
   it('エラーは 400 の利用者向けメッセージを持つ', async () => {
     const buffer = await makeRepeatedZip(200_000);
     try {
