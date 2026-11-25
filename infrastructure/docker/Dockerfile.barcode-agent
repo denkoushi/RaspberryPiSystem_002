@@ -28,7 +28,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
 RUN apt-get update \
     && apt-get install -y --only-upgrade --no-install-recommends \
-      gzip libpcre2-8-0 libsqlite3-0 perl-base zlib1g \
+      gzip libpcre2-8-0 libsqlite3-0 perl-base zlib1g libzstd1 \
       libssl3t64 openssl openssl-provider-legacy \
     && for package in libssl3t64 openssl openssl-provider-legacy; do \
       version="$(dpkg-query -W -f='${Version}' "$package")"; \
