@@ -384,14 +384,15 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
     id: item.itemId, sourceRowId: item.sourceRowId,
     rowData: { FSEIBAN: item.fseiban, FHINCD: item.fhincd, ProductNo: item.productNo, FKOJUN: item.processOrder }
   })), { siteKey: params.siteKey, locationKey: params.siteKey, includeFirstProcess: true, placedProductNos: new Set(placementByProductNo.keys()) }));
+  const arrivalKeys = [...new Set(page.flatMap((item) => item.parentItemId ? [item.itemId, item.parentItemId] : [item.itemId]))];
   const manualArrivals = page.length ? await perf.measure('manualArrival', () => prisma.productionScheduleGrindingPlanningBoardArrival.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
+      itemKey: { in: arrivalKeys } },
     select: { itemKey: true, arrivalDate: true }
   })) : [];
   const firstProcessArrivals = page.length ? await perf.measure('firstProcessArrival', () => prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
+      itemKey: { in: arrivalKeys } },
     select: { itemKey: true, state: true, recordedAt: true }
   })) : [];
   const verifyMatchByProductNo = page.length ? await perf.measure('verifyMatch', () => findLatestVerifyMatchByProductNo(
@@ -408,7 +409,8 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
     const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
     const placement = placementByProductNo.get(item.productNo.trim());
     const isFirstProcess = arrivalById.get(item.itemId)?.isFirstProcess ?? false;
-    const manual = isFirstProcess ? firstProcessByKey.get(item.parentItemId ?? item.itemId) : undefined;
+    const manual = isFirstProcess ? firstProcessByKey.get(item.itemId) ??
+      (item.parentItemId ? firstProcessByKey.get(item.parentItemId) : undefined) : undefined;
     const verifiedAt = verifyMatchByProductNo.get(item.productNo.trim());
     const newerPlacement = manual && (placement?.shelves.some((shelf) => new Date(shelf.placedAt).getTime() > manual.recordedAt.getTime())
       || (verifiedAt != null && verifiedAt.getTime() > manual.recordedAt.getTime()));
@@ -417,7 +419,10 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
     const firstProcessArrived = firstProcessState === 'arrived' ? true : firstProcessState === 'excluded' ? false
       : Boolean(placement) || verifiedAt != null || (arrival?.status !== 'unordered' && arrival?.status !== 'ordered');
     const outsourced = outsourcedByItemId.get(item.itemId) ?? 'none';
-    const manuallyArrived = isFirstProcess ? firstProcessState === 'arrived' : manualArrivalDates.has(item.parentItemId ?? item.itemId);
+    const ownArrivalDate = manualArrivalDates.get(item.itemId) ?? '';
+    const parentArrivalDate = (item.parentItemId && manualArrivalDates.get(item.parentItemId)) || '';
+    const manualArrivalDate = (ownArrivalDate > parentArrivalDate ? ownArrivalDate : parentArrivalDate) || null;
+    const manuallyArrived = isFirstProcess ? firstProcessState === 'arrived' : manualArrivalDate !== null;
     let arrived = isFirstProcess ? firstProcessArrived : manuallyArrived || (arrivalById.get(item.itemId)?.arrived ?? true);
     if (outsourced === 'pending') {
       arrived = manuallyArrived || Boolean(placement) || (isFirstProcess && verifiedAt != null);
@@ -430,7 +435,7 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
       firstProcessState,
       lslhSurface: lslhSurface.productNos.has(item.productNo.trim()) || lslhSurface.fhincds.has(item.fhincd),
       arrived,
-      manualArrivalDate: manualArrivalDates.get(item.parentItemId ?? item.itemId) ?? null,
+      manualArrivalDate,
       ...(arrival ? { materialArrivalStatus: arrival.status,
         ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {}) } : {}),
       ...(placement ? { placement } : {})

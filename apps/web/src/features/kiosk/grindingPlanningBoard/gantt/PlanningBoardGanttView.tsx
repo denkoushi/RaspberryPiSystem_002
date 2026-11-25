@@ -611,8 +611,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
       </div>
       {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}
       {!sharedSeibanLegend && seibanColors && (showShelf
-        ? <PlanningBoardSeibanShelf ref={legend} interactionRef={localShelf} writePending={resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} selectionDrop={selectedPreview?.drop ?? null} onPlaced={revealPlaced} getDrop={getShelfDrop} resources={shelfResources} actions={shelfActions}
-          disabled={!forward || interaction.disabled || interaction.dragDisabled || interaction.pieceDisabled || interaction.pinMode} columns={shelfColumns} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
+        ? <PlanningBoardSeibanShelf ref={legend} interactionRef={localShelf} writePending={resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} selectionDrop={selectedPreview?.drop ?? null} onPlaced={revealPlaced} getDrop={getShelfDrop} resources={shelfResources} actions={shelfActions} category={category}
+          onArrivalChange={interaction.onArrivalChange} onFirstProcessArrivalChange={interaction.onFirstProcessArrivalChange} disabled={!forward || interaction.disabled || interaction.dragDisabled || interaction.pieceDisabled || interaction.pinMode} columns={shelfColumns} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
           highlightedItemId={[...interaction.selectedItemIds].at(-1) ?? null} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={toggleSeiban} />
         : <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
           focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />)}
