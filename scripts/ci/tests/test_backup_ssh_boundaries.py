@@ -131,6 +131,10 @@ class BackupKeyRestrictionCheckRunTest(unittest.TestCase):
         line = self.KEY + ' restrict, from="192.168.1.1"'
         self.assertEqual(self.run_check(line), "restrict is missing, from= is missing")
 
+    def test_duplicate_key_line_is_reported(self):
+        line = 'restrict,from="192.168.1.1" ' + self.KEY + " backup\n" + self.KEY + " backup"
+        self.assertEqual(self.run_check(line, "192.168.1.1"), "key line appears more than once")
+
     def test_missing_file(self):
         self.assertEqual(self.run_check(None), "authorized_keys is missing")
 
