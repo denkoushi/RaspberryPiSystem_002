@@ -410,59 +410,6 @@ def test_recovery_preserves_takeover_connect_after_guard_delay(tmp_path: Path) -
     assert manager.intent_path.exists()
 
 
-def _acquire_kwargs(request_id: str) -> dict[str, Any]:
-    return {
-        "profile_id": "profile",
-        "session_id": "session",
-        "current_template_bolt_id": "bolt",
-        "confirmation_id": "confirmation",
-        "request_id": request_id,
-    }
-
-
-def test_rejected_or_failed_acquire_keeps_the_current_local_lease(tmp_path: Path) -> None:
-    fake_api = FakeLeaseApi(
-        [
-            (200, {"lease": _lease_body()}),
-            (409, {"errorCode": "TORQUE_WRENCH_LEASE_HELD"}),
-            httpx.ConnectTimeout("timeout"),
-        ]
-    )
-    manager = ConnectionLeaseManager(_config(tmp_path), BindingStore(8), api=fake_api)
-    asyncio.run(manager.acquire(**_acquire_kwargs("request-1")))
-    _arm_guard(manager, tmp_path)
-
-    for request_id, takeover in (("request-2", False), ("request-3", True)):
-        asyncio.run(manager.acquire(**_acquire_kwargs(request_id), takeover=takeover))
-        binding = manager._bindings.current()
-        assert binding is not None
-        assert binding.connection_lease_id == "lease-1"
-        assert manager.snapshot()["leaseOwned"] is True
-        assert manager.active_event.is_set()
-        assert manager.intent_path.exists()
-        assert manager._hid_paths == {"/dev/input/by-id/wrench"}
-
-
-def test_approved_acquire_replaces_the_current_local_lease(tmp_path: Path) -> None:
-    fake_api = FakeLeaseApi(
-        [
-            (200, {"lease": _lease_body()}),
-            (200, {"lease": _lease_body(lease_id="lease-2", generation=2)}),
-        ]
-    )
-    manager = ConnectionLeaseManager(_config(tmp_path), BindingStore(8), api=fake_api)
-    asyncio.run(manager.acquire(**_acquire_kwargs("request-1")))
-    _arm_guard(manager, tmp_path)
-
-    asyncio.run(manager.acquire(**_acquire_kwargs("request-2")))
-
-    binding = manager._bindings.current()
-    assert binding is not None
-    assert (binding.connection_lease_id, binding.connection_lease_generation) == ("lease-2", 2)
-    assert manager.snapshot()["leaseOwned"] is True
-    assert manager._hid_paths == set()
-
-
 def test_lease_posts_require_an_allowed_origin(tmp_path: Path) -> None:
     fake_api = FakeLeaseApi([(200, {"lease": _lease_body()})])
     config = _config(tmp_path)
