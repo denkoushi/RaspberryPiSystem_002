@@ -37,4 +37,22 @@ describe('switch startup fit', () => {
     expect(buildDgxModelStartupFit(profile, { startupFreeMemoryGiB: 49.99, gpuProcessMemoryUsedGiB: 0, unifiedMemoryTotalGiB: 100 }, active, active.id))
       .toMatchObject({ status: 'insufficient', availableGiB: 49.99 });
   });
+  it.each([
+    { hostGiB: 35.2, status: 'fits', availableGiB: 113 },
+    { hostGiB: undefined, status: 'insufficient', availableGiB: 77.8 },
+  ])('checks switching with measured host memory of $hostGiB GiB', ({ hostGiB, status, availableGiB }) => {
+    const candidate: DgxBusinessModelProfile = {
+      ...profile,
+      runtimeProfile: { engine: 'vllm', vllm: { gpuMemoryUtilization: 0.94 } },
+    };
+    const fit = buildDgxModelStartupFit(candidate, {
+      startupFreeMemoryGiB: 5,
+      unifiedMemoryTotalGiB: 110,
+      gpuProcessMemoryUsedGiB: 72.8,
+      ...(hostGiB !== undefined ? { gpuProcessHostMemoryGiB: hostGiB } : {}),
+    }, active, active.id);
+
+    expect(fit).toMatchObject({ status, availableGiB });
+    expect(fit?.requiredGiB).toBeCloseTo(103.4);
+  });
 });

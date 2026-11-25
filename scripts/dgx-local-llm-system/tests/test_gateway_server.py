@@ -254,6 +254,47 @@ class GatewayServerTests(unittest.TestCase):
         self.assertEqual(payload["driverVersion"], "580.159.03")
         self.assertEqual(len(calls), 3)
 
+    def test_collect_gpu_metrics_sums_host_memory_beyond_process_list_limit(self):
+        module = load_module()
+        compute_apps = "\n".join(f"{pid}, python, 1024" for pid in range(1000, 1013))
+        status = "RssAnon:\t1500000 kB\nRssFile:\t1048576 kB\nRssShmem:\t2000000 kB\n"
+        for gpu_row, source in (("44, 32768, 131072", "gpu_memory"), ("44, [N/A], [N/A]", "gpu_only")):
+            with self.subTest(source=source), patch.object(module.subprocess, "run", side_effect=[
+                Mock(returncode=0, stdout=gpu_row),
+                Mock(returncode=0, stdout=""),
+                Mock(returncode=0, stdout=compute_apps),
+            ]), patch.object(module, "read_proc_pid_status", return_value=status) as read_status:
+                ok, payload = module.collect_gpu_metrics()
+
+                self.assertTrue(ok)
+                self.assertEqual(payload["memoryMetricSource"], source)
+                self.assertEqual(payload["gpuProcessCount"], 12)
+                self.assertEqual(len(payload["gpuProcesses"]), 12)
+                self.assertEqual(payload["gpuProcesses"][0]["hostMemoryGiB"], 3.338)
+                self.assertEqual(payload["gpuProcessHostMemoryGiB"], 43.394)
+                self.assertEqual(payload["gpuProcessMemoryUsedGiB"], 13)
+                self.assertEqual(read_status.call_count, 13)
+
+    def test_collect_gpu_metrics_omits_host_memory_when_status_is_unavailable(self):
+        module = load_module()
+        compute_apps = "1234, python, 2048\n1235, python, 1024\n1236, python, 1024\n[N/A], python, 1024\n"
+        with patch.object(module.subprocess, "run", side_effect=[
+            Mock(returncode=0, stdout="44, 32768, 131072"),
+            Mock(returncode=0, stdout=""),
+            Mock(returncode=0, stdout=compute_apps),
+        ]), patch.object(module, "read_proc_pid_status", side_effect=[
+            FileNotFoundError(), PermissionError(), "RssAnon:\t1048576 kB\n",
+        ]) as read_status:
+            ok, payload = module.collect_gpu_metrics()
+
+        self.assertTrue(ok)
+        self.assertEqual(payload["gpuProcessMemoryUsedGiB"], 5)
+        self.assertEqual(len(payload["gpuProcesses"]), 4)
+        self.assertNotIn("gpuProcessHostMemoryGiB", payload)
+        for process in payload["gpuProcesses"]:
+            self.assertNotIn("hostMemoryGiB", process)
+        self.assertEqual([call.args[0] for call in read_status.call_args_list], [1234, 1235, 1236])
+
     def test_collect_gpu_metrics_falls_back_to_legacy_query(self):
         module = load_module()
 

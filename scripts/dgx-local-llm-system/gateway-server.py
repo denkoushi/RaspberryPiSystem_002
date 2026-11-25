@@ -54,6 +54,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Callable
 
 from glm_runtime_config import glm_runtime_config
@@ -846,7 +847,11 @@ def read_proc_meminfo_gib() -> dict[str, float]:
     return values
 
 
-def collect_compute_app_processes() -> tuple[float, list[dict[str, object]]]:
+def read_proc_pid_status(pid: int) -> str:
+    return Path(f"/proc/{pid}/status").read_text(encoding="utf-8", errors="replace")
+
+
+def collect_compute_app_processes() -> tuple[float, list[dict[str, object]], float | None]:
     proc = subprocess.run(
         [
             "bash",
@@ -876,9 +881,10 @@ def collect_compute_app_processes() -> tuple[float, list[dict[str, object]]]:
                 value = parse_nvidia_smi_number(line)
                 if value is not None:
                     total_mib += value
-        return total_mib, []
+        return total_mib, [], None
 
     total_mib = 0.0
+    total_host_gib: float | None = None
     processes: list[dict[str, object]] = []
     for line in (proc.stdout or "").splitlines():
         parts = [part.strip() for part in line.split(",")]
@@ -893,11 +899,25 @@ def collect_compute_app_processes() -> tuple[float, list[dict[str, object]]]:
             "usedMemoryGiB": round(used_mib / 1024.0, 3),
         }
         try:
-            process["pid"] = int(parts[0])
+            pid = int(parts[0])
         except ValueError:
             pass
+        else:
+            process["pid"] = pid
+            try:
+                status = read_proc_pid_status(pid)
+            except OSError:
+                pass
+            else:
+                rss_kib = dict(re.findall(
+                    r"^(RssAnon|RssShmem):[ \t]+([0-9]+)[ \t]+kB[ \t]*$", status, re.MULTILINE,
+                ))
+                if "RssAnon" in rss_kib and "RssShmem" in rss_kib:
+                    host_gib = round((int(rss_kib["RssAnon"]) + int(rss_kib["RssShmem"])) / 1024**2, 3)
+                    process["hostMemoryGiB"] = host_gib
+                    total_host_gib = (total_host_gib or 0.0) + host_gib
         processes.append(process)
-    return total_mib, processes[:12]
+    return total_mib, processes[:12], total_host_gib
 
 
 def add_gpu_detail_metrics(
@@ -1026,7 +1046,7 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
     util_avg = sum(gpu_utils) / len(gpu_utils)
     meminfo_gib = read_proc_meminfo_gib()
     try:
-        compute_apps_used_mib, compute_processes = collect_compute_app_processes()
+        compute_apps_used_mib, compute_processes, compute_apps_host_gib = collect_compute_app_processes()
     except subprocess.TimeoutExpired:
         return False, None
     used_gib: float | None = None
@@ -1046,6 +1066,8 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
                 payload["gpuProcesses"] = compute_processes
                 payload["gpuProcessCount"] = len(compute_processes)
                 payload["gpuProcessMemoryUsedGiB"] = round(compute_apps_used_mib / 1024.0, 3)
+                if compute_apps_host_gib is not None:
+                    payload["gpuProcessHostMemoryGiB"] = round(compute_apps_host_gib, 3)
             if meminfo_gib.get("MemAvailable") is not None:
                 payload["systemMemoryAvailableGiB"] = round(meminfo_gib["MemAvailable"], 1)
                 payload["startupFreeMemoryGiB"] = round(meminfo_gib["MemAvailable"], 1)
@@ -1083,6 +1105,8 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
         payload["gpuProcesses"] = compute_processes
         payload["gpuProcessCount"] = len(compute_processes)
         payload["gpuProcessMemoryUsedGiB"] = round(compute_apps_used_mib / 1024.0, 3)
+        if compute_apps_host_gib is not None:
+            payload["gpuProcessHostMemoryGiB"] = round(compute_apps_host_gib, 3)
     add_gpu_detail_metrics(
         payload,
         gpu_temperatures,
