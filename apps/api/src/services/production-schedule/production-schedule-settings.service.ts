@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { AlertChannel, AlertDeliveryStatus, AlertSeverity } from '@prisma/client';
+import { PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH } from '@raspi-system/shared-types';
 import { logger } from '../../lib/logger.js';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
 
@@ -466,8 +467,8 @@ export async function upsertDueManagementAccessPassword(params: {
 }): Promise<{ location: string; configured: boolean; defaultPasswordActive: boolean }> {
   const location = normalizeLocation(params.location);
   const password = params.password.trim();
-  if (password.length === 0) {
-    throw new Error('パスワードは必須です');
+  if (password.length < PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH) {
+    throw new ApiError(400, `パスワードは${PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH}文字以上で入力してください`);
   }
   const dueManagementPasswordHash = await bcrypt.hash(password, 10);
   const passwordChangedAt = new Date();
