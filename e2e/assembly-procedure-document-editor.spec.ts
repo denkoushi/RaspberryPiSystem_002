@@ -1,4 +1,9 @@
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { expect, test, type Page } from '@playwright/test';
+
+import type { AssemblyProcedureTextCandidateDto } from '../apps/web/src/features/assembly/types';
 
 const SOURCE_DOCUMENT_ID = 'assembly-procedure-published-source';
 const REVISION_DOCUMENT_ID = 'assembly-procedure-published-source-revision';
@@ -132,9 +137,17 @@ function makeEditorEvidence(): EditorEvidence {
 async function installEditorApiMocks(
   page: Page,
   evidence: EditorEvidence,
-  options: { conflictVersions?: Array<number | null>; pages?: ProcedureDocument['pages'] } = {}
+  options: {
+    conflictVersions?: Array<number | null>;
+    pages?: ProcedureDocument['pages'];
+    assets?: ProcedureDocument['assets'];
+    textCandidates?: AssemblyProcedureTextCandidateDto[];
+  } = {}
 ): Promise<void> {
-  let sourceDocument = makeDocument(options.pages ? { pages: options.pages } : {});
+  let sourceDocument = makeDocument({
+    ...(options.pages ? { pages: options.pages } : {}),
+    ...(options.assets ? { assets: options.assets } : {})
+  });
   let latestDocument = makeDocument({
     id: REVISION_DOCUMENT_ID,
     name: '公開済み組立手順書（改版）',
@@ -144,7 +157,8 @@ async function installEditorApiMocks(
     supersedesDocumentId: SOURCE_DOCUMENT_ID,
     isRevisionHead: true,
     editVersion: 1,
-    ...(options.pages ? { pages: clone(options.pages) } : {})
+    ...(options.pages ? { pages: clone(options.pages) } : {}),
+    ...(options.assets ? { assets: clone(options.assets) } : {})
   });
   const conflictVersions = [...(options.conflictVersions ?? [])];
 
@@ -339,7 +353,7 @@ async function installEditorApiMocks(
       evidence.textRegionBodies.push(body);
       await route.fulfill({
         json: {
-          candidates: [{
+          candidates: options.textCandidates ?? [{
             text: '抽出された手順文章',
             confidence: 0.98,
             bounds: {
@@ -647,7 +661,169 @@ for (const viewport of [
     expect(layoutBox!.width).toBeGreaterThan(0);
     expect(layoutBox!.height).toBeGreaterThan(0);
     expect(canvasBox!.width).toBeGreaterThanOrEqual(viewport.width >= 1280 ? 500 : 300);
+    expect((await rail.boundingBox())!.width).toBeGreaterThanOrEqual(48);
     await expectNoHorizontalOverflow(page);
+  });
+
+  test(`confirms a photo transcript and highlights choices in clean view at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    const evidence = makeEditorEvidence();
+    const rows = [
+      '取付面を清掃する',
+      'ブラケットを仮止めする',
+      '位置合わせマークを確認する',
+      '締付け前にボルトの軸が取付面に対して垂直になっていることを確認し、ずれがあればブラケットの位置を調整する',
+      '規定トルクで本締めする',
+      '緩み止めマークを付ける',
+      '取付状態を記録する'
+    ];
+    const photoPng = await page.evaluate((lines) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1600;
+      canvas.height = 900;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = '#48515a';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.translate(80, 100);
+      context.rotate(-0.02);
+      context.fillStyle = '#e8e6dc';
+      context.fillRect(0, 0, 1440, 730);
+      context.fillStyle = '#262c30';
+      context.font = '48px sans-serif';
+      context.fillText('ブラケット取付チェック', 64, 108);
+      context.font = '28px sans-serif';
+      lines.forEach((line, index) => {
+        context.strokeRect(64, 175 + index * 76, 26, 26);
+        context.fillText(line, 112, 198 + index * 76, 1264);
+      });
+      return canvas.toDataURL('image/png');
+    }, rows);
+
+    const assetId = 'bracket-photo';
+    const replacementAssetId = 'replacement-photo';
+    const assets = Object.fromEntries([assetId, replacementAssetId].map(id => [id, {
+      assetId: id, contentType: 'image/png', kind: 'OVERLAY_IMAGE', relativeUrl: photoPng
+    }]));
+    const firstHeading = 'ブラケットを取り付ける';
+    const secondHeading = '取付状態を点検する';
+    const photo: OverlayElement = {
+      id: 'bracket-image', kind: 'IMAGE', pageIndex: 0, assetId, objectFit: 'contain',
+      bbox: { xRatio: 0.16, yRatio: 0.20, widthRatio: 0.60, heightRatio: 0.23 }
+    };
+    const textOverlay = (id: string, text: string, yRatio: number): OverlayElement => ({
+      id, kind: 'TEXT', pageIndex: 0, text,
+      bbox: { xRatio: 0.16, yRatio, widthRatio: 0.60, heightRatio: 0.08 },
+      style: { fontSizeRatio: 0.025, color: '#0f172a' }
+    });
+    await page.setViewportSize(viewport);
+    await installEditorApiMocks(page, evidence, {
+      assets,
+      pages: [{ pageIndex: 0, imageRelativePath: procedureImage, overlays: [
+        textOverlay('bracket-instructions', `${firstHeading}\n取付面と位置合わせマークを確認する。`, 0.10),
+        photo,
+        textOverlay('inspection-instructions', secondHeading, 0.56),
+        {
+          ...photo, id: 'replacement-image', assetId: replacementAssetId, bbox: { ...photo.bbox, yRatio: 0.66 },
+          transcript: { assetId: 'previous-photo', kind: 'list', rows: [['差し替え前の確認事項']], sel: [], choices: [] }
+        }
+      ] }],
+      textCandidates: rows.map((text, index) => ({
+        text, confidence: 0.98, pageIndex: 0, source: 'coordinate-ocr',
+        bounds: { xRatio: 0.08, yRatio: 0.20 + index * 0.08, widthRatio: 0.80, heightRatio: 0.04 }
+      }))
+    });
+
+    const shotsDir = process.env.CI ? undefined : process.env.TRANSCRIPT_SHOTS_DIR;
+    if (shotsDir) await mkdir(shotsDir, { recursive: true });
+    const checkStage = async (stage: string) => {
+      await expectNoHorizontalOverflow(page);
+      if (shotsDir) await page.screenshot({ path: join(shotsDir, `${viewport.width}x${viewport.height}-${stage}.png`) });
+    };
+
+    await page.goto(`/kiosk/assembly/procedure-documents/${SOURCE_DOCUMENT_ID}/edit`, { waitUntil: 'domcontentloaded' });
+    await authenticateDocumentEditor(page);
+    const canvas = page.getByRole('region', { name: '手順書キャンバス' });
+    const photoButton = (id: string) => canvas.getByRole('button', { name: `画像オーバーレイ: ${id}`, exact: true });
+    const inspector = page.getByRole('complementary', { name: 'オーバーレイ編集' });
+    const fields = inspector.getByRole('group', { name: '写真の文字' });
+
+    await photoButton(replacementAssetId).click();
+    await expect(fields.getByRole('button', { name: 'この写真で確定', exact: true })).toBeEnabled();
+    await inspector.getByRole('button', { name: '属性を閉じる', exact: true }).click();
+    await photoButton(assetId).click();
+    await expect(fields).toBeVisible();
+    await fields.getByRole('button', { name: '一覧', exact: true }).click();
+    await fields.getByRole('button', { name: '読み取る', exact: true }).click();
+    const cells = fields.getByRole('textbox', { name: /^\d+行1列$/ });
+    await expect(cells).toHaveCount(rows.length);
+    for (const [index, row] of rows.entries()) await expect(cells.nth(index)).toHaveValue(row);
+    expect(evidence.textRegionBodies).toMatchObject([{
+      accessPassword: EDITOR_PASSWORD, pageIndex: photo.pageIndex, bbox: photo.bbox, photoOnly: true,
+      overlays: [{ assetId, bbox: photo.bbox, objectFit: 'contain' }]
+    }]);
+    await cells.nth(3).scrollIntoViewIfNeeded();
+    await checkStage('grid');
+
+    const selectedRow = fields.getByRole('button', { name: '2行目を選択中にする' });
+    await selectedRow.click();
+    await expect(selectedRow).toHaveAttribute('aria-pressed', 'true');
+    const choices = [{ label: '位置調整', row: 3 }, { label: '本締め', row: 4 }];
+    for (const [index, { label, row }] of choices.entries()) {
+      await fields.getByRole('button', { name: '＋ 選択肢', exact: true }).click();
+      await fields.getByRole('textbox', { name: `選択肢${index + 1}の名前` }).fill(label);
+      await fields.getByRole('combobox', { name: `選択肢${index + 1}の行` }).selectOption({ value: String(row) });
+    }
+    const title = 'ブラケット取付チェック';
+    await fields.getByRole('textbox', { name: '見出し', exact: true }).fill(title);
+    await fields.getByRole('button', { name: '確定', exact: true }).click();
+    const confirmed = fields.getByRole('button', { name: '確定済み', exact: true });
+    await expect(confirmed).toBeDisabled();
+    await confirmed.scrollIntoViewIfNeeded();
+    await checkStage('confirmed');
+    await inspector.getByRole('button', { name: '属性を閉じる', exact: true }).click();
+
+    await page.getByRole('button', { name: /^(保存する|未保存の変更を保存する|保存済み|保存中)$/ }).click();
+    await expect(page.getByText('オーバーレイを保存しました。')).toBeVisible();
+    expect(evidence.saveBodies).toHaveLength(1);
+    const saved = evidence.saveBodies[0].elements as OverlayElement[];
+    expect(saved.find(element => element.id === photo.id)).toMatchObject({
+      kind: 'IMAGE', assetId,
+      transcript: { assetId, kind: 'list', title, rows: rows.map(row => [row]), sel: [1], choices }
+    });
+
+    await page.getByRole('button', { name: '清書で見る', exact: true }).click();
+    const clean = page.getByRole('region', { name: '1ページ目の清書' });
+    const firstStep = clean.getByRole('button', { name: `手順1 ${firstHeading}`, exact: true });
+    const firstStepRow = firstStep.locator('..');
+    const firstStepPhoto = firstStepRow.locator('img');
+    await expect(firstStepPhoto).toBeVisible();
+    await expect(firstStepPhoto).toHaveJSProperty('naturalWidth', 1600);
+    await expect(firstStepPhoto).toHaveJSProperty('naturalHeight', 900);
+    await firstStep.click();
+    await expect(firstStep).toHaveAttribute('aria-pressed', 'true');
+    const transcript = firstStepRow.getByRole('region', { name: '写真の文字' });
+    await expect(transcript.getByText(title, { exact: true })).toBeVisible();
+    const listRows = transcript.getByRole('listitem');
+    await expect(listRows).toHaveText(rows);
+    await expect(listRows.nth(1)).toHaveAttribute('data-selected', 'true');
+    await expect(firstStepPhoto).toHaveCount(0);
+    await checkStage('expanded');
+
+    for (const { label, row } of choices) {
+      const choice = firstStepRow.getByRole('button', { name: label, exact: true });
+      await choice.click();
+      await expect(choice).toHaveAttribute('aria-pressed', 'true');
+      for (const index of rows.keys()) {
+        await expect(listRows.nth(index)).toHaveAttribute('data-highlighted', String(index === row));
+        await expect(listRows.nth(index)).toHaveAttribute('data-dimmed', String(index !== row));
+      }
+    }
+    await checkStage('highlighted');
+
+    await clean.getByRole('button', { name: `手順2 ${secondHeading}`, exact: true }).click();
+    await expect(firstStepRow).toHaveAttribute('data-compact', 'true');
+    await expect(transcript).toHaveCount(0);
+    await expect(firstStepPhoto).toBeVisible();
+    await expect(firstStepPhoto).toHaveJSProperty('naturalWidth', 1600);
   });
 }
 

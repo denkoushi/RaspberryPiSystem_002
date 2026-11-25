@@ -83,9 +83,14 @@ describe('process arrival', () => {
     expect(buildProcessArrivalByRowId([row('b', '30')], [process('10', '10'), process('20', 'MSZ')], excluded).get('b')).toBe(true);
   });
 
-  it('uses fseiban + fhincd for ordinary parts even across ProductNo, and isolates other parts', () => {
+  it('counts processes per ProductNo for ordinary parts too, and isolates other parts', () => {
     const otherPart = { ...process('1', '305'), fhincd: 'OTHER' };
-    expect(buildProcessArrivalByRowId([row('b', '30', '200')], [process('10', '305'), otherPart], excluded).get('b')).toBe(false);
+    expect(buildProcessArrivalByRowId([row('b', '30', '100')], [process('10', '305'), otherPart], excluded).get('b')).toBe(false);
+    expect(buildProcessArrivalByRowId([row('b', '30', '200')], [process('10', '305'), otherPart], excluded).get('b')).toBe(true);
+    const both = buildProcessArrivalByRowId(
+      [row('b100', '30', '100'), row('b200', '30', '200')],
+      [process('10', '305'), { ...process('10', '305', true), productNo: '200' }], excluded);
+    expect([both.get('b100'), both.get('b200')]).toEqual([false, true]);
     expect(buildProcessArrivalByRowId([row('a', '10')], [otherPart], excluded).get('a')).toBe(true);
   });
 
@@ -131,9 +136,10 @@ describe('process arrival', () => {
     expect(sql.strings.join('?')).toContain('ON "csvDashboardId" = ?');
     expect(sql.strings.join('?')).toContain(`BTRIM("rowData"->>'FSEIBAN') = k.fseiban`);
     expect(sql.strings.join('?')).toContain(`BTRIM("rowData"->>'FHINCD') = k.fhincd`);
-    expect(sql.strings.join('?')).toContain(`k.product_no IS NULL OR BTRIM("rowData"->>'ProductNo') = k.product_no`);
+    expect(sql.strings.join('?')).toContain(`COALESCE(BTRIM("rowData"->>'ProductNo'), '') = k.product_no`);
+    expect(sql.strings.join('?')).toContain('"supersededAt" IS NULL');
     expect(sql.values.slice(0, 3)).toEqual([
-      rows.map((item) => item.rowData.FSEIBAN), rows.map((item) => item.rowData.FHINCD), Array(700).fill(null)
+      rows.map((item) => item.rowData.FSEIBAN), rows.map((item) => item.rowData.FHINCD), Array(700).fill('100')
     ]);
     expect(sql.values.filter((value: unknown) => typeof value === 'string' && value.startsWith('row-'))).toHaveLength(700);
   });
@@ -157,12 +163,12 @@ describe('process arrival', () => {
     expect(mocks.query).toHaveBeenCalledTimes(1);
   });
 
-  it('passes NULL for ordinary ProductNos and preserves empty unassigned ProductNos', async () => {
+  it('passes each row own ProductNo for every seiban, including an empty one', async () => {
     mockProcesses([]);
     const unassigned = row('unassigned', '30', '');
     unassigned.rowData.FSEIBAN = '********';
     await enrichRowsWithProcessArrival([row('normal', '30'), unassigned], { locationKey: 'site' });
-    expect(mocks.query.mock.calls[0]![0].values[2]).toEqual([null, '']);
+    expect(mocks.query.mock.calls[0]![0].values[2]).toEqual(['100', '']);
   });
 
   it('skips the process query when no valid part keys remain', async () => {

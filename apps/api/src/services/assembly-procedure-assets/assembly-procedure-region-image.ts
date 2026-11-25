@@ -13,6 +13,7 @@ type RegionImageInput = {
   roi: AssemblyProcedureAssetRoi;
   overlays: readonly OverlayRegionImage[];
   assets: ReadonlyMap<string, Buffer>;
+  photoOnly?: boolean;
 };
 
 async function compositeRegion(
@@ -41,7 +42,7 @@ async function compositeRegion(
       fit: overlay.objectFit === 'fill' ? 'fill' : overlay.objectFit === 'cover' ? 'cover' : 'contain',
       background: { r: 0, g: 0, b: 0, alpha: 0 }
     }).extract(intersection).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    const opacity = overlay.opacity ?? 1;
+    const opacity = input.photoOnly ? 1 : overlay.opacity ?? 1;
     if (opacity < 1) {
       for (let offset = 3; offset < rendered.data.length; offset += 4) {
         rendered.data[offset] = Math.round(rendered.data[offset] * opacity);
@@ -55,8 +56,9 @@ async function compositeRegion(
     });
   }
   if (!layers.length) return null;
-  const pageRoi = await sharp(input.pageBuffer, { limitInputPixels: 40_000_000 })
-    .extract(pixelRoi).png().toBuffer();
+  const pageRoi = input.photoOnly
+    ? await sharp({ create: { width: pixelRoi.width, height: pixelRoi.height, channels: 3, background: '#ffffff' } }).png().toBuffer()
+    : await sharp(input.pageBuffer, { limitInputPixels: 40_000_000 }).extract(pixelRoi).png().toBuffer();
   return sharp(pageRoi, { limitInputPixels: 40_000_000 }).composite(layers);
 }
 
@@ -65,6 +67,7 @@ export async function composeRegionImage(input: RegionImageInput) {
   const metadata = await sharp(input.pageBuffer, { limitInputPixels: 40_000_000 }).metadata();
   const width = metadata.width ?? 0;
   const height = metadata.height ?? 0;
+  if (input.photoOnly && width * height > 40_000_000) throw new Error('Input image exceeds pixel limit');
   const pixelRoi = assemblyProcedureAssetRoiToPixels(input.roi, width, height);
   const composite = await compositeRegion(input, pixelRoi, width, height);
   if (!composite) return cropAssemblyProcedureAssetRoi(input.pageBuffer, input.roi);

@@ -17,7 +17,7 @@ vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<
 import { lockOperationDefinitionPieces, reconcileOperationDefinitionPieces, syncWholePiecesOperationCompletions, readPieceOperationNumbers } from '../piece-operation-definitions.js';
 import { encodeSessakuPieceKey, sessakuPieceParentItemId } from '../piece-key.js';
 
-const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
+const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '' };
 const row = { id: 'row', rowData: { FSEIBAN: 'S', FHINCD: 'PART', FSIGENCD: '021', FKOJUN: '10' } };
 const tx = {
   productionScheduleSameModelResourceGroup: { findMany: vi.fn() },

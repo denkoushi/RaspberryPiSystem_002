@@ -134,7 +134,7 @@
   color: #475569;
   font-size: 2.21cqw;
   line-height: 1.5;
-  white-space: pre-wrap;
+  white-space: pre-line;
 }
 
 .assembly-clean-photos {
@@ -225,4 +225,144 @@
 
 .assembly-clean-step[data-expanded="true"] .assembly-clean-photos img {
   margin-left: 0;
+}
+
+.assembly-clean-text[data-choices="true"] {
+  overflow: auto;
+}
+
+.assembly-clean-choices {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.7cqw;
+}
+
+.assembly-clean-step[data-expanded="true"] .assembly-clean-choices {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.assembly-clean-choices button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8cqw;
+  max-width: 100%;
+  padding: 0.35cqw 1.25cqw;
+  border: 1px solid #94a3b8;
+  background: #fff;
+  font-size: 2.1cqw;
+  text-align: left;
+}
+
+.assembly-clean-choices button::before {
+  content: "";
+  flex: 0 0 1.5cqw;
+  height: 1.5cqw;
+  border: 1px solid #475569;
+}
+
+.assembly-clean-choices button > span {
+  flex: 0 0 2.2cqw;
+  height: 0.55cqw;
+}
+
+.assembly-clean-choices button[aria-pressed="true"] {
+  border-color: #1e293b;
+  box-shadow: inset 0 0 0 1px #1e293b;
+  font-weight: 600;
+}
+
+.assembly-clean-choices button[aria-pressed="true"]::before {
+  background: #1e293b;
+  box-shadow: inset 0 0 0 0.25cqw #fff;
+}
+
+.assembly-clean-transcript-pane {
+  container-type: inline-size;
+  overflow: auto;
+  padding: 1px;
+}
+
+.assembly-clean-transcript {
+  background: #fff;
+  color: #000;
+  font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
+  text-align: left;
+  box-shadow: 0 0 0 1px #888;
+  overflow-wrap: anywhere;
+}
+
+.assembly-clean-transcript-title {
+  padding: 0.9cqi 2cqi;
+  border-bottom: 1px solid #ccc;
+  font-size: 2.8cqi;
+}
+
+.assembly-clean-transcript table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 4.6cqi;
+}
+
+.assembly-clean-transcript th,
+.assembly-clean-transcript td {
+  padding: 0.8cqi 1.5cqi;
+  border-right: 1px solid #ccc;
+  text-align: left;
+}
+
+.assembly-clean-transcript th {
+  background: #f3f3f3;
+  color: #333;
+  font-size: 2.8cqi;
+  font-weight: 400;
+}
+
+.assembly-clean-transcript td {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+.assembly-clean-transcript ul {
+  margin: 0;
+  padding: 0.6cqi 0;
+  list-style: none;
+  font-size: 3.1cqi;
+}
+
+.assembly-clean-transcript li {
+  display: flex;
+  align-items: center;
+  gap: 1cqi;
+  min-height: 4.3cqi;
+  padding: 0 2cqi;
+}
+
+.assembly-clean-transcript li > span:first-child {
+  margin-right: auto;
+}
+
+.assembly-clean-transcript-mark {
+  display: inline-block;
+  flex: 0 0 6cqi;
+  width: 6cqi;
+  height: 0.9cqi;
+}
+
+.assembly-clean-transcript [data-selected="true"],
+.assembly-clean-transcript [data-selected="true"] > th {
+  background: #0078d7;
+  color: #fff;
+}
+
+.assembly-clean-transcript [data-highlighted="true"] {
+  outline: max(2px, 0.6cqi) solid;
+  outline-offset: min(-2px, -0.6cqi);
+  font-weight: 700;
+}
+
+.assembly-clean-transcript [data-dimmed="true"] {
+  opacity: 0.35;
 }

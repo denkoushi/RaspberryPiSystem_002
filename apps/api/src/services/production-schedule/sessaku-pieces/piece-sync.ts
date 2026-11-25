@@ -2,7 +2,7 @@ import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-st
 import { ApiError } from '../../../lib/errors.js';
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, type SessakuPieceLogicalKey } from './piece-key.js';
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceSetsByKeys, sessakuPieceKeyFromRow, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
@@ -43,7 +43,7 @@ export async function lockAllSessakuPieceSets(tx: Prisma.TransactionClient, mail
 /** Preserve the published logical parent's completion while its transient source row is replaced. */
 export async function readSessakuPiecePublicationState(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[]) {
   const states = [];
-  const sets = await readSessakuPieceSets(tx, keys.map((key) => ({ rowData: { FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun } })));
+  const sets = await readSessakuPieceSetsByKeys(tx, keys);
   for (const key of sets.values()) {
     if (!key.pieces.length && !key.sourcePieceSetId) continue;
     const previous = await findSessakuPieceWinner(tx, key);
@@ -86,7 +86,7 @@ export async function publishSessakuPieceProgress(tx: Prisma.TransactionClient, 
 
 export async function prepareSessakuPiecePublication(tx: Prisma.TransactionClient, rows: readonly { rowData: unknown }[]) {
   const keys = [...new Map(rows.map((row) => { const key = sessakuPieceKeyFromRow(row.rowData); return [encodeSessakuPieceKey(key), key]; })).values()];
-  const sets = await readSessakuPieceSets(tx, rows);
+  const sets = await readSessakuPieceSetsByKeys(tx, keys);
   const activeKeys = keys.filter((key) => sets.get(encodeSessakuPieceKey(key))?.pieces.length || sets.get(encodeSessakuPieceKey(key))?.sourcePieceSetId);
   if (!activeKeys.length) return [];
   await acquireSessakuPieceLogicalLocks(tx, activeKeys);

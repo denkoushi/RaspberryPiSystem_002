@@ -238,16 +238,18 @@ describe('order-supplement-sync.service (integration)', () => {
     expect(splits.reduce((sum, split) => sum + split.splitQuantity, 0)).toBe(5);
   });
 
-  it('同一論理キーでは最大ProductNoのwinnerだけを補助行へ照合する', async () => {
+  it('同一4列キーの印なし番号は両方とも、自分の番号の補助行へ照合し、印付きの番号は照合しない', async () => {
     const mainRows = await Promise.all(
       [
         { suffix: 'low', productNo: '1000000001' },
         { suffix: 'high', productNo: '1000000002' },
-      ].map(({ suffix, productNo }) =>
+        { suffix: 'old', productNo: '1000000000', supersededAt: new Date('2026-06-21T00:00:00.000Z') },
+      ].map(({ suffix, productNo, supersededAt }) =>
         prisma.csvDashboardRow.create({
           data: {
             csvDashboardId: MAIN_DASHBOARD_ID,
             occurredAt: new Date('2026-06-20T00:00:00.000Z'),
+            supersededAt,
             dataHash: `${DATA_HASH_PREFIX}-winner-${suffix}-main`,
             rowData: {
               ProductNo: productNo,
@@ -286,6 +288,17 @@ describe('order-supplement-sync.service (integration)', () => {
             plannedQuantity: '2',
           },
         },
+        {
+          csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
+          occurredAt: new Date('2026-06-20T00:00:00.000Z'),
+          dataHash: `${DATA_HASH_PREFIX}-winner-old-source`,
+          rowData: {
+            ProductNo: '1000000000',
+            FSIGENCD: '503',
+            FKOJUN: '200',
+            plannedQuantity: '9',
+          },
+        },
       ],
     });
 
@@ -302,19 +315,18 @@ describe('order-supplement-sync.service (integration)', () => {
     });
 
     expect(result).toEqual({
-      scanned: 2,
-      normalized: 2,
-      matched: 1,
+      scanned: 3,
+      normalized: 3,
+      matched: 2,
       unmatched: 1,
-      upserted: 1,
+      upserted: 2,
       pruned: 0,
     });
-    expect(supplements).toEqual([
-      {
-        csvDashboardRowId: mainRows[1]?.id,
-        productNo: '1000000002',
-        plannedQuantity: 2,
-      },
+    expect(
+      [...supplements].sort((x, y) => x.productNo.localeCompare(y.productNo)),
+    ).toEqual([
+      { csvDashboardRowId: mainRows[0]?.id, productNo: '1000000001', plannedQuantity: 1 },
+      { csvDashboardRowId: mainRows[1]?.id, productNo: '1000000002', plannedQuantity: 2 },
     ]);
   });
 

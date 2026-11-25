@@ -1,6 +1,7 @@
 import { videosForPage, type ProcedureVideoSummary, type ProcedureVideoPageLink } from './procedure-video.service.js';
 import {
   type AssemblyProcedureImageObjectFit,
+  type OverlayImageTranscript,
   type AssemblyProcedureOverlayAssetMetadata,
   type AssemblyProcedureOverlayElement,
   type AssemblyProcedureOverlayTextStyle
@@ -146,7 +147,8 @@ export function serializeAssemblyProcedureOverlayElement(
       ...base,
       kind: 'IMAGE',
       assetId: row.assetId ?? '',
-      objectFit: (row.objectFit as AssemblyProcedureImageObjectFit | null) ?? 'contain'
+      objectFit: (row.objectFit as AssemblyProcedureImageObjectFit | null) ?? 'contain',
+      transcript: row.transcript as OverlayImageTranscript | null
     };
   }
   return {

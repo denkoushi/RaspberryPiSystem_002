@@ -12,6 +12,7 @@ import {
   lineEndpointsForDirection,
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
+import { AssemblyProcedurePhotoTranscriptFields, type ReadPhotoText } from './AssemblyProcedurePhotoTranscriptFields';
 import { ProcedureVoiceInput } from './ProcedureVoiceInput';
 import { useProcedureVoiceInput, type useProcedureMeetingInput } from './useProcedureVoiceInput';
 
@@ -59,6 +60,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   voiceInputEnabled = false,
   voiceContext,
   documentId,
+  readPhotoText,
   holderToken
 }: {
   element: AssemblyProcedureOverlayElement | null;
@@ -82,6 +84,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   voiceInputEnabled?: boolean;
   voiceContext?: string;
   documentId?: string;
+  readPhotoText?: ReadPhotoText;
   holderToken?: string | null;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -226,6 +229,14 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
           </label>
         </fieldset>
       ) : null}
+
+      {isPhoto(element) ? <AssemblyProcedurePhotoTranscriptFields
+        key={JSON.stringify([documentId, element.id, element.assetId, element.transcript])}
+        image={element}
+        readText={readPhotoText}
+        disabled={busy || readOnly}
+        onConfirm={transcript => patch({ transcript })}
+      /> : null}
 
       {element.kind === 'SHAPE' ? (
         <fieldset className="grid gap-1 font-semibold">

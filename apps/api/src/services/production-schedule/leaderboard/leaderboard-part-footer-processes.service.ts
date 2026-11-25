@@ -103,6 +103,7 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
         AND BTRIM("CsvDashboardRow"."rowData"->>'FHINCD') = "targetKeys"."fhincd"
         AND "targetKeys"."fhincd" <> ''
       WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "CsvDashboardRow"."supersededAt" IS NULL
     ),
     "winnerRows" AS (
       SELECT DISTINCT ON (

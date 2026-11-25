@@ -6,8 +6,8 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { logger } from '../../../lib/logger.js';
 import {
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
-  isUnassignedProductionSeiban,
 } from '../row-resolver/constants.js';
+import { chunk } from '../../../lib/chunk.js';
 import { buildMaxProductNoLogicalKeyPartitionExprs } from '../row-resolver/max-product-no-winner-spec.js';
 import {
   computeBasisDateUtc,
@@ -43,15 +43,6 @@ const extractLogicalKey = (rowData: unknown): ProductionScheduleLogicalKey => {
     FKOJUN: coerceKeyPart(record?.FKOJUN),
     ProductNo: coerceKeyPart(record?.ProductNo),
   };
-};
-
-const chunk = <T>(items: T[], size: number): T[][] => {
-  if (size <= 0) return [items];
-  const result: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    result.push(items.slice(i, i + size));
-  }
-  return result;
 };
 
 export class ProductionScheduleCleanupService {
@@ -208,7 +199,7 @@ export class ProductionScheduleCleanupService {
              AND COALESCE(r."rowData"->>'FHINCD', '') = COALESCE(k."FHINCD", '')
              AND COALESCE(r."rowData"->>'FSIGENCD', '') = COALESCE(k."FSIGENCD", '')
              AND COALESCE(r."rowData"->>'FKOJUN', '') = COALESCE(k."FKOJUN", '')
-             AND (k."FSEIBAN" <> '********' OR BTRIM(COALESCE(r."rowData"->>'ProductNo', '')) = k."ProductNo")
+             AND BTRIM(COALESCE(r."rowData"->>'ProductNo', '')) = k."ProductNo"
             WHERE r."csvDashboardId" = ${params.csvDashboardId}
           ),
           to_delete AS (
@@ -297,7 +288,7 @@ export class ProductionScheduleCleanupService {
       const key = extractLogicalKey(row.data);
       const signature = PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map((c) =>
         (key as Record<string, string>)[c] ?? ''
-      ).concat(isUnassignedProductionSeiban(key.FSEIBAN) ? [key.ProductNo] : []).join('\t');
+      ).concat([key.ProductNo]).join('\t');
       if (seen.has(signature)) {
         continue;
       }

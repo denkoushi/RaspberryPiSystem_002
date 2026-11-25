@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   isValidAssemblyProcedureOverlayBBox,
+  overlayImageTranscriptSchema,
   type AssemblyProcedureImageObjectFit,
   type AssemblyProcedureOverlayElement,
   type AssemblyProcedureOverlayMask,
@@ -122,9 +123,12 @@ export function normalizeElement(
       if (!['contain', 'cover', 'fill'].includes(objectFit)) {
         throw new ApiError(400, `overlay ${index + 1}件目のobjectFitが不正です`);
       }
+      const transcript = overlayImageTranscriptSchema.nullish().safeParse(input.transcript);
+      if (!transcript.success) throw new ApiError(400, `overlay ${index + 1}件目のtranscriptが不正です`);
       return {
         ...base,
         kind: 'IMAGE',
+        transcript: transcript.data,
         assetId,
         objectFit: objectFit as AssemblyProcedureImageObjectFit
       };
@@ -203,7 +207,8 @@ export function elementToCreateData(
     return {
       ...common,
       assetId: element.assetId,
-      objectFit: element.objectFit ?? 'contain'
+      objectFit: element.objectFit ?? 'contain',
+      transcript: element.transcript ?? undefined
     };
   }
   return {
@@ -240,6 +245,7 @@ export function overlayToCreateDataFromRow(
     textStyle: overlay.textStyle ?? undefined,
     assetId: overlay.assetId,
     objectFit: overlay.objectFit,
+    transcript: overlay.transcript ?? undefined,
     shapeKind: overlay.shapeKind,
     strokeColor: overlay.strokeColor,
     fillColor: overlay.fillColor,

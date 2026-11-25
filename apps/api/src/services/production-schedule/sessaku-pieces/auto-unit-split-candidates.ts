@@ -10,7 +10,7 @@ import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 // Locale-sensitive and other JS Number forms are always left to isLaterProcessOrder.
 const decimalOrderPattern = '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]{1,2})?$';
 export function isFirstAutoUnitSplitProcess(item: GrindingPlanningBoardItem, items: readonly GrindingPlanningBoardItem[]): boolean {
-  return !items.some((other) => other.fseiban === item.fseiban && other.fhincd.trim() !== ''
+  return !items.some((other) => other.fseiban === item.fseiban && other.productNo === item.productNo && other.fhincd.trim() !== ''
     && other.originalResourceCd?.trim() && other.processOrder.trim()
     && (other.fhincd === item.fhincd ? isLaterProcessOrder(item.processOrder, other.processOrder)
       : other.fhincd.normalize('NFKC').trim() === item.fhincd.normalize('NFKC').trim()));
@@ -37,7 +37,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
   // SQL creates the identical base64url row ID from the raw logical key, including whitespace.
   const parentIdFor = (alias: 'r' | 'v') => Prisma.sql`'row:' || RTRIM(TRANSLATE(REPLACE(ENCODE(CONVERT_TO(
     '[' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FSEIBAN', ''))::text || ',' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FHINCD', ''))::text || ',' ||
-    to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
+    to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FKOJUN', ''))::text || ',' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'ProductNo', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
   const parentId = parentIdFor('r');
   // Include every eligibility source, not just CSV row data or set versions.
   // The board reads winner rows by trimmed seiban against the raw CSV value
@@ -89,6 +89,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     LEFT JOIN "ProductionScheduleSessakuPieceSet" s ON s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND s."fseiban" = COALESCE(r."rowData"->>'FSEIBAN', '') AND s."fhincd" = COALESCE(r."rowData"->>'FHINCD', '')
       AND s."fsigencd" = COALESCE(r."rowData"->>'FSIGENCD', '') AND s."fkojun" = COALESCE(r."rowData"->>'FKOJUN', '')
+      AND s."productNo" = COALESCE(r."rowData"->>'ProductNo', '')
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
       ${selection}
       AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
@@ -114,6 +115,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     LEFT JOIN "ProductionScheduleSessakuPieceSet" s ON s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND s."fseiban" = COALESCE(r."rowData"->>'FSEIBAN', '') AND s."fhincd" = COALESCE(r."rowData"->>'FHINCD', '')
       AND s."fsigencd" = COALESCE(r."rowData"->>'FSIGENCD', '') AND s."fkojun" = COALESCE(r."rowData"->>'FKOJUN', '')
+      AND s."productNo" = COALESCE(r."rowData"->>'ProductNo', '')
     JOIN "ProductionScheduleOrderSupplement" q ON q."csvDashboardRowId" = r."id" AND q."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
       AND ${trim(Prisma.sql`r."rowData"->>'FSEIBAN'`)} NOT IN ('', '********') AND ${part} <> '' AND ${process} <> ''
@@ -146,6 +148,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
         JOIN "CsvDashboardRow" d ON d."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
           AND COALESCE(d."rowData"->>'FSEIBAN', '') = ds."fseiban" AND COALESCE(d."rowData"->>'FHINCD', '') = ds."fhincd"
           AND COALESCE(d."rowData"->>'FSIGENCD', '') = ds."fsigencd" AND COALESCE(d."rowData"->>'FKOJUN', '') = ds."fkojun"
+          AND COALESCE(d."rowData"->>'ProductNo', '') = ds."productNo"
         WHERE ds."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
           AND (ds."quantityWarning" IS NOT NULL
             OR EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" dp WHERE dp."pieceSetId" = ds."id" AND dp."isCompleted")
@@ -158,12 +161,14 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
       AND NOT EXISTS (SELECT 1 FROM "CsvDashboardRow" e WHERE e."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND e."rowData"->>'FSEIBAN' = ANY(${order}::text[])
         AND e."rowData"->>'FSEIBAN' = r."rowData"->>'FSEIBAN'
+        AND COALESCE(e."rowData"->>'ProductNo', '') = COALESCE(r."rowData"->>'ProductNo', '')
         AND e."rowData"->>'FHINCD' = r."rowData"->>'FHINCD' AND ${earlierProcess} <> '' AND ${trim(Prisma.sql`e."rowData"->>'FSIGENCD'`)} <> ''
         AND ${laterThanEarlier} AND ${buildMaxProductNoWinnerCondition('e')})
       -- Similar-looking but different raw part keys cannot share downstream pieces.
       AND NOT EXISTS (SELECT 1 FROM "CsvDashboardRow" e WHERE e."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND e."rowData"->>'FSEIBAN' = r."rowData"->>'FSEIBAN'
         AND e."rowData"->>'FHINCD' <> r."rowData"->>'FHINCD'
+        AND COALESCE(e."rowData"->>'ProductNo', '') = COALESCE(r."rowData"->>'ProductNo', '')
         AND ${trim(Prisma.sql`e."rowData"->>'FSIGENCD'`)} <> '' AND ${earlierProcess} <> ''
         AND ${trim(Prisma.sql`NORMALIZE(e."rowData"->>'FHINCD', NFKC)`)} = ${trim(Prisma.sql`NORMALIZE(r."rowData"->>'FHINCD', NFKC)`)}
         AND ${buildMaxProductNoWinnerCondition('e')})

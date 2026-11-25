@@ -38,7 +38,7 @@ vi.mock('../../grinding-planning-board/source.js', () => ({
 vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../piece-key.js')>(),
   readSessakuPieceSet: mocks.readSet, readSessakuPieceSets: mocks.sets, findSessakuPieceWinner: mocks.winner,
   acquireSessakuPieceLogicalLocks: mocks.logicalLocks, acquireSessakuPieceBoardStateLocks: mocks.boardLocks,
-  resolveSessakuPieceItemKeys: async (_client: unknown, keys: string[]) => new Map(keys.map((id) => [id, { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' }]))
+  resolveSessakuPieceItemKeys: async (_client: unknown, keys: string[]) => new Map(keys.map((id) => [id, { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '1' }]))
 }));
 vi.mock('../piece-audit.js', async () => ({ pieceTimingStage: new (await import('node:async_hooks')).AsyncLocalStorage(),
   readLaterPieceAuditSnapshots: async () => [], collectLaterPiecePropagationAudits: () => [],
@@ -52,7 +52,7 @@ import { configureSessakuPieceOps, clearSessakuPieceOps, splitSessakuPieceOps, m
 import { projectGrindingPlanningBoard } from '../../grinding-planning-board-projection.js';
 import { encodeSessakuPieceKey, sessakuPieceParentItemId } from '../piece-key.js';
 
-const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
+const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '1' };
 const row = { id: 'row', rowData: { FSEIBAN: 'S', FHINCD: 'PART', FSIGENCD: '021', FKOJUN: '10', ProductNo: '1', FSIGENSHOYORYO: '100' }, updatedAt: null };
 const now = new Date('2026-11-11T00:00:00Z');
 let set: SessakuPieceSet;

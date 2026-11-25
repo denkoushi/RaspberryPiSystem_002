@@ -650,19 +650,19 @@ describe('Kiosk Production Schedule API', () => {
     expect(target?.plannedEndDate).toContain('2026-04-23');
   });
 
-  it('keeps only the larger ProductNo for the same seiban+process key', async () => {
+  it('returns both ProductNos for the same seiban, part, resource and process', async () => {
     await prisma.csvDashboardRow.createMany({
       data: [
         {
           csvDashboardId: DASHBOARD_ID,
           occurredAt: new Date(),
-          dataHash: 'hash-older-duplicate',
+          dataHash: 'hash-order-0003',
           rowData: { ProductNo: '0003', FSEIBAN: 'BA1S2320', FHINCD: 'K001', FSIGENCD: 'R1', FKOJUN: '10', progress: '' },
         },
         {
           csvDashboardId: DASHBOARD_ID,
           occurredAt: new Date(),
-          dataHash: 'hash-newer-duplicate',
+          dataHash: 'hash-order-0009',
           rowData: { ProductNo: '0009', FSEIBAN: 'BA1S2320', FHINCD: 'K001', FSIGENCD: 'R1', FKOJUN: '10', progress: '' },
         },
       ],
@@ -678,8 +678,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(res.statusCode).toBe(200);
 
     const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
-    expect(body.rows).toHaveLength(1);
-    expect(body.rows[0]?.rowData.ProductNo).toBe('0009');
+    expect(body.rows.map((row) => row.rowData.ProductNo).sort()).toEqual(['0003', '0009']);
   });
 
   it('completes a row and keeps it in list (grayed out)', async () => {

@@ -158,6 +158,7 @@ export async function findAssemblyProcedureTextCandidates(input: {
   pageIndex: number;
   bbox: AssemblyProcedureOverlayElement['bbox'];
   overlays?: OverlayRegionImage[];
+  photoOnly?: boolean;
 }) {
   const { data } = await api.post<{ candidates: AssemblyProcedureTextCandidateDto[] }>(
     `/assembly/procedure-documents/${encodeURIComponent(input.id)}/regions/text`,
@@ -165,7 +166,8 @@ export async function findAssemblyProcedureTextCandidates(input: {
       accessPassword: input.accessPassword,
       pageIndex: input.pageIndex,
       bbox: input.bbox,
-      ...(input.overlays ? { overlays: input.overlays } : {})
+      ...(input.overlays ? { overlays: input.overlays } : {}),
+      ...(input.photoOnly ? { photoOnly: true } : {})
     }
   );
   return data.candidates;

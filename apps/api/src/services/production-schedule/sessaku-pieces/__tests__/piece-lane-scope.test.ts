@@ -17,12 +17,12 @@ vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<
   findSessakuPieceWinner: vi.fn(), readSessakuPieceSet: vi.fn(), readSessakuPieceSets: vi.fn()
 }));
 
-const key = { fseiban: 'ORDER', fhincd: 'PART', fsigencd: '1', fkojun: '1' };
+const key = { fseiban: 'ORDER', fhincd: 'PART', fsigencd: '1', fkojun: '1', productNo: '' };
 const parentId = sessakuPieceParentItemId(key);
 const row = { id: 'source', rowData: { FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun }, updatedAt: new Date(0) };
 const detail = { updatedAt: new Date(0), rowNotes: [], orderSupplements: [{ plannedQuantity: 5, plannedEndDate: null }], productionScheduleProgress: null, productionScheduleExternalCompletion: null };
-const inboundRow = { fseiban: 'NEIGHBOUR', fhincd: 'OTHER', fsigencd: '2', fkojun: '9' };
-const inboundPiece = { fseiban: 'NEIGHBOUR', fhincd: 'PIECE', fsigencd: '2', fkojun: '8' };
+const inboundRow = { fseiban: 'NEIGHBOUR', fhincd: 'OTHER', fsigencd: '2', fkojun: '9', productNo: '' };
+const inboundPiece = { fseiban: 'NEIGHBOUR', fhincd: 'PIECE', fsigencd: '2', fkojun: '8', productNo: '' };
 const sites = ['one', 'two', 'three', 'four'];
 const stop = new Error('stop before loading scoped rows');
 

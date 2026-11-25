@@ -314,7 +314,7 @@ describe('PlanningBoardGanttView', () => {
   it.each(['later', 'completed'] as const)('shows placement recorded on another process row of the same part (%s)', (variant) => {
     const first = item({ itemId: 'a', productNo: '1', processOrder: '10',
       placement: { shelves: [{ shelfCodeRaw: 'B', label: '棚B', placedAt: '2026-10-23T06:20:00Z' }] } });
-    const placed = item({ itemId: 'b', sourceRowId: 'b', productNo: '2', processOrder: '20', isCompleted: variant === 'completed',
+    const placed = item({ itemId: 'b', sourceRowId: 'b', productNo: '1', processOrder: '20', isCompleted: variant === 'completed',
       placement: { shelves: [{ shelfCodeRaw: 'A', label: '棚A', placedAt: '2026-10-24T06:20:00Z' }, { shelfCodeRaw: 'B', label: '棚B', placedAt: '2026-10-22T06:20:00Z' }] } });
     const items = [first, placed];
     const layout = buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource',

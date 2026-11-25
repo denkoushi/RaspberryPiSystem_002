@@ -99,6 +99,7 @@ describe('findFkojunstMailWinnerIdsByMailTriples integration', () => {
     });
     const winnerA = rows.find((row) => (row.rowData as Record<string, string>).ProductNo === '2');
     const winnerB = rows.find((row) => (row.rowData as Record<string, string>).ProductNo === '5');
+    const olderOrder = rows.find((row) => (row.rowData as Record<string, string>).ProductNo === '1');
 
     const result = await findFkojunstMailWinnerIdsByMailTriples({
       client: prisma,
@@ -117,6 +118,9 @@ describe('findFkojunstMailWinnerIdsByMailTriples integration', () => {
     expect(result.get(buildFkojunstMailStatusKey({ fkojun: '20', fkoteicd: 'R2', fsezono: '5' }))).toBe(
       winnerB?.id
     );
-    expect(result.has(buildFkojunstMailStatusKey({ fkojun: '10', fkoteicd: 'R1', fsezono: '1' }))).toBe(false);
+    // 製造オーダー番号はすべて残すので、同じ4列キーの番号1の行も照合される
+    expect(result.get(buildFkojunstMailStatusKey({ fkojun: '10', fkoteicd: 'R1', fsezono: '1' }))).toBe(
+      olderOrder?.id
+    );
   });
 });

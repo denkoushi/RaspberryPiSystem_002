@@ -1,5 +1,6 @@
 import type { PartMeasurementTemplateItem, SelfInspectionMode } from '@prisma/client';
 
+import { chunk } from '../../lib/chunk.js';
 import { ApiError } from '../../lib/errors.js';
 
 import {
@@ -116,14 +117,6 @@ function resolveMarkerNo(displayMarker: string | null, sortOrder: number): numbe
     }
   }
   return sortOrder + 1;
-}
-
-function chunk<T>(values: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push(values.slice(index, index + size));
-  }
-  return chunks;
 }
 
 function minOrNull(values: number[]): number | null {

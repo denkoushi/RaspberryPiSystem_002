@@ -10,7 +10,6 @@ import { asRowData, buildMissingStandardHoursProjectionInput } from './grinding-
 import { isUnitSplitEnabled } from './sessaku-pieces/unit-split-policy.js';
 import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
 import { compareProcessOrder } from './process-order.js';
-import { encodeSessakuPieceKey, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
 import { isGrindingPlanningBoardDueOverrideActive, resolveBoardDueDate, type BoardDueSource } from './d-schedule-minutes/resolve-board-due-date.js';
 export { isGrindingPlanningBoardDueOverrideActive };
 import { createHash } from 'node:crypto';
@@ -23,10 +22,7 @@ import type {
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
 
-import {
-  PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
-  isUnassignedProductionSeiban,
-} from './row-resolver/constants.js';
+import { PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from './row-resolver/constants.js';
 
 export type GrindingPlanningBoardProgress = {
   completed: number;
@@ -98,23 +94,21 @@ function isInCategory(
   return resourceCd != null && (predicate?.(resourceCd, category) ?? true);
 }
 
-/** Existing winner identity semantics: COALESCE(raw, '') and SQL text coercion. */
+/** 行の識別(4列 + ProductNo、全製番)。COALESCE(raw, '') と SQL のテキスト化に合わせる。 */
 export function buildGrindingPlanningBoardLogicalKey(rowData: GrindingPlanningBoardRowData): string {
-  const parts = PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map((column) => rowValue(rowData, column));
-  if (isUnassignedProductionSeiban(rowValue(rowData, 'FSEIBAN'))) {
-    parts.push(rowValue(rowData, 'ProductNo'));
-  }
-  return JSON.stringify(parts);
+  return JSON.stringify(PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS.map((column) => rowValue(rowData, column)));
 }
 
 export function buildGrindingPlanningBoardRowItemId(rowData: GrindingPlanningBoardRowData): string {
-  return `row:${Buffer.from(buildGrindingPlanningBoardLogicalKey(rowData), 'utf8').toString('base64url')}`;
+  return buildGrindingPlanningBoardRowItemIdFromKey(buildGrindingPlanningBoardLogicalKey(rowData));
+}
+
+export function buildGrindingPlanningBoardRowItemIdFromKey(scheduleRowKey: string): string {
+  return `row:${Buffer.from(scheduleRowKey, 'utf8').toString('base64url')}`;
 }
 
 function buildPartKey(fseiban: string, productNo: string, fhincd: string): string {
-  const parts = [fseiban.trim(), fhincd.trim()];
-  if (isUnassignedProductionSeiban(fseiban)) parts.push(productNo.trim());
-  return parts.join('\0');
+  return [fseiban.trim(), fhincd.trim(), productNo.trim()].join('\0');
 }
 
 function buildProgressProjection(
@@ -355,7 +349,8 @@ function buildItems(
     const rowCompleted = isCompleted(detail);
     const completionSource = detail.productionScheduleExternalCompletion?.isExternallyCompleted
       ? 'import' : detail.productionScheduleProgress?.isCompleted ? 'manual' : null;
-    const rowItemId = buildGrindingPlanningBoardRowItemId(data);
+    const scheduleRowKey = buildGrindingPlanningBoardLogicalKey(data);
+    const rowItemId = buildGrindingPlanningBoardRowItemIdFromKey(scheduleRowKey);
     const itemId = rowItemId;
     const override = params.overrides.get(itemId);
     const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? originalResourceCd);
@@ -391,13 +386,13 @@ function buildItems(
       },
       progress
     );
-    const pieceSet = params.pieceSets?.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(data)));
+    const pieceSet = params.pieceSets?.get(scheduleRowKey);
     const revisionInput = params.placementOnly ? {} : {
       ...(pieceSet ? { pieceSetVersion: pieceSet.version, quantityWarning: pieceSet.pieces.length ? pieceSet.quantityWarning : null } : {}),
       rowId: row.id,
       rowUpdatedAt: row.updatedAt?.toISOString() ?? null,
       detailUpdatedAt: detail.updatedAt?.toISOString() ?? null,
-      logicalKey: buildGrindingPlanningBoardLogicalKey(data),
+      logicalKey: scheduleRowKey,
       originalResourceCd,
       originalDueDate,
       sourceMinutes,
@@ -457,7 +452,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
   const minutesByPart = new Map(params.resourceMinutes?.values.map((value) => [JSON.stringify([value.resourceCd, value.fhincd]), value]));
   return parents.flatMap((parent) => {
     const row = rowsById.get(parent.sourceRowId);
-    const set = row && params.pieceSets?.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)));
+    const set = row && params.pieceSets?.get(buildGrindingPlanningBoardLogicalKey(row.rowData));
     if (!set?.pieces.length) return [parent];
     const external = params.details.get(parent.sourceRowId)?.productionScheduleExternalCompletion?.isExternallyCompleted === true;
     const firstPosition = Math.min(...set.pieces.map((piece) => piece.position));

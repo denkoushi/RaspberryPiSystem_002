@@ -1,3 +1,4 @@
+import { isPreferredPurchaseDateCandidate } from '@raspi-system/slip-match-core';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
@@ -31,8 +32,8 @@ function lookupKey(seiban: string, part: string): string {
 }
 
 /**
- * Fetch winners once; per map key, use the latest numeric manufacturing order with a date.
- * Prefer its earliest incomplete process, falling back to its earliest date if all are complete.
+ * Fetch every live (not superseded) row once; per map key, take the earliest incomplete process
+ * across all manufacturing orders, falling back to the earliest date if all are complete.
  * Resolve results in match-key → code → name order.
  */
 export async function findEarliestPlannedStartDatesForPurchaseRows(
@@ -51,6 +52,13 @@ export async function findEarliestPlannedStartDatesForPurchaseRows(
 
 export type SelectedPurchaseCandidate = { productNo: bigint; completed: boolean; date: Date };
 
+function isPreferredPurchaseCandidate(candidate: SelectedPurchaseCandidate, previous: SelectedPurchaseCandidate): boolean {
+  return isPreferredPurchaseDateCandidate(
+    { ...candidate, date: candidate.date.getTime() },
+    { ...previous, date: previous.date.getTime() }
+  );
+}
+
 /** Shared selection for purchase lookup dates and current-placement completion. */
 export function resolvePurchasePlannedStartCandidates(
   purchaseRows: PurchasePart[],
@@ -59,16 +67,14 @@ export function resolvePurchasePlannedStartCandidates(
   const byMatchKey = new Map<string, SelectedPurchaseCandidate>();
   const byNormalizedCode = new Map<string, SelectedPurchaseCandidate>();
   const byPartName = new Map<string, SelectedPurchaseCandidate>();
+  // 購買票には製造オーダー番号が無い。同じ製番+部品に生きている番号が複数あるときは、
+  // 未完了の工程を優先し、その中で最も早い日付を採る(番号が大きいほうだけを見ない)。
+  // 完全に同じ日付なら番号が大きいほうで決める。
   const keepPreferred = (map: Map<string, SelectedPurchaseCandidate>, seiban: string, part: string, candidate: SelectedPurchaseCandidate) => {
     if (!seiban.trim() || !part.trim()) return;
     const key = lookupKey(seiban, part);
     const previous = map.get(key);
-    if (!previous || candidate.productNo > previous.productNo ||
-      (candidate.productNo === previous.productNo &&
-        ((previous.completed && !candidate.completed) ||
-          (candidate.completed === previous.completed && candidate.date < previous.date)))) {
-      map.set(key, candidate);
-    }
+    if (!previous || isPreferredPurchaseCandidate(candidate, previous)) map.set(key, candidate);
   };
   for (const row of rows) {
     if (row.plannedStartDate === null) continue;

@@ -29,12 +29,10 @@ export const dayLabel = (day: number): string => {
   return `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
 };
 
-// Same identity as the projection: only unassigned seibans split by productNo.
+// Same identity as the projection: every manufacturing order (productNo) is its own part.
 export function planningBoardPartKey(item: GrindingPlanningBoardBar): string {
   if (item.kind === 'test') return item.itemId;
-  const parts = [item.fseiban.trim(), item.fhincd.trim()];
-  if (item.fseiban.trim() === '********') parts.push(item.productNo.trim());
-  return parts.join('\0');
+  return [item.fseiban.trim(), item.fhincd.trim(), item.productNo.trim()].join('\0');
 }
 
 function requiredMinutesUnknown(item: GrindingPlanningBoardBar): boolean {

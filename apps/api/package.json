@@ -15,6 +15,8 @@
     "prune:csv-fkobaino-aged-rows:prod": "node dist/scripts/prune-csv-fkobaino-aged-rows.js",
     "prune:csv-append-raw-rows": "tsx src/scripts/prune-csv-append-raw-rows.ts",
     "prune:csv-append-raw-rows:prod": "node dist/scripts/prune-csv-append-raw-rows.js",
+    "verify:production-schedule-row-hash": "tsx src/scripts/verify-production-schedule-row-hash.ts",
+    "verify:production-schedule-row-hash:prod": "node dist/scripts/verify-production-schedule-row-hash.js",
     "prune:fkojunst-mail-superseded": "tsx src/scripts/prune-fkojunst-status-mail-superseded.ts",
     "prune:fkojunst-mail-superseded:prod": "node dist/scripts/prune-fkojunst-status-mail-superseded.js",
     "backfill:procedure-material-image-description": "tsx src/scripts/backfill-procedure-material-image-description.ts",

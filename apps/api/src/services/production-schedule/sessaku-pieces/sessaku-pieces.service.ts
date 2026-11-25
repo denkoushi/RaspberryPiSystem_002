@@ -111,14 +111,13 @@ async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key:
   for (const itemId of inboundIds) {
     const encoded = decodeRowItemId(itemId);
     if (!encoded) continue;
-    const [fseiban, fhincd, fsigencd, fkojun] = JSON.parse(encoded) as string[];
-    const inbound = { fseiban, fhincd, fsigencd, fkojun };
-    inboundKeys.set(encoded, inbound);
+    const [fseiban, fhincd, fsigencd, fkojun, productNo] = JSON.parse(encoded) as string[];
+    if (productNo !== undefined) inboundKeys.set(encoded, { fseiban, fhincd, fsigencd, fkojun, productNo }); // 4要素は読み飛ばす
   }
   const pieceIds = inboundIds.map(sessakuPieceIdFromItemId).filter((id): id is string => id !== null);
   if (pieceIds.length) {
     const pieces = await tx.productionScheduleSessakuPiece.findMany({ where: { id: { in: pieceIds } },
-      select: { pieceSet: { select: { fseiban: true, fhincd: true, fsigencd: true, fkojun: true } } } });
+      select: { pieceSet: { select: { fseiban: true, fhincd: true, fsigencd: true, fkojun: true, productNo: true } } } });
     for (const { pieceSet } of pieces) inboundKeys.set(sessakuPieceParentItemId(pieceSet), pieceSet);
   }
   return { targetFseiban: key.fseiban, resourceCds: [...resources].filter((value): value is string => value != null), inboundKeys: [...inboundKeys.values()] };
@@ -303,7 +302,8 @@ async function operate(params: { lockOperationDefinition?: boolean; dueSource?: 
   definitionKeys: SessakuPieceLogicalKey[]; external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
 }) => Promise<void>): Promise<SessakuPiecesMutationResponse> {
   const batch = params.autoUnitSplit ? autoUnitSplitBatch.getStore() : undefined;
-  const key = decodeSessakuPieceParentItemId(params.parentItemId);
+  const key = decodeSessakuPieceParentItemId(params.parentItemId); // 古い4要素の ID は 409(画面が読み直す)
+  params = { ...params, parentItemId: sessakuPieceParentItemId(key) };
   if (params.audit) Object.assign(params.audit, { parentItemId: params.parentItemId, fseiban: key.fseiban });
   if (!batch) await ensurePlanningBoardState(params.siteKey);
   const retryWithExpandedLocks = new Error('Later process lock scope changed');
@@ -465,7 +465,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     }
     const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
     if (!isProductionScheduleCuttingResourceCd(c.key.fsigencd, policy)) throw new ApiError(403, '切削工程だけ分割できます', undefined, 'RESOURCE_CATEGORY_MISMATCH');
-    if (Object.values(c.key).some((value) => !value) || c.key.fseiban === '********') conflict('UNSUPPORTED_PIECE_PARENT');
+    if (!c.key.fseiban || !c.key.fhincd || !c.key.fsigencd || !c.key.fkojun || c.key.fseiban === '********') conflict('UNSUPPORTED_PIECE_PARENT');
     if (c.external) conflict('EXTERNALLY_COMPLETED_ITEM');
     if (c.set?.quantityWarning) conflict('PIECE_QUANTITY_CONFLICT');
     const target = params.targetPieceId ? c.set?.pieces.find((p) => p.id === params.targetPieceId) : undefined;

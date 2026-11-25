@@ -56,7 +56,7 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
   const editingDisabled = disabled || cleanView;
   const button = (label: string, icon: string, onClick: () => void, options: { disabled?: boolean; pressed?: boolean; color?: string; target?: string; badge?: number | null } = {}) => <EditorIconButton key={icon} aiUnavailable={icon === 'layout' && unavailable} label={label} icon={icons[icon]} onClick={onClick} disabled={options.disabled} pressed={options.pressed} target={options.target} badge={options.badge} className={options.color} tipSide="left" />;
   const separator = <span aria-hidden="true" className="my-1 h-px w-9 shrink-0 bg-[#344252]" />;
-  return <nav aria-label="エディタ操作" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] pb-[84px] pt-2.5">
+  return <nav aria-label="エディタ操作" className="col-start-5 flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] pb-[84px] pt-2.5">
     {button(workshop ? '工房へ戻る' : '一覧へ戻る', 'back', c.navigateBack, { disabled: c.layoutLocked, color: '!border-transparent !text-[#9fadb9]' })}
     {separator}
     {button(c.saving ? '保存中' : c.isDirty ? '未保存の変更を保存する' : c.isDirty === false ? '保存済み' : '保存する', c.saving ? 'saving' : c.isDirty === false ? 'saved' : 'save', () => void c.save(), { disabled: disabled || !c.canSave, color: c.saving ? '!border-[#5fc3e8] !text-[#5fc3e8]' : c.isDirty ? '!border-[#f6b93b] !bg-[#f6b93b] !text-[#0b1a12]' : '!border-[#3ba776] !text-[#3ba776]', target: 'assembly-document-editor-save' })}

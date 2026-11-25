@@ -23,6 +23,8 @@ import type { FkojunstSyncResult } from '../production-schedule/fkojunst-sync.pi
 import type { FkojunstMailSyncResult } from '../production-schedule/fkojunst-status-mail-sync.pipeline.js';
 import type { CustomerScawSyncResult } from '../production-schedule/customer-scaw-sync.pipeline.js';
 import type { SeibanMachineNameSupplementSyncResult } from '../production-schedule/seiban-machine-name-supplement-sync.pipeline.js';
+import { refreshSupersededProductionScheduleRows } from '../production-schedule/superseded-order-marker.js';
+import { prisma } from '../../lib/prisma.js';
 import { resetMachineNameFseibanMatchCaches } from '../production-schedule/machine-name-fseiban-match.service.js';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board-cache-invalidation.js';
 import {
@@ -52,16 +54,23 @@ export type CsvDashboardPostIngestResult = {
   scawStfutekigoSync: ScawStfutekigoSyncResult | null;
 };
 
+type ProductionScheduleStatusSync = {
+  fkojunstSyncService: Pick<ProductionScheduleFkojunstSyncService, 'syncFromFkojunstDashboard'>;
+  fkojunstMailStatusSyncService: Pick<ProductionScheduleFkojunstMailStatusSyncService, 'syncFromStatusMailDashboard'>;
+  externalCompletionSyncService: Pick<FkojunstExternalCompletionSyncService, 'syncFromCurrentStatusMailDashboard'>;
+  refreshSupersededRows: () => Promise<unknown>;
+};
+
 /**
  * Runs CSV dashboard side-effects that must occur after a successful ingest,
  * for both Gmail and manual upload paths (single place to extend).
  */
 export class CsvDashboardPostIngestService {
+  private readonly productionScheduleStatusSync: ProductionScheduleStatusSync;
+
   constructor(
     private readonly orderSupplementSyncService: ProductionScheduleOrderSupplementSyncService = new ProductionScheduleOrderSupplementSyncService(),
-    private readonly fkojunstSyncService: ProductionScheduleFkojunstSyncService = new ProductionScheduleFkojunstSyncService(),
-    private readonly fkojunstMailStatusSyncService: ProductionScheduleFkojunstMailStatusSyncService = new ProductionScheduleFkojunstMailStatusSyncService(),
-    private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService(),
+    productionScheduleStatusSync: Partial<ProductionScheduleStatusSync> = {},
     private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService(),
     private readonly customerScawSyncService: ProductionScheduleCustomerScawSyncService = new ProductionScheduleCustomerScawSyncService(),
     private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService(),
@@ -69,8 +78,15 @@ export class CsvDashboardPostIngestService {
     private readonly scawStfutekigoSyncService: ScawStfutekigoSyncService = new ScawStfutekigoSyncService(),
     private readonly appendRawRowPruneService: CsvDashboardAppendRawRowPruneService = new CsvDashboardAppendRawRowPruneService(),
     private readonly fkobainoAgePruneService: CsvDashboardFkobainoAgePruneService = new CsvDashboardFkobainoAgePruneService(),
-    private readonly slipVerifyRecheck: () => Promise<unknown> = () => recheckUnresolvedSlipVerifyRecords()
-  ) {}
+    private readonly slipVerifyRecheck: () => Promise<unknown> = () => recheckUnresolvedSlipVerifyRecords(),
+  ) {
+    this.productionScheduleStatusSync = {
+      fkojunstSyncService: productionScheduleStatusSync.fkojunstSyncService ?? new ProductionScheduleFkojunstSyncService(),
+      fkojunstMailStatusSyncService: productionScheduleStatusSync.fkojunstMailStatusSyncService ?? new ProductionScheduleFkojunstMailStatusSyncService(),
+      externalCompletionSyncService: productionScheduleStatusSync.externalCompletionSyncService ?? new FkojunstExternalCompletionSyncService(),
+      refreshSupersededRows: productionScheduleStatusSync.refreshSupersededRows ?? (() => refreshSupersededProductionScheduleRows(prisma)),
+    };
+  }
 
   private static readonly appendRawRowPruneInFlight = new Set<string>();
 
@@ -145,7 +161,7 @@ export class CsvDashboardPostIngestService {
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID) {
-      fkojunstSync = await this.fkojunstSyncService.syncFromFkojunstDashboard();
+      fkojunstSync = await this.productionScheduleStatusSync.fkojunstSyncService.syncFromFkojunstDashboard();
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: fkojunstSync },
         '[CsvDashboardPostIngestService] FKOJUNST status sync completed'
@@ -153,7 +169,7 @@ export class CsvDashboardPostIngestService {
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
-      fkojunstMailSync = await this.fkojunstMailStatusSyncService.syncFromStatusMailDashboard();
+      fkojunstMailSync = await this.productionScheduleStatusSync.fkojunstMailStatusSyncService.syncFromStatusMailDashboard();
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: fkojunstMailSync },
         '[CsvDashboardPostIngestService] FKOJUNST_Status mail sync completed'
@@ -162,8 +178,19 @@ export class CsvDashboardPostIngestService {
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+      // 新しく入った行は工程状態の表がまだ空でも、メールの生データから印を付ける(winner を使う後続の同期より先)
+      try {
+        const supersededResult = await this.productionScheduleStatusSync.refreshSupersededRows();
+        logger.info(
+          { dashboardId: params.dashboardId, ingestSource: params.ingestSource, supersededResult },
+          '[CsvDashboardPostIngestService] superseded manufacturing order marks refreshed after production schedule ingest'
+        );
+      } catch (error) {
+        // 次の取り込み・工程状態の同期で付け直される。失敗しても取り込みは止めない。
+        logger.error({ err: error, dashboardId: params.dashboardId }, '[CsvDashboardPostIngestService] superseded mark refresh failed');
+      }
       markProductionScheduleResourceCdsCacheStale();
-      const externalCompletionSync = await this.externalCompletionSyncService.syncFromCurrentStatusMailDashboard();
+      const externalCompletionSync = await this.productionScheduleStatusSync.externalCompletionSyncService.syncFromCurrentStatusMailDashboard();
       try {
         await pruneCompletedGrindingPlanningBoardSeibans();
       } catch (error) {

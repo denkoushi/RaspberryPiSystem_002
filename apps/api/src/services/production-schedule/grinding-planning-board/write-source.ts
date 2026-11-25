@@ -19,6 +19,9 @@ export async function discoverSourceRows(itemIds: readonly string[]): Promise<Ma
       : null;
     const logicalKey = pieceKey ? encodeSessakuPieceKey(pieceKey) : decodeRowItemId(itemId);
     if (logicalKey == null) throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
+    if ((JSON.parse(logicalKey) as string[]).length === 4) {
+      throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+    }
     logicalKeyByItem.set(itemId, logicalKey);
   }
   // The logical key starts with the raw FSEIBAN, so saves read only the edited seibans instead of every winner row.
@@ -26,7 +29,8 @@ export async function discoverSourceRows(itemIds: readonly string[]): Promise<Ma
   const byLogicalKey = new Map(rows.map((row) => [buildGrindingPlanningBoardLogicalKey(asRowData(row.rowData)), row.id]));
   const sourceByItem = new Map<string, string>();
   for (const itemId of itemIds) {
-    const sourceRowId = byLogicalKey.get(logicalKeyByItem.get(itemId) ?? '');
+    const logicalKey = logicalKeyByItem.get(itemId) ?? '';
+    const sourceRowId = byLogicalKey.get(logicalKey);
     if (sourceRowId) sourceByItem.set(itemId, sourceRowId);
   }
   if (sourceByItem.size !== new Set(itemIds).size) throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');

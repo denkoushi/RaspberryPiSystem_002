@@ -17,7 +17,7 @@ async function fixture(run: (tx: Prisma.TransactionClient, a: SessakuPieceLogica
     await client!.$transaction(async (tx) => {
       await tx.csvDashboard.upsert({ where: { id: dashboardId }, create: { id: dashboardId, name: 'generation', columnDefinitions: [], templateConfig: {} }, update: {} });
       const prefix = `generation-${randomUUID()}`;
-      const a = { fseiban: `${prefix}-A`, fhincd: 'P', fsigencd: '021', fkojun: '1' };
+      const a = { fseiban: `${prefix}-A`, fhincd: 'P', fsigencd: '021', fkojun: '1', productNo: '1' };
       const b = { ...a, fseiban: `${prefix}-B` };
       for (const key of [a, b]) {
         await tx.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, occurredAt: new Date(), dataHash: key.fseiban,
@@ -38,7 +38,7 @@ describeDatabase('piece generation SQL dependencies', () => {
   it('isolates A from B while detecting updates, deletion, recreation and global load changes', async () => {
     await fixture(async (tx, a, b) => {
       const scope = { fseibans: [a.fseiban] };
-      const where = (key: SessakuPieceLogicalKey) => ({ csvDashboardId_fseiban_fhincd_fsigencd_fkojun: { csvDashboardId: dashboardId, ...key } });
+      const where = (key: SessakuPieceLogicalKey) => ({ csvDashboardId_fseiban_fhincd_fsigencd_fkojun_productNo: { csvDashboardId: dashboardId, ...key } });
       const before = await readSessakuPieceGeneration(tx, scope);
       const globalBefore = await readSessakuPieceGeneration(tx);
       await tx.productionScheduleSessakuPieceSet.update({ where: where(b), data: { version: { increment: 1 } } });
@@ -60,8 +60,8 @@ describeDatabase('piece generation SQL dependencies', () => {
   it('includes source sets across seibans, but excludes orphan parents and empty selections', async () => {
     await fixture(async (tx, a, b) => {
       const sets = tx.productionScheduleSessakuPieceSet;
-      const parent = await sets.findUniqueOrThrow({ where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: { csvDashboardId: dashboardId, ...a } } });
-      const sourceSet = await sets.findUniqueOrThrow({ where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: { csvDashboardId: dashboardId, ...b } } });
+      const parent = await sets.findUniqueOrThrow({ where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun_productNo: { csvDashboardId: dashboardId, ...a } } });
+      const sourceSet = await sets.findUniqueOrThrow({ where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun_productNo: { csvDashboardId: dashboardId, ...b } } });
       const pieceSourceSet = await sets.create({ data: { csvDashboardId: dashboardId, ...b, fkojun: '2' } });
       const source = await tx.productionScheduleSessakuPiece.create({ data: { pieceSetId: pieceSourceSet.id, position: 1, quantity: 1 } });
       await sets.update({ where: { id: parent.id }, data: { sourcePieceSetId: sourceSet.id } });

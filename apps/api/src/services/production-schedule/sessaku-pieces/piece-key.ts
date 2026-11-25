@@ -2,41 +2,47 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
+import { buildGrindingPlanningBoardRowItemIdFromKey } from '../grinding-planning-board-projection.js';
+import { PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from '../row-resolver/constants.js';
 
-export type SessakuPieceLogicalKey = { fseiban: string; fhincd: string; fsigencd: string; fkojun: string };
+/** 分割の親の識別。研削ボードの行と同じ5要素(4列 + ProductNo)。 */
+export type SessakuPieceLogicalKey = { fseiban: string; fhincd: string; fsigencd: string; fkojun: string; productNo: string };
 export type SessakuPieceClient = Prisma.TransactionClient | PrismaClient;
 export type SessakuPieceSet = Omit<Prisma.ProductionScheduleSessakuPieceSetGetPayload<{ include: { pieces: true } }>, 'pieces'> & {
   pieces: Array<Prisma.ProductionScheduleSessakuPieceGetPayload<object> & { sourcePiece?: { opSplits: Array<{ fromOpNo: number }> } | null; opCompletions?: Array<{ opNo: number }>; opSplits?: Array<{ fromOpNo: number; sourceResourceCd: string; leadingSourceResourceCd?: string | null }> }>;
 };
 const RELATED_KEY_CHUNK = 300;
-const columns = ['FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'] as const;
 
 export function sessakuPieceKeyFromRow(data: unknown): SessakuPieceLogicalKey {
   const row = data as Record<string, unknown>;
-  const [fseiban, fhincd, fsigencd, fkojun] = columns.map((column) => String(row?.[column] ?? ''));
-  return { fseiban, fhincd, fsigencd, fkojun };
+  const [fseiban, fhincd, fsigencd, fkojun, productNo] = PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS.map((column) => String(row?.[column] ?? ''));
+  return { fseiban, fhincd, fsigencd, fkojun, productNo };
 }
 export function encodeSessakuPieceKey(key: SessakuPieceLogicalKey): string {
-  return JSON.stringify([key.fseiban, key.fhincd, key.fsigencd, key.fkojun]);
+  return JSON.stringify([key.fseiban, key.fhincd, key.fsigencd, key.fkojun, key.productNo]);
 }
 export function sessakuPieceParentItemId(key: SessakuPieceLogicalKey): string {
-  return `row:${Buffer.from(encodeSessakuPieceKey(key)).toString('base64url')}`;
+  return buildGrindingPlanningBoardRowItemIdFromKey(encodeSessakuPieceKey(key));
 }
 export function decodeSessakuPieceParentItemId(value: string): SessakuPieceLogicalKey {
   try {
     if (!value.startsWith('row:')) throw new Error();
     const parts: unknown = JSON.parse(Buffer.from(value.slice(4), 'base64url').toString());
-    if (Array.isArray(parts) && parts.length === 5 && typeof parts[0] === 'string' && parts[0].trim() === '********') throw new ApiError(409, '未採番製番は分割できません', undefined, 'UNSUPPORTED_PIECE_PARENT');
-    if (!Array.isArray(parts) || parts.length !== 4 || !parts.every((p) => typeof p === 'string' && p.length > 0)) throw new Error();
-    const [fseiban, fhincd, fsigencd, fkojun] = parts as string[];
-    return { fseiban, fhincd, fsigencd, fkojun };
+    if (!Array.isArray(parts) || (parts.length !== 4 && parts.length !== 5) || !parts.every((p) => typeof p === 'string')) throw new Error();
+    if (parts.length === 4) {
+      throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+    }
+    if (parts[0].trim() === '********') throw new ApiError(409, '未採番製番は分割できません', undefined, 'UNSUPPORTED_PIECE_PARENT');
+    if (!parts.slice(0, 4).every((p) => p.length > 0)) throw new Error();
+    const [fseiban, fhincd, fsigencd, fkojun, productNo] = parts as string[];
+    return { fseiban, fhincd, fsigencd, fkojun, productNo };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
   }
 }
 export function sessakuPieceSetWhere(key: SessakuPieceLogicalKey) {
-  return { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: key.fseiban, fhincd: key.fhincd, fsigencd: key.fsigencd, fkojun: key.fkojun };
+  return { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: key.fseiban, fhincd: key.fhincd, fsigencd: key.fsigencd, fkojun: key.fkojun, productNo: key.productNo };
 }
 export async function acquireSessakuPieceLogicalLocks(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[], options: { onlyPartsWithSets?: boolean } = {}): Promise<ReadonlySet<string>> {
   const lockedKeys = new Set((await readRelatedSessakuPieceKeys(tx, keys, options.onlyPartsWithSets)).map(encodeSessakuPieceKey));
@@ -81,12 +87,15 @@ async function readRelatedSessakuPieceKeys(client: SessakuPieceClient, keys: rea
 }
 export async function readSessakuPieceSet(client: SessakuPieceClient, key: SessakuPieceLogicalKey): Promise<SessakuPieceSet | null> {
   return client.productionScheduleSessakuPieceSet.findUnique({
-    where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: sessakuPieceSetWhere(key) },
+    where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun_productNo: sessakuPieceSetWhere(key) },
     include: { pieces: { orderBy: { position: 'asc' }, include: { opSplits: { orderBy: { fromOpNo: 'asc' } } } } }
   });
 }
 export async function readSessakuPieceSets(client: SessakuPieceClient, rows: readonly { rowData: unknown }[]): Promise<Map<string, SessakuPieceSet>> {
-  const keys = new Map(rows.map((row) => { const key = sessakuPieceKeyFromRow(row.rowData); return [encodeSessakuPieceKey(key), key]; }));
+  return readSessakuPieceSetsByKeys(client, rows.map((row) => sessakuPieceKeyFromRow(row.rowData)));
+}
+export async function readSessakuPieceSetsByKeys(client: SessakuPieceClient, scheduleRowKeys: readonly SessakuPieceLogicalKey[]): Promise<Map<string, SessakuPieceSet>> {
+  const keys = new Map(scheduleRowKeys.map((key) => [encodeSessakuPieceKey(key), key]));
   if (!keys.size) return new Map();
   const sets = await client.productionScheduleSessakuPieceSet.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: [...new Set([...keys.values()].map((key) => key.fseiban))] } },
@@ -102,7 +111,10 @@ export async function findSessakuPieceWinner(client: SessakuPieceClient, key: Se
       AND COALESCE(r."rowData"->>'FHINCD', '') = ${key.fhincd}
       AND COALESCE(r."rowData"->>'FSIGENCD', '') = ${key.fsigencd}
       AND COALESCE(r."rowData"->>'FKOJUN', '') = ${key.fkojun}
+      AND COALESCE(r."rowData"->>'ProductNo', '') = ${key.productNo}
       AND ${buildMaxProductNoWinnerCondition('r')}
+    ORDER BY r."id"
+    LIMIT 1
   `);
   return rows[0] ?? null;
 }
@@ -110,12 +122,14 @@ export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, it
   const pieceIds = [...new Set(itemIds.map(sessakuPieceIdFromItemId).filter((id): id is string => id !== null))];
   const pieces = pieceIds.length ? await client.productionScheduleSessakuPiece.findMany({ where: { id: { in: pieceIds } }, include: { pieceSet: true } }) : [];
   const byId = new Map(pieces.map((piece) => [piece.id, piece.pieceSet]));
-  return new Map(itemIds.map((id) => {
+  const resolved = new Map<string, SessakuPieceLogicalKey>();
+  for (const id of itemIds) {
     const pieceId = sessakuPieceIdFromItemId(id);
     const key = pieceId ? byId.get(pieceId) : decodeSessakuPieceParentItemId(id);
     if (!key) throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'STALE_SESSAKU_PIECES');
-    return [id, key];
-  }));
+    resolved.set(id, key);
+  }
+  return resolved;
 }
 export function sessakuPieceConflict(error: unknown, options: { preserveSerializationFailure?: boolean } = {}): never {
   if (options.preserveSerializationFailure && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') throw error;
@@ -135,9 +149,9 @@ export async function readSessakuPieceGeneration(client: Pick<SessakuPieceClient
   // Progress reads all processes of the selected seibans, regardless of display category.
   // Winner selection preserves logical-key partitions, so DISTINCT raw keys avoids ranking/hydration.
   const parentScope = scope ? Prisma.sql`AND s."fseiban" = ANY(${[...scope.fseibans]}::text[])
-    AND (s."fseiban", s."fhincd", s."fsigencd", s."fkojun") IN (
+    AND (s."fseiban", s."fhincd", s."fsigencd", s."fkojun", s."productNo") IN (
     SELECT DISTINCT COALESCE(r."rowData"->>'FSEIBAN', ''), COALESCE(r."rowData"->>'FHINCD', ''),
-      COALESCE(r."rowData"->>'FSIGENCD', ''), COALESCE(r."rowData"->>'FKOJUN', '')
+      COALESCE(r."rowData"->>'FSIGENCD', ''), COALESCE(r."rowData"->>'FKOJUN', ''), COALESCE(r."rowData"->>'ProductNo', '')
     FROM "CsvDashboardRow" r
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND r."rowData"->>'FSEIBAN' = ANY(${[...scope.fseibans]}::text[])
@@ -157,7 +171,7 @@ export async function readSessakuPieceGeneration(client: Pick<SessakuPieceClient
       SELECT "id" FROM parents
       ${referencedSets}
     )
-    SELECT md5(COALESCE(string_agg(jsonb_build_array(s."fseiban", s."fhincd", s."fsigencd", s."fkojun", s."id", s."version")::text, ',' ORDER BY s."id" COLLATE "C"), '')) AS "fingerprint"
+    SELECT md5(COALESCE(string_agg(jsonb_build_array(s."fseiban", s."fhincd", s."fsigencd", s."fkojun", s."productNo", s."id", s."version")::text, ',' ORDER BY s."id" COLLATE "C"), '')) AS "fingerprint"
     FROM "ProductionScheduleSessakuPieceSet" s JOIN dependencies d ON d."id" = s."id"
     WHERE s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
   `);

@@ -88,15 +88,18 @@ describe('production schedule lookup compatibility (PostgreSQL)', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it('selects the numeric maximum ProductNo before filtering and scopes winners to the dashboard', async () => {
+  it('returns every unmarked ProductNo on one key, excludes superseded numbers, and scopes to the dashboard', async () => {
     const seiban = `${fixturePrefix}-winner`;
     const data = scheduleRow('winner', { FSEIBAN: seiban });
-    await seed('old', { ...data, ProductNo: '970000008' });
-    const winnerId = await seed('winner', { ...data, ProductNo: '970000010' });
+    const oldId = await seed('old', { ...data, ProductNo: '970000008' });
+    const newId = await seed('winner', { ...data, ProductNo: '970000010' });
+    const supersededId = await seed('superseded', { ...data, ProductNo: '970000007' });
+    await prisma.csvDashboardRow.update({ where: { id: supersededId }, data: { supersededAt: new Date('2026-09-02T00:00:00Z') } });
     await seed('other-dashboard', { ...data, ProductNo: '970000099' }, { dashboardId: otherDashboardId });
-    await expect(listScheduleRowsByProductNo('970000008')).resolves.toEqual([]);
-    expect((await listScheduleRowsByProductNo('970000010')).map((row) => row.rowId)).toEqual([winnerId]);
-    expect((await listScheduleRowsByFseiban(seiban)).map((row) => row.rowId)).toEqual([winnerId]);
+    expect((await listScheduleRowsByProductNo('970000008')).map((row) => row.rowId)).toEqual([oldId]);
+    expect((await listScheduleRowsByProductNo('970000010')).map((row) => row.rowId)).toEqual([newId]);
+    await expect(listScheduleRowsByProductNo('970000007')).resolves.toEqual([]);
+    expect((await listScheduleRowsByFseiban(seiban)).map((row) => row.rowId).sort()).toEqual([oldId, newId].sort());
     await expect(listScheduleRowsByProductNo('970000099')).resolves.toEqual([]);
   });
 

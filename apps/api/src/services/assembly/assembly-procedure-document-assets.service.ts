@@ -419,11 +419,12 @@ export class AssemblyProcedureDocumentAssetsService {
     pageBuffer: Buffer,
     roi: AssemblyProcedureRegionBBox,
     overlays: readonly OverlayRegionImage[],
-    storageKeys: ReadonlyMap<string, string>
+    storageKeys: ReadonlyMap<string, string>,
+    photoOnly = false
   ) {
     try {
       if (!overlays.length) return await cropAssemblyProcedureAssetRoi(pageBuffer, roi);
-      return await composeRegionImage({ pageBuffer, roi, overlays, assets: await this.loadRegionAssets(storageKeys) });
+      return await composeRegionImage({ pageBuffer, roi, overlays, assets: await this.loadRegionAssets(storageKeys), photoOnly });
     } catch (error) {
       if (error instanceof Error && error.message.includes('Input image exceeds pixel limit')) {
         throw new ApiError(400, '画像の画素数が大きすぎます');
@@ -535,13 +536,17 @@ export class AssemblyProcedureDocumentAssetsService {
     return { asset, patchBBox, text, textBBox, color: erased.color, fontSizeRatio };
   }
 
-  async findTextCandidates(params: RegionParams): Promise<AssemblyProcedureTextCandidate[]> {
+  async findTextCandidates(params: RegionParams & { photoOnly?: boolean }): Promise<AssemblyProcedureTextCandidate[]> {
     const editable = await this.assertEditable(params.documentId, params.accessPassword, prisma, params);
-    return this.extractRegionCandidates(params, editable, normalizeRegion(params.bbox));
+    const roi = normalizeRegion(params.bbox);
+    if (params.photoOnly && (params.overlays?.length !== 1 || !projectOverlayBBoxToCrop(params.overlays[0].bbox, roi))) {
+      throw new ApiError(400, '読み取る写真を1件指定してください');
+    }
+    return this.extractRegionCandidates(params, editable, roi);
   }
 
   private async extractRegionCandidates(
-    params: RegionParams,
+    params: RegionParams & { photoOnly?: boolean },
     editable: Awaited<ReturnType<AssemblyProcedureDocumentAssetsService['assertEditable']>>,
     roi: AssemblyProcedureRegionBBox,
     rewrite?: { selection: AssemblyProcedureRegionBBox; pageBuffer: Buffer; width: number; height: number }
@@ -553,7 +558,7 @@ export class AssemblyProcedureDocumentAssetsService {
       sourceAsset.contentType.trim().toLowerCase() === 'application/pdf';
     const selectionHasOverlay = rewrite && params.overlays?.some(({ bbox }) =>
       projectOverlayBBoxToCrop(bbox, rewrite.selection) !== null);
-    if (isPdfSource && !selectionHasOverlay) {
+    if (isPdfSource && !selectionHasOverlay && !params.photoOnly) {
       try {
         const candidates = await this.withTemporarySourcePdf(
           sourceAsset.storageKey,
@@ -598,7 +603,7 @@ export class AssemblyProcedureDocumentAssetsService {
 
     const pageBuffer = rewrite?.pageBuffer ?? (await this.pageImage(params.documentId, params.pageIndex)).buffer;
     try {
-      const cropped = await this.regionImage(pageBuffer, roi, params.overlays ?? [], storageKeys);
+      const cropped = await this.regionImage(pageBuffer, roi, params.overlays ?? [], storageKeys, params.photoOnly);
       const imageBytes = !rewrite && params.overlays?.length
         ? await sharp(cropped.buffer, { limitInputPixels: 40_000_000 })
           .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
