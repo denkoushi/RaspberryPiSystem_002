@@ -2917,6 +2917,18 @@ esac
         self.assertIn("dest: \"{{ release_signage_config_root }}/runtime.env\"", after_hash)
         self.assertNotIn(".artifact-sha256", after_hash)
 
+    def test_pi4_status_agent_config_is_group_readable(self) -> None:
+        text = (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "'dest': '/etc/raspi-status-agent.conf', 'group': status_agent_user, 'mode': '0640'",
+            text,
+        )
+        switch = (ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text(encoding="utf-8")
+        self.assertLess(
+            switch.index("Create the status-agent user"),
+            switch.index("Capture original Pi4 file ownership for rollback"),
+        )
+
     def test_pi3_renders_the_status_agent_configuration_every_release(self) -> None:
         prepare_tasks = yaml.safe_load(
             (ANSIBLE / "roles/release_signage/tasks/prepare.yml").read_text(
@@ -2930,14 +2942,17 @@ esac
         conf_index = names.index(
             "Render the Pi3 status-agent configuration outside the immutable release tree"
         )
-        self.assertEqual(conf_index, runtime_index + 1)
+        self.assertEqual(conf_index, runtime_index + 4)
         conf = prepare_tasks[conf_index]
         template = conf["ansible.builtin.template"]
         self.assertEqual(
             template["src"], "{{ playbook_dir }}/../templates/status-agent.conf.j2"
         )
         self.assertEqual(template["dest"], "/etc/raspi-status-agent.conf")
-        self.assertEqual(template["mode"], "0600")
+        self.assertEqual(template["group"], "{{ status_agent_user }}")
+        self.assertEqual(template["mode"], "0640")
+        self.assertIn("Create the Pi3 status-agent user", names[:conf_index])
+        self.assertIn("Prepare the Pi3 status-agent log file owner", names[:conf_index])
         self.assertTrue(conf["no_log"])
         inventory = yaml.safe_load(
             (ANSIBLE / "inventory.yml").read_text(encoding="utf-8")

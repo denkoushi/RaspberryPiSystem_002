@@ -42,7 +42,8 @@ class StatusAgentUnitTest(unittest.TestCase):
                 service = service_section(path)
                 self.assertEqual(service["Type"], "oneshot")
                 self.assertEqual(service["ExecStart"], f"/usr/bin/env python3 {script}")
-                self.assertNotIn("User", service)
+                if name == "client":
+                    self.assertNotIn("User", service)
                 for key, value in REQUIRED.items():
                     self.assertEqual(service.get(key), value)
 
@@ -50,8 +51,22 @@ class StatusAgentUnitTest(unittest.TestCase):
         for name, (path, _) in UNITS.items():
             with self.subTest(unit=name):
                 paths = service_section(path)["ReadWritePaths"].split()
-                self.assertIn("-/var/log", paths)
-                self.assertIn("-/var/lib/raspi-os-security-update", paths)
+                if name == "client":
+                    self.assertIn("-/var/log", paths)
+                    self.assertIn("-/var/lib/raspi-os-security-update", paths)
+                else:
+                    self.assertEqual(paths, ["-/var/log/raspi-status-agent.log"])
+
+    def test_release_units_run_as_the_dedicated_user(self) -> None:
+        pi3 = ROOT / "infrastructure/ansible/roles/signage/templates/status-agent-artifact.service.j2"
+        for name, path in (("pi4", UNITS["release"][0]), ("pi3", pi3)):
+            with self.subTest(unit=name):
+                service = service_section(path)
+                self.assertIn("raspi-status-agent" if name == "pi3" else "status_agent_user", service["User"])
+                self.assertEqual(service["SupplementaryGroups"], "systemd-journal video")
+                self.assertEqual(service["StateDirectory"], "raspi-os-security-update/requests")
+        self.assertEqual(service_section(pi3)["RuntimeDirectory"], "raspi-status-agent")
+        self.assertEqual(service_section(pi3)["RuntimeDirectoryPreserve"], "yes")
 
 
 if __name__ == "__main__":

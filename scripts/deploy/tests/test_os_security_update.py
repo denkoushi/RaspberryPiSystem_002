@@ -179,6 +179,33 @@ class RunTests(unittest.TestCase):
         ]}))
         return path
 
+    def request_body(self, request_id, expiry):
+        return json.dumps({'requests': [
+            {'id': request_id, 'packages': ['chromium'], 'expiresAt': expiry.isoformat()}]})
+
+    def test_requests_from_both_locations_are_merged(self):
+        now = self.early_config()
+        later = now + timedelta(days=1)
+        self.write_request(later)
+        directory = self.state_path.parent / 'requests'
+        directory.mkdir(parents=True)
+        (directory / 'request.json').write_text(self.request_body('r2', later))
+        self.assertEqual(set(UPDATER.all_active_requests(self.state_path.parent, now)), {'r1', 'r2'})
+
+    def test_request_symlink_and_oversize_file_are_ignored(self):
+        now = self.early_config()
+        later = now + timedelta(days=1)
+        directory = self.state_path.parent / 'requests'
+        directory.mkdir(parents=True)
+        target = self.state_path.parent / 'target.json'
+        target.write_text(self.request_body('r2', later))
+        (directory / 'request.json').symlink_to(target)
+        self.assertEqual(UPDATER.all_active_requests(self.state_path.parent, now), {})
+        (directory / 'request.json').unlink()
+        (directory / 'request.json').write_text(
+            self.request_body('r3', later) + ' ' * UPDATER.MAX_REQUEST_FILE_BYTES)
+        self.assertEqual(UPDATER.all_active_requests(self.state_path.parent, now), {})
+
     def test_disabled_flag_uses_existing_path_without_reading_requests(self):
         self.config['earlyEnabled'] = False
         with mock.patch.object(UPDATER, 'active_requests') as requests:

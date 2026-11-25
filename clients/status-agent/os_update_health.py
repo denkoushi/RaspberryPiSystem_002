@@ -95,6 +95,11 @@ def _read_early_json(path: Path) -> dict:
     return {}
 
 
+def early_request_path(state_dir: Path) -> Path:
+    requests_dir = state_dir / "requests"
+    return requests_dir / "request.json" if requests_dir.is_dir() else state_dir / "request.json"
+
+
 def _stored_requests(path: Path) -> list[dict]:
     requests = _read_early_json(path).get("requests")
     if not isinstance(requests, list):
@@ -107,11 +112,19 @@ def _stored_requests(path: Path) -> list[dict]:
     ]
 
 
+def _previous_requests(state_dir: Path) -> list[dict]:
+    path = early_request_path(state_dir)
+    legacy = state_dir / "request.json"
+    if path != legacy and not path.exists():
+        return _stored_requests(legacy)
+    return _stored_requests(path)
+
+
 def add_early_update_report(state_dir: Path, payload: dict) -> None:
     try:
         now = dt.datetime.now(dt.timezone.utc)
         requests = []
-        for request in _stored_requests(state_dir / "request.json"):
+        for request in _previous_requests(state_dir):
             expiry = _timestamp(request["expiresAt"])
             if expiry and expiry > now:
                 requests.append({key: request[key] for key in ("id", "receivedAt", "baseline")})
@@ -168,9 +181,9 @@ def receive_early_update_requests(state_dir: Path, response) -> None:
             if expiry > now:
                 active[request_id] = {"id": request_id, "packages": packages, "expiresAt": expires_at}
 
-        path = state_dir / "request.json"
+        path = early_request_path(state_dir)
         stored = _stored_requests(path)
-        previous = {request["id"]: request for request in stored}
+        previous = {request["id"]: request for request in _previous_requests(state_dir)}
         for request_id, request in active.items():
             if request_id in previous:
                 request["receivedAt"] = previous[request_id]["receivedAt"]
