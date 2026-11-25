@@ -147,13 +147,16 @@
 }
 
 .procedure-mail-key-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 6px;
+  width: 100%;
+  max-width: 694px;
 }
 
 /* 「組立 > 見る」の機種テンキーと同じ大きさにそろえる */
 .procedure-mail-keys button {
-  width: 64px;
+  min-width: 0;
   height: 52px;
   border: 1px solid var(--mail-line);
   border-radius: 8px;
@@ -166,7 +169,7 @@
 }
 
 .procedure-mail-keys .procedure-mail-wide {
-  width: 134px;
+  grid-column: 5 / span 2;
   font-size: 20px;
   font-family: inherit;
 }
