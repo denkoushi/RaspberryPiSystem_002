@@ -62,11 +62,9 @@ export function KioskInspectionDrawingCreatePreviewPage() {
     enabled: mode === 'guidedTrial',
     points,
     onPointsChange: setPoints,
-    selectedPointId,
     onSelectPointId: setSelectedPointId,
     hasDrawingReady: true,
-    onZoomLevel: setZoomLevel,
-    canvasZoom: zoom
+    onZoomLevel: setZoomLevel
   });
 
   const selectedPoint = points.find((p) => p.id === selectedPointId) ?? null;
