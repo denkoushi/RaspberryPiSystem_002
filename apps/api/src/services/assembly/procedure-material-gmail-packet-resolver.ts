@@ -137,7 +137,7 @@ function htmlToText(html: string): string {
 }
 
 export function stripCidPlaceholders(text: string): string {
-  return text.replace(/\[cid:[^\[\]\r\n]+\]/gi, '').replace(/\r\n?/g, '\n').replace(/\n(?:[ \t]*\n)+/g, '\n\n').trim();
+  return text.replace(/\[cid:[^[\]\r\n]+\]/gi, '').replace(/\r\n?/g, '\n').replace(/\n(?:[ \t]*\n)+/g, '\n\n').trim();
 }
 
 /** Inline photos use the attachment path; small inline images are treated as signature logos. */
