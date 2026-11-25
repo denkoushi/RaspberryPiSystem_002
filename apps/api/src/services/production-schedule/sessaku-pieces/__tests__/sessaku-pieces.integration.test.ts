@@ -122,6 +122,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     await prisma.productionScheduleSessakuPieceSet.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
     await prisma.productionScheduleSessakuPieceHistory.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
     await prisma.productionScheduleGrindingPlanningBoardArrival.deleteMany({ where: { siteKey: { in: [site, other] } } });
+    await prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.deleteMany({ where: { siteKey: { in: [site, other] } } });
     await prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: { in: [site, other] } } });
     await prisma.productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: { in: [site, other] } } });
     await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: dashboardId, dataHash: { startsWith: site } } });
@@ -2668,13 +2669,50 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ plannedQuantity: 7 });
     expect(await prisma.productionScheduleSessakuPieceAuditLog.findFirst({ where: { siteKey: site, action: 'split', resultVersion: result.pieceSetVersion } })).toMatchObject({ beforeJson: { count: 0, plannedQuantity: 7 }, afterJson: { count: 2, quantities: [3, 4], plannedQuantity: 7 } });
   });
-  it('rejects legacy writes and shares manual arrival at the parent', async () => {
-    const old = await parent(); const r = await split(); const b = await board();
+  it('rejects legacy rank writes and keeps later-process arrivals per piece after cancelling a scanned parent arrival', async () => {
+    const old = await parent();
+    await split();
+    const b = await board();
     await expect(updateGrindingPlanningBoardRank({ siteKey: site, sourceRevision: b.sourceRevision, itemId: old.itemId, itemRevision: old.itemRevision, alternateRank: 1 })).rejects.toMatchObject({ code: 'PIECES_REQUIRE_PIECE_TARGET' });
-    await updateGrindingPlanningBoardArrival({ siteKey: site, itemId: r.pieces[0].itemId, itemRevision: r.pieces[0].itemRevision, recorded: true });
-    const after = await board(); expect(after.items.filter((i) => i.kind === 'piece' && i.sourceRowId === rowId).every((i) => i.manualArrivalDate != null)).toBe(true);
-    expect((await prisma.productionScheduleGrindingPlanningBoardArrival.findMany({ where: { siteKey: site } }))[0].itemKey).toBe(r.parentItemId);
+    const laterItems = (items: GrindingPlanningBoardItem[]) => items.filter((item) => item.kind === 'piece' && item.sourceRowId === nextRowId);
+    const [target, sibling] = laterItems(b.items);
+    const payload = { siteKey: site, itemId: target.itemId, itemRevision: target.itemRevision };
+    const scope = { csvDashboardId: dashboardId, siteKey: site };
+    const arrivals = prisma.productionScheduleGrindingPlanningBoardArrival;
+    const date = new Date('2026-11-06');
+    await updateGrindingPlanningBoardArrival({ ...payload, recorded: true });
+    expect(laterItems((await board()).items)).toEqual([
+      expect.objectContaining({ itemId: target.itemId, arrived: true, manualArrivalDate: expect.any(String) }),
+      expect.objectContaining({ itemId: sibling.itemId, arrived: false, manualArrivalDate: null })
+    ]);
+    await arrivals.create({ data: { ...scope, itemKey: target.parentItemId!, arrivalDate: date } });
+    expect(laterItems((await board()).items).every((item) => item.arrived)).toBe(true);
+    await updateGrindingPlanningBoardArrival({ ...payload, recorded: false });
+    expect(laterItems((await board()).items)).toEqual([
+      expect.objectContaining({ itemId: target.itemId, arrived: false, manualArrivalDate: null }),
+      expect.objectContaining({ itemId: sibling.itemId, arrived: true, manualArrivalDate: '2026-11-06' })
+    ]);
+    expect(await arrivals.findMany({ where: scope, select: { itemKey: true, arrivalDate: true } }))
+      .toEqual([{ itemKey: sibling.itemId, arrivalDate: date }]);
   });
+
+  it('removes both arrival records for a deleted quantity piece across sites', async () => {
+    const result = await split();
+    const [survivor, removed] = result.pieces;
+    const scope = { csvDashboardId: dashboardId, siteKey: other };
+    const itemKeys = [result.parentItemId, survivor.itemId, removed.itemId];
+    const date = new Date('2026-11-06');
+    const arrivals = prisma.productionScheduleGrindingPlanningBoardArrival;
+    const firstArrivals = prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival;
+    await arrivals.createMany({ data: itemKeys.map((itemKey) => ({ ...scope, itemKey, arrivalDate: date })) });
+    await firstArrivals.createMany({ data: itemKeys.map((itemKey) => ({ ...scope, itemKey, state: 'arrived', recordedAt: date })) });
+    await quantity(2);
+    expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: removed.pieceId! } })).toBeNull();
+    for (const records of [await arrivals.findMany({ where: scope }), await firstArrivals.findMany({ where: scope })]) {
+      expect(records.map((record) => record.itemKey).sort()).toEqual(itemKeys.slice(0, 2).sort());
+    }
+  });
+
   it('resplits and partially merges only unfinished pieces', async () => {
     let r = await split(); r = await complete(r.pieces[0]);
     await expect(splitSessakuPieces({ siteKey: site, parentItemId: r.parentItemId, targetPieceId: r.pieces[0].pieceId, itemRevision: r.pieces[0].itemRevision, expectedPieceSetVersion: r.pieceSetVersion, quantities: [1, 1] })).rejects.toMatchObject({ code: 'COMPLETED_PIECE' });

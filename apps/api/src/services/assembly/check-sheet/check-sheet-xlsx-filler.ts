@@ -1,5 +1,6 @@
 import path from 'node:path';
 import JSZip from 'jszip';
+import { assertZipExpansionWithinBudget } from '../../../lib/zip-expansion-budget.js';
 import type { AssemblyCheckSheetCellWrite } from '@raspi-system/shared-types';
 
 const prefix = '(?:[\\w.-]+:)?';
@@ -64,6 +65,7 @@ function patchSheet(xml: string, writes: AssemblyCheckSheetCellWrite[]) {
 
 /** Surgical package edit: all unrelated ZIP entries retain their original bytes. */
 export async function fillCheckSheetXlsx(source: Buffer, sheetName: string, writes: AssemblyCheckSheetCellWrite[]): Promise<Buffer> {
+  assertZipExpansionWithinBudget(source);
   const zip = await JSZip.loadAsync(source);
   const put = (name: string, data: string) => zip.file(name, data, { createFolders: false });
   const read = async (name: string) => {

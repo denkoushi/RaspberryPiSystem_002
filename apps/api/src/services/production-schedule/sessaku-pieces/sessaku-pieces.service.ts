@@ -1,3 +1,4 @@
+import { deletePieceArrivalsOf, deletePiecesWithRecords } from './piece-board-records.js';
 import { mutateSessakuPieceOperationConfiguration } from './piece-op-configuration.js';
 import { mutateSessakuPieceOps, rememberPieceHistory, assertNoOperationCompletions } from './piece-op-splits.js';
 import { autoUnitSplitMetrics, isAutoUnitSplitYield } from './auto-unit-split-transaction.js';
@@ -185,10 +186,7 @@ async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProce
   const ids = references.filter((piece) => !piece.isCompleted).map((piece) => piece.id);
   const completedIds = references.filter((piece) => piece.isCompleted).map((piece) => piece.id);
   if (completedIds.length) await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: completedIds } }, data: { sourcePieceId: null } });
-  if (ids.length) {
-    await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: references.filter((piece) => ids.includes(piece.id)).flatMap(sessakuPieceItemIds) } } });
-    await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids } } });
-  }
+  await deletePiecesWithRecords(tx, references.filter((piece) => ids.includes(piece.id)), true);
   for (const { set, hasWinner } of later) {
     if (hasWinner || !set) continue;
     const unlink = !set.pieces.some((piece) => piece.sourcePieceId && !removedSourceIds.includes(piece.sourcePieceId));
@@ -231,6 +229,7 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
     if (!source?.pieces.length) {
       // Existing pre-feature manual sets can be adopted; preserve their history before removal.
       await rememberPieceHistory(tx, process.key);
+      await deletePieceArrivalsOf(tx, removed);
       await tx.productionScheduleSessakuPieceSet.delete({ where: { id: set.id } });
     }
   }
@@ -502,7 +501,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
       const added = quantities.map((quantity) => ({ id: randomUUID(), quantity }));
       const ordered = [...pieces.slice(0, insertAt), ...added, ...pieces.slice(target ? insertAt + 1 : insertAt)];
       await removeLaterPieces(tx, c.later, target ? [target.id] : []);
-      if (target) await tx.productionScheduleSessakuPiece.delete({ where: { id: target.id } });
+      if (target) await deletePiecesWithRecords(tx, [target], false);
       // Move surviving positions above both the old and new ranges before assigning final positions.
       const offset = Math.max(set.nextPosition, ...pieces.map((p) => p.position), ordered.length) + ordered.length + 1;
       if (pieces.length) await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { position: { increment: offset } } });
@@ -546,7 +545,7 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     const before = await timed(params.audit, 'beforeProjectionMs', () => beforeProjections(tx, c.sites, c.key, params.pieceIds.map((id) => `piece:${id}`), c.later, params.audit, params.dueSource));
     await rememberPieceHistory(tx, c.key);
     await removeLaterPieces(tx, c.later, params.pieceIds);
-    await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: params.pieceIds } } });
+    await deletePiecesWithRecords(tx, selected, false);
     const id = randomUUID();
     if (!all) await tx.productionScheduleSessakuPiece.create({ data: { id, pieceSetId: c.set.id, position: Math.min(...selected.map((p) => p.position)), quantity: selected.reduce((n, p) => n + p.quantity, 0) } });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 }, quantityWarning: null, autoUnitSplitHeldAt: new Date() } });

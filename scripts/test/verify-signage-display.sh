@@ -8,6 +8,12 @@ PI3_HOST="signageras3@100.105.224.86"
 BASE_URL="https://100.106.158.2"
 CLIENT_KEY="${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# TLS の設定(既定で検証。外すのは VERIFY_ALLOW_INSECURE_TLS=1 のときだけ。VERIFY_CA_CERT は Pi5 上のパス)
+# shellcheck source=../lib/verify-curl-tls.sh
+source "${SCRIPT_DIR}/../lib/verify-curl-tls.sh"
+CURL_TLS_OPTS="$(verify_curl_tls_remote_opts)"
+
 echo "=========================================="
 echo "サイネージ表示の実機検証"
 echo "=========================================="
@@ -16,18 +22,18 @@ echo ""
 # 1. 現在のコンテンツを確認
 echo "【1】現在のコンテンツ確認"
 echo "----------------------------------------"
-ssh "$PI5_HOST" "curl -k -s https://$BASE_URL/api/signage/content | jq '{contentType, layoutConfig: (.layoutConfig | {layout, slots: [.slots[] | {position, kind}]})}'" || echo "コンテンツ取得に失敗しました"
+ssh "$PI5_HOST" "curl $CURL_TLS_OPTS -s https://$BASE_URL/api/signage/content | jq '{contentType, layoutConfig: (.layoutConfig | {layout, slots: [.slots[] | {position, kind}]})}'" || echo "コンテンツ取得に失敗しました"
 echo ""
 
 # 2. サイネージ画像の取得確認
 echo "【2】サイネージ画像の取得確認"
 echo "----------------------------------------"
-HTTP_STATUS=$(ssh "$PI5_HOST" "curl -k -s -o /dev/null -w '%{http_code}' -H 'x-client-key: $CLIENT_KEY' https://$BASE_URL/api/signage/current-image")
+HTTP_STATUS=$(ssh "$PI5_HOST" "curl $CURL_TLS_OPTS -s -o /dev/null -w '%{http_code}' -H 'x-client-key: $CLIENT_KEY' https://$BASE_URL/api/signage/current-image")
 if [ "$HTTP_STATUS" = "200" ]; then
   echo "✅ サイネージ画像の取得に成功 (HTTP $HTTP_STATUS)"
   
   # 画像ファイルの詳細を取得
-  ssh "$PI5_HOST" "curl -k -s -H 'x-client-key: $CLIENT_KEY' https://$BASE_URL/api/signage/current-image -o /tmp/current-signage.jpg && file /tmp/current-signage.jpg && ls -lh /tmp/current-signage.jpg"
+  ssh "$PI5_HOST" "curl $CURL_TLS_OPTS -s -H 'x-client-key: $CLIENT_KEY' https://$BASE_URL/api/signage/current-image -o /tmp/current-signage.jpg && file /tmp/current-signage.jpg && ls -lh /tmp/current-signage.jpg"
 else
   echo "❌ サイネージ画像の取得に失敗 (HTTP $HTTP_STATUS)"
 fi

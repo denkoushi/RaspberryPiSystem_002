@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
     productionScheduleGrindingPlanningBoardState: { findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
     productionScheduleGrindingPlanningBoardTestBar: { findMany: vi.fn(), updateMany: vi.fn() },
     productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn() },
+    productionScheduleGrindingPlanningBoardArrival: { deleteMany: vi.fn() },
+    productionScheduleGrindingPlanningBoardFirstProcessArrival: { deleteMany: vi.fn() },
     site: { findMany: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardResourceCapacity: { findMany: vi.fn() },

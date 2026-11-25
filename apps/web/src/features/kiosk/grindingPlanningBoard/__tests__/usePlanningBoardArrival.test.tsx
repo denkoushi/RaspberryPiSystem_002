@@ -118,6 +118,20 @@ describe('usePlanningBoardArrival', () => {
     expect(hook.result.current.arrivalPending).toBe(true);
   });
 
+  it.each([true, false])('only overlays the saved piece (first process=%s)', async isFirstProcess => {
+    const target = { ...item, itemId: 'piece:a', parentItemId: 'row:parent', isFirstProcess } as GrindingPlanningBoardItem;
+    const sibling = { ...target, itemId: 'pieceops:b:2' };
+    const data = board([target, sibling]);
+    const hook = renderHook(() => usePlanningBoardArrival(data, beforeMidnight));
+    mocks.arrival.mockResolvedValueOnce({ itemId: target.itemId, manualArrivalDate: '2026-11-06' });
+    await act(async () => {
+      expect(await (isFirstProcess ? hook.result.current.changeFirstProcessArrival(target, 'arrived')
+        : hook.result.current.changeArrival(target, true))).toBe(true);
+    });
+    expect(hook.result.current.applyArrival(target).arrived).toBe(true);
+    expect(hook.result.current.applyArrival(sibling)).toBe(sibling);
+  });
+
   it('serializes arrival mutations while a first-process write is pending', async () => {
     let finish!: (value: { itemId: string; firstProcessState: 'arrived' }) => void;
     mocks.first.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));

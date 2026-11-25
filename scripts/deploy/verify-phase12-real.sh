@@ -11,6 +11,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 cd "${REPO_ROOT}"
 
+# TLS の設定(既定で検証。外すのは VERIFY_ALLOW_INSECURE_TLS=1 のときだけ)
+# shellcheck source=../lib/verify-curl-tls.sh
+source "${SCRIPT_DIR}/../lib/verify-curl-tls.sh"
+
 PASSED=0
 FAILED=0
 WARNED=0
@@ -174,33 +178,33 @@ echo "Pi5 IP: ${PI5_IP}"
 echo ""
 
 echo "--- API checks ---"
-HEALTH_JSON="$(curl -sk "${BASE_URL}/api/system/health" 2>&1 || true)"
+HEALTH_JSON="$(curl_tls -s "${BASE_URL}/api/system/health" 2>&1 || true)"
 check_contains "APIヘルス" "${HEALTH_JSON}" '"status":"(ok|degraded)"'
 
-DEPLOY_PI4="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+DEPLOY_PI4="$(curl_tls -s "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_contains "deploy-status raspberrypi4" "${DEPLOY_PI4}" '"isMaintenance":false'
 
-DEPLOY_ROBO="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_ROBODRILL}" 2>&1 || true)"
+DEPLOY_ROBO="$(curl_tls -s "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_ROBODRILL}" 2>&1 || true)"
 check_contains "deploy-status raspi4-robodrill01" "${DEPLOY_ROBO}" '"isMaintenance":false'
 
-DEPLOY_FJV="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_FJV}" 2>&1 || true)"
+DEPLOY_FJV="$(curl_tls -s "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_FJV}" 2>&1 || true)"
 check_contains "deploy-status raspi4-fjv60-80" "${DEPLOY_FJV}" '"isMaintenance":false'
 
-DEPLOY_STONEBASE="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_STONEBASE}" 2>&1 || true)"
+DEPLOY_STONEBASE="$(curl_tls -s "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_STONEBASE}" 2>&1 || true)"
 check_contains "deploy-status raspi4-kensaku-stonebase01" "${DEPLOY_STONEBASE}" '"isMaintenance":false'
 
-DEPLOY_SESSAKU="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_SESSAKU}" 2>&1 || true)"
+DEPLOY_SESSAKU="$(curl_tls -s "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_SESSAKU}" 2>&1 || true)"
 check_contains "deploy-status raspi4-sessaku-01" "${DEPLOY_SESSAKU}" '"isMaintenance":false'
 
-DEPLOY_ASSEMBLY="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_ASSEMBLY}" 2>&1 || true)"
+DEPLOY_ASSEMBLY="$(curl_tls -s "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_ASSEMBLY}" 2>&1 || true)"
 check_contains "deploy-status raspi4-assembly-01" "${DEPLOY_ASSEMBLY}" '"isMaintenance":false'
 
-KIOSK_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/active" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+KIOSK_CODE="$(curl_tls -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/active" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "キオスクAPI /tools/loans/active" "${KIOSK_CODE}" "200"
 
 # 写真類似候補は ADMIN/MANAGER のみ。未認証は 401（Loan の有無より先に認可で拒否される経路のスモーク）
 PHOTO_SIMILAR_UNAUTH_CODE="$(
-  curl -sk -o /dev/null -w "%{http_code}" \
+  curl_tls -s -o /dev/null -w "%{http_code}" \
     "${BASE_URL}/api/tools/loans/00000000-0000-4000-8000-000000000001/photo-similar-candidates" \
     2>&1 || true
 )"
@@ -208,13 +212,13 @@ check_http_code "未認証 GET /tools/loans/.../photo-similar-candidates" "${PHO
 
 # ギャラリー教師登録は ADMIN/MANAGER のみ（multipart 未指定でも認可が先）
 PHOTO_GALLERY_SEED_UNAUTH_CODE="$(
-  curl -sk -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/api/tools/loans/photo-gallery-seed" 2>&1 || true
+  curl_tls -s -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/api/tools/loans/photo-gallery-seed" 2>&1 || true
 )"
 check_http_code "未認証 POST /tools/loans/photo-gallery-seed" "${PHOTO_GALLERY_SEED_UNAUTH_CODE}" "401"
 
 # 人レビュー一覧は ADMIN/MANAGER のみ（クエリのみでも認可が先）
 PHOTO_LABEL_REVIEWS_UNAUTH_CODE="$(
-  curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/photo-label-reviews?limit=1" 2>&1 || true
+  curl_tls -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/photo-label-reviews?limit=1" 2>&1 || true
 )"
 check_http_code "未認証 GET /tools/loans/photo-label-reviews" "${PHOTO_LABEL_REVIEWS_UNAUTH_CODE}" "401"
 
@@ -228,21 +232,21 @@ DUE_PATHS=(
 )
 
 for due_path in "${DUE_PATHS[@]}"; do
-  code="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/due-management/${due_path}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+  code="$(curl_tls -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/due-management/${due_path}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
   check_http_code "納期管理API ${due_path}" "${code}" "200"
 done
 
-GLOBAL_RANK_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/global-rank" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+GLOBAL_RANK_JSON="$(curl_tls -s "${BASE_URL}/api/kiosk/production-schedule/due-management/global-rank" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_contains "global-rank targetLocation/rankingScope" "${GLOBAL_RANK_JSON}" '"targetLocation"'
 check_contains "global-rank targetLocation/rankingScope(actor/ranking)" "${GLOBAL_RANK_JSON}" '"actorLocation".*"rankingScope"'
 
-GLOBAL_RANK_MAC_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/global-rank?targetLocation=%E7%AC%AC2%E5%B7%A5%E5%A0%B4&rankingScope=globalShared" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+GLOBAL_RANK_MAC_JSON="$(curl_tls -s "${BASE_URL}/api/kiosk/production-schedule/due-management/global-rank?targetLocation=%E7%AC%AC2%E5%B7%A5%E5%A0%B4&rankingScope=globalShared" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_contains "Mac targetLocation指定" "${GLOBAL_RANK_MAC_JSON}" '"targetLocation":"第2工場"'
 
-ACTUAL_STATS_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/actual-hours/stats" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+ACTUAL_STATS_JSON="$(curl_tls -s "${BASE_URL}/api/kiosk/production-schedule/due-management/actual-hours/stats" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_contains "actual-hours/stats fields" "${ACTUAL_STATS_JSON}" '"totalRawRows".*"totalCanonicalRows".*"totalFeatureKeys".*"topFeatures"'
 
-SIGNAGE_JSON="$(curl -sk "${BASE_URL}/api/signage/content" 2>&1 || true)"
+SIGNAGE_JSON="$(curl_tls -s "${BASE_URL}/api/signage/content" 2>&1 || true)"
 # 匿名 /content はアクティブスケジュール依存。TOOLS 系（持出一覧等）では layoutConfig が無いのが正常。
 if printf '%s' "${SIGNAGE_JSON}" | grep -q '"contentType":"TOOLS"'; then
   log_pass "サイネージAPI layoutConfig（TOOLS表示中はキーなしで正常）"
@@ -252,27 +256,27 @@ fi
 
 # Pi3 サイネージ端末キーで JPEG パイプライン（ active スケジュールの種別に依存）
 SIGNAGE_CURRENT_IMAGE_CODE="$(
-  curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/signage/current-image" \
+  curl_tls -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/signage/current-image" \
     -H "x-client-key: ${CLIENT_KEY_PI3}" 2>&1 || true
 )"
 check_http_code "サイネージ GET /api/signage/current-image (Pi3 x-client-key)" "${SIGNAGE_CURRENT_IMAGE_CODE}" "200"
 
-PROGRESS_OVERVIEW_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/progress-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+PROGRESS_OVERVIEW_CODE="$(curl_tls -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/progress-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "進捗一覧API progress-overview" "${PROGRESS_OVERVIEW_CODE}" "200"
 
 # 部品納期個数CSV連携: 一覧レスポンスに補助予定フィールド（NULL 可）が含まれること（winner 行が1件以上ある本番でキーが出る）
-PROD_SCHED_PLANNED_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule?pageSize=5" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+PROD_SCHED_PLANNED_JSON="$(curl_tls -s "${BASE_URL}/api/kiosk/production-schedule?pageSize=5" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_contains "生産日程一覧API 補助予定フィールド(plannedQuantity等)" "${PROD_SCHED_PLANNED_JSON}" '"plannedQuantity"'
 
-KIOSK_DOCS_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk-documents" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+KIOSK_DOCS_CODE="$(curl_tls -s -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk-documents" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "キオスク要領書API GET /api/kiosk-documents" "${KIOSK_DOCS_CODE}" "200"
 
-KIOSK_DOCS_JSON="$(curl -sk "${BASE_URL}/api/kiosk-documents" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+KIOSK_DOCS_JSON="$(curl_tls -s "${BASE_URL}/api/kiosk-documents" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_contains "キオスク要領書API documents配列" "${KIOSK_DOCS_JSON}" '"documents"'
 
 # part-measurement: キオスクは x-client-key で resolve-ticket（カナリア端末キーでも可）
 PM_RESOLVE_JSON="$(
-  curl -sk -X POST "${BASE_URL}/api/part-measurement/resolve-ticket" \
+  curl_tls -s -X POST "${BASE_URL}/api/part-measurement/resolve-ticket" \
     -H "x-client-key: ${CLIENT_KEY_STONEBASE}" \
     -H "Content-Type: application/json" \
     -d '{"productNo":"__PHASE12_SMOKE__","processGroup":"cutting"}' 2>&1 || true
@@ -280,26 +284,26 @@ PM_RESOLVE_JSON="$(
 check_contains "部品測定API POST resolve-ticket (x-client-key)" "${PM_RESOLVE_JSON}" '"candidates"'
 
 PM_RESOLVE_UNAUTH_CODE="$(
-  curl -sk -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/api/part-measurement/resolve-ticket" \
+  curl_tls -s -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/api/part-measurement/resolve-ticket" \
     -H "Content-Type: application/json" \
     -d '{"productNo":"x","processGroup":"cutting"}' 2>&1 || true
 )"
 check_http_code "部品測定API resolve-ticket 未認証・無client-key" "${PM_RESOLVE_UNAUTH_CODE}" "401"
 
 PM_CAND_UNAUTH_CODE="$(
-  curl -sk -o /dev/null -w "%{http_code}" \
+  curl_tls -s -o /dev/null -w "%{http_code}" \
     "${BASE_URL}/api/part-measurement/templates/candidates?fhincd=X&processGroup=cutting&resourceCd=1" 2>&1 || true
 )"
 check_http_code "部品測定API GET templates/candidates 未認証・無client-key" "${PM_CAND_UNAUTH_CODE}" "401"
 
 PM_CAND_JSON="$(
-  curl -sk "${BASE_URL}/api/part-measurement/templates/candidates?fhincd=__PHASE12_SMOKE__&processGroup=cutting&resourceCd=1" \
+  curl_tls -s "${BASE_URL}/api/part-measurement/templates/candidates?fhincd=__PHASE12_SMOKE__&processGroup=cutting&resourceCd=1" \
     -H "x-client-key: ${CLIENT_KEY_STONEBASE}" 2>&1 || true
 )"
 check_contains "部品測定API GET templates/candidates (x-client-key)" "${PM_CAND_JSON}" '"candidates"'
 
 # manual-order-overview: v1 は targetLocation+resources、v2（device-scope）は siteKey 必須で devices[]
-MANUAL_ORDER_OVERVIEW_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+MANUAL_ORDER_OVERVIEW_JSON="$(curl_tls -s "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 if printf "%s" "${MANUAL_ORDER_OVERVIEW_JSON}" | grep -Eq '"resources"'; then
   check_contains "manual-order-overview API (v1)" "${MANUAL_ORDER_OVERVIEW_JSON}" '"actorLocation".*"targetLocation".*"resources"'
 elif printf "%s" "${MANUAL_ORDER_OVERVIEW_JSON}" | grep -Eq 'SITE_KEY_REQUIRED|"siteKey"'; then
@@ -316,16 +320,16 @@ except Exception:
     print('第2工場')
 " 2>/dev/null || echo '第2工場')"
   SITE_ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "${SITE_FOR_OVERVIEW}" 2>/dev/null || echo '%E7%AC%AC2%E5%B7%A5%E5%A0%B4')"
-  MANUAL_ORDER_V2_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview?siteKey=${SITE_ENC}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+  MANUAL_ORDER_V2_JSON="$(curl_tls -s "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview?siteKey=${SITE_ENC}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
   check_contains "manual-order-overview API (v2 devices[])" "${MANUAL_ORDER_V2_JSON}" '"devices"'
   check_contains "manual-order-overview API (v2 siteKey)" "${MANUAL_ORDER_V2_JSON}" '"siteKey"'
-  MANUAL_ORDER_ASSIGN_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/manual-order-resource-assignments?siteKey=${SITE_ENC}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+  MANUAL_ORDER_ASSIGN_JSON="$(curl_tls -s "${BASE_URL}/api/kiosk/production-schedule/manual-order-resource-assignments?siteKey=${SITE_ENC}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
   check_contains "manual-order-resource-assignments API" "${MANUAL_ORDER_ASSIGN_JSON}" '"assignments"'
 else
   log_fail "manual-order-overview API" "v1/v2 いずれの形にも一致しません"
 fi
 
-AUTO_GENERATE_CODE="$(curl -sk -o /dev/null -w "%{http_code}" -X PUT "${BASE_URL}/api/kiosk/production-schedule/due-management/global-rank/auto-generate" -H "x-client-key: ${CLIENT_KEY_PI4}" -H "Content-Type: application/json" -d '{}' 2>&1 || true)"
+AUTO_GENERATE_CODE="$(curl_tls -s -o /dev/null -w "%{http_code}" -X PUT "${BASE_URL}/api/kiosk/production-schedule/due-management/global-rank/auto-generate" -H "x-client-key: ${CLIENT_KEY_PI4}" -H "Content-Type: application/json" -d '{}' 2>&1 || true)"
 check_http_code "PUT global-rank/auto-generate" "${AUTO_GENERATE_CODE}" "200"
 echo ""
 echo "--- Pi3/Pi4 service checks ---"

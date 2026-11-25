@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useMemo, useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
@@ -21,11 +21,15 @@ const source = (itemId: string, resource: string, rank: number): GrindingPlannin
 } as GrindingPlanningBoardItem);
 const moves = vi.fn();
 const reorders = vi.fn();
+const arrival = vi.fn();
+const firstArrival = vi.fn();
 const clear = vi.fn();
 let hit: Element[] = [];
 let originalHit: PropertyDescriptor | undefined;
 beforeEach(() => {
   localStorage.clear(); vi.clearAllMocks();
+  arrival.mockReset().mockResolvedValue(true);
+  firstArrival.mockReset().mockResolvedValue(true);
   class TestPointerEvent extends MouseEvent {
     readonly pointerId = 1; readonly pointerType: string;
     constructor(type: string, init: PointerEventInit = {}) { super(type, init); this.pointerType = init.pointerType ?? 'mouse'; }
@@ -43,20 +47,22 @@ const testBar: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:shel
   sequence: 1, name: 'テスト1', resourceCd: '305', minutes: 30, alternateRank: 0, isCompleted: false, completedAt: null, deletedAt: null };
 
 function Board({ pair = false, disabled = false, outside = true, noop = false, refresh = false, withTest = false,
-  all = false, category = 'cutting', extraPieces = false, toolbar = false }:
+  all = false, category = 'cutting', extraPieces = false, toolbar = false, pending = category === 'grinding',
+  arrivalFilterEnabled = false, twoPending = false }:
   { pair?: boolean; disabled?: boolean; outside?: boolean; noop?: boolean; refresh?: boolean; withTest?: boolean;
-    all?: boolean; category?: 'grinding' | 'cutting'; extraPieces?: boolean; toolbar?: boolean }) {
+    all?: boolean; category?: 'grinding' | 'cutting' | 'all'; extraPieces?: boolean; toolbar?: boolean;
+    pending?: boolean; arrivalFilterEnabled?: boolean; twoPending?: boolean }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [items, setItems] = useState(() => [
-    { ...source('a', outside ? '503' : '305', 1), arrived: category !== 'grinding' },
-    source('b', outside ? '503' : '305', 2), source('anchor', pair ? '306' : '305', 3),
+    { ...source('a', outside ? '503' : '305', 1), arrived: !pending },
+    { ...source('b', outside ? '503' : '305', 2), arrived: !twoPending, isFirstProcess: twoPending }, source('anchor', pair ? '306' : '305', 3),
     ...(extraPieces ? [
       { ...source('c', '305', 4), fhincd: 'P2' }, { ...source('d', '305', 5), fhincd: 'P2' },
       { ...source('single', '305', 6), fseiban: 'S2' }, { ...source('other-part', '305', 7), fhincd: 'P3' }
     ] : [])
   ]);
   const layout = useMemo(() => buildPlanningBoardGanttLayout({ items, testBars: withTest ? [testBar] : [], resources: ['305', '306', '503'], allocation: 'alternate', view: 'resource',
-    dailyHoursByResource: {}, seibanOrder: ['S1'], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' }), [items, withTest]);
+    dailyHoursByResource: {}, seibanOrder: ['S1'], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward', arrivalFilterEnabled }), [items, withTest, arrivalFilterEnabled]);
   const update = (id: string, resource: string, target: string | null, placement: 'before' | 'after') => setItems(current => {
     const order = current.filter(item => item.itemId !== id && (item.effectiveResourceCd ?? item.originalResourceCd) === resource)
       .sort((a, b) => a.alternateRank! - b.alternateRank!).map(item => item.itemId);
@@ -65,6 +71,11 @@ function Board({ pair = false, disabled = false, outside = true, noop = false, r
     return current.map(item => order.includes(item.itemId) ? { ...item, effectiveResourceCd: resource, alternateRank: order.indexOf(item.itemId) + 1,
       version: item.version + 1 } : item);
   });
+  const record = async (item: GrindingPlanningBoardItem, save: () => Promise<boolean>) => {
+    if (!await save()) return false;
+    setItems(current => current.map(candidate => candidate.itemId === item.itemId ? { ...candidate, arrived: true } : candidate));
+    return true;
+  };
   const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
   return <>
     {toolbar && <PlanningBoardToolbar category={category} view="resource" status="incomplete" allocation="alternate"
@@ -73,6 +84,8 @@ function Board({ pair = false, disabled = false, outside = true, noop = false, r
     <PlanningBoardGanttDisplay category={category} layout={layout} minutes={{ resourceMinutesItems: refresh ? items.map(item => ({ ...item })) : items }} scale={2} capacity={capacity} resourceNameMap={{}}
     onToggleItem={(item, checked) => setSelected(current => { const next = new Set(current); if (checked) next.add(item.itemId); else next.delete(item.itemId); return next; })} onDueDrop={vi.fn()}
     disabled={disabled} dragDisabled={false} selectedItemIds={selected} onClearSelection={clear} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
+    onArrivalChange={(item, recorded) => record(item, () => arrival(item.itemId, recorded))}
+    onFirstProcessArrivalChange={(item, state) => record(item, () => firstArrival(item.itemId, state))}
     colorBySeiban resourceMove={{ canMoveResource: (_item, resource) => resource !== '306' || pair,
       onResourceMove: (item, resource, target, placement) => { moves(item.itemId, resource, target?.itemId, placement); if (!noop) update(item.itemId, resource, target?.itemId ?? null, placement); },
       onResourceReorder: (item, target, placement) => { reorders(item.itemId, target.itemId, placement); if (!noop) update(item.itemId, target.kind === 'test' ? target.resourceCd : target.effectiveResourceCd ?? target.originalResourceCd!, target.itemId, placement); } }}
@@ -237,7 +250,7 @@ it.each([false, true])('highlights the matching shelf tile when the existing bar
 });
 
 
-it('shows arrival status on the grinding all-machine shelf and accepts a shelf drag', () => {
+it('shows arrival status on the grinding all-machine shelf and saves arrival before a shelf drag writes placement', async () => {
   render(<Board all category="grinding" />);
   const shelf = screen.getByRole('group', { name: '製番の棚' });
   const pending = within(shelf).getByTestId('planning-shelf-tile-a');
@@ -252,7 +265,9 @@ it('shows arrival status on the grinding all-machine shelf and accepts a shelf d
   fireEvent.pointerMove(pending, { clientX: 0, clientY: 10 });
   expect(target).toContainElement(screen.getByTestId('planning-gantt-insertion'));
   fireEvent.pointerUp(pending, { clientX: 0, clientY: 10 });
-  expect(moves).toHaveBeenCalledWith('a', '305', 'anchor', 'before');
+  await waitFor(() => expect(moves).toHaveBeenCalledWith('a', '305', 'anchor', 'before'));
+  expect(arrival).toHaveBeenCalledExactlyOnceWith('a', true);
+  expect(arrival.mock.invocationCallOrder[0]!).toBeLessThan(moves.mock.invocationCallOrder[0]!);
   fireEvent.click(screen.getByRole('button', { name: '製番の棚を畳む' }));
   expect(screen.getByRole('group', { name: '製番の色分け凡例' })).toBeVisible();
 });
@@ -351,4 +366,64 @@ it('hides the button when the selection has no valid arrow target', () => {
   fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
   fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
   expect(screen.queryByTestId('planning-shelf-place-button')).not.toBeInTheDocument();
+});
+
+it.each([false, true])('selects a grinding pending chip and saves arrival before placing via the arrow button (pair=%s)', async pair => {
+  render(<Board category="grinding" pair={pair} arrivalFilterEnabled />);
+  const tile = screen.getByTestId('planning-shelf-tile-a');
+  expect(tile).toHaveClass('border-dashed');
+  fireEvent.click(tile);
+  expect(tile).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('planning-shelf-place-button'));
+  expect(moves).not.toHaveBeenCalled();
+  await waitFor(() => expect(moves).toHaveBeenCalledTimes(1));
+  expect(arrival).toHaveBeenCalledExactlyOnceWith('a', true);
+  expect(arrival.mock.invocationCallOrder[0]!).toBeLessThan(moves.mock.invocationCallOrder[0]!);
+  expect(tile).not.toHaveClass('border-dashed');
+});
+
+it('saves arrival before placing in the same machine via a Gantt tap', async () => {
+  render(<Board category="grinding" outside={false} arrivalFilterEnabled />);
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  blank(false, 10000);
+  await waitFor(() => expect(reorders).toHaveBeenCalledWith('a', 'anchor', 'after'));
+  expect(arrival).toHaveBeenCalledExactlyOnceWith('a', true);
+  expect(arrival.mock.invocationCallOrder[0]!).toBeLessThan(reorders.mock.invocationCallOrder[0]!);
+});
+
+it.each([true, false])('saves the first-process arrival before placing and stops when saving fails (%s)', async success => {
+  let finish!: (saved: boolean) => void;
+  firstArrival.mockImplementationOnce(() => new Promise<boolean>(resolve => { finish = resolve; }));
+  render(<Board category="grinding" twoPending arrivalFilterEnabled />);
+  fireEvent.click(screen.getByRole('button', { name: 'フランジ P1 ×3' }));
+  expect(screen.getByTestId('planning-shelf-tile-a')).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByTestId('planning-shelf-tile-b')).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-b'));
+  fireEvent.click(screen.getByTestId('planning-shelf-place-button'));
+  expect(firstArrival).toHaveBeenCalledExactlyOnceWith('b', 'arrived');
+  expect(arrival).not.toHaveBeenCalled();
+  expect(moves).not.toHaveBeenCalled();
+  await act(async () => { finish(success); });
+  if (success) {
+    await waitFor(() => expect(moves.mock.calls.map(call => call[0])).toEqual(['b']));
+    expect(firstArrival.mock.invocationCallOrder[0]!).toBeLessThan(moves.mock.invocationCallOrder[0]!);
+  } else {
+    expect(moves).not.toHaveBeenCalled();
+    expect(reorders).not.toHaveBeenCalled();
+    expect(screen.getByTestId('planning-shelf-tile-b')).toHaveClass('border-dashed');
+  }
+});
+
+it.each(['cutting', 'all'] as const)('keeps arrival-pending shelf placement blocked in %s', category => {
+  render(<Board category={category} pending arrivalFilterEnabled />);
+  const tile = screen.getByTestId('planning-shelf-tile-a');
+  expect(tile).toHaveClass('border-dashed');
+  fireEvent.click(tile);
+  expect(screen.queryByTestId('planning-gantt-drag-arrow')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('planning-shelf-place-button')).not.toBeInTheDocument();
+  blank(false);
+  expect(arrival).not.toHaveBeenCalled();
+  expect(moves).not.toHaveBeenCalled();
 });

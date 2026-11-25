@@ -21,6 +21,12 @@
       Pi4 release requires an exact SHA, safe run ID, immutable OCI images,
       the supported torque protocol when selected, and an inventory host in the kiosk group.
 
+- name: Reuse kiosk role browser executable resolution for release staging
+  ansible.builtin.include_role:
+    name: kiosk
+    tasks_from: resolve-browser
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Prepare the client server certificate pin before configuring agents
   ansible.builtin.import_role:
     name: client_server_cert_pin
@@ -62,12 +68,6 @@
 
 - name: Prepare the optional GUI account before release staging
   ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-user.yml"
-  when: manage_kiosk_browser | default(false) | bool
-
-- name: Reuse kiosk role browser executable resolution for release staging
-  ansible.builtin.include_role:
-    name: kiosk
-    tasks_from: resolve-browser
   when: manage_kiosk_browser | default(false) | bool
 
 # The launcher template reads the kiosk role's browser flag defaults, but role

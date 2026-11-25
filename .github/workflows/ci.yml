@@ -51,7 +51,7 @@ jobs:
       full_suite: ${{ steps.classify.outputs.full_suite }}
     steps:
       - name: Checkout code with history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Test classifier and workflow contracts
         run: python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -143,7 +143,7 @@ jobs:
 
       # Keep the pinned bulk audit client isolated from the workspace install.
       - name: Setup Node.js for bulk advisory audit
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 
@@ -167,7 +167,7 @@ jobs:
           - { shard: "3/3", shard_id: "3-of-3", build: false }
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -242,7 +242,7 @@ jobs:
           COVERAGE_ENFORCE_THRESHOLDS: 'false'
 
       - name: Upload API test blob
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-blob-${{ matrix.shard_id }}
           path: apps/api/vitest-blob/
@@ -260,13 +260,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
 
       - name: Download API test blobs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: api-blob-*
           path: apps/api/vitest-blob
@@ -282,7 +282,7 @@ jobs:
 
       - name: Upload API coverage artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-coverage
           path: apps/api/coverage/
@@ -302,7 +302,7 @@ jobs:
           - { shard: "3/3", shard_id: "3-of-3", build: false }
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -324,7 +324,7 @@ jobs:
           COVERAGE_ENFORCE_THRESHOLDS: 'false'
 
       - name: Upload Web test blob
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-blob-${{ matrix.shard_id }}
           path: apps/web/vitest-blob/
@@ -342,13 +342,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
 
       - name: Download Web test blobs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: web-blob-*
           path: apps/web/vitest-blob
@@ -364,7 +364,7 @@ jobs:
 
       - name: Upload Web coverage artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-coverage
           path: apps/web/coverage/
@@ -377,7 +377,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -498,7 +498,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code with migration base
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
 
@@ -518,7 +518,7 @@ jobs:
           command -v ansible-playbook
 
       - name: Cache Ansible collections
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.ansible/collections
           key: ansible-collections-${{ runner.os }}-community-general-v1
@@ -538,16 +538,16 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout exact candidate source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Reuse the layer cache that docker-security writes for the same Dockerfiles.
       # docker-security proves provenance-only build args keep filesystem layers,
       # so the cached layers are the same ones a clean build would produce.
       - name: Build native production API image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: infrastructure/docker/Dockerfile.api
@@ -561,7 +561,7 @@ jobs:
           cache-from: type=gha,scope=api
 
       - name: Build native production Web image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: infrastructure/docker/Dockerfile.web
@@ -595,7 +595,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install client test runner
         run: |
@@ -641,16 +641,16 @@ jobs:
         include: ${{ fromJSON(needs.change-classification.outputs.pi4_agent_matrix) }}
     steps:
       - name: Checkout exact candidate source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up QEMU for the selected Pi4 platform
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build the Pi4 agent image contract
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -683,7 +683,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout exact candidate source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install the exact Signage attestation verifier
         if: ${{ github.event_name != 'push' }}
@@ -735,7 +735,7 @@ jobs:
           cmp signage-release-descriptor.json "$RUNNER_TEMP/signage-release-second.json"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build exact Signage artifact image without publication
         run: |
@@ -761,7 +761,7 @@ jobs:
           trivyignores: '.trivyignore'
 
       - name: Upload the verified and scanned Signage artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pi3-signage-release-${{ github.sha }}
           path: |
@@ -773,7 +773,61 @@ jobs:
   hermes-answer-cache:
     name: hermes-answer-cache
     needs: change-classification
-    if: ${{ needs.change-classification.outputs.release_pair == 'true' }}
+    if: >-
+      ${{
+        needs.change-classification.outputs.release_pair == 'true' &&
+        !(github.event_name == 'push' && github.ref == 'refs/heads/main')
+      }}
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check catalogue and nightly regression boundaries
+        run: |
+          python3 -m pip install -r services/hermes-answer-cache/requirements.txt
+          python3 -m unittest discover -s services/hermes-answer-cache -p 'test_*.py'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the ARM64 cache with its offline embedding model
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/hermes-answer-cache
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-hermes-answer-cache:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=hermes-answer-cache
+          cache-to: type=gha,scope=hermes-answer-cache,mode=max,ignore-error=true
+      - name: Security scan the cache image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          scan-type: image
+          image-ref: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-hermes-answer-cache:${{ github.sha }}
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          scanners: vuln
+          trivyignores: .trivyignore
+
+  hermes-answer-cache-publish:
+    name: hermes-answer-cache-publish
+    needs: change-classification
+    if: >-
+      ${{
+        needs.change-classification.outputs.release_pair == 'true' &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main'
+      }}
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -786,23 +840,23 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check catalogue and nightly regression boundaries
         run: |
           python3 -m pip install -r services/hermes-answer-cache/requirements.txt
           python3 -m unittest discover -s services/hermes-answer-cache -p 'test_*.py'
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in for exact main publication
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build the ARM64 cache with its offline embedding model
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: services/hermes-answer-cache
           platforms: linux/arm64
@@ -826,7 +880,7 @@ jobs:
           trivyignores: .trivyignore
       - name: Attest the exact production cache image
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-hermes-answer-cache
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -861,7 +915,7 @@ jobs:
       config_hash: ${{ steps.contract.outputs.config_hash }}
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Ansible renderer
         run: |
@@ -885,7 +939,7 @@ jobs:
           echo "config_hash=$config_hash" >> "$GITHUB_OUTPUT"
 
       - name: Upload sealed build contract
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-build-contract-${{ github.sha }}
           path: ${{ runner.temp }}/release-build-contract.json
@@ -916,10 +970,10 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download sealed build contract
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-build-contract-${{ github.sha }}
           path: ${{ runner.temp }}/release-contract
@@ -929,14 +983,14 @@ jobs:
         run: echo "repository=ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-api" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR for this job
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build and push exact ARM64 API image
         id: build
@@ -1016,10 +1070,10 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download sealed build contract
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-build-contract-${{ github.sha }}
           path: ${{ runner.temp }}/release-contract
@@ -1029,14 +1083,14 @@ jobs:
         run: echo "repository=ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-web" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR for this job
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build and push exact ARM64 Web image
         id: build
@@ -1094,10 +1148,10 @@ jobs:
       packages: read
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Log in to GHCR for exact digest rehearsal
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -1128,7 +1182,7 @@ jobs:
         include: ${{ fromJSON(needs.change-classification.outputs.docker_matrix) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Security scan (Trivy fs)
         if: matrix.image == 'api'
@@ -1144,10 +1198,10 @@ jobs:
             **/alerts
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build ${{ matrix.image }} image (Buildx) and load
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -1161,7 +1215,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.image }},ignore-error=true
 
       - name: Rebuild ${{ matrix.image }} with provenance-only changes
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -1209,7 +1263,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -1290,7 +1344,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -1307,7 +1361,7 @@ jobs:
 
       - name: Upload generated candidate, visual report, and diff diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: kiosk-sop-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/kiosk-sop-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}/
@@ -1327,7 +1381,7 @@ jobs:
           - { shard: "3/3", shard_id: "3-of-3" }
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm workspace
         uses: ./.github/actions/setup-pnpm-monorepo
@@ -1407,7 +1461,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report-${{ matrix.shard_id }}
           path: playwright-report/
@@ -1415,7 +1469,7 @@ jobs:
 
       - name: Upload Playwright traces (on failure)
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-traces-${{ matrix.shard_id }}
           path: test-results/
@@ -1432,10 +1486,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 
@@ -1449,6 +1503,7 @@ jobs:
     needs:
       - hermes-retrieval
       - hermes-answer-cache
+      - hermes-answer-cache-publish
       - change-classification
       - repo-policy
       - workspace-quality
@@ -1473,12 +1528,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout aggregate validator
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Require every selected CI job to pass
         env:
           HERMES_CACHE_SELECTED: ${{ needs['change-classification'].outputs.release_pair }}
-          HERMES_CACHE_RESULT: ${{ needs['hermes-answer-cache'].result }}
+          HERMES_CACHE_RESULT: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && needs['hermes-answer-cache-publish'].result || needs['hermes-answer-cache'].result }}
           HERMES_RETRIEVAL_RESULT: ${{ needs['hermes-retrieval'].result }}
           CHANGE_CLASSIFICATION: ${{ needs['change-classification'].result }}
           REPO_POLICY_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.repo_policy == 'true' }}
@@ -1577,24 +1632,24 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU for Pi4 platforms
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Publish the exact-SHA multi-platform Pi4 agent image
         id: publish
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -1651,7 +1706,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout exact-main Signage publication gate
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Require fixed external checks on the exact SHA
         env:
@@ -1692,10 +1747,10 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download the verified and scanned Signage artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: pi3-signage-release-${{ github.sha }}
           path: .
@@ -1745,18 +1800,18 @@ jobs:
           PY
 
       - name: Log in to GHCR for signed Signage publication
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Publish exact-main Signage artifact as immutable OCI image
         id: publish
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: infrastructure/docker/Dockerfile.signage-release
@@ -1776,7 +1831,7 @@ jobs:
         run: docker buildx imagetools inspect "$IMAGE_REFERENCE"
 
       - name: Attest source, artifact, and manifest identities
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage
           subject-digest: ${{ steps.publish.outputs.digest }}
@@ -1816,7 +1871,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout release gate
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Require fixed external checks on the exact SHA
         env:
@@ -1863,17 +1918,17 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Log in to GHCR for signed release publication
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Create strict API/Web release set
         env:
@@ -1900,7 +1955,7 @@ jobs:
 
       - name: Publish release set as an immutable OCI image
         id: publish-release-set
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: infrastructure/docker/Dockerfile.release-set
@@ -1914,21 +1969,21 @@ jobs:
           sbom: true
 
       - name: Attest exact ARM64 API image
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ needs.release-api-image.outputs.repository }}
           subject-digest: ${{ needs.release-api-image.outputs.digest }}
           push-to-registry: true
 
       - name: Attest exact ARM64 Web image
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ needs.release-web-image.outputs.repository }}
           subject-digest: ${{ needs.release-web-image.outputs.digest }}
           push-to-registry: true
 
       - name: Attest the release set after all fixed gates
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set
           subject-digest: ${{ steps.publish-release-set.outputs.digest }}

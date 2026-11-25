@@ -1,3 +1,4 @@
+import { deletePieceBoardRecords } from './piece-board-records.js';
 import { defaultUnitSplitEnabled } from './unit-split-policy.js';
 import { stateOrder } from '../grinding-planning-board/state.js';
 import { sessakuPieceParentItemId } from './piece-key.js';
@@ -137,7 +138,7 @@ async function removeQuantityPieces(tx: Prisma.TransactionClient, csvDashboardId
   ids = removable.map((piece) => piece.id);
   if (!ids.length) return;
   await acquireSessakuPieceBoardStateLocks(tx);
-  await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId, itemKey: { in: removable.flatMap(sessakuPieceItemIds) } } });
+  await deletePieceBoardRecords(tx, { csvDashboardId, itemKey: { in: removable.flatMap(sessakuPieceItemIds) } });
   await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids }, isCompleted: false, opCompletions: { none: {} } } });
 }
 async function readQuantitySource(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey) {
