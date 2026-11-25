@@ -1,5 +1,7 @@
 import { isAxiosError } from 'axios';
 
+import { isRetryableHttpError } from '../../../../lib/retryable-http-error';
+
 import { palletOfflineQueueStore } from './palletOfflineQueueStore';
 import { sendPalletRequest } from './palletQueueRequest';
 
@@ -23,9 +25,7 @@ export function createPalletOutboxRunner(store: PalletOfflineQueueStore, send = 
       try {
         await send(record);
       } catch (error) {
-        if (!isAxiosError(error)) break;
-        const status = error.response?.status;
-        if (status === undefined || status === 408 || status === 429 || status < 400 || status >= 500) break;
+        if (!isAxiosError(error) || isRetryableHttpError(error) || error.response!.status < 400) break;
         const message = error.response?.data?.message ?? error.message;
         await store.fail(record, message);
         await refresh(message);

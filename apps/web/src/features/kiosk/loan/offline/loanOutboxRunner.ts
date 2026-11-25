@@ -1,5 +1,7 @@
 import { isAxiosError } from 'axios';
 
+import { isRetryableHttpError } from '../../../../lib/retryable-http-error';
+
 import { loanOfflineQueueStore } from './loanOfflineQueueStore';
 import { sendLoanRequest } from './loanQueueRequest';
 
@@ -7,9 +9,8 @@ import type { LoanOfflineQueueStore, LoanQueueRecord } from './loanOfflineQueueS
 import type { LoanQueueRequest, LoanRequest } from './loanQueueRequest';
 
 export function isRetryableLoanError(error: unknown): boolean {
-  if (!isAxiosError(error) || error.code === 'ERR_CANCELED') return false;
-  const status = error.response?.status;
-  return status === undefined || status === 408 || status === 429 || (status >= 500 && status < 600);
+  if (isAxiosError(error) && error.code === 'ERR_CANCELED') return false;
+  return isRetryableHttpError(error);
 }
 
 function isDuplicateReturn(record: LoanQueueRequest, error: unknown): boolean {

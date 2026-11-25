@@ -1,17 +1,14 @@
 import { isAxiosError } from 'axios';
 
 import { postClientLogs, processInventoryTouchTransaction, processInventoryTransaction } from '../../../../api/client';
+import { isRetryableHttpError } from '../../../../lib/retryable-http-error';
 import { messageFromError } from '../inventoryPageModel';
 
 import { inventoryOfflineQueueStore } from './inventoryOfflineQueueStore';
 
 import type { InventoryOfflineQueueStore, InventoryQueueInput, InventoryQueueRecord } from './inventoryOfflineQueueStore';
 
-export function isRetryableInventoryError(error: unknown): boolean {
-  if (!isAxiosError(error)) return false;
-  const status = error.response?.status;
-  return status === undefined || status === 408 || status === 429 || (status >= 500 && status < 600);
-}
+export const isRetryableInventoryError = isRetryableHttpError;
 const runners = new WeakMap<InventoryOfflineQueueStore, ReturnType<typeof createRunner>>();
 export function inventoryOutboxRunner(store = inventoryOfflineQueueStore) {
   let runner = runners.get(store);
