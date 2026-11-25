@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH } from '@raspi-system/shared-types';
 
 import {
   useClients,
@@ -20,7 +21,6 @@ import { ProductionScheduleLoadBalancingSettingsSection } from './ProductionSche
 import { ProductionScheduleSameModelResourceGroupsCard } from './ProductionScheduleSameModelResourceGroupsCard';
 
 const DEFAULT_LOCATION = 'shared';
-const DUE_MANAGEMENT_PASSWORD_MIN_LENGTH = 4;
 const LOCATION_SEGMENT_DELIMITER = ' - ';
 
 const parseResourceCds = (value: string): string[] => {
@@ -156,8 +156,8 @@ export function ProductionScheduleSettingsPage() {
   };
 
   const handleSaveDueManagementPassword = async () => {
-    if (dueManagementPasswordInput.trim().length < DUE_MANAGEMENT_PASSWORD_MIN_LENGTH) {
-      setMessage(`納期管理アクセスパスワードは${DUE_MANAGEMENT_PASSWORD_MIN_LENGTH}文字以上で入力してください`);
+    if (dueManagementPasswordInput.trim().length < PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH) {
+      setMessage(`納期管理アクセスパスワードは${PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH}文字以上で入力してください`);
       return;
     }
     if (dueManagementPasswordInput !== dueManagementPasswordConfirmInput) {

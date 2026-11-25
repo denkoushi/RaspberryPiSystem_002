@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { AlertChannel, AlertDeliveryStatus, AlertSeverity } from '@prisma/client';
+import { PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH } from '@raspi-system/shared-types';
 import { logger } from '../../lib/logger.js';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
 
@@ -444,7 +445,7 @@ export async function importProductionScheduleResourceCodeMappingsFromCsv(params
 }
 
 /** キオスクの操作パスワードは数字4桁の入力欄でも使うため、登録時は4文字以上とする。 */
-export const ACCESS_PASSWORD_MIN_LENGTH = 4;
+export const ACCESS_PASSWORD_MIN_LENGTH = PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH;
 
 export async function getDueManagementAccessPasswordSettings(location: string): Promise<{
   location: string;
