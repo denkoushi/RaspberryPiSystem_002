@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { TORQUE_AGENT_COMMUNICATION_LOST_MESSAGE } from './torqueWrenchConnectionPresentation';
 import {
   createTorqueWrenchLocalLeaseToken,
   localhostTorqueWrenchTransport,
@@ -77,7 +78,7 @@ export type UseTorqueWrenchConnectionResult = {
   clearError: () => void;
 };
 
-const COMMUNICATION_LOST_MESSAGE = 'torque-agentとの通信が切れました。接続状態を確認してください。';
+const COMMUNICATION_LOST_MESSAGE = TORQUE_AGENT_COMMUNICATION_LOST_MESSAGE;
 
 function requestId(prefix: string): string {
   return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
@@ -195,7 +196,6 @@ export function useTorqueWrenchConnection({
   const bindingRef = useRef<TorqueWrenchConnectionContext | null>(binding);
   const transportRef = useRef(transport);
   const tokenRef = useRef<TorqueWrenchLocalLeaseToken | null>(null);
-  const statusRef = useRef<TorqueAgentLeaseStatus | null>(null);
   const stateRef = useRef<TorqueWrenchConnectionState>('available');
   const busyRef = useRef(false);
   const releaseInFlightRef = useRef(false);
@@ -231,7 +231,6 @@ export function useTorqueWrenchConnection({
   ) => {
     const currentBinding = bindingOverride ?? bindingRef.current;
     if (!currentBinding) {
-      statusRef.current = next;
       setStatus(next);
       setLocalToken(null);
       setReachability('reachable');
@@ -243,7 +242,6 @@ export function useTorqueWrenchConnection({
     const mismatch = isTokenMismatch(next, currentToken, currentBinding);
     const nextToken = createTorqueWrenchLocalLeaseToken(next, currentBinding);
     const nextState = deriveState(next);
-    statusRef.current = next;
     setStatus(next);
     setReachability('reachable');
     setError(null);
@@ -307,7 +305,6 @@ export function useTorqueWrenchConnection({
         token: currentToken,
         keepalive: options.keepalive
       });
-      statusRef.current = next;
       setStatus(next);
       setReachability('reachable');
       setError(null);
@@ -348,7 +345,7 @@ export function useTorqueWrenchConnection({
     busyRef.current = true;
     setBusy(true);
     setError(null);
-    setConnectionState(takeover ? 'acquiring' : 'acquiring');
+    setConnectionState('acquiring');
     const request: TorqueWrenchConnectionAcquireRequest = {
       ...toBindingPayload(currentBinding),
       requestId: explicitRequestId ?? requestId(takeover ? 'torque-takeover' : 'torque-acquire')

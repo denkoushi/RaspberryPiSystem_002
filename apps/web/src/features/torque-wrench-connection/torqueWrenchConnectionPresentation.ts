@@ -1,6 +1,8 @@
 import type { TorqueAgentLeaseStatus } from './torqueWrenchConnectionTransport';
 import type { TorqueWrenchConnectionState } from './useTorqueWrenchConnection';
 
+export const TORQUE_AGENT_COMMUNICATION_LOST_MESSAGE = 'torque-agentとの通信が切れました。接続状態を確認してください。';
+
 export type TorqueWrenchConnectionPresentation = {
   stateLabel: string;
   connectionMessage: string | null;
@@ -34,7 +36,7 @@ function stateLabel(state: TorqueWrenchConnectionState): string {
 function activeMessage(input: ResolveTorqueWrenchConnectionPresentationInput): string | null {
   if (input.error) return input.error;
   if (input.reachability === 'unreachable') {
-    return 'torque-agentとの通信が切れました。接続状態を確認してください。';
+    return TORQUE_AGENT_COMMUNICATION_LOST_MESSAGE;
   }
   if (!input.currentTemplateBoltId || !input.hasConfirmation) return null;
   if (input.state === 'owned_by_other') {
