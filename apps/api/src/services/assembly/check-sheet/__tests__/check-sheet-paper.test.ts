@@ -6,6 +6,7 @@ import { assemblyCheckSheetLayoutSchema } from '@raspi-system/shared-types';
 import { buildCheckSheetLayout } from '../check-sheet-layout.js';
 import { buildCheckSheetWrites } from '../check-sheet-paper-writes.js';
 import { fillCheckSheetXlsx } from '../check-sheet-xlsx-filler.js';
+import { makeOverDefaultBudgetZip } from '../../../../lib/__tests__/zip-test-helpers.js';
 
 async function workbookFixture() {
   const book = new ExcelJS.Workbook();
@@ -148,5 +149,11 @@ describe('check-sheet paper writes', () => {
       { cell: 'Q4', text: '製番1' }, { cell: 'F1', text: '0 V' }, { cell: 'S1', text: '山田 10/29 00:12' },
       { cell: 'S2', text: '該当なし 佐藤' }, { cell: 'F3', text: 'M5（12 N·m）' }, { cell: 'S3', text: 'NG 鈴木' }
     ]);
+  });
+
+  it('展開後の大きさが上限を超える xlsx は読み込まずに拒否する', async () => {
+    const huge = await makeOverDefaultBudgetZip();
+    await expect(buildCheckSheetLayout(huge, '検査')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(fillCheckSheetXlsx(huge, '検査', [])).rejects.toMatchObject({ statusCode: 400 });
   });
 });

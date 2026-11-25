@@ -135,6 +135,13 @@ describe('stripCidPlaceholders', () => {
   ])('strips placeholders and excess blank lines from %j', (input, expected) => {
     expect(stripCidPlaceholders(input)).toBe(expected);
   });
+
+  it('閉じない [cid: が長く続く本文でも 200 ms 以内に終わる', () => {
+    const input = '[cid:a'.repeat(50000);
+    const start = performance.now();
+    expect(stripCidPlaceholders(input)).toBe(input);
+    expect(performance.now() - start).toBeLessThan(200);
+  });
 });
 
 describe('resolveAttachmentContentType', () => {

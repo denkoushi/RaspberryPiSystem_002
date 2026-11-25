@@ -1,3 +1,4 @@
+import { PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH } from '@raspi-system/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
@@ -155,8 +156,8 @@ export function ProductionScheduleSettingsPage() {
   };
 
   const handleSaveDueManagementPassword = async () => {
-    if (dueManagementPasswordInput.trim().length === 0) {
-      setMessage('納期管理アクセスパスワードを入力してください');
+    if (dueManagementPasswordInput.trim().length < PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH) {
+      setMessage(`納期管理アクセスパスワードは${PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH}文字以上で入力してください`);
       return;
     }
     if (dueManagementPasswordInput !== dueManagementPasswordConfirmInput) {

@@ -1,4 +1,4 @@
-import type { GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardFirstProcessArrivalRequest, GrindingPlanningBoardFirstProcessArrivalResponse } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardFirstProcessArrivalRequest, GrindingPlanningBoardFirstProcessArrivalResponse, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -10,6 +10,11 @@ import { assertItemRevision, planningBoardArrivalDate } from './shared.js';
 import { ensurePlanningBoardState, lockState } from './state.js';
 import { readLivePieceKeys, resolveCurrentProjectionInTransaction } from './write.js';
 import { discoverSourceRows } from './write-source.js';
+
+function siblingPieceKeys(items: Iterable<GrindingPlanningBoardItem>, item: GrindingPlanningBoardItem) {
+  return [...items].filter((candidate) => candidate.parentItemId === item.parentItemId && candidate.itemId !== item.itemId)
+    .map((candidate) => candidate.itemId);
+}
 
 export async function updateGrindingPlanningBoardArrival(params: GrindingPlanningBoardArrivalRequest & {
   siteKey: string; recorded: boolean;
@@ -30,7 +35,7 @@ export async function updateGrindingPlanningBoardArrival(params: GrindingPlannin
     if (item.isCompleted) throw new ApiError(409, '完了済みの工程は変更できません', undefined, 'COMPLETED_ITEM');
     let arrivalDate: string | null = null;
     const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      itemKey: item.parentItemId ?? item.itemId };
+      itemKey: item.itemId };
     if (params.recorded) {
       const existing = await client.productionScheduleGrindingPlanningBoardArrival.findFirst({
         where: key, orderBy: { arrivalDate: 'desc' }, select: { arrivalDate: true }
@@ -43,7 +48,23 @@ export async function updateGrindingPlanningBoardArrival(params: GrindingPlannin
         });
       }
     } else {
-      await client.productionScheduleGrindingPlanningBoardArrival.deleteMany({ where: key });
+      const arrivals = client.productionScheduleGrindingPlanningBoardArrival;
+      await arrivals.deleteMany({ where: key });
+      if (item.parentItemId) {
+        const parentKey = { ...key, itemKey: item.parentItemId };
+        const parent = await arrivals.findFirst({ where: parentKey, orderBy: { arrivalDate: 'desc' }, select: { arrivalDate: true } });
+        if (parent) {
+          const siblings = siblingPieceKeys(current.byItemId.values(), item);
+          const existing = siblings.length ? await arrivals.findMany({
+            where: { ...key, itemKey: { in: siblings } }, select: { itemKey: true }, distinct: ['itemKey']
+          }) : [];
+          const recorded = new Set(existing.map((arrival) => arrival.itemKey));
+          const data = siblings.filter((itemKey) => !recorded.has(itemKey))
+            .map((itemKey) => ({ ...key, itemKey, arrivalDate: parent.arrivalDate }));
+          if (data.length) await arrivals.createMany({ data, skipDuplicates: true });
+          await arrivals.deleteMany({ where: parentKey });
+        }
+      }
     }
     return { itemId: params.itemId, manualArrivalDate: arrivalDate };
   }, { timeout: 30000, maxWait: 15000 });
@@ -72,14 +93,26 @@ export async function updateGrindingPlanningBoardFirstProcessArrival(params: Gri
     }], { siteKey: params.siteKey, locationKey: params.siteKey, includeFirstProcess: true, placedProductNos: new Set(), client, policy });
     if (!arrival?.isFirstProcess) throw new ApiError(409, '最初の工程ではありません', undefined, 'NOT_FIRST_PROCESS');
     const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      itemKey: item.parentItemId ?? item.itemId };
+      itemKey: item.itemId };
     if (params.state !== null) {
       const data = { state: params.state, recordedAt: new Date() };
       await client.productionScheduleGrindingPlanningBoardFirstProcessArrival.upsert({
         where: { csvDashboardId_siteKey_itemKey: key }, create: { ...key, ...data }, update: data
       });
     } else {
-      await client.productionScheduleGrindingPlanningBoardFirstProcessArrival.deleteMany({ where: key });
+      const arrivals = client.productionScheduleGrindingPlanningBoardFirstProcessArrival;
+      await arrivals.deleteMany({ where: key });
+      if (item.parentItemId) {
+        const parentKey = { ...key, itemKey: item.parentItemId };
+        const parent = await arrivals.findUnique({
+          where: { csvDashboardId_siteKey_itemKey: parentKey }, select: { state: true, recordedAt: true }
+        });
+        if (parent) {
+          const data = siblingPieceKeys(current.byItemId.values(), item).map((itemKey) => ({ ...key, itemKey, ...parent }));
+          if (data.length) await arrivals.createMany({ data, skipDuplicates: true });
+          await arrivals.deleteMany({ where: parentKey });
+        }
+      }
     }
     return { itemId: params.itemId, firstProcessState: params.state };
   }, { timeout: 30000, maxWait: 15000 });

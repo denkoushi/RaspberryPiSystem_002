@@ -35,8 +35,8 @@ type Props = {
   toggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   toggleCompletion: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => Promise<void>;
   completionPendingItemIds: ReadonlySet<string>;
-  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
-  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
+  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => Promise<boolean>;
+  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => Promise<boolean>;
   arrivalPending?: boolean;
   arrivalError?: boolean;
   moveDueByDrag: (item: GrindingPlanningBoardItem, date: string) => void;

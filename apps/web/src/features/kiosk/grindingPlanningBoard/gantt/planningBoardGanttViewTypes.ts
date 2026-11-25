@@ -70,8 +70,8 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
   onSingleResourceChange?: (resource: string | null) => void;
   resourceOrderPending?: boolean;
-  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
-  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
+  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => Promise<boolean>;
+  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => Promise<boolean>;
   arrivalPending?: boolean;
   arrivalError?: boolean;
   pinMode?: boolean;

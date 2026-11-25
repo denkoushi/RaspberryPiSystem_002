@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { formulaWithoutResult, inferDate } from './date-cell.js';
 import { buildWorkbook } from './__fixtures__/workbook.js';
 import { parseDScheduleMinutesXlsx } from './parse-d-schedule-minutes.js';
+import { makeOverDefaultBudgetZip } from '../../../lib/__tests__/zip-test-helpers.js';
 
 async function parse(fixture = buildWorkbook(), filename = '20260515 D社日程会議議事録.xlsx', receivedAt: Date | null = null, subject?: string) {
   return parseDScheduleMinutesXlsx({ buffer: Buffer.from(await fixture.workbook.xlsx.writeBuffer()), filename, receivedAt, subject });
@@ -676,5 +677,9 @@ describe('parseDScheduleMinutesXlsx', () => {
 
   it('returns a fatal result for invalid xlsx bytes', async () => {
     expect(await parseDScheduleMinutesXlsx({ buffer: Buffer.from('invalid'), filename: '20260515.xlsx', receivedAt: null })).toMatchObject({ ok: false, reason: 'INVALID_XLSX' });
+  });
+
+  it('展開後の大きさが上限を超える xlsx は読み込まずに fatal にする', async () => {
+    expect(await parseDScheduleMinutesXlsx({ buffer: await makeOverDefaultBudgetZip(), filename: '20260515.xlsx', receivedAt: null })).toMatchObject({ ok: false, reason: 'INVALID_XLSX' });
   });
 });
