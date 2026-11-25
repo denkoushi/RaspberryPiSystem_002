@@ -166,6 +166,8 @@
             mode: '0755'
 
         - name: Download the pinned Linux ARM64 rclone archive
+          # The directory above is not created in check mode, so these steps are skipped there.
+          when: not ansible_check_mode
           ansible.builtin.get_url:
             url: https://downloads.rclone.org/v1.76.0/rclone-v1.76.0-linux-arm64.zip
             dest: "{{ oracle_dr_rclone_root }}/rclone.zip"
@@ -175,6 +177,8 @@
             mode: '0600'
 
         - name: Extract only the rclone binary with Python
+          # The directory above is not created in check mode, so these steps are skipped there.
+          when: not ansible_check_mode
           ansible.builtin.command:
             argv:
               - /usr/bin/python3
@@ -199,6 +203,8 @@
             creates: "{{ oracle_dr_rclone_root }}/rclone"
 
         - name: Remove the downloaded rclone archive
+          # The directory above is not created in check mode, so these steps are skipped there.
+          when: not ansible_check_mode
           ansible.builtin.file:
             path: "{{ oracle_dr_rclone_root }}/rclone.zip"
             state: absent
