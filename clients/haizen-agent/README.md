@@ -46,6 +46,6 @@ python3 -m haizen_agent
 
 ## systemd
 
-リポジトリ同梱の **`haizen-agent.service`** を `/etc/systemd/system/` に配置（Ansible **`zero2w-edge-setup.yml` + `client` ロール**が正本）。現行 unit は **root 実行**で、`haizen_agent.config` が既定で **`/etc/raspi-haizen-agent.conf`** を読む。
+リポジトリ同梱の **`haizen-agent.service`** を `/etc/systemd/system/` に配置（Ansible **`zero2w-edge-setup.yml` + `client` ロール**が正本）。現行 unit は専用ユーザー **`raspi-haizen`**（`input` グループ付き）で実行し、`haizen_agent.config` が既定で **`/etc/raspi-haizen-agent.conf`** を読む。
 
-**設定ファイルの権限**: **`/etc/raspi-haizen-agent.conf` は `root:root` + `chmod 640`** を推奨。`x-client-key` を含むため **world-readable にしない**。詳細は [KB-368](../../docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・[zero2w-tanaban-edge-setup.md](../../docs/runbooks/zero2w-tanaban-edge-setup.md)。
+**設定ファイルの権限**: **`/etc/raspi-haizen-agent.conf` は `root:raspi-haizen` + `chmod 640`** を推奨。`x-client-key` を含むため **world-readable にしない**。詳細は [KB-368](../../docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・[zero2w-tanaban-edge-setup.md](../../docs/runbooks/zero2w-tanaban-edge-setup.md)。
