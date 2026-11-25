@@ -10,6 +10,7 @@ import {
   type UnifiedItem
 } from '../../../services/tools/unified-inventory-list.service.js';
 import { unifiedQuerySchema } from './schemas.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export type { UnifiedItem };
 
@@ -20,7 +21,7 @@ export function registerUnifiedListRoute(app: FastifyInstance): void {
   app.get(
     '/unified',
     {
-      config: { rateLimit: false },
+      config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT },
       preHandler: async (request, reply) => {
         // キオスクはJWTを持たないため、x-client-keyがあればデバイス認証として許可する
         const clientKey = parseKioskApiClientKeyHeader(request.headers['x-client-key']);

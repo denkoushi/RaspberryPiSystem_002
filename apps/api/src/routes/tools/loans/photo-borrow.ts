@@ -2,6 +2,7 @@ import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { LoanService } from '../../../services/tools/loan.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const photoBorrowSchema = z.object({
   employeeTagUid: z.string().min(1, '従業員タグUIDは必須です'),
@@ -12,7 +13,7 @@ const photoBorrowSchema = z.object({
 const idempotencyKeySchema = z.string().guid('Idempotency-KeyはUUID形式で指定してください');
 
 export function registerPhotoBorrowRoute(app: FastifyInstance, loanService: LoanService): void {
-  app.post('/photo-borrow', { config: { rateLimit: false } }, async (request) => {
+  app.post('/photo-borrow', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const body = photoBorrowSchema.parse(request.body);
     const headerKey = request.headers['x-client-key'];
     const resolvedClientId = await loanService.resolveClientId(body.clientId, headerKey);

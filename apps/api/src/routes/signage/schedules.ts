@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { SignageService } from '../../services/signage/index.js';
 import { scheduleSchema, scheduleUpdateSchema, scheduleParamsSchema } from './schemas.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 // Management responses use device IDs only.
 function withoutLegacyTargets<T extends { targetClientKeys?: unknown }>(schedule: T): Omit<T, 'targetClientKeys'> {
@@ -15,7 +16,7 @@ export function registerScheduleRoutes(app: FastifyInstance, signageService: Sig
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
 
   // GET /api/signage/schedules - スケジュール一覧取得（端末キーまたはログインが必要）
-  app.get('/schedules', { preHandler: requireDeviceKeyOrViewer, config: { rateLimit: false } }, async () => {
+  app.get('/schedules', { preHandler: requireDeviceKeyOrViewer, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async () => {
     const schedules = await signageService.getSchedules();
     // 公開DTOは許可した表示項目だけを返し、端末の認証情報を含めない。
     return {

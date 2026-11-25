@@ -10,6 +10,7 @@ import {
   productionScheduleDueManagementSeibanParamsSchema,
   type KioskRouteDeps
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export async function registerProductionScheduleDueManagementDueDateRoute(
   app: FastifyInstance,
@@ -17,7 +18,7 @@ export async function registerProductionScheduleDueManagementDueDateRoute(
 ): Promise<void> {
   app.put(
     '/kiosk/production-schedule/due-management/seiban/:fseiban/due-date',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);

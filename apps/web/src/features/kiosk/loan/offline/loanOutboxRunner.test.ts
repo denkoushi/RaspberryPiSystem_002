@@ -27,7 +27,7 @@ function setup() {
 beforeEach(() => { records = []; vi.stubGlobal('navigator', { onLine: true }); });
 
 describe('loan outbox', () => {
-  it.each([httpError(), httpError(undefined, 'ECONNABORTED'), httpError(500), httpError(503)])('durably queues retryable failures with a stable UUID and readAt', async error => {
+  it.each([httpError(), httpError(undefined, 'ECONNABORTED'), httpError(408), httpError(429), httpError(500), httpError(503)])('durably queues retryable failures with a stable UUID and readAt', async error => {
     const { runner, send, store } = setup();
     const readAt = '2026-11-03T09:00:00.000Z';
     send.mockRejectedValueOnce(error);
@@ -39,7 +39,7 @@ describe('loan outbox', () => {
     expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ body: sent.body }));
     expect(records).toEqual([]);
   });
-  it.each([400, 401, 403, 404, 408, 409, 422, 429])('propagates HTTP %i without saving', async status => {
+  it.each([400, 401, 403, 404, 409, 422])('propagates HTTP %i without saving', async status => {
     const { runner, send, store } = setup();
     const error = httpError(status);
     send.mockRejectedValueOnce(error);
@@ -70,7 +70,7 @@ describe('loan outbox', () => {
     expect(send.mock.calls[1][0].body.eventKey).toBe('newer');
     expect(records).toEqual([]);
   });
-  it.each([httpError(), httpError(503)])('blocks later requests when the oldest replay still fails', async error => {
+  it.each([httpError(), httpError(429), httpError(503)])('blocks later requests when the oldest replay still fails', async error => {
     const { runner, store, send } = setup();
     await store.add(input('older', '2026-11-03T09:00:00Z'));
     await store.add(input('newer', '2026-11-03T10:00:00Z'));
@@ -92,7 +92,7 @@ describe('loan outbox', () => {
       expect(listener.mock.calls.every(([, failure]) => failure === undefined)).toBe(true);
     }
   });
-  it.each([400, 401, 403, 404, 408, 409, 422, 429])('displays HTTP %i replay failures once, removes them and continues', async status => {
+  it.each([400, 401, 403, 404, 409, 422])('displays HTTP %i replay failures once, removes them and continues', async status => {
     const { runner, store, send } = setup();
     await store.add(input('invalid', '2026-11-03T09:00:00Z'));
     await store.add(input('later', '2026-11-03T10:00:00Z'));

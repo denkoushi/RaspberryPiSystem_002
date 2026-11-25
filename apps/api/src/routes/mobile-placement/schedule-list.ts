@@ -9,6 +9,7 @@ import {
   toLegacyLocationKeyFromDeviceScope
 } from '../kiosk/production-schedule/shared.js';
 import { resolveProductionScheduleAssignmentLocationKey } from '../kiosk/production-schedule/resolve-assignment-location-key.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 type ScheduleDeps = {
   requireClientDevice: (rawClientKey: unknown) => Promise<{
@@ -25,7 +26,7 @@ export async function registerMobilePlacementScheduleRoute(
   app: FastifyInstance,
   deps: ScheduleDeps
 ): Promise<void> {
-  app.get('/mobile-placement/schedule', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/schedule', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;

@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { getGrindingPlanningBoardSeibanCandidates } from '../../../services/production-schedule/grinding-planning-board-seiban-candidates.service.js';
 import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const querySchema = z.object({
   category: grindingPlanningBoardCategorySchema,
@@ -13,7 +14,7 @@ export async function registerProductionScheduleGrindingPlanningBoardSeibanCandi
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/production-schedule/grinding-planning-board/seiban-candidates', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/grinding-planning-board/seiban-candidates', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const query = querySchema.parse(request.query);

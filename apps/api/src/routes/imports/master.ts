@@ -10,6 +10,7 @@ import type { StorageProvider } from '../../services/backup/storage/storage-prov
 import type { CsvImportTarget, CsvImportType } from '../../services/imports/csv-importer.types.js';
 import { CsvImportConfigService } from '../../services/imports/csv-import-config.service.js';
 import { processCsvImport, processCsvImportFromTargets } from '../../services/imports/csv-import-process.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const fieldSchema = z.object({
   replaceExisting: z.preprocess(
@@ -108,7 +109,7 @@ export async function registerImportMasterRoutes(app: FastifyInstance): Promise<
   const mustBeAdmin = authorizeRoles('ADMIN');
 
   // シンプルな同期処理: ジョブテーブルを使わず、結果を直接返す
-  app.post('/imports/master', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
+  app.post('/imports/master', { preHandler: mustBeAdmin, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const files: { employees?: Buffer; items?: Buffer } = {};
     const fieldValues: Record<string, string> = {};
 
@@ -169,7 +170,7 @@ export async function registerImportMasterRoutes(app: FastifyInstance): Promise<
   });
 
   // 単一データタイプのCSVインポート（計測機器・吊具対応）
-  app.post('/imports/master/:type', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
+  app.post('/imports/master/:type', { preHandler: mustBeAdmin, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const typeParam = (request.params as { type?: string }).type;
 
     // URLパス（ケバブケース）をキャメルケースに変換
@@ -251,7 +252,7 @@ export async function registerImportMasterRoutes(app: FastifyInstance): Promise<
   });
 
   // Dropbox/GmailからCSVを取得してインポート
-  app.post('/imports/master/from-dropbox', { preHandler: mustBeAdmin, config: { rateLimit: false } }, async (request) => {
+  app.post('/imports/master/from-dropbox', { preHandler: mustBeAdmin, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const startTime = Date.now();
     const initialMemory = process.memoryUsage();
 

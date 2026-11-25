@@ -9,7 +9,7 @@ import type { LoanQueueRequest, LoanRequest } from './loanQueueRequest';
 export function isRetryableLoanError(error: unknown): boolean {
   if (!isAxiosError(error) || error.code === 'ERR_CANCELED') return false;
   const status = error.response?.status;
-  return status === undefined || (status >= 500 && status < 600);
+  return status === undefined || status === 408 || status === 429 || (status >= 500 && status < 600);
 }
 
 function isDuplicateReturn(record: LoanQueueRequest, error: unknown): boolean {

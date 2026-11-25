@@ -14,6 +14,7 @@ import {
   toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export async function registerProductionScheduleDueManagementManualOrderOverviewRoute(
   app: FastifyInstance,
@@ -21,7 +22,7 @@ export async function registerProductionScheduleDueManagementManualOrderOverview
 ): Promise<void> {
   app.get(
     '/kiosk/production-schedule/due-management/manual-order-overview',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);

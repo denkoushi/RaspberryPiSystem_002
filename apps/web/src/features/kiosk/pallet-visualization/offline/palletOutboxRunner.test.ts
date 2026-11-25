@@ -30,7 +30,7 @@ describe('pallet outbox runner', () => {
     expect(store.add.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
     expect(records).toEqual([]);
   });
-  it.each([undefined, 503])('retains stable event identity after failure %s', async status => {
+  it.each([undefined, 408, 429, 503])('retains stable event identity after failure %s', async status => {
     const { runner, send, records } = setup();
     send.mockRejectedValueOnce(status ? httpError(status) : new AxiosError('network'));
     await runner.submit(input);

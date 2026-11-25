@@ -17,12 +17,6 @@ import { createRateLimitDeviceCache } from './rate-limit-device-cache.js';
 const skipPrefixes = [
   '/api/kiosk/support',
   '/api/kiosk/power',
-  '/api/tools/loans/active',
-  '/api/tools/loans/borrow',
-  '/api/tools/loans/return',
-  '/api/tools/transactions',
-  '/api/tools/employees',
-  '/api/tools/items',
   '/api/imports',
   '/ws',
   '/api/signage',

@@ -6,12 +6,13 @@ import { throwIfPrismaNotFound } from '../../../lib/prisma-errors.js';
 import { EmployeeService } from '../../../services/tools/employee.service.js';
 import { LoanService } from '../../../services/tools/loan.service.js';
 import { employeeParamsSchema } from './schemas.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export function registerEmployeeDeleteRoute(app: FastifyInstance, employeeService: EmployeeService): void {
   const canEdit = authorizeRoles('ADMIN', 'MANAGER');
   const loanService = new LoanService();
 
-  app.delete('/employees/:id', { preHandler: canEdit, config: { rateLimit: false } }, async (request) => {
+  app.delete('/employees/:id', { preHandler: canEdit, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const params = employeeParamsSchema.parse(request.params);
     try {
       // 削除前に未返却の貸出記録の存在を確認

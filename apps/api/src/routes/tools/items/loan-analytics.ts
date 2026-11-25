@@ -4,6 +4,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { assertKioskApiClientKeyValid } from '../../../services/clients/client-device-auth.service.js';
 import { ItemLoanAnalyticsService } from '../../../services/tools/item-loan-analytics.service.js';
 import { itemLoanAnalyticsQuerySchema } from './schemas.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export function registerItemLoanAnalyticsRoute(app: FastifyInstance): void {
   const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
@@ -29,7 +30,7 @@ export function registerItemLoanAnalyticsRoute(app: FastifyInstance): void {
     }
   };
 
-  app.get('/items/loan-analytics', { preHandler: allowView, config: { rateLimit: false } }, async (request) => {
+  app.get('/items/loan-analytics', { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const query = itemLoanAnalyticsQuerySchema.parse(request.query);
     return service.getDashboard(query);
   });

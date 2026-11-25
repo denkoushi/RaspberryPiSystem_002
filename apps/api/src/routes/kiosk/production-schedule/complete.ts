@@ -11,12 +11,13 @@ import {
   toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export async function registerProductionScheduleCompleteRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.put('/kiosk/production-schedule/:rowId/complete', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/:rowId/complete', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;
@@ -35,7 +36,7 @@ export async function registerProductionScheduleCompleteRoute(
   });
 
   /** 明示的に完了/未完了へ。順位ボード等の主経路（トグル誤反転防止）。 */
-  app.put('/kiosk/production-schedule/:rowId/completion', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/:rowId/completion', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;

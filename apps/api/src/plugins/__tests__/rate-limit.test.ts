@@ -18,6 +18,7 @@ vi.mock('../../services/auth/auth-role-admin.service.js', () => ({
 
 import { registerAuthRoutes } from '../../routes/auth.js';
 import { registerRateLimit } from '../rate-limit.js';
+import { TERMINAL_ROUTE_MAX_PER_MINUTE, TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const BASE_TIME = new Date('2026-01-15T00:00:00.000Z');
 
@@ -39,6 +40,8 @@ beforeEach(async () => {
   app.get('/api/admin/thing', ok);
   app.get('/api/admin/other', ok);
   app.get('/api/admin/items/:id', ok);
+  app.post('/api/tools/loans/return', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, ok);
+  app.get('/api/storage/terminal-route', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, ok);
   // Generic catch-all used for allow-list checks so every prefix hits a real route.
   app.get('/*', ok);
   await app.register(registerAuthRoutes, { prefix: '/api' });
@@ -107,12 +110,6 @@ describe('registerRateLimit', () => {
   it.each([
     '/api/kiosk/support/x',
     '/api/kiosk/power/x',
-    '/api/tools/loans/active',
-    '/api/tools/loans/borrow',
-    '/api/tools/loans/return',
-    '/api/tools/transactions',
-    '/api/tools/employees',
-    '/api/tools/items',
     '/api/imports/x',
     '/ws/x',
     '/api/signage/x',
@@ -125,6 +122,29 @@ describe('registerRateLimit', () => {
   it('still limits non-allow-listed paths under /api/tools/loans and /api/kiosk', async () => {
     expect((await hit('/api/tools/loans/history', 121)).at(-1)).toBe(429);
     expect((await hit('/api/kiosk/other', 121)).at(-1)).toBe(429);
+  });
+
+  it('limits tool paths that used to be allow-listed with the default ceiling', async () => {
+    expect((await hit('/api/tools/items', 121)).at(-1)).toBe(429);
+    expect((await hit('/api/tools/loans/borrow', 121)).at(-1)).toBe(429);
+  });
+
+  it('applies the terminal ceiling per terminal and route, even under an allow-listed prefix', async () => {
+    findUnique.mockImplementation(async ({ where }: { where: { apiKey: string } }) => (
+      where.apiKey.startsWith('kiosk-') ? { id: where.apiKey } : null
+    ));
+    for (const url of ['/api/storage/terminal-route']) {
+      const codes = await hit(url, TERMINAL_ROUTE_MAX_PER_MINUTE + 1, { 'x-client-key': 'kiosk-a' });
+      expect(codes.slice(0, TERMINAL_ROUTE_MAX_PER_MINUTE).every((c) => c === 200)).toBe(true);
+      expect(codes.at(-1)).toBe(429);
+      expect(await hit(url, 1, { 'x-client-key': 'kiosk-b' })).toEqual([200]);
+    }
+    const returns = await hit('/api/tools/loans/return', TERMINAL_ROUTE_MAX_PER_MINUTE + 1, { 'x-client-key': 'kiosk-a' }, 'POST', {});
+    expect(returns.slice(0, TERMINAL_ROUTE_MAX_PER_MINUTE).every((c) => c === 200)).toBe(true);
+    expect(returns.at(-1)).toBe(429);
+
+    vi.setSystemTime(new Date(BASE_TIME.getTime() + 61_000));
+    expect(await hit('/api/tools/loans/return', 1, { 'x-client-key': 'kiosk-a' }, 'POST', {})).toEqual([200]);
   });
 
   it('shares a bucket across parameter values on the same route', async () => {
