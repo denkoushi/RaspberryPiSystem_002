@@ -77,7 +77,10 @@ fi
 LOGIN_BODY+="}"
 LOGIN_RESPONSE=$(curl -sS ${CURL_TLS_ARGS[@]+"${CURL_TLS_ARGS[@]}"} -X POST "https://${PI5_HOST}/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d "$LOGIN_BODY")
+  -d "$LOGIN_BODY") || {
+  echo "エラー: https://${PI5_HOST} に接続できませんでした。証明書の検証で止まった場合は、PI5_CA_CERT に CA の証明書のパスを、PI5_HOST に証明書に含まれる名前を指定してください。" >&2
+  exit 1
+}
 
 # トークンを抽出
 ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
