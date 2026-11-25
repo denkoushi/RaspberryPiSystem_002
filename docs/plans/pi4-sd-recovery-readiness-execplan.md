@@ -16,7 +16,7 @@ The Pi5 recovery command must be usable before a Pi4 fails, not merely pass mock
 
 - [x] (2026-08-01 JST) Confirmed the starting worktree was clean and local `main` matched `origin/main` at `8aeceec38153a719722e89629a209f6303d9be79`.
 - [x] (2026-08-01 JST) Created `feat/pi4-sd-recovery-readiness` from the synchronized `main` branch.
-- [x] (2026-08-01 JST) Added a production-shaped templated inventory contract test that resolves `100.90.80.70` and exports no sentinel secrets.
+- [x] (2026-08-01 JST) Added a production-shaped templated inventory contract test that resolves `<IP アドレス>` and exports no sentinel secrets.
 - [x] (2026-08-01 JST) Added the secret-free Ansible resolver and Python resolver adapter, then migrated recovery orchestration to it.
 - [x] (2026-08-01 JST) Added the recovery-only OAuth auth-key provider and isolated success, retry, rejection, malformed-response, and secret-leak tests.
 - [x] (2026-08-01 JST) Updated the Vault example, ADR, Runbook, initial setup guide, historical bootstrap plan link, and AI navigation entry.
@@ -36,7 +36,7 @@ The Pi5 recovery command must be usable before a Pi4 fails, not merely pass mock
 - Observation: the existing recovery unit tests use a fake concrete endpoint and intercept `ansible-inventory`, so they cannot reproduce the production failure.
   Evidence: the focused suite passed before the fix despite every live `plan` failing.
 - Observation: the new resolver evaluates all five enabled production inventory hosts to their expected `100.x` endpoints, while OAuth readiness remains false until the separately authorized production Vault setup.
-  Evidence: controller-only resolver runs returned `100.74.144.79`, `100.123.1.113`, `100.100.229.95`, `100.101.113.95`, and `100.115.109.18`, with `recoveryEnabled=true`, `oauthConfigured=false`, and `tag:kiosk` for each.
+  Evidence: controller-only resolver runs returned `<raspberrypi4 の Tailscale IP>`, `<raspi4-robodrill01 の Tailscale IP>`, `<raspi4-fjv60-80 の Tailscale IP>`, `<raspi4-kensaku-stonebase01 の Tailscale IP>`, and `<raspi4-sessaku-01 の Tailscale IP>`, with `recoveryEnabled=true`, `oauthConfigured=false`, and `tag:kiosk` for each.
 - Observation: the OAuth provider can distinguish transient failures from credential rejection without leaking test sentinels.
   Evidence: 31 focused tests passed; the fake service required three token attempts for 429 then 503 then success, while a 401 stopped after one attempt and malformed key capabilities failed closed.
 - Observation: prepending Homebrew's general binary directory selected a Python without Jinja2 even though the repository's pyenv Python had it.
@@ -90,7 +90,7 @@ Finally run focused tests and the shared deploy-contract runner. The latter owns
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002` on `feat/pi4-sd-recovery-readiness`. Use `apply_patch` for tracked edits. Run focused checks while implementing:
+Work from `~/RaspberryPiSystem_002` on `feat/pi4-sd-recovery-readiness`. Use `apply_patch` for tracked edits. Run focused checks while implementing:
 
     python3 -m unittest scripts/deploy/tests/test_recover_pi4.py -v
     ANSIBLE_CONFIG=infrastructure/ansible/ansible.cfg ANSIBLE_ROLES_PATH=infrastructure/ansible/roles ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/resolve-pi4-recovery-contract.yml --syntax-check

@@ -82,7 +82,7 @@ Finally connect the existing kiosk navigation and web controls to the contract. 
 
 ## Concrete Steps
 
-Run all commands from `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--kiosk-grinding-planning-board-backend`. The worktree dependencies are symlinked to the repository's installed pnpm store for local validation only; those symlinks are not source changes.
+Run all commands from `~/RaspberryPiSystem_002-worktrees/feat--kiosk-grinding-planning-board-backend`. The worktree dependencies are symlinked to the repository's installed pnpm store for local validation only; those symlinks are not source changes.
 
 Apply the migration to a dedicated database, never to the repository's existing database:
 
@@ -161,7 +161,7 @@ The response contract in `packages/shared-types/src/common/production-schedule-g
 
 The reported browser run verified the initial unfinished view (20 panes, 320 rows), both-status view (20 panes, 400 rows), focused view (20 rows split across two tables), resource view (4 resource tables, 400 rows), normal scroll to later production numbers, exclusion, resource-plus-due bulk change, restore to original values, individual rank set/clear, order move, remove/register, and focused return. The dedicated-DB HTTP run observed snapshot pagination as 160+160+80 with 400 unique item IDs; two independent client keys produced one 200 and one 409 on stale override writes, and the 409 response did not retry automatically. The browser run was subsequently repeated against the same dedicated DB through API port 8081 with the prefixed fixture key, and its API/database provenance is recorded below.
 
-The original-allocation drawer controls that previously appeared enabled while being no-ops were changed to disabled. Successful order writes now clear the pending optimistic marker from the mutation response before accepting a competing server order, and active製番 selection changes are committed only after the shared order write succeeds, so a 409 cannot silently remove a selected production number. The focused page test now reports 7 passing tests after these changes; the web build passes. Evidence and screenshots are in `/Users/tsudatakashi/Documents/Codex/2026-09-09/analog-a3-cd-cd-ui/outputs/planning-board/real-api-evidence.json`, `real-api-order-conflict.json`, `real-api-normal-1024.png`, `real-api-normal-scroll-next-seiban.png`, `real-api-focus-1024.png`, and `real-api-resource-1024.png`.
+The original-allocation drawer controls that previously appeared enabled while being no-ops were changed to disabled. Successful order writes now clear the pending optimistic marker from the mutation response before accepting a competing server order, and active製番 selection changes are committed only after the shared order write succeeds, so a 409 cannot silently remove a selected production number. The focused page test now reports 7 passing tests after these changes; the web build passes. Evidence and screenshots are in `~/Documents/Codex/2026-09-09/analog-a3-cd-cd-ui/outputs/planning-board/real-api-evidence.json`, `real-api-order-conflict.json`, `real-api-normal-1024.png`, `real-api-normal-scroll-next-seiban.png`, `real-api-focus-1024.png`, and `real-api-resource-1024.png`.
 
 After evidence capture, stop only the API/Vite processes and remove only `grinding-planning-board-pg-e2e`; leave repository containers and the original checkout untouched.
 

@@ -95,7 +95,7 @@ Update the production-parity DEV preview, focused tests, the prior plan's open-i
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002`. Implement in small commits grouped as database/API, Web/UI, then tests/docs. Run Prisma generation after the schema change. Do not deploy or write to any existing database.
+Work from `~/RaspberryPiSystem_002`. Implement in small commits grouped as database/API, Web/UI, then tests/docs. Run Prisma generation after the schema change. Do not deploy or write to any existing database.
 
 For database validation, use a unique no-volume container based on `pgvector/pgvector:pg15` bound to an unused localhost port. Set `DATABASE_URL` only in each validation command. Apply all migrations, run the focused integration suite, then seed synthetic visual rows and run `EXPLAIN (ANALYZE, BUFFERS)` for a selective three-or-more-digit substring. Remove the container in a shell trap and verify no matching container, volume, or network remains.
 

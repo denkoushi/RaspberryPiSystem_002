@@ -88,7 +88,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Concrete Steps
 
-作業ディレクトリは `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--haizen-app-self-update`。
+作業ディレクトリは `~/RaspberryPiSystem_002-worktrees/feat--haizen-app-self-update`。
 
     cd apps/android-haizen-shell && ./gradlew testDebugUnitTest assembleDebug lintDebug
     pnpm --filter @raspi-system/api exec vitest run src/routes/kiosk/__tests__/mobile-app.test.ts

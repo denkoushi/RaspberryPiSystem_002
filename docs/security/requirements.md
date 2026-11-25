@@ -181,9 +181,9 @@
    
    # ローカルネットワーク用IPアドレス
    local_network:
-     raspberrypi5_ip: "192.168.10.230"
-     raspberrypi4_ip: "192.168.10.223"
-     raspberrypi3_ip: "192.168.10.109"
+     raspberrypi5_ip: "<Pi5 の LAN IP>"
+     raspberrypi4_ip: "<raspberrypi4 の実際の LAN IP>"
+     raspberrypi3_ip: "<raspberrypi3 の LAN IP（現場）>"
    
   # Tailscale用IPアドレス（通常運用の標準）
   # 注意: Tailscale IPアドレスは動的に割り当てられるが、デバイスごとに固定される
@@ -203,7 +203,7 @@
    ```
 
 3. **テンプレートファイルの修正**
-   - 古いIPアドレス（`192.168.128.131`など）のデフォルト値を削除
+   - 古いIPアドレス（`<Pi5 の LAN IP（自宅）>`など）のデフォルト値を削除
    - 変数のみ参照するように変更
 
 4. **既存コードのIPアドレス直接記述箇所の洗い出し**

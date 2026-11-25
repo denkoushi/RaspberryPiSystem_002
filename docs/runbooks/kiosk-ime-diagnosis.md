@@ -20,7 +20,7 @@ category: runbooks
 ## 前提
 
 - Pi4 キオスク端末への SSH 接続が可能であること。
-- キオスクユーザー（例: tools04）として実行できること。
+- キオスクユーザー（例: <raspi4-robodrill01 のユーザー名>）として実行できること。
 
 ## 診断の実行方法
 
@@ -40,16 +40,16 @@ Pi4 キオスク端末に SSH 接続し、診断スクリプトを実行する�
 
 ```bash
 # 例: Pi5 経由で raspi4-robodrill01 に接続
-ssh denkon5sd02@100.106.158.2 'ssh tools04@<PI4_IP> "bash -s"' < scripts/kiosk/diagnose-ime.sh
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'ssh <raspi4-robodrill01 のユーザー名>@<PI4_IP> "bash -s"' < scripts/kiosk/diagnose-ime.sh
 ```
 
 または、スクリプトを Pi4 にコピーしてから実行する。
 
 ```bash
 # Pi4 にスクリプトをコピー
-scp scripts/kiosk/diagnose-ime.sh tools04@<PI4_IP>:/tmp/
+scp scripts/kiosk/diagnose-ime.sh <raspi4-robodrill01 のユーザー名>@<PI4_IP>:/tmp/
 # 実行
-ssh tools04@<PI4_IP> "bash /tmp/diagnose-ime.sh"
+ssh <raspi4-robodrill01 のユーザー名>@<PI4_IP> "bash /tmp/diagnose-ime.sh"
 ```
 
 ## 出力項目の見方
@@ -87,8 +87,8 @@ standard routeが `roles/kiosk` のIME診断・Firefox profile customizationを�
 承認済みのstandard release後、既存のengine選択を次のread-only確認で検証する。
 
 ```bash
-ssh tools04@<PI4_IP> 'systemctl is-active kiosk-browser.service'
-ssh tools04@<PI4_IP> 'ps -ef | awk "/firefox|chromium/ {print; c++; if (c>=10) exit}"'
+ssh <raspi4-robodrill01 のユーザー名>@<PI4_IP> 'systemctl is-active kiosk-browser.service'
+ssh <raspi4-robodrill01 のユーザー名>@<PI4_IP> 'ps -ef | awk "/firefox|chromium/ {print; c++; if (c>=10) exit}"'
 ```
 
 実機では、備考欄の日本語入力、候補ウィンドウ、生産スケジュール表示、NFC、電源操作を確認する。

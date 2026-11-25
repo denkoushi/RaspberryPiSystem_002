@@ -31,7 +31,7 @@ All steps are strictly behavior-preserving. Success is observable by identical t
 - [x] (2026-07-04 15:40+09:00) Final verification: orchestrator re-ran web suite (247 files / 1,206 tests = baseline 244/1,179 + this phase's 3 new test files / 27 new tests), web `tsc -b` and lint clean, and full API suite (`POSTGRES_PORT=5432 bash scripts/test/run-tests.sh`) = 412 files passed | 2 skipped, 2,098 tests passed | 9 skipped — baseline match. `git status` footprint is exactly the three refactor scopes + this plan file. Test container `postgres-test-local` and its anonymous volume removed (pre-existing dangling volumes untouched). docs/INDEX.md link added.
 - [x] (2026-07-04 15:51+09:00) Committed and pushed to `origin/main`: `72ff6550ca453cd4a2b130c04fb3b6d2df8e88a6` (`refactor: split production schedule query and admin pages`). Pre-push verification also included `git diff --check`, web `tsc -b`/lint/test, API build/lint, and full API DB suite. The final local full API run passed 412 files | 2 skipped and 2,100 tests | 7 skipped; skip distribution differed from the earlier baseline run, but there were no failures.
 - [x] (2026-07-04 16:11+09:00) GitHub Actions green for `72ff6550`: Secret scan `28698292124` success, CodeQL `28698292122` success, main CI `28698292125` success (`lint-build-unit`, `api-db-and-infra`, `security-docker`, `e2e-smoke`, `e2e-tests` all success), Pages `28698291788` success after rerunning a transient GitHub Pages deploy failure (`Deployment failed, try again later`).
-- [x] (2026-07-04 16:44+09:00) Production deploy completed with the standard all-client command: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow` using `RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`. Run ID `20260704-161204-25937`; summary success `true`; exit code 0; PLAY RECAP all 7 hosts had `failed=0` and `unreachable=0` (`raspberrypi5`, `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`, `raspi4-sessaku-01`, `raspberrypi3`).
+- [x] (2026-07-04 16:44+09:00) Production deploy completed with the standard all-client command: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow` using `RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP>`. Run ID `20260704-161204-25937`; summary success `true`; exit code 0; PLAY RECAP all 7 hosts had `failed=0` and `unreachable=0` (`raspberrypi5`, `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`, `raspi4-kensaku-stonebase01`, `raspi4-sessaku-01`, `raspberrypi3`).
 - [x] (2026-07-04 16:46+09:00) Real-machine verification passed: `./scripts/deploy/verify-phase12-real.sh` = PASS 45 / WARN 0 / FAIL 0. Covered API health, deploy-status for all Pi4 clients, production-schedule and due-management APIs, Pi5 migration/fallback/auto-tuning checks, all Pi4 kiosk/status-agent services, Pi3 signage-lite/timer, and `verify-services-real.sh`.
 
 Open items carried from phases 1–2 (not in this phase's scope):
@@ -132,7 +132,7 @@ Each step is executed by a Composer 2.5 worker subagent; the orchestrator verifi
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 API verification: `POSTGRES_PORT=5432 bash scripts/test/run-tests.sh` (container `postgres-test-local` already running on 5432; the explicit port export is required because the script auto-switches to 55432 when 5432 is occupied).
 

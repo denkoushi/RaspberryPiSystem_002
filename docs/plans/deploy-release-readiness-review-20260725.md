@@ -287,7 +287,7 @@ processes, or mutate production through direct SSH.
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+Work from `~/RaspberryPiSystem_002`.
 
 Run the focused tests while implementing:
 
@@ -309,12 +309,12 @@ Run the complete safety validation before publishing:
 After required CI succeeds for the merged SHA, perform read-only production
 checks:
 
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 \
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       scripts/update-all-clients.sh main \
       infrastructure/ansible/inventory.yml \
       --limit raspberrypi5 --print-plan
 
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 \
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       scripts/update-all-clients.sh main \
       infrastructure/ansible/inventory.yml \
       --limit raspberrypi5 --preflight-only

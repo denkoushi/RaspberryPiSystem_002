@@ -206,7 +206,7 @@ no-op plan.
 
 ## Concrete Steps
 
-Run all commands from `/Users/tsudatakashi/RaspberryPiSystem_002` on branch
+Run all commands from `~/RaspberryPiSystem_002` on branch
 `fix/kiosk-sop-visual-layout`.
 
     pnpm --filter @raspi-system/kiosk-sop-core test

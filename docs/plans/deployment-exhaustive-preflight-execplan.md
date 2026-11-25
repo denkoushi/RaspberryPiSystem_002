@@ -160,8 +160,8 @@ After a clean commit and push, dispatch CI, CodeQL, and Secret scan for the exac
 
 Then run the limited read-only sequence twice with the exact same SHA:
 
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh feat/assembly-torque-external-bluetooth-acceptance infrastructure/ansible/inventory.yml --limit 'raspberrypi5:raspi4-kensaku-stonebase01' --print-plan
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh feat/assembly-torque-external-bluetooth-acceptance infrastructure/ansible/inventory.yml --limit 'raspberrypi5:raspi4-kensaku-stonebase01' --preflight-only
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh feat/assembly-torque-external-bluetooth-acceptance infrastructure/ansible/inventory.yml --limit 'raspberrypi5:raspi4-kensaku-stonebase01' --print-plan
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh feat/assembly-torque-external-bluetooth-acceptance infrastructure/ansible/inventory.yml --limit 'raspberrypi5:raspi4-kensaku-stonebase01' --preflight-only
 
 Capture before, between, and after evidence for Git HEAD, fleet state digest, deploy-status digest, maintenance, service states, Docker identities, and migration ledger digest. The two preflight reports and all evidence must match except timestamps and generated preflight IDs.
 

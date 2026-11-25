@@ -155,7 +155,7 @@ Finally, run the focused bundle, Ansible adapter, coordinator transition, termin
 
 Work only in this local checkout and branch:
 
-    cd /Users/tsudatakashi/RaspberryPiSystem_002
+    cd ~/RaspberryPiSystem_002
     git status --short --branch
 
 Run isolated bundle experiments and focused tests without inventory hosts or network access. Expected evidence is that valid Pi3 source bytes come only from a digest-bound local bundle, every binding or corruption mutation fails before reset, and the existing Pi4 test fixtures still call their former remote-fetch path.

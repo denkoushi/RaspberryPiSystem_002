@@ -40,7 +40,7 @@ The bounded follow-on is complete locally. Order placement, haizen and pallet re
 
 ## Context and Orientation
 
-Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--production-schedule-lookup-boundary`. Under apps/api/src/services, mobile-placement/mobile-placement-order-placement.service.ts and mobile-placement/haizen-placement.service.ts read id/rowData after selecting a candidate. pallet-visualization/pallet-visualization-schedule-resolver.ts also reads the first filtered supplement and builds dimensions/date displays. The previous lookup plan remains the source of evidence for candidate SQL and compatibility exports.
+Work in `~/RaspberryPiSystem_002-worktrees/feat--production-schedule-lookup-boundary`. Under apps/api/src/services, mobile-placement/mobile-placement-order-placement.service.ts and mobile-placement/haizen-placement.service.ts read id/rowData after selecting a candidate. pallet-visualization/pallet-visualization-schedule-resolver.ts also reads the first filtered supplement and builds dimensions/date displays. The previous lookup plan remains the source of evidence for candidate SQL and compatibility exports.
 
 ## Plan of Work
 

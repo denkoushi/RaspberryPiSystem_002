@@ -15,7 +15,7 @@
 | Pi5 から SSH 不可 | 上記に伴う tailnet 切断 |
 | Pi5 の `current-image` は **200** | **Pi3 クライアント側**の問題（サーバは正常） |
 
-**前提**: Pi3 は Pi5 API を **`https://100.106.158.2/api/signage/current-image`**（Tailscale）で取得する。Pi5（`192.168.10.x`）と Pi3 工場 LAN（`192.168.128.x`）は **直結しない** ため、Tailscale 不通時は LAN 迂回できない。
+**前提**: Pi3 は Pi5 API を **`https://<Pi5 の Tailscale IP>/api/signage/current-image`**（Tailscale）で取得する。Pi5（`192.168.10.x`）と Pi3 工場 LAN（`192.168.128.x`）は **直結しない** ため、Tailscale 不通時は LAN 迂回できない。
 
 ---
 
@@ -23,10 +23,10 @@
 
 ```bash
 # Mac または Pi5 操作端末
-ssh denkon5sd02@100.106.158.2
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # Tailscale
-tailscale ping -c 2 100.105.224.86
+tailscale ping -c 2 <raspberrypi3 の Tailscale IP>
 tailscale status | grep raspberrypi-2
 
 # サーバ側 JPEG（Pi3 キー）
@@ -74,11 +74,11 @@ sudo tailscale up --advertise-tags=tag:signage --reset
 ブラウザで表示された URL を承認後:
 
 ```bash
-tailscale ping -c 2 100.106.158.2
+tailscale ping -c 2 <Pi5 の Tailscale IP>
 
 curl -k -s -o /tmp/t.jpg -w "HTTP %{http_code}\n" \
   -H "x-client-key: $PI3_SIGNAGE_CLIENT_KEY" \
-  "https://100.106.158.2/api/signage/current-image"
+  "https://<Pi5 の Tailscale IP>/api/signage/current-image"
 
 sudo /usr/local/bin/signage-update.sh
 sudo systemctl restart signage-lite.service
@@ -94,7 +94,7 @@ ls -lh /run/signage/current.jpg
 ノート PC が **`192.168.128.x`** にいる場合:
 
 ```bash
-ssh signageras3@192.168.128.152
+ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の LAN IP>
 # 以降は 3.2 と同じ
 ```
 
@@ -105,8 +105,8 @@ ssh signageras3@192.168.128.152
 SSH が通る場合:
 
 ```bash
-ssh denkon5sd02@100.106.158.2
-ssh signageras3@100.105.224.86
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
+ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP>
 
 sudo /usr/local/bin/signage-update.sh
 sudo systemctl restart signage-lite.service

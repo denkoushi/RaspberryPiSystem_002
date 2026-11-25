@@ -234,7 +234,7 @@ sudo mkdir -p /opt/RaspberryPiSystem_002/certs
 
 # 既存のPi5から証明書ファイルをコピー（または新規生成）
 # 既存のPi5から:
-# scp denkon5sd02@100.106.158.2:/opt/RaspberryPiSystem_002/certs/* /opt/RaspberryPiSystem_002/certs/
+# scp <Pi5 のユーザー名>@<Pi5 の Tailscale IP>:/opt/RaspberryPiSystem_002/certs/* /opt/RaspberryPiSystem_002/certs/
 
 # または新規生成（上記の「自己署名証明書の生成」セクションを参照）
 ```
@@ -345,8 +345,8 @@ grep -q "\.env$" .gitignore && echo "OK" || echo "WARNING: .env not in .gitignor
    ```bash
    # 既存のPi5からコピー
    # 注意: パスワードなどの機密情報が含まれるため、安全な方法でコピーすること
-   scp denkon5sd02@100.106.158.2:/opt/RaspberryPiSystem_002/apps/api/.env /opt/RaspberryPiSystem_002/apps/api/.env
-   scp denkon5sd02@100.106.158.2:/opt/RaspberryPiSystem_002/infrastructure/docker/.env /opt/RaspberryPiSystem_002/infrastructure/docker/.env
+   scp <Pi5 のユーザー名>@<Pi5 の Tailscale IP>:/opt/RaspberryPiSystem_002/apps/api/.env /opt/RaspberryPiSystem_002/apps/api/.env
+   scp <Pi5 のユーザー名>@<Pi5 の Tailscale IP>:/opt/RaspberryPiSystem_002/infrastructure/docker/.env /opt/RaspberryPiSystem_002/infrastructure/docker/.env
    
    # ファイルのパーミッションを設定
    chmod 600 /opt/RaspberryPiSystem_002/apps/api/.env
@@ -356,7 +356,7 @@ grep -q "\.env$" .gitignore && echo "OK" || echo "WARNING: .env not in .gitignor
 2. **証明書ファイル**（`certs/`）
    ```bash
    # 既存のPi5からコピー
-   scp -r denkon5sd02@100.106.158.2:/opt/RaspberryPiSystem_002/certs /opt/RaspberryPiSystem_002/
+   scp -r <Pi5 のユーザー名>@<Pi5 の Tailscale IP>:/opt/RaspberryPiSystem_002/certs /opt/RaspberryPiSystem_002/
    
    # ファイルのパーミッションを設定
    sudo chmod 644 /opt/RaspberryPiSystem_002/certs/cert.pem
@@ -369,7 +369,7 @@ grep -q "\.env$" .gitignore && echo "OK" || echo "WARNING: .env not in .gitignor
    mkdir -p /opt/backups
    
    # 既存のPi5から最新のバックアップをコピー
-   scp denkon5sd02@100.106.158.2:/opt/backups/db_backup_*.sql.gz /opt/backups/
+   scp <Pi5 のユーザー名>@<Pi5 の Tailscale IP>:/opt/backups/db_backup_*.sql.gz /opt/backups/
    ```
 
 ## 関連ドキュメント

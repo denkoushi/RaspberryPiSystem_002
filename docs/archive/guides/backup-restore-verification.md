@@ -15,7 +15,7 @@
 
 - Dropbox OAuth認証が完了し、正しい`refreshToken`が設定されていること
 - Dropbox上にバックアップファイルが存在すること
-- 管理コンソールにアクセスできること（`https://100.106.158.2/admin`）
+- 管理コンソールにアクセスできること（`https://<Pi5 の Tailscale IP>/admin`）
 
 ## 検証項目
 
@@ -137,12 +137,12 @@
 
 ```bash
 # 1. ログインしてトークンを取得
-TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
+TOKEN=$(curl -s -k -X POST https://<Pi5 の Tailscale IP>/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. DropboxからCSVバックアップをリストア
-curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
+curl -X POST https://<Pi5 の Tailscale IP>/api/backup/restore/from-dropbox \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -156,12 +156,12 @@ curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
 
 ```bash
 # 1. ログインしてトークンを取得
-TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
+TOKEN=$(curl -s -k -X POST https://<Pi5 の Tailscale IP>/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. Dropboxからデータベースバックアップをリストア
-curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
+curl -X POST https://<Pi5 の Tailscale IP>/api/backup/restore/from-dropbox \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{

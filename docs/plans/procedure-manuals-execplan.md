@@ -586,7 +586,7 @@ PR は 2 本: (a) エディタの全高レイアウト + 工房入口の暗証�
 
 ## Concrete Steps (Phase 1)
 
-作業は worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--procedure-manuals-phase1`(branch `feat/procedure-manuals-phase1`)で行う。
+作業は worktree `~/RaspberryPiSystem_002-worktrees/feat--procedure-manuals-phase1`(branch `feat/procedure-manuals-phase1`)で行う。
 
 1. `apps/api/prisma/schema.prisma` に `ProcedureManualProcess` と `ProcedureManualAssignment` を追加し、`AssemblyProcedureDocument` と `KioskDocument` に逆参照を足す。`apps/api/prisma/migrations/20261005120000_add_procedure_manual_assignments/migration.sql` を expand-only で書き、工程の初期行を `INSERT ... ON CONFLICT DO NOTHING` で入れる。
 2. `apps/api/src/services/assembly/procedure-manual.service.ts`(新規)に、工程一覧、機種一覧、割り当て一覧、公開版解決、割り当て置換を実装する。公開版解決は `AssemblyProcedureDocumentRevision` を `revisionRootId` で引き、無ければ文書自身を対象にする。
@@ -600,7 +600,7 @@ PR は 2 本: (a) エディタの全高レイアウト + 工房入口の暗証�
 
 ## Concrete Steps (Phase 2a)
 
-既存タスクの worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--procedure-manuals-phase2a-materials` でローカル実装と検証だけを行う。Git の mutation と infrastructure 変更は今回の依頼外である。依存関係は `pnpm install --offline --frozen-lockfile`、ワークスペースの shared-types / shelf-layout-core / part-search-core / kiosk-sop-core の build、`apps/api` の `pnpm exec prisma generate` で準備した。Prisma の通常生成はユーザーキャッシュの utime が EPERM になったため、worktree内の既存 engine バイナリを `PRISMA_QUERY_ENGINE_LIBRARY` / `PRISMA_SCHEMA_ENGINE_BINARY` で指定して成功した。
+既存タスクの worktree `~/RaspberryPiSystem_002-worktrees/feat--procedure-manuals-phase2a-materials` でローカル実装と検証だけを行う。Git の mutation と infrastructure 変更は今回の依頼外である。依存関係は `pnpm install --offline --frozen-lockfile`、ワークスペースの shared-types / shelf-layout-core / part-search-core / kiosk-sop-core の build、`apps/api` の `pnpm exec prisma generate` で準備した。Prisma の通常生成はユーザーキャッシュの utime が EPERM になったため、worktree内の既存 engine バイナリを `PRISMA_QUERY_ENGINE_LIBRARY` / `PRISMA_SCHEMA_ENGINE_BINARY` で指定して成功した。
 
 指定検証は次のとおり。
 
@@ -613,7 +613,7 @@ API は4ファイル80件、Webは4ファイル13件の成功を確認した。�
 
 ## Concrete Steps and Validation (Phase 2b)
 
-既存タスクの worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--procedure-manuals-phase2b-placement` でローカル実装だけを行った。Prisma スキーマ・migration・共有 overlay 型・Gmail 取込・公開・NFC・infrastructure は変更していない。白紙作成/追加/素材配置は既存の revision route module、unplace/GC は素材 route module に追加した。ページ追加と配置は既存編集パスワードも検証する。
+既存タスクの worktree `~/RaspberryPiSystem_002-worktrees/feat--procedure-manuals-phase2b-placement` でローカル実装だけを行った。Prisma スキーマ・migration・共有 overlay 型・Gmail 取込・公開・NFC・infrastructure は変更していない。白紙作成/追加/素材配置は既存の revision route module、unplace/GC は素材 route module に追加した。ページ追加と配置は既存編集パスワードも検証する。
 
 指定検証を実行した。
 

@@ -212,7 +212,7 @@ M6 PR → 第三者レビュー(Fable。本番データに影響するため)→
 
 ## Concrete Steps
 
-作業フォルダ: `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--keep-all-manufacturing-orders`
+作業フォルダ: `~/RaspberryPiSystem_002-worktrees/feat--keep-all-manufacturing-orders`
 
     pnpm --filter @raspi-system/api test -- row-resolver csv-dashboard-ingestor production-schedule-cleanup sessaku-pieces
     pnpm --filter @raspi-system/slip-match-core test

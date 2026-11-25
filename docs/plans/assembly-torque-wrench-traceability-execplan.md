@@ -514,7 +514,7 @@ Run focused tests after each milestone and the full affected suites at the end. 
 
 ## Concrete Steps
 
-Run all repository commands from `/Users/tsudatakashi/RaspberryPiSystem_002`. The branch has already been created from fetched `origin/main` as described in Progress.
+Run all repository commands from `~/RaspberryPiSystem_002`. The branch has already been created from fetched `origin/main` as described in Progress.
 
 For the preview, start a local server bound to loopback:
 

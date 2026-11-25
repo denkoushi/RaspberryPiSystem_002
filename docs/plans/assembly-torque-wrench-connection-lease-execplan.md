@@ -203,11 +203,11 @@ Finally, add the two pilot host variables, update deployment safety contracts an
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002`. Preserve all pre-existing uncommitted Assembly-01 provisioning changes. Use `apply_patch` for tracked edits.
+Work from `~/RaspberryPiSystem_002`. Preserve all pre-existing uncommitted Assembly-01 provisioning changes. Use `apply_patch` for tracked edits.
 
 After each subsystem, run its focused tests. At the end run:
 
-    cd /Users/tsudatakashi/RaspberryPiSystem_002
+    cd ~/RaspberryPiSystem_002
     pnpm --filter @raspi-system/api test
     pnpm --filter @raspi-system/web test
     pnpm --filter @raspi-system/api build

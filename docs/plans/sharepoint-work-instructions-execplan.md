@@ -53,7 +53,7 @@ No commit, push, PR, merge, production migration, real Gmail mutation or deploym
 
 ## Context and Orientation
 
-The repository is `/Users/tsudatakashi/RaspberryPiSystem_002`. The implementation worktree is `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--sharepoint-work-instructions`. All subsequent commands run in that worktree unless stated otherwise. Main and other worktrees must not be modified.
+The repository is `~/RaspberryPiSystem_002`. The implementation worktree is `~/RaspberryPiSystem_002-worktrees/feat--sharepoint-work-instructions`. All subsequent commands run in that worktree unless stated otherwise. Main and other worktrees must not be modified.
 
 `apps/api/prisma/schema.prisma` defines persistence. `apps/api/src/services/work-instructions/` contains the new independent domain and adapters. `apps/api/src/routes/work-instructions/` exposes HTTP access. Gmail connection comes from `services/gmail/gmail-api-client.factory.ts`; durable bytes use `services/file-storage/durable-file-store.port.ts`. Scheduler wiring belongs in `bootstrap/start-post-listen-schedulers.ts` under the existing leader lifecycle. Configuration remains in the existing backup configuration system, with work-instruction ingestion disabled by default.
 

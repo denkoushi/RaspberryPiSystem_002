@@ -382,7 +382,7 @@ DB にも Gmail にも触らない純粋な関数として、xlsx のバイト�
 
 ## Concrete Steps
 
-作業ディレクトリは `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--d-schedule-excel-due-import`。
+作業ディレクトリは `~/RaspberryPiSystem_002-worktrees/feat--d-schedule-excel-due-import`。
 
 マイルストーン 1 のテストは次で走らせる。
 

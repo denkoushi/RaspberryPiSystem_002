@@ -9,14 +9,14 @@
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **管理コンソール**: `https://100.106.158.2/admin`
+- **管理コンソール**: `https://<Pi5 の Tailscale IP>/admin`
 
 ## 検証1: CSVデータのリストア（Dropbox経由）
 
 ### ステップ1: バックアップ履歴の確認
 
 1. **管理コンソールにログイン**
-   - `https://100.106.158.2/admin` にアクセス
+   - `https://<Pi5 の Tailscale IP>/admin` にアクセス
    - ユーザー名: `admin`
    - パスワード: `<password>`
 
@@ -38,7 +38,7 @@ SSH経由でRaspberry Piに接続して、現在のデータベースの状態�
 
 ```bash
 # SSH接続
-ssh denkon5sd02@100.106.158.2
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # データベースの現在の状態を確認
 docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c "SELECT COUNT(*) FROM \"Employee\";"
@@ -143,12 +143,12 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 ```bash
 # 1. ログインしてトークンを取得
-TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
+TOKEN=$(curl -s -k -X POST https://<Pi5 の Tailscale IP>/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. DropboxからCSVバックアップをリストア
-curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
+curl -X POST https://<Pi5 の Tailscale IP>/api/backup/restore/from-dropbox \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
@@ -162,12 +162,12 @@ curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
 
 ```bash
 # 1. ログインしてトークンを取得
-TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
+TOKEN=$(curl -s -k -X POST https://<Pi5 の Tailscale IP>/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. Dropboxからデータベースバックアップをリストア
-curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
+curl -X POST https://<Pi5 の Tailscale IP>/api/backup/restore/from-dropbox \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{

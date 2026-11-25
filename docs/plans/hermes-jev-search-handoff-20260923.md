@@ -115,7 +115,7 @@ this handoff.
   from this workstream.
 
 Private response files are intentionally **outside Git** at
-`/Users/tsudatakashi/Documents/Codex/2026-09-23/hermes-or-diagnosis/private-evidence/`:
+`~/Documents/Codex/2026-09-23/hermes-or-diagnosis/private-evidence/`:
 `sequence-run3-01.json` through `sequence-run3-08.json` and
 `pre-validation-store.json`. Their directory/file modes were `0700`/`0600`.
 They include business text; never commit, paste into a PR/CI log, or publish

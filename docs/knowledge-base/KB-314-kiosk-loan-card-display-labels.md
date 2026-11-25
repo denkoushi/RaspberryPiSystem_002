@@ -16,9 +16,9 @@
 
 | 確認 | 方法 | 結果 |
 |------|------|------|
-| API ヘルス | `curl -sk https://100.106.158.2/api/system/health` | `status: ok`（メモリ使用率 WARN 表示は既存挙動） |
-| サイネージ loans JSON | `curl -sk https://100.106.158.2/api/signage/content` | 写真貸出ツールの `name` が **`撮影mode`**、`clientLocation` が **値のみ**（例: `第2工場 - kensakuMain`） |
-| Pi3 サイネージ | Pi5 経由 `ssh signageras3@<Pi3> 'systemctl is-active signage-lite.service && ls -lh /run/signage/current.jpg'` | `active`、画像更新時刻確認済み |
+| API ヘルス | `curl -sk https://<Pi5 の Tailscale IP>/api/system/health` | `status: ok`（メモリ使用率 WARN 表示は既存挙動） |
+| サイネージ loans JSON | `curl -sk https://<Pi5 の Tailscale IP>/api/signage/content` | 写真貸出ツールの `name` が **`撮影mode`**、`clientLocation` が **値のみ**（例: `第2工場 - kensakuMain`） |
+| Pi3 サイネージ | Pi5 経由 `ssh <raspberrypi3 のユーザー名>@<Pi3> 'systemctl is-active signage-lite.service && ls -lh /run/signage/current.jpg'` | `active`、画像更新時刻確認済み |
 
 **デプロイ実績**（[deployment.md](../guides/deployment.md) 準拠・対象限定・順次）:
 

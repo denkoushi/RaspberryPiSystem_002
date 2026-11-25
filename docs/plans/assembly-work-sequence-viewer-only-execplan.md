@@ -85,7 +85,7 @@ PR #1098で組立作業画面の旧Canvas直表示経路を撤去し、APIの`mo
 
 ## Concrete Steps
 
-作業ディレクトリはリポジトリルート `/Users/tsudatakashi/RaspberryPiSystem_002` とする。Codex同梱Node 24をPATH先頭に置き、対象Webテスト、Web全テスト、Web lint/build、対象Playwrightを実行する。
+作業ディレクトリはリポジトリルート `~/RaspberryPiSystem_002` とする。Codex同梱Node 24をPATH先頭に置き、対象Webテスト、Web全テスト、Web lint/build、対象Playwrightを実行する。
 
 API統合テストは既存DBを使わない。固有名の `pgvector/pgvector:pg15` container、volume、networkと動的localhost portを作り、cleanup trapを登録して全migrationを適用する。そのDBに対して組立API統合テストを実行し、終了後はlabelで残存0件を確認する。DBスキーマとクエリを変更しないため、migration validator、制約SQL、EXPLAINは実行しない。
 

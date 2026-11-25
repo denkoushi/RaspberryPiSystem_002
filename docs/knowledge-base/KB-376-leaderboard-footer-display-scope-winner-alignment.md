@@ -52,14 +52,14 @@ update-frequency: medium
 - **ブランチ**: 先行反映 **`feature/leaderboard-footer-winner-rearchitecture`**。**`main` マージ**: **`1dc2aedd`**（merge:「KB-376 leaderboard footer winner alignment」）·以降の運用正本は **`origin/main` HEAD**（`./scripts/update-all-clients.sh main … --limit raspberrypi5`）。
 - **代表コミット（実装 tip）**: **`c2e7438a`**（`fix(kiosk): align leaderboard footer winners with displayed rows`）。**ドキュメント同梱**: **`0ebe669b`**。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260510-091316-7496`**（`raspberrypi5`·**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 615s**·サマリ **`Git: changed`**·**Docker compose 再起動 `changed`**·**`prisma migrate deploy` / `status` `ok`**）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh`（Tailscale・Pi5 `100.106.158.2`）→ **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**）。**`deploy-status`（Pi4×4）**: すべて **PASS**。**`auto-tuning scheduler` ログ**: **件数=1**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh`（Tailscale・Pi5 `<Pi5 の Tailscale IP>`）→ **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**）。**`deploy-status`（Pi4×4）**: すべて **PASS**。**`auto-tuning scheduler` ログ**: **件数=1**。
 - **ローカル開発・回帰の知見**:
   - Vitest 統合で Postgres 未起動と分かった場合は、リポジトリの **`scripts/test/start-postgres.sh`** で一時コンテナ起動→**`pnpm prisma migrate deploy`** 後に再実行。
   - **`>900` 件境界**の回帰は、**`leaderboard-decorations` を単体で叩く**より **`buildLeaderboardFooterChipsByPartKeyForScheduleRows` にダミー UUID を 900 件載せた上で、末尾の表示行 id を `preferredDisplayRowIds` で渡す**形が安定（materialization 経路との結合度を下げる）。
 - **トラブルシュート（本番）**:
   - **フッタがまだ一覧とズレる** → Pi5 **`api` イメージ**が **`c2e7438a` 以降（またはマージ後 `main`）**か、Detach サマリの **`Git: changed`** と **Docker 再起動**有無を確認。
   - **`verify-phase12-real.sh` で `deploy-status` のみ FAIL** → [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・連続デプロイ直後は **再実行**。
-- **運用コマンド（記録どおり）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/leaderboard-footer-winner-rearchitecture infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**マージ後は第2引数を `main`**）。
+- **運用コマンド（記録どおり）**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feature/leaderboard-footer-winner-rearchitecture infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**マージ後は第2引数を `main`**）。
 
 ## References
 

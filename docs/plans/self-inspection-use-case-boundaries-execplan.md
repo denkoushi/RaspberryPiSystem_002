@@ -119,7 +119,7 @@ Add ESLint overrides for the facade and new use-case directory. The facade must 
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`. Prefix commands with `PATH=/opt/homebrew/opt/node@20/bin:$PATH` so `node --version` reports at least 20.9. The isolated database receives a unique name and random host port; its `DATABASE_URL` is supplied only to migration and test processes. Never point these commands at a production or existing development URL.
+All commands run from `~/RaspberryPiSystem_002`. Prefix commands with `PATH=/opt/homebrew/opt/node@20/bin:$PATH` so `node --version` reports at least 20.9. The isolated database receives a unique name and random host port; its `DATABASE_URL` is supplied only to migration and test processes. Never point these commands at a production or existing development URL.
 
 After each extraction, run the closest direct tests with Vitest. At the read/start milestone and every later milestone, run `pnpm --filter @raspi-system/api test -- part-measurement` or the repository's equivalent targeted files. At the end run:
 

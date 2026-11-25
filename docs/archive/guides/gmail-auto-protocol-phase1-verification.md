@@ -9,7 +9,7 @@
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **IPアドレス**: `100.106.158.2`（Tailscale経由）
+- **IPアドレス**: `<Pi5 の Tailscale IP>`（Tailscale経由）
 - **検証対象**: Gmail自動運用プロトコル フェーズ1
 
 ## 前提条件
@@ -28,7 +28,7 @@
 **検証手順**:
 ```bash
 # Raspberry Pi 5にSSH接続
-ssh pi@100.106.158.2
+ssh pi@<Pi5 の Tailscale IP>
 
 # APIヘルスチェック
 curl http://localhost:3000/api/system/health
@@ -51,7 +51,7 @@ cat /opt/RaspberryPiSystem_002/config/backup.json | jq '.csvImports[] | select(.
 ```
 
 または、管理画面から確認:
-- `https://100.106.158.2/admin/import`
+- `https://<Pi5 の Tailscale IP>/admin/import`
 
 **確認ポイント**:
 - [x] Gmailプロバイダーの`csvDashboards`スケジュールが存在する（3件確認）
@@ -251,7 +251,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3000/api/imports/histor
 ```
 
 または、管理画面から確認:
-- `https://100.106.158.2/admin/import-history`
+- `https://<Pi5 の Tailscale IP>/admin/import-history`
 
 **確認ポイント**:
 - [ ] インポート履歴に`COMPLETED`状態のレコードが作成される

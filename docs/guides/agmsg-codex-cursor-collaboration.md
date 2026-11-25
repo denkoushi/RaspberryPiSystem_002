@@ -16,7 +16,7 @@ agmsg is a local SQLite-backed message channel. It is not the project source of 
 
 ## Current Local Setup
 
-- Repository path: `/Users/tsudatakashi/RaspberryPiSystem_002`
+- Repository path: `~/RaspberryPiSystem_002`
 - agmsg team: `codex-cursor`
 - Codex identity: `codex-lead`
 - Cursor identity: `cursor-impl`
@@ -82,7 +82,7 @@ Cursor reads tasks:
 
 ## Cursor GUI And CLI Notes
 
-Cursor must open `/Users/tsudatakashi/RaspberryPiSystem_002` when it needs to apply repository-local Cursor rules such as `.cursor/rules/agmsg.mdc`.
+Cursor must open `~/RaspberryPiSystem_002` when it needs to apply repository-local Cursor rules such as `.cursor/rules/agmsg.mdc`.
 
 The Cursor GUI can remain open. Opening the correct folder is needed before Cursor is expected to understand repo-local rules, file paths, and branch context. It is not required before Codex can inspect or edit files directly.
 

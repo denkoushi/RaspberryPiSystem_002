@@ -129,7 +129,7 @@ All planned features were successfully implemented and verified:
 - ✅ `.gitignore`の全階層マッチ問題の修正完了（`/alerts/`と`/config/`に変更）
 
 **Issues Encountered During Verification**:
-- **Git permissions error on Pi5**: `.git` directory ownership issue prevented `git pull`. Fixed with `chown -R denkon5sd02:denkon5sd02 .git`.
+- **Git permissions error on Pi5**: `.git` directory ownership issue prevented `git pull`. Fixed with `chown -R <Pi5 のユーザー名>:<Pi5 のユーザー名> .git`.
 - **Resource guard disk usage check locale issue**: `df` command output parsing failed with Japanese locale. Fixed by using `tail -n +2` to skip header line in `infrastructure/ansible/tasks/resource-guard.yml`.
 - **ESLint configuration issue**: After excluding test files from `tsconfig.json`, ESLint could not parse test files. Fixed by creating `apps/web/tsconfig.test.json` and updating `apps/web/.eslintrc.cjs`.
 

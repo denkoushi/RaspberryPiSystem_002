@@ -96,7 +96,7 @@ update-frequency: high
    
    例:
    ```bash
-   sudo ./scripts/client/setup-signage-lite.sh https://192.168.128.131 abc123def456...
+   sudo ./scripts/client/setup-signage-lite.sh https://<Pi5 の LAN IP（自宅）> abc123def456...
    ```
 
 3. **動作確認**:

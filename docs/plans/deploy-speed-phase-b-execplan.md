@@ -154,7 +154,7 @@ Add a route-contract stage for artifact sealing/transfer/local execution with pr
 
 Work only in the isolated worktree:
 
-    cd /Users/tsudatakashi/Documents/Codex/2026-07-21/deploy-phase-b-local-execution/work/RaspberryPiSystem_002-phase-b
+    cd ~/Documents/Codex/2026-07-21/deploy-phase-b-local-execution/work/RaspberryPiSystem_002-phase-b
     git status --short --branch
 
 Run the focused Phase B tests while implementing:

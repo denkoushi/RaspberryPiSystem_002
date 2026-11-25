@@ -106,7 +106,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **対象ホスト**: **`raspberrypi5` のみ**（Pi3/Pi4 個別デプロイ不要）。
 - **Detach Run ID**（`ansible-update-`）: **`20260428-203203-20465`**（**`PLAY RECAP` `failed=0` / `unreachable=0`**・**`ok=134` `changed=7`**・**`Summary success check: true`**）。
 - **代表コミット**: **`3e21b007`**（ブランチ **`feat/photo-label-firstpass-precision-tuning`**）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → 1 回目は **`エラー: Pi5に到達できません`**（Tailscale 経由 **ICMP の一時失敗**）→ **再試行で PASS 43 / WARN 0 / FAIL 0**（所要 **約 253s**）。**対処**: `ping -c 1 -W 5 100.106.158.2` または `ssh` で到達確認後に再実行（スクリプトは **ping 最大 5 回**・[deployment.md 冒頭](../guides/deployment.md) 補足）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → 1 回目は **`エラー: Pi5に到達できません`**（Tailscale 経由 **ICMP の一時失敗**）→ **再試行で PASS 43 / WARN 0 / FAIL 0**（所要 **約 253s**）。**対処**: `ping -c 1 -W 5 <Pi5 の Tailscale IP>` または `ssh` で到達確認後に再実行（スクリプトは **ping 最大 5 回**・[deployment.md 冒頭](../guides/deployment.md) 補足）。
 - **仕様の要点**: strict 時は **追加ユーザ規約**＋**低 `temperature` / 短め `maxTokens`（既定 24）**＋**厳格 `normalizePhotoToolDisplayName`**。2 回目（assist 経路）は **`INFERENCE_PHOTO_LABEL_VISION_*`** のまま。
 
 ### 管理 API（ADMIN / MANAGER）
@@ -140,7 +140,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 ### 実機確認（Mac・Tailscale・2026-03-29）
 
-- **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（実行時間の目安: 約 47s。Pi5 `100.106.158.2`、Network mode `tailscale`）
+- **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（実行時間の目安: 約 47s。Pi5 `<Pi5 の Tailscale IP>`、Network mode `tailscale`）
 - **CONFIRMED**: 未認証 `GET https://<Pi5>/api/tools/loans/00000000-0000-4000-8000-000000000001/photo-similar-candidates` → **401**（Loan の有無に先立ち認可で拒否される経路であることのスモーク）
 - **注**: 候補配列の中身は `PHOTO_TOOL_EMBEDDING_ENABLED`・埋め込み HTTP・GOOD ギャラリー件数に依存。本番で空配列でも API 契約・認可が正しければフェーズ12の FAIL にはならない
 
@@ -165,7 +165,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 ### 実機検証（埋め込み配線ブランチ・Pi5 のみ・2026-03-29）
 
 - **CONFIRMED**: 本番反映は **Pi5 のみ**（[deployment.md](../guides/deployment.md) の **API/DB のみ**パターン）。`./scripts/update-all-clients.sh feat/photo-tool-embedding-rollout-shadow-eval infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（事前に `export RASPI_SERVER_HOST=...`）。Ansible の Pi4/Pi3 play は **`--limit` により対象外**（`skipping: no hosts matched`）。
-- **CONFIRMED**: マージ前後の回帰として Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 45s・Pi5 `100.106.158.2`）。
+- **CONFIRMED**: マージ前後の回帰として Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 45s・Pi5 `<Pi5 の Tailscale IP>`）。
 - **注**: `PHOTO_TOOL_EMBEDDING_ENABLED` は vault 未設定時 **既定 false** のまま。候補 API の中身・ギャラリー件数は **有効化・バックフィル後**に初めて意味を持つ（401 と Phase12 回帰は従来どおり確認可能）。
 - **CONFIRMED**: Ubuntu LocalLLM ノードの nginx `/healthz` は `ok`、`/embed` は **`status=200 dim=512 modelId=clip-ViT-B-32`** を返した。
 - **CONFIRMED**: Pi5 API の `PHOTO_TOOL_EMBEDDING_ENABLED=True`、`PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=True`、既存 GOOD のバックフィルは **42 件成功 / 0 件失敗**、`photo_tool_similarity_gallery` は **42 行**。
@@ -216,13 +216,13 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **デプロイ**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・`RASPI_SERVER_HOST`・**`--detach --follow`**。対象は **Pi5 → Pi4 キオスク 4 台を `--limit` 1 台ずつ順番**（`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。**Pi3（サイネージ）は今回の写真レビュー UI / 本変更の対象外のためデプロイしない**（前回答の対象デバイスどおり）。
 - **知見**: キオスク PLAY は `server` を含まないため `Deploy ... to Raspberry Pi server` が **`skipping: no hosts matched`** になるのは正常。各 Pi4 で `PLAY RECAP` **`failed=0`** を確認。
 - **トラブルシュート**: マイグレーション未適用で API が Enum エラーになる場合は Pi5 で `pnpm prisma migrate deploy`（運用標準は Ansible 経由。切り分けは [deployment.md](../guides/deployment.md) の DB 整合性）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Mac / Tailscale・Pi5 `100.106.158.2`・約 26s）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Mac / Tailscale・Pi5 `<Pi5 の Tailscale IP>`・約 26s）。
 
 #### 実機確認（アクティブ補助ゲート・Pi5 のみ・2026-04-02）
 
 - **CONFIRMED**: ブランチ `feat/photo-tool-label-assist-active-gate`。本番反映は **Pi5 のみ**（[deployment.md](../guides/deployment.md) の `update-all-clients.sh` + **`--limit raspberrypi5`** + **`--detach --follow`**）。Pi4/Pi3 は **`no hosts matched`**。対象 PLAY は **`failed=0`**。
 - **CONFIRMED**: `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*` は **既定 false**。有効化しない限り、本番の表示・1 回目 VLM 保存は従来と整合（アクティブ保存は **オプトイン**）。
-- **CONFIRMED**: Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（約 51s・Pi5 `100.106.158.2`）。未認証 `photo-similar-candidates`・`photo-gallery-seed` 等の既存スモークを含む。
+- **CONFIRMED**: Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（約 51s・Pi5 `<Pi5 の Tailscale IP>`）。未認証 `photo-similar-candidates`・`photo-gallery-seed` 等の既存スモークを含む。
 
 #### Ansible 配線（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*`・vault→inventory→docker `.env`・2026-04-07）
 
@@ -230,7 +230,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **根本原因（CONFIRMED）**: `infrastructure/ansible/templates/docker.env.j2` は既に `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*` を出力している一方、**`infrastructure/ansible/inventory.yml` の Pi5 ホスト変数に `photo_tool_label_assist_active_*` が無かった**。shadow 系と同型の **`vault_* | default(...)` 行が欠落**していた。
 - **修正**: `inventory.yml` に `photo_tool_label_assist_active_enabled` / `photo_tool_label_assist_active_min_gallery_rows` を追加（`vault_photo_tool_label_assist_active_*`・既定は従来どおり OFF）。`host_vars/raspberrypi5/vault.yml.example` にキー例をコメント追記。
 - **デプロイ**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**・**`--limit raspberrypi5`**・**`RASPI_SERVER_HOST`**・**`--detach --follow`**。ブランチ例: `feat/ansible-photo-tool-assist-active-env`（`main` 取込後は `main`）。
-- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-04-07・Mac / Tailscale・Pi5 `100.106.158.2`）。`PLAY RECAP` **`raspberrypi5` `failed=0`**。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-04-07・Mac / Tailscale・Pi5 `<Pi5 の Tailscale IP>`）。`PLAY RECAP` **`raspberrypi5` `failed=0`**。
 
 #### 本番オペレーション: アクティブ補助の有効化（Pi5・2026-04-09）
 
@@ -339,7 +339,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **本番デプロイ後の回帰（2026-03-30）**: ブランチ `feat/on-demand-llm-runtime-control` を Pi5→Pi4×4 のみ順次反映後、Mac / Tailscale で `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 100s）。**既定 `LOCAL_LLM_RUNTIME_MODE=always_on`** のままなら制御 HTTP は no-op（従来の常駐運用）。
 - **本番有効化の確認（2026-03-30）**: `main` で Pi5 を再デプロイし、Pi5 → Ubuntu の **`/start` / `/stop` がともに HTTP 200** を確認。運用者の実機確認では **ComfyUI は従来手順で起動・生成成功、OOM / GPU メモリ不足なし**。さらに Ubuntu でアイドル時 `docker compose ps` を確認し、**`compose-llama-server-1` が不在**であることを確認した。
 - **トラブルシュート（今回の実測）**:
-  - Pi5 の制御 URL を **`100.107.223.92:39091`** に向けても timeout した。**原因**: tailnet IP `100.107.223.92` は Ubuntu ホストではなく `local-llm-system` の `compose-nginx-1` 側。**対処**: 制御 URL を **`http://100.107.223.92:38081/start|stop`** に統一。
+  - Pi5 の制御 URL を **`<Ubuntu LocalLLM の Tailscale IP>:39091`** に向けても timeout した。**原因**: tailnet IP `<Ubuntu LocalLLM の Tailscale IP>` は Ubuntu ホストではなく `local-llm-system` の `compose-nginx-1` 側。**対処**: 制御 URL を **`http://<Ubuntu LocalLLM の Tailscale IP>:38081/start|stop`** に統一。
   - `compose-nginx-1` が **`unknown "llm_runtime_control_token" variable`** で再起動ループした。**原因**: `envsubst` の対象に `LLM_RUNTIME_CONTROL_TOKEN` を足していなかった。**対処**: `compose.yaml` の nginx `command` を修正。
   - `/start` が **502** になった。**原因**: `network_mode: service:tailscale` の nginx から `127.0.0.1:39090` を向くとコンテナ自身を見に行く。**対処**: `control-server.mjs` を **`0.0.0.0:39090`** で待たせ、nginx は Docker bridge gateway（実測 `172.19.0.1`）へ `proxy_pass` する。
 

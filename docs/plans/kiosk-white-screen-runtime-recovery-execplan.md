@@ -93,7 +93,7 @@ Add focused Vitest coverage for every policy branch and Error Boundary behavior.
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 The branch was created with:
 

@@ -2,7 +2,7 @@
 
 - Status: active
 - Date: 2026-10-27
-- Scope: DGX Spark 2 台（Spark 1 = gx10-5ef3 / 192.168.100.10、Spark 2 = gx10-f75b / 192.168.100.11）で動かした DeepSeek V4.1-Flash-1017。業務チャット（キオスク Chat）116 件の答え直しと、DeepSeek Harness（dsh）による過去 PR 3 件の解き直し。Pi と本番の業務 LLM（GLM）の設定は変えていない
+- Scope: DGX Spark 2 台（Spark 1 = gx10-5ef3 / <DGX Spark 1 の直結 IP>、Spark 2 = gx10-f75b / <DGX Spark 2 の直結 IP>）で動かした DeepSeek V4.1-Flash-1017。業務チャット（キオスク Chat）116 件の答え直しと、DeepSeek Harness（dsh）による過去 PR 3 件の解き直し。Pi と本番の業務 LLM（GLM）の設定は変えていない
 
 ハーネスやモデルが良くなったときに同じ条件で測り直せるよう、設定、手順、結果、注意点を省略せずに残す。チャットの数字の要約は [`kiosk-operation-guide-accuracy-log.md`](../plans/kiosk-operation-guide-accuracy-log.md) の 2026-10-27 の 2 節にもある。
 
@@ -32,7 +32,7 @@
 | イメージ | `tensorfold-dsv41:exl3-tp2-928adbd0e57d` |
 | モデルの大きさ | 104.96 GiB（rank cache: 95.1 GiB の expert を約 56 秒で読み込み、起動全体で約 76 秒） |
 | 動作中の空き | 各機 約 7.4〜7.5 GiB（memguard の下限 2.5 GiB） |
-| API | `http://192.168.100.11:8888/v1`、モデル名 `DeepSeek-V4.1-Flash-1017`、キーなし（`API_KEY=1` で必須にできる） |
+| API | `http://<DGX Spark 2 の直結 IP>:8888/v1`、モデル名 `DeepSeek-V4.1-Flash-1017`、キーなし（`API_KEY=1` で必須にできる） |
 | 窓 | 1048576 トークン、同時 4 本、drafts（投機デコード）オン、画像オン |
 | サンプリング既定 | temperature 1.0、top_p 0.95、top_k 20（`scripts/config.sh`） |
 | 思考 | チャットテンプレートの既定でオン。リクエストで `chat_template_kwargs: {"enable_thinking": false}` を送ると切れる。`max_tokens` は思考と答えの合計 |
@@ -45,7 +45,7 @@ TEMPERATURE=0.4 ./start.sh     # TOP_P / TOP_K / THINKING / REASONING_EFFORT も
 ./stop.sh
 ```
 
-- Spark 2 へは `ssh dgx-control-spark 'ssh 192.168.100.11 "..."'` で入る（`dgx-control-spark` は Spark 1）。
+- Spark 2 へは `ssh dgx-control-spark 'ssh <DGX Spark 2 の直結 IP> "..."'` で入る（`dgx-control-spark` は Spark 1）。
 - `ABLIT=0`（検閲ありの重み）は、Spark 2 に Hugging Face CLI（`hf`）が無く `prepare.sh` が止まった。作る場合は `pip install -U huggingface_hub` と、変換用の空き容量（Spark 1 は不足）が要る。利用者の判断で作らない。
 - 2 台のメモリをほぼ使い切るため、DeepSeek を動かす間は業務 GLM と画像生成（ComfyUI）を止める必要がある。
 
@@ -53,9 +53,9 @@ TEMPERATURE=0.4 ./start.sh     # TOP_P / TOP_K / THINKING / REASONING_EFFORT も
 
 ```
 # 止める
-ssh -t dgx-control-spark 'sudo systemctl stop dgx-control-business-proxy dgx-control-keep-warm.timer && docker stop dgx-private-comfyui; ssh 192.168.100.11 docker stop dgx-private-comfyui; echo DONE'
+ssh -t dgx-control-spark 'sudo systemctl stop dgx-control-business-proxy dgx-control-keep-warm.timer && docker stop dgx-private-comfyui; ssh <DGX Spark 2 の直結 IP> docker stop dgx-private-comfyui; echo DONE'
 # 戻す（GLM は proxy 経由の要求で自動起動する。約 5 分）
-ssh -t dgx-control-spark 'sudo systemctl start dgx-control-business-proxy dgx-control-keep-warm.timer && docker start dgx-private-comfyui; ssh 192.168.100.11 docker start dgx-private-comfyui; echo DONE'
+ssh -t dgx-control-spark 'sudo systemctl start dgx-control-business-proxy dgx-control-keep-warm.timer && docker start dgx-private-comfyui; ssh <DGX Spark 2 の直結 IP> docker start dgx-private-comfyui; echo DONE'
 ```
 
 - GLM のコンテナ（`system-prod-trtllm` / `-rank1`）が残っている場合は、利用者に `docker stop` してもらう（gateway の stop-force トークンは Claude には許可されていない）。
@@ -79,7 +79,7 @@ ssh -t dgx-control-spark 'sudo systemctl start dgx-control-business-proxy dgx-co
 ```
 cd ~/tools/llm-replay
 python3 -I build.py DeepSeek-V4.1-Flash-1017 --thinking      # 思考なしは --thinking を外す
-ssh -f -N -L 127.0.0.1:18888:192.168.100.11:8888 dgx-control-spark
+ssh -f -N -L 127.0.0.1:18888:<DGX Spark 2 の直結 IP>:8888 dgx-control-spark
 python3 -I run.py http://127.0.0.1:18888/v1 data/run-NAME.jsonl
 python3 -I judgeprep.py data/run-NAME.jsonl LABEL 5
 # in-1..5.json ごとに Claude サブエージェントを 1 つ立て、rubric2.md の指示で out-N.json を書かせる（ファイル以外を読ませない）
@@ -118,7 +118,7 @@ python3 -I tally.py data/judge-LABEL LABEL
 ### 4. DeepSeek Harness（dsh）の設定
 
 - 版: `0.2.1-rc.2`、場所 `~/tools/dsh`（npm でローカルに入れた）。
-- `dsh-local`: 127.0.0.1:18888 → 192.168.100.11:8888 の SSH トンネルを張り、`dsh --profile headless --patch local-dgx.patch.yml` を書き込み範囲を作業フォルダに限って実行する（`DSH_PERMISSION_MODE=workspace-write`、`DSH_HOME=~/tools/dsh/home`）。
+- `dsh-local`: 127.0.0.1:18888 → <DGX Spark 2 の直結 IP>:8888 の SSH トンネルを張り、`dsh --profile headless --patch local-dgx.patch.yml` を書き込み範囲を作業フォルダに限って実行する（`DSH_PERMISSION_MODE=workspace-write`、`DSH_HOME=~/tools/dsh/home`）。
 - `local-dgx.patch.yml` で外部への送信をすべて止めた。
   - `session-log-deepseek` は**既定でオン**で、会話ログを最大 8 MiB まで DeepSeek へ送る。必ず `disabled: true` にする。
   - ほかに止めたもの: `session-telemetry-otel`（`mode: DISABLED`）、`plugin-package-inventory-deepseek`、`remote-access`、`tool-web`、`web-search-deepseek`、`web-deepseek-api`、`llm-deepseek`、`llm-deepseek-account`、`typert-gateway`。

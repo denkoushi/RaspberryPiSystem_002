@@ -111,7 +111,7 @@ Finally, the inspection-drawing production page and development preview remove t
 
 ## Concrete Steps
 
-The branch was created from the latest remote main in `/Users/tsudatakashi/RaspberryPiSystem_002` with the equivalent of:
+The branch was created from the latest remote main in `~/RaspberryPiSystem_002` with the equivalent of:
 
     git fetch origin
     git switch --detach origin/main

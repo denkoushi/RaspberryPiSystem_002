@@ -192,7 +192,7 @@ After KB-391 advisory lock fix, the completion transaction still ran **all defer
 |------|-------|
 | Target host | **`raspberrypi5` only** (Pi4×4 / Pi3 / Zero2W **not required**) |
 | Branch | `fix/gmail-csv-import-reliability` · squash on **`main`**: **`5ec5cee1`** ([PR #452](https://github.com/denkoushi/RaspberryPiSystem_002/pull/452)) |
-| Command | `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` then `./scripts/update-all-clients.sh fix/gmail-csv-import-reliability infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
+| Command | `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"` then `./scripts/update-all-clients.sh fix/gmail-csv-import-reliability infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
 | Detach Run ID | **`20260617-105312-14779`** |
 | PLAY RECAP | `ok=134` `changed=4` `failed=0` / `unreachable=0` |
 | Docker | `Git: changed` · **api + web rebuild** |

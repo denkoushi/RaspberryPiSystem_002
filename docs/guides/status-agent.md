@@ -30,7 +30,7 @@ sudo nano /etc/raspi-status-agent.conf
 
 | 変数 | 意味 |
 | --- | --- |
-| `API_BASE_URL` | 例: `https://100.106.158.2/api`（Caddy経由のHTTPS。ポート8080は外部公開されていない） |
+| `API_BASE_URL` | 例: `https://<Pi5 の Tailscale IP>/api`（Caddy経由のHTTPS。ポート8080は外部公開されていない） |
 | `CLIENT_ID` | クライアントを一意に特定するID |
 | `CLIENT_KEY` | サーバーに登録済みのクライアントキー |
 
@@ -168,7 +168,7 @@ macOS では Linux 専用の `/proc` ファイルシステムが存在しない�
 ```bash
 cat > ~/.status-agent.conf << 'EOF'
 # macOS status-agent configuration
-API_BASE_URL=https://100.106.158.2/api
+API_BASE_URL=https://<Pi5 の Tailscale IP>/api
 CLIENT_ID=mac-kiosk-1
 CLIENT_KEY=<サーバーに登録済みのクライアントキー>
 TLS_SKIP_VERIFY=0

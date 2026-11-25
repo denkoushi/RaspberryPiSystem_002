@@ -75,7 +75,7 @@ Milestone three uses reviewed main artifacts and standard rollout to Pi5. In Saf
 ## Concrete Steps
 
 
-Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-question-prefetch`. Main repository is `/Users/tsudatakashi/RaspberryPiSystem_002`. Lifecycle was started using:
+Work in `~/RaspberryPiSystem_002-worktrees/feat--hermes-question-prefetch`. Main repository is `~/RaspberryPiSystem_002`. Lifecycle was started using:
 
     python3 -m scripts.git_lifecycle.cli audit --json
     python3 -m scripts.git_lifecycle.cli start --branch feat/hermes-question-prefetch

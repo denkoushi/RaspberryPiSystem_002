@@ -166,7 +166,7 @@ After the one change, repeat the identical commands and save results under `tmp/
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002` unless a command explicitly changes directory.
+All commands run from `~/RaspberryPiSystem_002` unless a command explicitly changes directory.
 
 1. Record the starting state and confirm no overlapping work:
 
@@ -181,8 +181,8 @@ All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002` unless a comma
 
        cd apps/api
        DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return \
-       PHOTO_STORAGE_DIR=/Users/tsudatakashi/RaspberryPiSystem_002/tmp/perf-storage \
-       PDF_STORAGE_DIR=/Users/tsudatakashi/RaspberryPiSystem_002/tmp/perf-storage \
+       PHOTO_STORAGE_DIR=~/RaspberryPiSystem_002/tmp/perf-storage \
+       PDF_STORAGE_DIR=~/RaspberryPiSystem_002/tmp/perf-storage \
        pnpm exec tsx ../../scripts/perf/seed-kiosk-perf-data.ts
 
    Expect `leaderboardRowCount` to be 1,200 in `tmp/perf-storage/perf-seed-manifest.json`.

@@ -36,7 +36,7 @@
 
 2. **リストア実行**
    ```bash
-   curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
+   curl -X POST https://<Pi5 の Tailscale IP>/api/backup/restore/from-dropbox \
      -H "Content-Type: application/json" \
      -H "Authorization: Bearer $TOKEN" \
      -d '{
@@ -81,7 +81,7 @@
 
 2. **リストア実行**
    ```bash
-   curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
+   curl -X POST https://<Pi5 の Tailscale IP>/api/backup/restore/from-dropbox \
      -H "Content-Type: application/json" \
      -H "Authorization: Bearer $TOKEN" \
      -d '{
@@ -188,7 +188,7 @@ if (targetKind === 'csv' && targetSource.endsWith('.csv')) {
 
 2. **リストア実行**
    ```bash
-   curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
+   curl -X POST https://<Pi5 の Tailscale IP>/api/backup/restore/from-dropbox \
      -H "Content-Type: application/json" \
      -H "Authorization: Bearer $TOKEN" \
      -d '{
@@ -228,7 +228,7 @@ if (targetKind === 'csv' && targetSource.endsWith('.csv')) {
 
 2. **リストア実行**
    ```bash
-   curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
+   curl -X POST https://<Pi5 の Tailscale IP>/api/backup/restore/from-dropbox \
      -H "Content-Type: application/json" \
      -H "Authorization: Bearer $TOKEN" \
      -d '{

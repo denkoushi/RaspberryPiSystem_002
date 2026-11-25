@@ -250,7 +250,7 @@ task-specific temporary resource before locally committing.
 
 ## Concrete Steps
 
-Run from `/Users/tsudatakashi/RaspberryPiSystem_002` on
+Run from `~/RaspberryPiSystem_002` on
 `fix/kiosk-sop-semantic-target-anchors`.
 
     pnpm --filter @raspi-system/kiosk-sop-core test

@@ -72,7 +72,7 @@ Milestone C (web, 独自の値). Fetch/update hooks for resource-minutes with op
 
 ## Concrete Steps
 
-Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--planning-board-single-resource`. Generate the Prisma client after schema changes with `pnpm --filter @raspi-system/api exec prisma generate`. Build shared types first if the web or api typecheck cannot resolve them: `pnpm --filter @raspi-system/shared-types build`.
+Work in `~/RaspberryPiSystem_002-worktrees/feat--planning-board-single-resource`. Generate the Prisma client after schema changes with `pnpm --filter @raspi-system/api exec prisma generate`. Build shared types first if the web or api typecheck cannot resolve them: `pnpm --filter @raspi-system/shared-types build`.
 
 ## Validation and Acceptance
 

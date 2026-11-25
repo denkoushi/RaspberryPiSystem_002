@@ -773,7 +773,7 @@ update-frequency: high
 
 **事象2（verify-phase12-real.sh）**:
 - `./scripts/deploy/verify-phase12-real.sh` 実行時に「エラー: Pi5に到達できません」で即終了
-- スクリプトは先頭で `ping -c 1 -W 2 100.106.158.2` による到達判定を行う
+- スクリプトは先頭で `ping -c 1 -W 2 <Pi5 の Tailscale IP>` による到達判定を行う
 
 **根本原因**:
 - ICMP（ping）がブロックされる環境（一部ネットワーク・ファイアウォール）では、HTTPS/SSH 経路は正常でも ping が通らない場合がある

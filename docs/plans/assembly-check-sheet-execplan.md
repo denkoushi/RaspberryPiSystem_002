@@ -274,7 +274,7 @@ The uploaded file is stored immediately (sha256 dedup) so `importId` can referen
 
 Tests: build small synthetic workbooks in the test with exceljs (merged C:E group cells, F:R item text with furigana-free strings, an `（　　  N･m）` blank, a `（班長）` item, a conditional sentence, a two-row item) and assert the proposal. Do not commit the customer workbook. Route tests follow `apps/api/src/routes/assembly/__tests__/*.routes.test.ts`.
 
-Acceptance: `pnpm --filter @raspi-system/api test -- check-sheet` passes; running the parser on `/Users/tsudatakashi/Downloads/組立最終検査ﾁｪｯｸｼｰﾄ 産3-A002BBC-1.xlsx` with a throwaway script (not committed) yields 22 groups and 57 items (if the count differs, record why in Surprises; the human-fixable proposal is still acceptable).
+Acceptance: `pnpm --filter @raspi-system/api test -- check-sheet` passes; running the parser on `~/Downloads/組立最終検査ﾁｪｯｸｼｰﾄ 産3-A002BBC-1.xlsx` with a throwaway script (not committed) yields 22 groups and 57 items (if the count differs, record why in Surprises; the human-fixable proposal is still acceptable).
 
 ### Milestone 2: admin import and review screen
 
@@ -314,7 +314,7 @@ Evaluate adding LibreOffice headless to the API Docker image (check `apps/api/Do
 
 ## Concrete Steps
 
-Work in the worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--assembly-check-sheet` on branch `feat/assembly-check-sheet`. Do not commit, push or run git history commands; the orchestrator commits.
+Work in the worktree `~/RaspberryPiSystem_002-worktrees/feat--assembly-check-sheet` on branch `feat/assembly-check-sheet`. Do not commit, push or run git history commands; the orchestrator commits.
 
     pnpm install --frozen-lockfile        (after adding jszip in Milestone 4: pnpm --filter @raspi-system/api add jszip@^3)
     pnpm --filter @raspi-system/api exec prisma migrate dev --create-only --name assembly_check_sheets   (if a local DB is unavailable, write migration.sql by hand following existing migrations and run prisma validate + prisma generate)

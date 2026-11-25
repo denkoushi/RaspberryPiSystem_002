@@ -27,12 +27,12 @@
 - **Pi4（Pi5 hop SSH）**: 次の片側コマンドを **そのまま**実行する（`BASE='ssh …'` のように分割すると **`command not found: ssh`** になり得る）。
 
 ```bash
-ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new <user>@100.106.158.2 \
-  'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new <user>@100.74.144.79 \
+ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new <user>@<Pi5 の Tailscale IP> \
+  'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new <user>@<raspberrypi4 の Tailscale IP> \
   "systemctl is-active kiosk-browser.service status-agent.timer"'
 ```
 
-- 対象 Pi4 例: `<user>@100.74.144.79`、`<user>@100.123.1.113`、`<user>@100.100.229.95`、`<user>@100.101.113.95`。期待値: いずれも **`active` / `active`**。
+- 対象 Pi4 例: `<user>@<raspberrypi4 の Tailscale IP>`、`<user>@<raspi4-robodrill01 の Tailscale IP>`、`<user>@<raspi4-fjv60-80 の Tailscale IP>`、`<user>@<raspi4-kensaku-stonebase01 の Tailscale IP>`。期待値: いずれも **`active` / `active`**。
 
 ## トラブルシューティング
 

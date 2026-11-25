@@ -74,7 +74,7 @@
 - **代表コミット**: **`072054f9`**（機能）· **`3ae93221`**（真っ白画面 fix）
 - **CI（機能）**: run **`26093399804`** **success**（`072054f9`）
 - **対象**: **`raspberrypi5` のみ**（**Web のみ**·API 変更なし·**Pi4×4 は未反映** — 端末キャッシュ効果を Pi4 実機で得るには **Pi4 順次デプロイ + キオスク再読込**が必要）
-- **当時のコマンド（2026-05-19 時点。現行手順は [deployment.md](../guides/deployment.md)）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **当時のコマンド（2026-05-19 時点。現行手順は [deployment.md](../guides/deployment.md)）**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
 - **Detach Run ID**:
   - 初回 **`20260519-203723-29020`**（`072054f9`·**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）
   - fix 再デプロイ **`20260519-205437-31528`**（`3ae93221`·同上 **`failed=0`**）

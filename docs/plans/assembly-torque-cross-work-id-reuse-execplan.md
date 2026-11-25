@@ -163,7 +163,7 @@ Finally, update the work-session message for a lease held by another session to 
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 The branch setup is:
 

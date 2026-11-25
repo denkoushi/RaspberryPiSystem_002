@@ -60,7 +60,7 @@ APIは `apps/api/src/routes/assembly/index.ts` が組立ルートを登録し、
 
 ## Concrete Steps
 
-作業場所は `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--business-hermes-assembly-guide` とする。API focused testsは `pnpm --filter @raspi-system/api test -- src/config/business-hermes.env.test.ts src/services/business-hermes/business-hermes.service.test.ts src/routes/assembly/__tests__/business-hermes.routes.test.ts`、Web focused testsは `pnpm --filter @raspi-system/web test -- src/pages/kiosk/KioskAssemblyWorkSessionPage.test.tsx` を実行した。続いてAPI/Webのbuild、変更範囲のESLint、Prisma validateを実行した。追加構築検証では固定digestのCompose profileを新規volumeで起動し、health、未認証401、正常停止、cleanupを確認した。実OpenAI推論、Pi5、Pi4、実認証、実機配備は実行していない。
+作業場所は `~/RaspberryPiSystem_002-worktrees/feat--business-hermes-assembly-guide` とする。API focused testsは `pnpm --filter @raspi-system/api test -- src/config/business-hermes.env.test.ts src/services/business-hermes/business-hermes.service.test.ts src/routes/assembly/__tests__/business-hermes.routes.test.ts`、Web focused testsは `pnpm --filter @raspi-system/web test -- src/pages/kiosk/KioskAssemblyWorkSessionPage.test.tsx` を実行した。続いてAPI/Webのbuild、変更範囲のESLint、Prisma validateを実行した。追加構築検証では固定digestのCompose profileを新規volumeで起動し、health、未認証401、正常停止、cleanupを確認した。実OpenAI推論、Pi5、Pi4、実認証、実機配備は実行していない。
 
 ## Validation and Acceptance
 

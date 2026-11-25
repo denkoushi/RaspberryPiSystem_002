@@ -48,7 +48,7 @@ category: knowledge-base
   - `20260518-195749-32736`（`raspi4-fjv60-80`）
   - `20260518-200323-26959`（`raspi4-kensaku-stonebase01`）
 - **結果**: 全 run とも `PLAY RECAP failed=0 / unreachable=0`、リモート `exit 0`、summary `success: true`。
-- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Tailscale、Pi5 API `100.106.158.2`、`deploy-status` 4台 PASS）。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Tailscale、Pi5 API `<Pi5 の Tailscale IP>`、`deploy-status` 4台 PASS）。
 
 ## Troubleshooting（運用）
 

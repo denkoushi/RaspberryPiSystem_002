@@ -14,7 +14,7 @@
 ## 前提条件
 
 - Dropbox OAuth認証が完了し、正しい`refreshToken`が設定されていること
-- 管理コンソールにアクセスできること（`https://100.106.158.2/admin`）
+- 管理コンソールにアクセスできること（`https://<Pi5 の Tailscale IP>/admin`）
 
 ## 検証項目
 
@@ -144,12 +144,12 @@
 2. **手動でトークンをリフレッシュ（API経由）**
    ```bash
    # 1. ログインしてトークンを取得
-   TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
+   TOKEN=$(curl -s -k -X POST https://<Pi5 の Tailscale IP>/api/auth/login \
      -H 'Content-Type: application/json' \
      -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
    # 2. トークンをリフレッシュ
-   curl -X POST https://100.106.158.2/api/backup/oauth/refresh \
+   curl -X POST https://<Pi5 の Tailscale IP>/api/backup/oauth/refresh \
      -H "Authorization: Bearer $TOKEN"
    ```
 
@@ -215,12 +215,12 @@
 
 ```bash
 # 1. ログインしてトークンを取得
-TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
+TOKEN=$(curl -s -k -X POST https://<Pi5 の Tailscale IP>/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. バックアップを実行（多重バックアップ設定が有効な対象）
-curl -X POST https://100.106.158.2/api/backup \
+curl -X POST https://<Pi5 の Tailscale IP>/api/backup \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{

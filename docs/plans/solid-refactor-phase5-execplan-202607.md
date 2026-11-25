@@ -35,7 +35,7 @@ Out of scope (deferred with reasons): `webrtc/signaling.ts` (447-line WebSocket 
 - [x] (2026-07-04 22:29+09:00) Documentation commit `af9c80ed` (`docs: record solid refactor phase5 verification and CI results`) pushed. The follow-up main CI `28707740578` failed in `api-db-and-infra` at `src/routes/__tests__/imports.integration.test.ts > POST /api/imports/master > should handle replaceExisting=true correctly`: expected `summary.employees.created` = 1, received 0.
 - [x] (2026-07-05 06:56+09:00) Root cause isolated to test-data collision, not production import behavior: `replaceExisting=true` deletes employees without loans but preserves loan-backed employees; the test used generated 4-digit employee codes that can collide with preserved employees left by the full suite. Commit `d5c26eb1` (`test(api): stabilize import replaceExisting test`) added unused-code probing and a delete-eligible no-loan placeholder for the replace candidate.
 - [x] (2026-07-05 06:57-07:13+09:00) Local and GitHub verification green for `d5c26eb1`: focused import integration test 19/19 passed; full API coverage 414 files passed | 2 skipped (416), 2124 tests passed | 7 skipped (2131); API lint/build passed; monorepo pre-commit lint passed. GitHub Actions: CI `28720917749` success, Secret scan `28720917759` success, CodeQL `28720917748` success, Pages `28720917193` success.
-- [x] (2026-07-05 07:13-07:47+09:00) Production deploy completed with `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` and `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`: run `20260705-071343-12926`, summary success true, exit code 0, totalHosts 7, failedHosts/unreachableHosts empty. PLAY RECAP `failed=0 / unreachable=0` for Pi5, Pi4×5, and Pi3. Pi5 rebuilt/restarted Docker and passed Prisma migrate/status + API health; Pi4×5 restarted kiosk/status-agent services; Pi3 restored lightdm and reported `signage-lite.service is active`.
+- [x] (2026-07-05 07:13-07:47+09:00) Production deploy completed with `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"` and `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`: run `20260705-071343-12926`, summary success true, exit code 0, totalHosts 7, failedHosts/unreachableHosts empty. PLAY RECAP `failed=0 / unreachable=0` for Pi5, Pi4×5, and Pi3. Pi5 rebuilt/restarted Docker and passed Prisma migrate/status + API health; Pi4×5 restarted kiosk/status-agent services; Pi3 restored lightdm and reported `signage-lite.service is active`.
 - [x] (2026-07-05 07:48+09:00) Real-device verification completed: `./scripts/deploy/verify-phase12-real.sh` → PASS 45 / WARN 0 / FAIL 0.
 
 ## Surprises & Discoveries
@@ -117,7 +117,7 @@ Each step is executed by a Composer 2.5 worker subagent, serially; the orchestra
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 API verification: `POSTGRES_PORT=5432 bash scripts/test/run-tests.sh` (container `postgres-test-local` already running on 5432; the explicit port export is required because the script auto-switches to 55432 when 5432 is occupied). Typecheck: `pnpm --filter @raspi-system/api exec tsc -p apps/api/tsconfig.build.json --noEmit` 相当（run from apps/api: `tsc -p tsconfig.build.json --noEmit`; plain `tsc --noEmit` has a known pre-existing TS6059 failure, see phase 4).
 

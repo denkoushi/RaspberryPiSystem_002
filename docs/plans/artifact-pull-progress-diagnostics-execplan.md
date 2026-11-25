@@ -232,7 +232,7 @@ and the Phase 2 ExecPlan without duplicating the narrative.
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+Work from `~/RaspberryPiSystem_002`.
 
 Implement and run focused tests first:
 

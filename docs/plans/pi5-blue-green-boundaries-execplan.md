@@ -99,7 +99,7 @@ Finally add `scripts/deploy/tests/test_pi5_blue_green_structure.py`. It will enf
 
 ## Concrete Steps
 
-Run all commands from `/Users/tsudatakashi/RaspberryPiSystem_002`. Use Node 20 by prefixing final aggregate commands with `PATH=/opt/homebrew/opt/node@20/bin:$PATH`.
+Run all commands from `~/RaspberryPiSystem_002`. Use Node 20 by prefixing final aggregate commands with `PATH=/opt/homebrew/opt/node@20/bin:$PATH`.
 
 After each cohesive extraction run:
 

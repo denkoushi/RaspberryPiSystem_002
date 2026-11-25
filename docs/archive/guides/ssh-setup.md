@@ -76,8 +76,8 @@ ssh pi@pi-kiosk-01 "mkdir -p ~/.ssh && cat /tmp/raspi-clients.pub >> ~/.ssh/auth
 - 実施者: <name>
 - 秘密鍵の保存先: /root/.ssh/raspi-clients
 - 対象ホスト:
-  - pi-kiosk-01 (192.168.0.30)
-  - pi-kiosk-02 (192.168.0.31)
+  - pi-kiosk-01 (<pi-kiosk-01 の LAN IP>)
+  - pi-kiosk-02 (<pi-kiosk-02 の LAN IP>)
 - 確認結果: ansible ping success
 ```
 

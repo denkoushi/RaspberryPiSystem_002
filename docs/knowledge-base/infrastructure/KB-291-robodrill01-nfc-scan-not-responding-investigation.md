@@ -128,10 +128,10 @@ NFCが動作する場合の経路:
 
 ```bash
 # Pi5で実行（RASPI_SERVER_HOST を設定済み前提）
-RASPI_SERVER_HOST=100.106.158.2 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:raspi4-robodrill01" --foreground
+RASPI_SERVER_HOST=<Pi5 の Tailscale IP> ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:raspi4-robodrill01" --foreground
 
 # デプロイ後、raspi4-robodrill01 で確認
-ssh tools04@100.123.1.113 "curl -s http://localhost:7071/api/agent/status"
+ssh <raspi4-robodrill01 のユーザー名>@<raspi4-robodrill01 の Tailscale IP> "curl -s http://localhost:7071/api/agent/status"
 ```
 
 期待: `readerConnected: true` および `status: ok` が返ること。

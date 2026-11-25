@@ -6,7 +6,7 @@
 
 - **デプロイ日時**: 2025-12-18 08:36:32 JST
 - **ブランチ**: `feature/improve-visibility-color-theme`
-- **デプロイ先**: Raspberry Pi 5 (denkon5sd02@100.106.158.2)
+- **デプロイ先**: Raspberry Pi 5 (<Pi5 のユーザー名>@<Pi5 の Tailscale IP>)
 - **ネットワークモード**: Tailscale
 
 ## デプロイ結果
@@ -89,7 +89,7 @@ docker-web-1   docker-web           Up 34 seconds   0.0.0.0:80->80/tcp, 0.0.0.0:
 
 2. **コンテナの再ビルド**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
    ```
 
 ## 関連ドキュメント

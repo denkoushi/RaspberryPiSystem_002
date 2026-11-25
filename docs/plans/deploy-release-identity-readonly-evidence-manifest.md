@@ -22,7 +22,7 @@ The user explicitly approved this bounded collection, and it completed on
 2026-07-21 without a deployment or state mutation. This completed manifest is
 an audit record, not continuing authorization for another hardware action.
 
-Allowed devices are Pi5 `denkon5sd02@100.106.158.2` and StoneBase
+Allowed devices are Pi5 `<Pi5 のユーザー名>@<Pi5 の Tailscale IP>` and StoneBase
 `raspi4-kensaku-stonebase01`. `raspi4-fjv60-80` and every other terminal are
 excluded from connection, inventory selection, status probe, preflight, and
 deployment. The session performs no deployment, bootstrap, Local execution,
@@ -65,7 +65,7 @@ derived facts and evidence digests only.
 
 Run from the immutable Local comparison worktree only after approval:
 
-    cd /Users/tsudatakashi/Documents/Codex/2026-07-21/deploy-phase-b-local-execution/work/RaspberryPiSystem_002-local-ansible
+    cd ~/Documents/Codex/2026-07-21/deploy-phase-b-local-execution/work/RaspberryPiSystem_002-local-ansible
     test "$(git rev-parse HEAD)" = "93d8bef4a31d52d0adcb18abfc1731f0e78d335c"
     git status --short
 
@@ -75,33 +75,33 @@ that could change `scripts/update-all-clients.sh` or `scripts/deploy/`.
 First use the canonical status interface for each named run. These calls read
 durable state through Pi5 and do not submit a release:
 
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260720-232311-d2e8c8
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-021000-1ede52
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-023908-68527a
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-024809-e2a35e
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-032006-9a9b50
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh --status 20260721-032457-3fce3c
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh --status 20260720-232311-d2e8c8
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh --status 20260721-021000-1ede52
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh --status 20260721-023908-68527a
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh --status 20260721-024809-e2a35e
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh --status 20260721-032006-9a9b50
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh --status 20260721-032457-3fce3c
 
 Next read only the final Pi5 unit's known task/result/timing lines. Keep the
 remote filter inside the quoted command so unfiltered journal output is not
 returned:
 
-    ssh -o BatchMode=yes -o ConnectTimeout=15 denkon5sd02@100.106.158.2 \
+    ssh -o BatchMode=yes -o ConnectTimeout=15 <Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       "sudo -n journalctl -u raspi-release-20260721-032457-3fce3c.service --since '2026-07-21 03:24:00 UTC' --until '2026-07-21 03:47:30 UTC' --no-pager -o short-iso | grep -E 'terminal-(ansible-apply|ready-ack|evidence|rollback|runtime-restore|maintenance|cleanup)|TASK \[|failed=|Result=|timed out|rollback'"
 
 Then use Pi5 as the existing controller to read only StoneBase service
 lifecycle timestamps. Inventory selection is the exact StoneBase hostname:
 
-    ssh -o BatchMode=yes -o ConnectTimeout=15 denkon5sd02@100.106.158.2 \
+    ssh -o BatchMode=yes -o ConnectTimeout=15 <Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       "cd /opt/RaspberryPiSystem_002 && ANSIBLE_CONFIG=infrastructure/ansible/ansible.cfg ansible raspi4-kensaku-stonebase01 -i infrastructure/ansible/inventory.yml -b -m ansible.builtin.shell -a \"journalctl -u kiosk-browser.service --since '2026-07-21 03:24:00 UTC' --until '2026-07-21 03:47:30 UTC' --no-pager -o short-iso | grep -E 'Starting|Started|Stopping|Stopped|Main process exited|Failed with result'\" --one-line"
 
 Read the current terminal Git SHA and bounded service properties. These are
 observations only:
 
-    ssh -o BatchMode=yes -o ConnectTimeout=15 denkon5sd02@100.106.158.2 \
+    ssh -o BatchMode=yes -o ConnectTimeout=15 <Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       "cd /opt/RaspberryPiSystem_002 && ANSIBLE_CONFIG=infrastructure/ansible/ansible.cfg ansible raspi4-kensaku-stonebase01 -i infrastructure/ansible/inventory.yml -b -m ansible.builtin.command -a 'git -C /opt/RaspberryPiSystem_002 rev-parse HEAD' --one-line"
 
-    ssh -o BatchMode=yes -o ConnectTimeout=15 denkon5sd02@100.106.158.2 \
+    ssh -o BatchMode=yes -o ConnectTimeout=15 <Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       "cd /opt/RaspberryPiSystem_002 && ANSIBLE_CONFIG=infrastructure/ansible/ansible.cfg ansible raspi4-kensaku-stonebase01 -i infrastructure/ansible/inventory.yml -b -m ansible.builtin.command -a 'systemctl show kiosk-browser.service status-agent.service status-agent.timer --property=Id --property=ActiveState --property=SubState --property=Result --property=ExecMainStartTimestamp --no-pager' --one-line"
 
 Finally run only the feature branch's canonical non-mutating plan and aggregate
@@ -109,8 +109,8 @@ preflight for Pi5 plus StoneBase. These commands must print the explicit target
 set, FJV exclusion, effective executor, runtime version/digest or bounded
 fallback reason, and zero release submission:
 
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --limit raspberrypi5:raspi4-kensaku-stonebase01 --stonebase-local-ansible-poc --print-plan
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --limit raspberrypi5:raspi4-kensaku-stonebase01 --stonebase-local-ansible-poc --preflight-only
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --limit raspberrypi5:raspi4-kensaku-stonebase01 --stonebase-local-ansible-poc --print-plan
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh feat/stonebase-local-ansible-poc infrastructure/ansible/inventory.yml --limit raspberrypi5:raspi4-kensaku-stonebase01 --stonebase-local-ansible-poc --preflight-only
 
 Do not append `--reverify-selected`, `--foreground`, `--detach`, or any other
 execution option. Do not replace the explicit limit with a group or wildcard.

@@ -25,7 +25,7 @@ category: knowledge-base
 - **ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**）。Pi4／Pi3 play **`skipping: no hosts matched`**（**Pi3 専用手順は対象外・未実施で正**）。
 - **標準**: `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
 - **Detach Run ID**: **`20260510-114418-29512`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 559s**·**`Git: changed`**·**Docker compose 再起動 `changed`**·**`Run prisma migrate deploy` / `prisma migrate status` `ok`**）。
-- **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**・Tailscale **`100.106.158.2`**）。**`deploy-status`（Pi4×4）** PASS / **`auto-tuning scheduler` ログ** 件数=1。
+- **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**・Tailscale **`<Pi5 の Tailscale IP>`**）。**`deploy-status`（Pi4×4）** PASS / **`auto-tuning scheduler` ログ** 件数=1。
 - **仕様確定（本番で有効化された挙動）**:
   - **単一キュー**: `enqueueMainLocalLlmRuntimeControl` が **推論 on_demand の `HttpOnDemandLocalLlmRuntimeController` `/start`・`/stop`** と **`dgx-resource.gateway-runtime.executor` の `executeGatewayRuntimeStartStop`**（`system-prod-gateway` の通常停止 / 強制停止を含む）を **同居プロセス内で直列実行**（競合する二重 POST の抑止）。
   - **用途別 `/stop` 抑止**: `shouldSuppressLocalLlmRuntimeStop` — **`photo_label`** / **`document_summary`** / **`admin_console_chat`** / **`stackchan_chat`** / **`agent_container_task`** は **参照カウント 0 でも release で `/stop` しない**。
@@ -43,8 +43,8 @@ category: knowledge-base
 - **ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。Pi4／Pi3 play **`skipping: no hosts matched`**。**Pi3**: playbook **未適用**（リソース僅少・**専用手順はこの変更では実行しない**）。
 - **標準**: `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"`·`./scripts/update-all-clients.sh feat/stackchan-interactive-chat-api infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
 - **Detach Run ID**: **`20260510-134157-20990`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 650s**·**`Git: changed`**·**Docker compose 再起動 `changed`**·**`prisma migrate deploy` / `status` `ok`**）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 54s**・Tailscale **Pi5 `100.106.158.2`**）。
-- **実機（追加スモーク）**: **未認証** `POST https://100.106.158.2/api/system/stackchan/chat` → **HTTP `401`**（ルート登録と認可ゲートの確認。**運用 JWT はログに残さない**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 54s**・Tailscale **Pi5 `<Pi5 の Tailscale IP>`**）。
+- **実機（追加スモーク）**: **未認証** `POST https://<Pi5 の Tailscale IP>/api/system/stackchan/chat` → **HTTP `401`**（ルート登録と認可ゲートの確認。**運用 JWT はログに残さない**）。
 - **仕様（runtime 観点）**:
   - **用途 ID**: **`stackchan_chat`** を **`ProviderLocalLlmRuntimeController`** が **admin provider と同一**に解決（**`resolveAdminProvider`**・ready probe に **`stackchan_chat` を admin モデルで登録**）。
   - **単一キュー優先度**: **`MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.agent`**（**`admin_console_chat` と同層**・業務 `business` より後）。
@@ -63,7 +63,7 @@ category: knowledge-base
   - **Work path**（上記「StackChan Pi5 API チャット」項）: クライアント → **`POST /api/system/stackchan/chat`（職場 Pi5）** → 同一 **`stackchan_chat`** 用途で **admin と同系 on_demand**・**keep-warm `/stop` 抑止**（`local-llm-runtime-schedule.policy.ts`）。
 - **競合注意**: private bridge が独自に **`POST /start`** しても、職場側キューとは **別プロセス**だが **DGX 上の同一 gateway/backend** を触る。`.env` / vault は **私用と職場で混線禁止**。
 - **検証**: 開発 Mac から DGX を直叩きした結果と、私用 Pi5 からの結果が **一致しない**ことがある（Tailscale ACL・経路差）。**運用切り分けの正は私用 Pi5 上**の `curl` / bridge。
-- **2026-05-10 late の追記（実機経路）**: StackChan 実機は **`192.168.128.124`**、private Pi5 は当日 DHCP で **`192.168.128.113`** を取得したが、StackChan ファームは **旧 bridge IP `192.168.128.112`** を見ていた。DGX upstream 復旧後も `GET /chat?...` に対応する bridge ログが出ないことで **宛先IPミスマッチ**を切り分け、private Pi5 `wlan0` に **`192.168.128.112/24` compatibility alias** を一時追加した直後に **`POST /api/stackchan/chat/simple 200`** を確認した。**教訓**: StackChan の `/chat` が `200` でも **bridge ログが無い**なら、upstream より先に **bridge URL の IP ドリフト**を疑う。
+- **2026-05-10 late の追記（実機経路）**: StackChan 実機は **`<StackChan の LAN IP>`**、private Pi5 は当日 DHCP で **`<私用 Pi5 の LAN IP>`** を取得したが、StackChan ファームは **旧 bridge IP `<私用 Pi5 の LAN IP（互換 alias）>`** を見ていた。DGX upstream 復旧後も `GET /chat?...` に対応する bridge ログが出ないことで **宛先IPミスマッチ**を切り分け、private Pi5 `wlan0` に **`<私用 Pi5 の LAN IP（互換 alias）>/24` compatibility alias** を一時追加した直後に **`POST /api/stackchan/chat/simple 200`** を確認した。**教訓**: StackChan の `/chat` が `200` でも **bridge ログが無い**なら、upstream より先に **bridge URL の IP ドリフト**を疑う。
 - **2026-05-10 追記（実装モジュール）**: 入力検証・upstream オーケストレーションは `stackchan_chat_core.py`（DGXSparkControlPlane へ移動）（`ChatCompletionWorkflow`）。HTTP のみ `bridge_server.py`（DGXSparkControlPlane へ移動）。**text-only 完了条件**は stackchan-community-text-only-e2e.md §text-only-done-criteria（DGXSparkControlPlane `docs/private-history/runbooks/stackchan-community-text-only-e2e.md`）。
 
 ### 本番反映（2026-05-10・AgentContainer・Pi5 API + Web + DGX gateway） {#production-2026-05-10-dgx-agent-container}
@@ -74,7 +74,7 @@ category: knowledge-base
   - **② DGX（Tailscale 例 `<dgx-tailscale-ip>`・ユーザー `<user>`）** — **`scp`** で **`gateway-server.py`** を **`/srv/dgx/system-prod/bin/`** へ配置し **ゲートウェイ再起動**（詳細は [deployment.md §AgentContainer](../deployments/2026-05.md#dgx-agent-container-control-target-2026-05-10)）。
   - **Pi4／Pi3** — 本変更の **`update-all-clients.sh`** では **`skipping: no hosts matched`**。**Pi3** は **個体への playbook 適用なし**（Phase12 で **services 疎通のみ**）。
 - **Detach Run ID（Pi5）**: **`20260510-125420-15123`**（**`PLAY RECAP` `ok=139` `changed=8` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 669s**·**`Git: changed`**·**Docker / api・web 再作成あり**·**`prisma migrate deploy` / `status` ok**）。
-- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**・Pi5 **`100.106.158.2`**）。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**・Pi5 **`<Pi5 の Tailscale IP>`**）。
 - **仕様（本番で有効になる追加契約）**:
   - **Control Target `agent-container`**: `overview.targets[]` に **`experiment-lab` の直後**で登場。**`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL` / `_STOP_URL` が両方設定**されているときのみ **`start`/`stop`** capability。**`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL`** は任意（未設定時は状態 **`unknown`** になり得るが POST 起停は可）。
   - **単一キュー**: useCase **`agent_container_task`** を **`ProviderLocalLlmRuntimeController`** 経由で **`HttpOnDemandLocalLlmRuntimeController`** に分離。**ready** は **`/v1/models` ではなく**（設定時）**単純 GET ヘルス**（`optionalSimpleHealthProbeUrl`）で待機。
@@ -98,7 +98,7 @@ category: knowledge-base
   - **② DGX（`<dgx-tailscale-ip>` / `<user>`）** — **`control-server.py`** の **`scp` + PID ガード再起動** → 続けて **`gateway-server.py`**（**`/stop-force` 404 回避のため同窗口で必須**）
   - **Pi4／Pi3** — play **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**）
 - **Detach Run ID（Pi5）**: **`20260525-162034-25035`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 938s**·**`Git: changed`**·**Docker compose 再起動 `changed`**）。
-- **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 68s**・Tailscale **`100.106.158.2`**）。
+- **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 68s**・Tailscale **`<Pi5 の Tailscale IP>`**）。
 - **仕様（本番で有効化された挙動）**:
   - **`private_ok` + `applyWorkloadChanges: true`**: 調停計画に **`system-prod-gateway` + `stop_force`** を追加（`planWorkloadAdjustmentsBeforePolicyChange`）。**experiment-lab / agent-container の stop 試行の後**に実行。
   - **強制停止の契約分離**: **`POST /stop-force`**（DGX control-server）と **通常 `POST /stop`**（keep_warm 尊重）を分離。**Pi5 の `EXECUTE_TARGET_ACTION` には `stop_force` を露出しない**（内部オーケストレーション専用）。
@@ -295,11 +295,11 @@ Ansible は `templates/api.env.j2` / `templates/docker.env.j2` で上記変数�
 - **本番反映（2026-05-29 · Pi5→DGX 順次・各 1 台）**:
   - **① Pi5 のみ** — `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"` · `./scripts/update-all-clients.sh feat/dgx-runtime-state-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach `20260529-093340-9025`** · `PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート exit **`0`** · **`--follow` 約 865s**。Pi4/Pi3 は **`skipping: no hosts matched`**（**Pi3 専用手順不要**）。
   - **② DGX** — **`scp scripts/dgx-local-llm-system/control-server.py`** → **`/srv/dgx/system-prod/bin/control-server.py`** → **`control-server.pid` の PID を `kill` → `rm -f` PID ファイル → **`bash /srv/dgx/system-prod/bin/start-control-server.sh`**（**gateway は本差分で未更新** — 既存 gateway が `/stop-force` を転送済みである前提）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s** · Tailscale **`100.106.158.2`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s** · Tailscale **`<Pi5 の Tailscale IP>`**）。
 - **実機（機能）**:
   - Pi5 Git **`af4997fc`** · api コンテナに **`dgx-resource.runtime-summary.js`** 存在 · Web bundle **`index-COC3GNKC.js`** に **`DgxResourceStatusBoard`** / **`runtimeSummary`** 文字列を確認。
   - DGX 反映直前の **`active-model-profile.json`**: **`business_qwen36_27b_nvfp4`** · **`backend: blue`**（env **`ACTIVE_LLM_BACKEND=blue`** と一致）。
-  - Pi5 から **`POST http://100.118.82.72:38081/stop-force`**（`X-Runtime-Control-Token`）→ **`{"ok":true,"backend":"blue","backendSource":"model_profile_state"}`**（**検証用スモーク**。blue 側ランタイムは停止されるため、検証後は管理 UI または通常 `/start` で業務 LLM を再開すること）。
+  - Pi5 から **`POST http://<DGX Spark の Tailscale IP>:38081/stop-force`**（`X-Runtime-Control-Token`）→ **`{"ok":true,"backend":"blue","backendSource":"model_profile_state"}`**（**検証用スモーク**。blue 側ランタイムは停止されるため、検証後は管理 UI または通常 `/start` で業務 LLM を再開すること）。
 - **トラブルシュート**:
   - **KPI は空きに見えるが Policy だけ業務** → 下段 **`runtimeSummary`** の **Active Model / Backend** を確認（上段 KPI のみでは判断しない）。
   - **`stop-force` 後も green `llama-server` が残る** → **`backendSource: env_fallback`** なら state 未読み。**`model_profile_state` なのに残る** → 停止コマンド失敗または別プロセス。DGX `active-model-profile.json` と env の **`ACTIVE_LLM_BACKEND` ずれ**を先に解消。
@@ -356,7 +356,7 @@ Ansible は `templates/api.env.j2` / `templates/docker.env.j2` で上記変数�
 - **デプロイ対象**: **DGX Spark のみ**（**`scp` manifest 1 ファイル**）。**Pi5 / Pi4 / Pi3 は未実施**（本修正は DGX registry 正本のデータ修正·Pi5 はプロキシのみでコード差分なし）。
 - **本番配置**: 例 manifest → **`/srv/dgx/shared-models/registry/business_qwen36_27b_nvfp4/manifest.json`**（`currentStorageLocation` = **`/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4`**）。
 - **再起動**: **なし**（gateway/control の PID 再起動不要）。
-- **実機（自動）**: Pi5 から `GET http://100.118.82.72:38081/system/model-profiles`（`X-LLM-Token`）→ **`business_qwen36_27b_nvfp4` `available: true`**（修正前は **`unavailable`**）·**`business_qwen35_35b_gguf` `available`**·**profiles 2 件とも `available`**。
+- **実機（自動）**: Pi5 から `GET http://<DGX Spark の Tailscale IP>:38081/system/model-profiles`（`X-LLM-Token`）→ **`business_qwen36_27b_nvfp4` `available: true`**（修正前は **`unavailable`**）·**`business_qwen35_35b_gguf` `available`**·**profiles 2 件とも `available`**。
 - **実機（UI）**: `/admin/tools/dgx-resource` 業務復帰フローで **27B（推奨）と 35B GGUF の 2 件**がドロップダウンに表示（`DgxResourcePrimaryScenarioFlow` は `enabled && status === 'available'` のみ）。
 - **参照**: [Runbook §本番 storage path](../../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-27b-model-profile-storage-path)·[deployment.md](../deployments/2026-05.md#dgx-model-profile-storage-path-2026-05-28)·[KB-366 §storage path](../../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)。
 
@@ -370,7 +370,7 @@ Ansible は `templates/api.env.j2` / `templates/docker.env.j2` で上記変数�
 - **DGX 配置（`/srv/dgx/system-prod/bin/`）**: `control-server.py`·`gateway-server.py`·`model_profiles.py`·`active_model_state.py`。**registry 例**: `business_qwen36_27b_nvfp4`·`business_qwen35_35b_gguf` の `manifest.json` を **`/srv/dgx/shared-models/registry/<id>/`** へ。
 - **DGX 再起動**: `control-server.pid` / `gateway-server.pid` の PID を **`kill`** → PID ファイル削除 → **`start-control-server.sh`** / **`start-gateway-server.sh`**。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **111s**）。
-- **実機（機能）**: Pi5 `api` から **`GET http://100.118.82.72:38081/system/model-profiles`**（`X-Runtime-Control-Token`）→ **`ok: true`**, **profiles 2 件**, 未 start 前 **`activeProfileId: null`**。Web: 業務復帰フローにモデル選択 UI。Pi5 コンテナ HEAD **`91be7dcf`**。
+- **実機（機能）**: Pi5 `api` から **`GET http://<DGX Spark の Tailscale IP>:38081/system/model-profiles`**（`X-Runtime-Control-Token`）→ **`ok: true`**, **profiles 2 件**, 未 start 前 **`activeProfileId: null`**。Web: 業務復帰フローにモデル選択 UI。Pi5 コンテナ HEAD **`91be7dcf`**。
 - **知見**:
   - **起動直後 `curl healthz` が Connection refused** → 数秒後 **200**（起動レース·[Runbook](../../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-業務復帰モデル選択) と同型）。
   - **`modelProfileId` 指定 start 後も Strict Ready はスキップしない**（`ranModelProfileStart`）。
@@ -551,7 +551,7 @@ Ansible は `templates/api.env.j2` / `templates/docker.env.j2` で上記変数�
 
 ### 本番反映記録（2026-05-03）
 
-- **ホスト順序**: **① `raspberrypi5` のみ**（Ansible `--limit raspberrypi5`）→ **② DGX**（tailnet **`100.118.82.72`**、`gateway-server.py` を **`/srv/dgx/system-prod/bin/`** へ配置してゲートウェイ再起動）。Pi4／Pi3 は対象外。
+- **ホスト順序**: **① `raspberrypi5` のみ**（Ansible `--limit raspberrypi5`）→ **② DGX**（tailnet **`<DGX Spark の Tailscale IP>`**、`gateway-server.py` を **`/srv/dgx/system-prod/bin/`** へ配置してゲートウェイ再起動）。Pi4／Pi3 は対象外。
 - **ブランチ**: **`feat/dgx-kpi-metrics-fallback`**。**代表コミット**: **`47a17096`**（トークン保護を含む。先行 **`a3b67495`** は KPI フォールバック本体）。
 - **Pi5 Detach Run ID**: **`20260503-211051-8713`**（`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。
 - **DGX 再起動（実績）**: `scp … gateway-server.py` 後、Runbook の **`sudo systemctl restart dgx-llm-gateway`** は **当該ユーザーに sudo が無く未実行**。当該ホストでは **`dgx-llm-gateway` が inactive** で **`start-gateway-server.sh`** によるプロセス常駐だったため、**既存 Python プロセスを終了**してから **`/srv/dgx/system-prod/bin/start-gateway-server.sh`** を実行し **`/healthz` 200** を確認した。**systemd 常駐へ寄せる場合**は Runbook の **`install-systemd-units.sh`** 節に従う。

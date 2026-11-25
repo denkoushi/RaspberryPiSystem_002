@@ -280,7 +280,7 @@ df -h /System/Volumes/Data
        <array>
            <string>/bin/bash</string>
            <string>-c</string>
-           <string>/Users/tsudatakashi/bin/backup-to-google-drive.sh</string>
+           <string>~/bin/backup-to-google-drive.sh</string>
        </array>
        <key>StartCalendarInterval</key>
        <dict>

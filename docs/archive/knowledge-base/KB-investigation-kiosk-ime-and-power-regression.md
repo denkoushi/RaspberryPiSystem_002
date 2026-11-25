@@ -104,7 +104,7 @@ gsettings get org.freedesktop.ibus.general.hotkey triggers
 
 | 機能 | ラズパイ/OS 側の仕様 | 本システムの依存 | 安定化の要件 |
 |------|---------------------|------------------|--------------|
-| **IME** | IBus + mozc（Debian/Raspberry Pi OS 標準） | キオスクユーザー（tools04）の autostart、gsettings | IBus の単一起動、エンジン設定のリトライ、ホットキー（全角/半角 + Ctrl+Space）の永続化 |
+| **IME** | IBus + mozc（Debian/Raspberry Pi OS 標準） | キオスクユーザー（<raspi4-robodrill01 のユーザー名>）の autostart、gsettings | IBus の単一起動、エンジン設定のリトライ、ホットキー（全角/半角 + Ctrl+Space）の永続化 |
 | **Chromium** | キオスクモード（`--kiosk`）で全画面・一部ショートカット制限 | 備考欄の textarea で日本語入力 | IME が OS 側で有効であれば、Chromium は基本的に透過。フォーカスや `inputmode` の扱いに注意 |
 | **電源操作** | `systemctl reboot` / `poweroff` は sudo 要 | Pi5 → Ansible → Pi4 の SSH 経由で実行 | inventory の clientKey と Web の x-client-key の一致、pi5-power-dispatcher の正常動作、SSH 接続可能性 |
 

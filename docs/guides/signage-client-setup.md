@@ -54,7 +54,7 @@ https://<サーバのホスト>/signage-lite?clientKey=client-key-factory-androi
    - **対処**: Chrome の **閲覧データの削除**（対象サイト）で **Cookie・サイトデータ・キャッシュ** を消し、**推奨 URL（`?clientKey=…` 付き）**から開き直す。  
    - **参照**: 同上 [KB-337](../knowledge-base/infrastructure/signage.md#kb-337-android-signage-lite-401-chrome)
 
-3. **到達性**: 同一 LAN 上の Pi5（例: **`192.168.10.230`**・[`group_vars/all.yml`](../../infrastructure/ansible/group_vars/all.yml) の `local_network.raspberrypi5_ip` と整合）へ HTTPS で到達できること、TLS 信頼済みであることを前提とする（Tailscale 利用時も LAN 直指定は可）。
+3. **到達性**: 同一 LAN 上の Pi5（例: **`<Pi5 の LAN IP>`**・[`group_vars/all.yml`](../../infrastructure/ansible/group_vars/all.yml) の `local_network.raspberrypi5_ip` と整合）へ HTTPS で到達できること、TLS 信頼済みであることを前提とする（Tailscale 利用時も LAN 直指定は可）。
 
 ### スケジュールの割当
 
@@ -93,10 +93,10 @@ cd /opt/RaspberryPiSystem_002
 
 ```bash
 # サイネージURLを指定してセットアップ
-sudo ./scripts/client/setup-signage.sh https://192.168.10.230/signage
+sudo ./scripts/client/setup-signage.sh https://<Pi5 の LAN IP>/signage
 ```
 
-**重要**: `https://192.168.10.230/signage` の部分は、実際のRaspberry Pi 5サーバーのIPアドレスに置き換えてください。
+**重要**: `https://<Pi5 の LAN IP>/signage` の部分は、実際のRaspberry Pi 5サーバーのIPアドレスに置き換えてください。
 
 ### 4. 動作確認
 
@@ -126,7 +126,7 @@ sudo reboot
 
 **症状**: HDMI には **Raspberry Pi OS デスクトップ**のみ。全画面 JPEG なし。
 
-**よくある原因**: Tailscale 管理画面で端末（`raspberrypi-2`）が **Expired**（Key expiry）。Pi3 は Pi5 を **Tailscale IP**（`https://100.106.158.2`）経由で参照するため、失効中は画像取得不可。
+**よくある原因**: Tailscale 管理画面で端末（`raspberrypi-2`）が **Expired**（Key expiry）。Pi3 は Pi5 を **Tailscale IP**（`https://<Pi5 の Tailscale IP>`）経由で参照するため、失効中は画像取得不可。
 
 **対処**:
 
@@ -193,7 +193,7 @@ stat -c "%y" /run/signage/current.jpg
 
 ```bash
 # サーバーへの接続確認
-curl -k https://192.168.10.230/api/system/health
+curl -k https://<Pi5 の LAN IP>/api/system/health
 ```
 
 ### 自己署名証明書の警告

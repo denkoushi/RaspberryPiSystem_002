@@ -242,7 +242,7 @@ production command.
 
 ## Concrete Steps
 
-Run from `/Users/tsudatakashi/RaspberryPiSystem_002`:
+Run from `~/RaspberryPiSystem_002`:
 
     python3 -m unittest scripts.deploy.tests.test_signage_distribution_artifact
     python3 -m unittest scripts.ci.tests.test_classify_changes scripts.ci.tests.test_classify_event_changes scripts.ci.tests.test_staged_ci_workflow

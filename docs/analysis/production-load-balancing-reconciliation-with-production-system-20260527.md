@@ -27,7 +27,7 @@
 
 | 項目 | 値 |
 |------|-----|
-| 本番 DB | Pi5 `borrow_return`（Tailscale `100.106.158.2`） |
+| 本番 DB | Pi5 `borrow_return`（Tailscale `<Pi5 の Tailscale IP>`） |
 | Dashboard ID | `3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01` |
 | 検算資源 | **033**（UI 上 N7 = 横型ニイガタ N7） |
 | 検算スクリプト | `apps/api/scripts/reconcile-033-may-patterns.mjs` |

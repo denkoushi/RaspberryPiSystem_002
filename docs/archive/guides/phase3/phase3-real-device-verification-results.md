@@ -5,7 +5,7 @@
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **IPアドレス**: `100.106.158.2`（Tailscale経由）
+- **IPアドレス**: `<Pi5 の Tailscale IP>`（Tailscale経由）
 - **ブランチ**: `feature/dropbox-csv-import-phase1`
 - **最新コミット**: `f57605d feat: Phase 3管理画面UI実装`
 
@@ -61,12 +61,12 @@
 #### 5. Web UI確認
 
 - **バックアップ履歴ページ**: ✅ 正常
-  - URL: `https://100.106.158.2/admin/backup/history`
+  - URL: `https://<Pi5 の Tailscale IP>/admin/backup/history`
   - HTTPステータス: 200 OK
   - ページ配信: 正常
 
 - **CSVインポートスケジュール管理ページ**: ✅ 正常
-  - URL: `https://100.106.158.2/admin/imports/schedule`
+  - URL: `https://<Pi5 の Tailscale IP>/admin/imports/schedule`
   - HTTPステータス: 200 OK
   - ページ配信: 正常
 
@@ -77,7 +77,7 @@
 #### 1. バックアップ履歴UI
 
 **検証手順**:
-1. `https://100.106.158.2/admin` にアクセス
+1. `https://<Pi5 の Tailscale IP>/admin` にアクセス
 2. ログイン（認証トークンはブラウザが自動管理）
 3. 左メニューから「バックアップ」→「バックアップ履歴」をクリック
 4. ページが正常に表示されることを確認
@@ -92,7 +92,7 @@
 
 **検証手順**:
 1. バックアップ履歴ページから「Dropboxからリストア」リンクをクリック
-2. または、直接 `https://100.106.158.2/admin/backup/restore` にアクセス
+2. または、直接 `https://<Pi5 の Tailscale IP>/admin/backup/restore` にアクセス
 3. リストアフォームが表示されることを確認
 
 **期待結果**:
@@ -105,7 +105,7 @@
 
 **検証手順**:
 1. 左メニューから「CSVインポート」をクリック
-2. または、直接 `https://100.106.158.2/admin/imports/schedule` にアクセス
+2. または、直接 `https://<Pi5 の Tailscale IP>/admin/imports/schedule` にアクセス
 3. スケジュール一覧が表示されることを確認（現在0件のため空）
 
 **期待結果**:
@@ -202,7 +202,7 @@
 
 ### 管理画面にアクセスできない場合
 
-- SSL証明書のエラーが表示される場合: `https://100.106.158.2` にアクセスして証明書を承認
+- SSL証明書のエラーが表示される場合: `https://<Pi5 の Tailscale IP>` にアクセスして証明書を承認
 - 404エラーが表示される場合: Webコンテナが正常に起動しているか確認
 
 ### APIエラーが発生する場合

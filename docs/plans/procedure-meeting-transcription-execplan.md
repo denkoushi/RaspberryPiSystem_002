@@ -43,7 +43,7 @@ DGX 側(別リポジトリ、別 PR)を先にフラグ off で入れる。この
 
 ## Concrete Steps
 
-作業場所は `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--procedure-meeting-minutes`。型チェックは `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit` と web の tsc、テストは変えたテストファイルだけを vitest で回す。画面は verify-screen の手順でローカルの実画面を確かめる。
+作業場所は `~/RaspberryPiSystem_002-worktrees/feat--procedure-meeting-minutes`。型チェックは `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit` と web の tsc、テストは変えたテストファイルだけを vitest で回す。画面は verify-screen の手順でローカルの実画面を確かめる。
 
 ## Validation and Acceptance
 

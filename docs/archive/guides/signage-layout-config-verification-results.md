@@ -8,8 +8,8 @@
 
 ## 検証環境
 
-- **Pi5（サーバー）**: denkon5sd02@100.106.158.2
-- **Pi3（サイネージクライアント）**: signageras3@100.105.224.86
+- **Pi5（サーバー）**: <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
+- **Pi3（サイネージクライアント）**: <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP>
 
 ## 検証結果
 
@@ -26,7 +26,7 @@
 
 **確認コマンド**:
 ```bash
-ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/content | jq '{contentType, layoutConfig}'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/content | jq '{contentType, layoutConfig}'"
 ```
 
 ### ✅ 検証2: サイネージ画像の取得確認
@@ -39,7 +39,7 @@ ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/cont
 
 **確認コマンド**:
 ```bash
-curl -k -s -H "x-client-key: ${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}" https://100.106.158.2/api/signage/current-image -o /tmp/test.jpg && file /tmp/test.jpg
+curl -k -s -H "x-client-key: ${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}" https://<Pi5 の Tailscale IP>/api/signage/current-image -o /tmp/test.jpg && file /tmp/test.jpg
 ```
 
 ### ✅ 検証3: Pi3での画像ファイル確認
@@ -52,7 +52,7 @@ curl -k -s -H "x-client-key: ${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY mu
 
 **確認コマンド**:
 ```bash
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache/signage/current.jpg'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'ls -lh /var/cache/signage/current.jpg'"
 ```
 
 ### ✅ 検証4: サイネージレンダリングの動作確認
@@ -65,7 +65,7 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache
 
 **確認コマンド**:
 ```bash
-ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api --tail 50 | grep -i 'signage render'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api --tail 50 | grep -i 'signage render'"
 ```
 
 ## 次の検証ステップ
@@ -77,7 +77,7 @@ ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infr
 **手順**:
 
 1. **管理コンソールにアクセス**:
-   - `https://100.106.158.2/admin/signage/schedules` にアクセス
+   - `https://<Pi5 の Tailscale IP>/admin/signage/schedules` にアクセス
    - ログイン（管理者権限が必要）
 
 2. **新形式のスケジュールを作成**:
@@ -137,7 +137,7 @@ ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infr
 
 3. **APIでスケジュールを確認**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/schedules | jq '.schedules[] | select(.layoutConfig != null) | {name, layoutConfig}'"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/schedules | jq '.schedules[] | select(.layoutConfig != null) | {name, layoutConfig}'"
    ```
 
 4. **Pi3での表示確認**:

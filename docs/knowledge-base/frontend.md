@@ -1869,7 +1869,7 @@ localStorage.setItem('kiosk-client-id', JSON.stringify('mac-kiosk-1'))
 **追加対策**: 
 - デバッグ用にURLクエリパラメータでクライアントキーを上書きできる機能を追加
 ```
-https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
+https://<Pi5 の Tailscale IP>/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-kiosk-1
 ```
 
 **学んだこと**:
@@ -4572,7 +4572,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 
 **知見・トラブルシュート**:
 - 進捗一覧APIは `verify-phase12-real.sh` で自動検証。Phase12 全24項目PASSで確認。
-- Mac から Tailscale 経由（`https://100.106.158.2/kiosk`）でブラウザアクセスすると、自己署名証明書により chrome-error になる。UI検証は実機（VNC または現地操作）での確認が必要。
+- Mac から Tailscale 経由（`https://<Pi5 の Tailscale IP>/kiosk`）でブラウザアクセスすると、自己署名証明書により chrome-error になる。UI検証は実機（VNC または現地操作）での確認が必要。
 - フィルタ状態が復元されない場合は `localStorage` の `kiosk-progress-overview-seiban-filter` を確認。schemaVersion が変わるとマイグレーションで既存値維持＋新規ON補完。
 
 ---

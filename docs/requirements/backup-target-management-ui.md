@@ -663,7 +663,7 @@ export interface BackupConfig {
    - **問題**: Dockerコンテナ内からSSH接続する際にSSH鍵がマウントされていない
    - **症状**: `Permission denied (publickey,password)`エラーが発生
    - **原因**: `docker-compose.server.yml`にSSH鍵ディレクトリのマウント設定がなかった
-   - **対策**: `/home/denkon5sd02/.ssh:/root/.ssh:ro`をマウント追加
+   - **対策**: `/home/<Pi5 のユーザー名>/.ssh:/root/.ssh:ro`をマウント追加
    - **結果**: Dockerコンテナ内からPi4へのSSH接続が成功
 
 3. **Ansible Playbookのエラーハンドリング**:
@@ -689,13 +689,13 @@ export interface BackupConfig {
 - **変数展開の仕組み**:
   - `hosts: "{{ client_host }}"`で実行すると、Ansibleは`inventory.yml`から`raspberrypi4`を検索
   - `inventory.yml`の`raspberrypi4`の`ansible_host: "{{ kiosk_ip }}"`が`group_vars/all.yml`の`kiosk_ip`で展開される
-  - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`（例: `100.74.144.79`）に解決される
+  - `network_mode: "tailscale"`の場合、`kiosk_ip`は`tailscale_network.raspberrypi4_ip`（例: `<raspberrypi4 の Tailscale IP>`）に解決される
   - 結果として、Ansibleは正しいTailscale IPでPi4に接続できる
 
 - **SSH鍵のマウント**:
-  - Pi5のホスト側: `/home/denkon5sd02/.ssh/id_ed25519`
+  - Pi5のホスト側: `/home/<Pi5 のユーザー名>/.ssh/id_ed25519`
   - Dockerコンテナ内: `/root/.ssh/id_ed25519`
-  - マウント設定: `- /home/denkon5sd02/.ssh:/root/.ssh:ro`（読み取り専用）
+  - マウント設定: `- /home/<Pi5 のユーザー名>/.ssh:/root/.ssh:ro`（読み取り専用）
 
 **学んだこと**:
 - Ansible Playbookで`hosts: localhost`を使用する場合、`group_vars/all.yml`の変数が読み込まれない

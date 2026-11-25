@@ -270,7 +270,7 @@ Run the web app locally and check each board at the kiosk's size in the browser.
 
 ## Concrete Steps
 
-Work in the task worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--kiosk-inventory-ux` on branch `feat/kiosk-inventory-ux`, created by `python3 -m scripts.git_lifecycle.cli start`.
+Work in the task worktree `~/RaspberryPiSystem_002-worktrees/feat--kiosk-inventory-ux` on branch `feat/kiosk-inventory-ux`, created by `python3 -m scripts.git_lifecycle.cli start`.
 
 Focused test commands, run from the worktree root:
 

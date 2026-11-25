@@ -155,10 +155,10 @@
 
 ```bash
 # Pi5上のnetwork_modeを確認
-ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 
 # 必要に応じて変更（Tailscaleモードの場合）
-ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 ```
 
 詳細は [デプロイメントガイド](../guides/deployment.md) を参照してください。
@@ -178,7 +178,7 @@ git ls-remote --heads origin feature/improve-visibility-color-theme
 
 ```bash
 # Pi5にSSH接続してデプロイ
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ./scripts/server/deploy.sh feature/improve-visibility-color-theme"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ./scripts/server/deploy.sh feature/improve-visibility-color-theme"
 ```
 
 **期待される結果**:
@@ -190,13 +190,13 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ./scripts/server
 
 ```bash
 # コンテナの状態を確認
-ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps"
 
 # APIのヘルスチェック
-ssh denkon5sd02@100.106.158.2 "curl http://localhost:8080/health"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "curl http://localhost:8080/health"
 
 # Webサーバーの確認
-ssh denkon5sd02@100.106.158.2 "curl http://localhost:4173"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "curl http://localhost:4173"
 ```
 
 **期待される結果**:
@@ -252,12 +252,12 @@ ssh denkon5sd02@100.106.158.2 "curl http://localhost:4173"
 
 1. **ネットワークモードの確認**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
    ```
 
 2. **コンテナのログ確認**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs web"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs web"
    ```
 
 #### 視認性が改善されていない場合
@@ -266,7 +266,7 @@ ssh denkon5sd02@100.106.158.2 "curl http://localhost:4173"
 
 2. **コンテナの再ビルド**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
    ```
 
 詳細な検証手順は [実機検証手順書](../archive/guides/ui-visibility-color-theme-real-device-verification.md) を参照してください。

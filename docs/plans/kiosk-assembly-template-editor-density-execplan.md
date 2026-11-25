@@ -115,7 +115,7 @@ Finally, update tests to exercise the new interaction rather than bypassing it. 
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002` on `feat/assembly-template-editor-density`. Use the repository's bundled Node 24 environment for Node commands.
+Work from `~/RaspberryPiSystem_002` on `feat/assembly-template-editor-density`. Use the repository's bundled Node 24 environment for Node commands.
 
 Implement focused changes, running the relevant Vitest files after each milestone. Before final validation run:
 

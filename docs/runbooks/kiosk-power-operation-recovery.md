@@ -36,7 +36,7 @@ Pi5 に SSH 接続し、以下を実行して原因を特定する。
 
 ```bash
 # 1. 稼働中の API スロット（api-blue / api-green）内の power-actions マウント状態を確認
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && scripts/server/run-in-active-api.sh cat /proc/self/mountinfo" | grep power-actions
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && scripts/server/run-in-active-api.sh cat /proc/self/mountinfo" | grep power-actions
 ```
 
 本番の API は `docker-compose.phase3.yml` の blue/green スロットで動き、`docker-compose.server.yml` の `api` サービスは使われていない。

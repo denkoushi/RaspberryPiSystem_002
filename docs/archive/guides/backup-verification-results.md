@@ -4,7 +4,7 @@
 
 ## 検証環境
 
-- **デバイス**: Raspberry Pi 5 (100.106.158.2)
+- **デバイス**: Raspberry Pi 5 (<Pi5 の Tailscale IP>)
 - **ブランチ**: `refactor/imports-ts-refactoring`
 - **検証日時**: 2025-12-15 00:29-00:30（初回検証）、00:42（改善後検証）
 

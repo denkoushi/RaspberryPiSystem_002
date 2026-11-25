@@ -117,7 +117,7 @@ Docker ComposeとCaddyリバースプロキシに関するトラブルシュー�
 
 **要因**: 
 - ブラウザのセキュリティ制約により、カメラAPI（`navigator.mediaDevices.getUserMedia`）はHTTPSまたはlocalhostでのみ動作する
-- 工場環境では`http://192.168.10.230:4173`でアクセスしていたため、カメラAPIが利用不可だった
+- 工場環境では`http://<Pi5 の LAN IP>:4173`でアクセスしていたため、カメラAPIが利用不可だった
 
 **試行した対策**: 
 - [試行1] カメラ接続確認（`lsusb`、`v4l2-ctl --list-devices`）→ カメラは正しく認識されていることを確認
@@ -155,7 +155,7 @@ Docker ComposeとCaddyリバースプロキシに関するトラブルシュー�
 **EXEC_PLAN.md参照**: Phase 6 実機テスト（USB接続カメラ連携）（2025-11-28）
 
 **事象**: 
-- HTTPSページから`ws://192.168.10.223:7071/stream`への接続がブラウザでブロックされる
+- HTTPSページから`ws://<raspberrypi4 の実際の LAN IP>:7071/stream`への接続がブラウザでブロックされる
 - エラーメッセージ: `Mixed Content: The page at 'https://...' was loaded over HTTPS, but attempted to connect to the insecure WebSocket endpoint 'ws://...'. This request has been blocked; this endpoint must be available over WSS.`
 
 **要因**: 
@@ -271,13 +271,13 @@ Docker ComposeとCaddyリバースプロキシに関するトラブルシュー�
 **EXEC_PLAN.md参照**: なし（2025-12-02発生）
 
 **事象**: 
-- Pi4のキオスク画面で `WebSocket connection to 'wss://192.168.10.230/stream' failed: Error during WebSocket handshake: Unexpected response code: 502` エラーが発生
-- Caddyのログに `dial tcp 192.168.128.102:7071: i/o timeout` エラーが記録される
+- Pi4のキオスク画面で `WebSocket connection to 'wss://<Pi5 の LAN IP>/stream' failed: Error during WebSocket handshake: Unexpected response code: 502` エラーが発生
+- Caddyのログに `dial tcp <IP アドレス>:7071: i/o timeout` エラーが記録される
 - NFCイベントが受信できないため、カメラ撮影機能が動作しない
 
 **要因**: 
 - `Dockerfile.web`の`envsubst`コマンドの引数が不適切で、環境変数`NFC_AGENT_HOST`が正しく置換されていなかった
-- `Caddyfile.local.template`内の`$NFC_AGENT_HOST`が古いIPアドレス（`192.168.128.102`）のまま残っていた
+- `Caddyfile.local.template`内の`$NFC_AGENT_HOST`が古いIPアドレス（`<IP アドレス>`）のまま残っていた
 - シェル環境変数に古いIPアドレスが設定されていた可能性がある
 
 **試行した対策**: 
@@ -289,9 +289,9 @@ Docker ComposeとCaddyリバースプロキシに関するトラブルシュー�
 **有効だった対策**: 
 - ✅ **解決済み**（2025-12-02）:
   1. `Dockerfile.web`の`CMD`を修正し、`envsubst`の引数を削除してすべての環境変数を自動的に置換するように変更
-  2. `.env`ファイルに`NFC_AGENT_HOST=192.168.10.223`を設定
+  2. `.env`ファイルに`NFC_AGENT_HOST=<raspberrypi4 の実際の LAN IP>`を設定
   3. シェル環境変数を明示的に設定してからDocker Composeを起動
-  4. `docker-compose.server.yml`の`environment`セクションで`NFC_AGENT_HOST: ${NFC_AGENT_HOST:-192.168.10.223}`を設定（デフォルト値付き）
+  4. `docker-compose.server.yml`の`environment`セクションで`NFC_AGENT_HOST: ${NFC_AGENT_HOST:-<raspberrypi4 の実際の LAN IP>}`を設定（デフォルト値付き）
 
 **学んだこと**: 
 - `envsubst`コマンドは引数を指定しない場合、すべての環境変数を自動的に置換する

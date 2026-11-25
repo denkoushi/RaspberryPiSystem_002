@@ -147,7 +147,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - 保持テーブル **`ProductionScheduleFkojunstStatus`**（`sourceCsvDashboardId` 単位の **全削除→再作成**・winner 行 `csvDashboardRowId` へ紐付け）。一覧 API は **`LEFT JOIN`** で `rowData.FKOJUNST` に反映。
   - キオスク: `ProductionSchedulePage` / `ProductionScheduleManualOrderPage` に列追加（`displayRowDerivation` の `values.FKOJUNST`）。
 - **運用（Gmail スケジュール）**: `backup.json` の `csvImports` に **固定ID** **`csv-import-productionschedule-fkojunst`**（`provider: gmail`・`targets: [{ type: csvDashboards, source: 9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c }]`・cron **`0 0 * * *`**・1日1回深夜）を **API/スケジューラ読み込み時に自動補完**する。**`DELETE /api/imports/schedule/csv-import-productionschedule-fkojunst`** は **400**（システム固定で削除不可）。件名 `FKOJUNST` は **他用途と重複させない**（`CsvImportSubjectPattern` の一意制約）。手動で `POST /api/imports/schedule` して **同一ターゲットを足す必要は原則ない**（他の Gmail csvDashboards 運用は [csv-import-export.md の production runbook 節](../guides/csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) を参照）。
-- **本番デプロイ（2026-04-16）**: [deployment.md](../guides/deployment.md) 標準（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/fkojunst-gmail-status-import infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` **成功後**に同コマンドで `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260416-200358-17426` → `20260416-201513-2763` → `20260416-202019-27635` → `20260416-202436-9992` → `20260416-202952-27613`（各 **`failed=0` / `unreachable=0`**）。**Pi3**: 対象外。
+- **本番デプロイ（2026-04-16）**: [deployment.md](../guides/deployment.md) 標準（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feature/fkojunst-gmail-status-import infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` **成功後**に同コマンドで `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260416-200358-17426` → `20260416-201513-2763` → `20260416-202019-27635` → `20260416-202436-9992` → `20260416-202952-27613`（各 **`failed=0` / `unreachable=0`**）。**Pi3**: 対象外。
 - **本番デプロイ（2026-04-16・追記・Gmail スケジュール保証のみ）**: ブランチ **`feat/fkojunst-gmail-schedule-guarantee`**・コミット **`3a762893`**（`ImportScheduleAdminService` の DI 契約維持・`fkojunst-import-schedule.ensure` の `BackupConfigLoader.save` ガード・CI `import-schedule` / `csv-import-scheduler` 回帰）。**対象**: **`raspberrypi5` のみ**（API/DB のみのため Pi4・Pi3 は未デプロイ）。**コマンド**: `./scripts/update-all-clients.sh feat/fkojunst-gmail-schedule-guarantee infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow`。**Detach Run ID**: `20260416-222237-18706`（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（初回 FKOJUNST 反映後は約 **89s**、Gmail スケジュール保証のみの Pi5 反映後は約 **56s**・いずれも既存の生産日程系チェックを含む）。
 - **トラブルシュート**: 無効ステータス・winner 未照合は同期結果の **`skippedInvalidStatus` / `unmatched`** と API ログの **`[ProductionScheduleFkojunstSyncService] FKOJUNST rows skipped during sync`** を確認。`update-all-clients.sh` の **Mac 側ロック**（exit 3）は前ジョブ完了待ち。
@@ -161,8 +161,8 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - 一覧 API（`listProductionScheduleRows`）: **`ProductionScheduleFkojunstMailStatus`（`fkmail`）を `LEFT JOIN`**（`fkst` は **一覧の FKOJUNST 表示・可視判定には使わない**）。可視条件は **`fkojunst-production-schedule-list-visibility.policy.ts`** で **COUNT と明細を同一 `WHERE`** に集約。**2026-05-09 改訂（順位ボードUX）**: **`fkmail` の `statusCode` が `S`/`R`/`C`/`X` のとき**一覧に残り、**`rowData.FKOJUNST`** は **`fkmail.statusCode`**。**`C`/`X`** は **完了**（実効完了・外部完了と整合）。**`fkmail` が無い** winner も **一覧から除外**。**`O`/`P`**・**`?`/`''`** 等は **一覧から除外**（**`O`/`P`** は **一覧非表示・未完了**で製番進捗集計の total には残る）。**歴史**: **2026-05-08** は **`S`/`R` のみ**可視とし **`C`/`X` 完了行が一覧から落ちた**ため、[deployment.md §2026-05-09](../archive/deployments/2026-05.md#kiosk-leaderboard-fkojunst-cx-visible-2026-05-09) で **`C`/`X` を再表示**。
   - 取込後: **`CsvDashboardPostIngestService`** が当該ダッシュボード ID のとき **`ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard`** を実行。手動アップロード応答に **`fkojunstMailSync`** を含め得る。
 - **運用（Gmail スケジュール）**: 固定 ID **`csv-import-productionschedule-fkojunst-status-mail`**（cron **`5 1 * * *`**・既定 **`enabled: false`**・`targets` は **`b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e`** へ強制）を **`ensureFkojunstStatusMailCsvImportSchedule`** が補完。**`DELETE …/csv-import-productionschedule-fkojunst-status-mail`** は **400**。
-- **本番デプロイ（2026-04-28）**: [deployment.md](../guides/deployment.md) 補足（2026-04-28 FKOJUNST_Status）。**対象**: **`raspberrypi5` のみ**（**Pi4・Pi3 個別不要**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/fkojunst-status-gmail-route infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ名を `main` に**）。**Detach Run ID**（`ansible-update-`）: **`20260428-145623-7353`**（**`failed=0` / `unreachable=0` / exit `0`**）。
-- **本番デプロイ（2026-04-28・追記・一覧 S/R のみ可視性・API のみ）**: ブランチ **`feat/production-schedule-fkojunst-sr-only-list`**・コミット **`06e62912`**（ポリシーモジュール・COUNT に `fkst` JOIN・キオスク統合テスト）。**対象**: **`raspberrypi5` のみ**。[deployment.md](../guides/deployment.md) 補足（**一覧 FKOJUNST S/R のみ**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/production-schedule-fkojunst-sr-only-list infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260428-181153-28174`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 1372s**）。
+- **本番デプロイ（2026-04-28）**: [deployment.md](../guides/deployment.md) 補足（2026-04-28 FKOJUNST_Status）。**対象**: **`raspberrypi5` のみ**（**Pi4・Pi3 個別不要**）。**コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feature/fkojunst-status-gmail-route infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ名を `main` に**）。**Detach Run ID**（`ansible-update-`）: **`20260428-145623-7353`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **本番デプロイ（2026-04-28・追記・一覧 S/R のみ可視性・API のみ）**: ブランチ **`feat/production-schedule-fkojunst-sr-only-list`**・コミット **`06e62912`**（ポリシーモジュール・COUNT に `fkst` JOIN・キオスク統合テスト）。**対象**: **`raspberrypi5` のみ**。[deployment.md](../guides/deployment.md) 補足（**一覧 FKOJUNST S/R のみ**）。**コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/production-schedule-fkojunst-sr-only-list infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260428-181153-28174`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 1372s**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 62s**・FKOJUNST_Status 初回反映後）。**一覧 S/R のみ追補後**の再検証: **約 272s**（同一スクリプト・**PASS 43 / WARN 0 / FAIL 0**）。
 - **トラブルシュート**: **キー不一致**（メールの **`FSEZONO` が本体 `ProductNo` と一致しない**等）は **`unmatched`** が増える。**一覧から消えた**がメールにはある行は **`statusCode` が `S`/`R`/`C`/`X` 以外**を確認（**`?`/`''` も非表示**・**`O`/`P`** も非表示）。**表示の正本は `fkmail` のみ**（旧 **`FKOJUNST`** Gmail ルートの `fkst` は **一覧・外部完了の判定に使わない**）。デプロイ fail-fast（未コミット/未追跡）は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
 
@@ -240,19 +240,19 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - 照会時、生産日程 **`ProductionScheduleOrderSupplement.plannedStartDate`** を **`(FSEIBAN, 照合キーFHINCD)` 粒度で最古**（複数行ある場合の最小日付）として合成し、API 行 DTO に **`plannedStartDate`**（`YYYY-MM-DD` または `null`）を付与（**照合キー優先**、未取得時は **括弧除去のみ**のフォールバック）。Web は **`PurchaseOrderLookupResultList`** で **着手日**を **機種→製番→着手日→品名→品番→個数** の並びで表示。
   - **2026-10-22 追記**: 現品票に **素材の品番**（例 `MD100492280`）が載る注番では品番で一致せず着手日が空だったため、3段目として **同じ製番で品名一致**（NFKC・空白除去・大文字化。配膳の照合と共通の `normalizePartName`）を追加。あわせて生産日程の読み取りを **`COALESCE(rowData->>'FSEIBAN','') = ANY(製番)` の1回**に絞り（既存の式インデックスが効く形）、照合は TypeScript 側で行う（旧実装は `trim()` 付き条件で全件を2回読んでいた）。
   - API: **`GET /api/kiosk/purchase-order-lookup/:purchaseOrderNo`**（`purchaseOrderNo` は **10 桁数字**・`x-client-key`）。Web: **`/kiosk/purchase-order-lookup`**（バーコードスキャン・複数行は一覧）。
-- **本番デプロイ（2026-04-22・購買照会バーコード読取安定化・Web のみ）**: ブランチ **`feat/purchase-order-scan-stability`**・代表 **`b2180b1e`**（`barcodeReadStability.ts`・`useBarcodeScanSession` / `BarcodeScanModal` の任意 **`stabilityConfig` / `readerOptions`**・購買照会のみ **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER`** と **短時間の同一値2連続一致で確定**・`zxingVideoReader` の既定間隔は **呼び出し側未指定時は従来寄り**）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**（**Pi3 は対象外**）。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/purchase-order-scan-stability infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Detach Run ID**: `20260422-091400-26049` → `20260422-091829-21827` → `20260422-092256-32471` → `20260422-092617-8016` → `20260422-093223-17140`（各 **`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。**追加スモーク**: `GET https://100.106.158.2/kiosk/purchase-order-lookup` → **200**。**仕様**: 要領書など他画面のバーコード UI は **`stabilityConfig` 未指定で即確定**のまま。**知見**: 共有 `BarcodeScanModal` へ波及させず購買照会だけチューニングするため **オプション化**。**トラブルシュート**: **`update-all-clients.sh` の並列起動禁止**・プレフライト失敗後の **stale lock** は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。ラベルが **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER` 外**なら `formatPresets.ts` の配列へ追加。
+- **本番デプロイ（2026-04-22・購買照会バーコード読取安定化・Web のみ）**: ブランチ **`feat/purchase-order-scan-stability`**・代表 **`b2180b1e`**（`barcodeReadStability.ts`・`useBarcodeScanSession` / `BarcodeScanModal` の任意 **`stabilityConfig` / `readerOptions`**・購買照会のみ **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER`** と **短時間の同一値2連続一致で確定**・`zxingVideoReader` の既定間隔は **呼び出し側未指定時は従来寄り**）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**（**Pi3 は対象外**）。`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/purchase-order-scan-stability infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Detach Run ID**: `20260422-091400-26049` → `20260422-091829-21827` → `20260422-092256-32471` → `20260422-092617-8016` → `20260422-093223-17140`（各 **`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。**追加スモーク**: `GET https://<Pi5 の Tailscale IP>/kiosk/purchase-order-lookup` → **200**。**仕様**: 要領書など他画面のバーコード UI は **`stabilityConfig` 未指定で即確定**のまま。**知見**: 共有 `BarcodeScanModal` へ波及させず購買照会だけチューニングするため **オプション化**。**トラブルシュート**: **`update-all-clients.sh` の並列起動禁止**・プレフライト失敗後の **stale lock** は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。ラベルが **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER` 外**なら `formatPresets.ts` の配列へ追加。
 - **実機（Android Chrome・2026-04-24 追記）**: `feat/kiosk-barcode-reader-tuning`（`main`）反映後、**注番**（現品票一次元・**10 桁**）の **カメラ読取体感**が速くなったとの場内確認。Web は **`PurchaseOrderLookupPage`** で **`BARCODE_READER_OPTIONS_KIOSK_DEFAULT`（220/120ms）** を `BarcodeScanModal` に明示し、上記 **`PURCHASE_ORDER` プリセット**・**`stabilityConfig`（短時間2連続一致）**と併用。配膳の **製造order** 一次元も同リリースで体感改善の報告あり（[KB-339 V24](./KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)）。照明・ピント・ラベル品質で変動。
-- **本番デプロイ（2026-04-21・追記・FHINCD 照合キー v2・Pi5→Pi4×4）**: ブランチ **`fix/fhincd-normalization-v2`**・代表 **`65955268`**（Prisma `20260422120000_purchase_order_lookup_fhincd_match_key`・`purchase-fhincd-normalize.ts`・`purchase-fhincd-match-sql.ts`・照会の段階移行フォールバック）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**。**Pi3**: 対象外（本変更は Pi5 API + Pi4 キオスク Web）。[deployment.md](../guides/deployment.md) 標準・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/fhincd-normalization-v2 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260421-211718-16570` → `20260421-213337-30126` → `20260421-213832-8006` → `20260421-214223-235` → `20260421-214721-3204`（各 **`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **53s**）。**トラブルシュート**: **同一 Pi5 へ `update-all-clients.sh` を並列起動しない**（ローカル／リモートロック・exit 3）。
+- **本番デプロイ（2026-04-21・追記・FHINCD 照合キー v2・Pi5→Pi4×4）**: ブランチ **`fix/fhincd-normalization-v2`**・代表 **`65955268`**（Prisma `20260422120000_purchase_order_lookup_fhincd_match_key`・`purchase-fhincd-normalize.ts`・`purchase-fhincd-match-sql.ts`・照会の段階移行フォールバック）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**。**Pi3**: 対象外（本変更は Pi5 API + Pi4 キオスク Web）。[deployment.md](../guides/deployment.md) 標準・`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh fix/fhincd-normalization-v2 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260421-211718-16570` → `20260421-213337-30126` → `20260421-213832-8006` → `20260421-214223-235` → `20260421-214721-3204`（各 **`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **53s**）。**トラブルシュート**: **同一 Pi5 へ `update-all-clients.sh` を並列起動しない**（ローカル／リモートロック・exit 3）。
 - **本番デプロイ（2026-04-21・蓄積 upsert・着手日・`Dockerfile.web` Caddy 依存 pin）**:
   - **ブランチ/対象**: **`feat/purchase-order-lookup-history-start-date`**・代表 **`92fd37e4`**。**`raspberrypi5` のみ**（Pi4/Pi3 未反映）。
-  - **手順/実績**: [deployment.md](../guides/deployment.md) 標準・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/purchase-order-lookup-history-start-date infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260421-192642-23281`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+  - **手順/実績**: [deployment.md](../guides/deployment.md) 標準・`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/purchase-order-lookup-history-start-date infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260421-192642-23281`**（**`failed=0` / `unreachable=0` / exit `0`**）。
   - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **94s**）。
   - **CI/Trivy**: `security-docker` の **`trivy image web`** 通過のため Caddy 同梱 `go.mod` で **`pgx` / `puddle` / `smallstep/certificates` / OTel SDK** 等を `replace` ピン（詳細 [KB-307](./ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する) 追記）。
   - **PR**: [#175](https://github.com/denkoushi/RaspberryPiSystem_002/pull/175)。
 - **運用（Gmail スケジュール）**: `backup.json` / 管理 API 経由で **固定 ID** **`csv-import-purchase-order-fkobaino`**（`ImportScheduleAdminService` で **自動補完・削除不可**）を **`ensureFkobainoCsvImportSchedule`** が維持。件名 **`FKOBAINO`** は他用途と重複させない。
 - **本番デプロイ（2026-04-20・追記・キオスク Web UX）**: ブランチ **`feat/kiosk-purchase-order-lookup-ux`**・代表コミット **`b0c2e68e`**（`PurchaseOrderLookupPage`・`usePurchaseOrderLookup`・進行中照会と短いスキャンで `loading` が残る不具合の修正・`buildPurchaseOrderRowLines`・Vitest・デザインプレビュー HTML）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260420-185803-18736` → `20260420-191222-23450` → `20260420-191818-15715` → `20260420-193055-747`。**`raspi4-fjv60-80`**: プレフライト **SSH timeout**（**未デプロイ**）。**Pi3**: 対象外（`/kiosk` は Pi5 SPA + Pi4 キオスク）。**トラブルシュート**: `raspi4-fjv60-80` 失敗後に Pi5 に **stale lock**（`runPid: null`）が残り、続く **`raspi4-kensaku-stonebase01` でロック取得不能** → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**。**追加スモーク**: `GET …/kiosk/purchase-order-lookup` → **200**。
 - **本番デプロイ（2026-04-20・追記・モバイル注文入力スキャン専用化）**: ブランチ **`feat/scan-only-order-inputs-and-shelf-chip-mobile`**・代表 **`423e32bb`**。**Web**: **`/kiosk/purchase-order-lookup`** の注文番号は **`readOnly` + `inputMode="none"`**（**スキャンのみ**）・`usePurchaseOrderLookup` から手入力用 debounce / `onOrderNoChange` を除去。**配膳** `/kiosk/mobile-placement` メイン下半の **製造order** も同様（`onOrderBarcodeChange` 廃止）。**棚番チップ**: `mobilePlacementKioskTheme` で **`grid-cols-3 sm:grid-cols-4`** 等（詳細は [KB-339 §V23](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v23-scan-only-shelf-chip-2026-04-20)）。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**。**Detach Run ID**: `20260420-211100-899` → `20260420-211743-28526` → `20260420-212322-14477` → `20260420-213004-29970`。**`raspi4-fjv60-80`**: プレフライト **SSH timeout**（**未デプロイ**）。**Pi3**: 対象外。**トラブルシュート**: fjv60 失敗後 Pi5 ロックが **`runPid: null`** のまま残ると次ホストで **ロック取得不能**（本記録では runId **`20260420-212814-6231`**）→ [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**。**追加スモーク**: `GET …/kiosk/purchase-order-lookup`・`…/kiosk/mobile-placement` → **各 200**。
-- **本番デプロイ（2026-04-20）**: [deployment.md](../guides/deployment.md) 標準。`feat/fkobaino-purchase-order-lookup` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**・**`--detach --follow`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260420-153825-14948` → `20260420-154924-28306` → `20260420-155406-1101` → `20260420-155936-12366`（各 **`failed=0` / `unreachable=0`**）。**`raspi4-fjv60-80`**: プレフライトで **Pi5 から `100.100.229.95:22` SSH timeout** のため **未デプロイ**（到達復旧後に **`--limit raspi4-fjv60-80` 単体**を推奨）。**Pi3**: 対象外。
+- **本番デプロイ（2026-04-20）**: [deployment.md](../guides/deployment.md) 標準。`feat/fkobaino-purchase-order-lookup` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**・**`--detach --follow`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260420-153825-14948` → `20260420-154924-28306` → `20260420-155406-1101` → `20260420-155936-12366`（各 **`failed=0` / `unreachable=0`**）。**`raspi4-fjv60-80`**: プレフライトで **Pi5 から `<raspi4-fjv60-80 の Tailscale IP>:22` SSH timeout** のため **未デプロイ**（到達復旧後に **`--limit raspi4-fjv60-80` 単体**を推奨）。**Pi3**: 対象外。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: `raspi4-fjv60-80` の Pi5 経由 SSH・既存ベースラインと同型）。
 - **トラブルシュート**: プレフライト失敗で Pi5 に **stale lock** が残る場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。マイグレーション適用後は Pi5 で **`pnpm prisma migrate status`**（[deployment.md のデプロイ後チェックリスト](../archive/deployments/legacy-operator-guide-through-2026-07.md#デプロイ後チェックリスト)）を確認。
 - **取込堅牢化（2026-04-20・追記）**:
@@ -315,7 +315,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - 生産スケジュール／手動順番: **指示数**・**着手日**列を表示。表示用納期は **`dueDate ?? plannedEndDate`**。**手動 `dueDate` のときのみ**納期セルを強調。
   - 手動順番モードのソート: **資源順番（`processingOrder`）→ 表示用納期**の二段。
 - **ブランチ**: `feat/kiosk-planned-fields-due-fallback-ui`（コミット例: `875fe284`）。
-- **本番デプロイ**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh` のみ。**対象 5 台**（`raspberrypi5` → Pi4×4）を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 対象外**）。Mac からは `RASPI_SERVER_HOST=denkon5sd02@100.106.158.2` 前提。同一 Pi5 へスクリプトを並列起動しない。
+- **本番デプロイ**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh` のみ。**対象 5 台**（`raspberrypi5` → Pi4×4）を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 対象外**）。Mac からは `RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP>` 前提。同一 Pi5 へスクリプトを並列起動しない。
   - **Detach Run ID（実績・2026-04-01）**: `20260401-201019-17368`（Pi5）/ `20260401-201641-20955`（`raspberrypi4`）/ `20260401-202120-2571`（`raspi4-robodrill01`）/ `20260401-202509-5371`（`raspi4-fjv60-80`）/ `20260401-202901-20217`（`raspi4-kensaku-stonebase01`）。いずれも `PLAY RECAP` **`failed=0`**。
 - **実機検証**:
   - `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-01・Tailscale。既存の `plannedQuantity` 検査を含む）。
@@ -534,7 +534,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **Run ID 例**: `20260320-190147-27980`（Pi5）/ `20260320-190559-20664`（raspberrypi4）/ `20260320-191024-14641`（raspi4-robodrill01）。
   - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**。
 - **Troubleshooting**:
-  - **`[ERROR] --detach requires RASPI_SERVER_HOST`**: Mac から `--detach` を付けて実行する場合、`RASPI_SERVER_HOST` 未設定で停止する。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` を先に設定（[deployment.md](../guides/deployment.md)「デタッチ実行」、[KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+  - **`[ERROR] --detach requires RASPI_SERVER_HOST`**: Mac から `--detach` を付けて実行する場合、`RASPI_SERVER_HOST` 未設定で停止する。`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"` を先に設定（[deployment.md](../guides/deployment.md)「デタッチ実行」、[KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
 
 ## 手動順番 overview UI（上端ヘッダーリビール・カード密度・グリッド）（2026-03-21）
 
@@ -592,7 +592,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
     - 一覧取得の `enabled`・空状態「検索してください」・`showFetching` 等は従来どおり [`hasScheduleFilterQuery`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)（`hasQuery || hasResourceCategoryResourceSelection`）。
     - キオスクヘッダーは現行の [`useKioskBottomRightHeaderReveal`](../../apps/web/src/hooks/useKioskBottomRightHeaderReveal.ts) が同フック系を拡張利用（当時は下辺中央フック）。
 - **Deploy / verify（実績、2026-03-21）**:
-  - ブランチ **`feat/manual-order-pane-assignment-label-toolbar`**（API 割当のみ・ラベル短縮・当時の下ペイン折りたたみ初版）。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
+  - ブランチ **`feat/manual-order-pane-assignment-label-toolbar`**（API 割当のみ・ラベル短縮・当時の下ペイン折りたたみ初版）。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`、`--detach --follow`。
   - **Run ID**: `20260321-145746-1455`（Pi5）/ `20260321-150253-8405`（raspberrypi4）/ `20260321-150735-6173`（raspi4-robodrill01）、いずれも success。
   - **下ペイン右端ホバー・開閉と絞り込み分離**の本番反映は別ブランチ **`feat/manual-order-lower-pane-toolbar-hover`**（Run ID・Phase12 は [下ペイン帯ホバー節](#manual-order-lower-pane-toolbar-hover-2026-03-21)）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（上記各デプロイ後に再実行）。
@@ -611,7 +611,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **Fix（仕様）**:
   - **Web**: [`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) が見出し行（タイトル・ステータス・**右端トリガー**）と `max-height` 折りたたみ枠を担当。子は `children` で注入（SOLID: ページはフック＋業務 UI のみ）。**見た目の開閉**は [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の `isVisible` のみ。`hasScheduleFilterQuery` は [`useKioskProductionSchedule`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx) の `enabled`・空状態「検索してください」・`showFetching` 等にのみ使用。Vitest: [`ManualOrderLowerPaneCollapsibleToolbar.test.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.test.tsx)。
 - **Deploy / verify（実績、2026-03-21）**:
-  - ブランチ **`feat/manual-order-lower-pane-toolbar-hover`**。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
+  - ブランチ **`feat/manual-order-lower-pane-toolbar-hover`**。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`、`--detach --follow`。
   - **Run ID**: `20260321-162637-28864`（Pi5）/ `20260321-163112-2184`（raspberrypi4）/ `20260321-163710-15180`（raspi4-robodrill01）、いずれも success。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-21、Mac から実行）。
 - **知見**:
@@ -632,7 +632,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **Playwright（`CI=true`）**: `apps/api/.env` が `NODE_ENV=production` の開発マシンでは **CORS が無効**になり、Web(4173)→API(8080) の **OPTIONS が 404** → 管理画面バックアップ E2E 等が `waitForResponse` タイムアウトしうる。[`playwright.config.ts`](../../playwright.config.ts) の API `webServer.env` に **`NODE_ENV: development`** を明示（子プロセスでは dotenv が既存 env を上書きしない前提で有効）。
   - **Web Vitest**: シェルに **`NODE_ENV=production` が残っている**と React production ビルドとなり `act(...) is not supported in production builds` で大量失敗する → **`NODE_ENV=development`** で `pnpm --filter @raspi-system/web test` を実行。
 - **Deploy / verify（実績、2026-03-21）**:
-  - ブランチ **`feat/kiosk-production-schedule-collapsible-toolbar`**。[deployment.md](../guides/deployment.md) 標準の `scripts/update-all-clients.sh`。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（**Pi3 除外**）、`--limit` で **1台ずつ順番**。`export RASPI_SERVER_HOST=100.106.158.2`（ホストのみの場合はスクリプトが `denkon5sd02@` を付与する運用に合わせる）。
+  - ブランチ **`feat/kiosk-production-schedule-collapsible-toolbar`**。[deployment.md](../guides/deployment.md) 標準の `scripts/update-all-clients.sh`。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（**Pi3 除外**）、`--limit` で **1台ずつ順番**。`export RASPI_SERVER_HOST=<Pi5 の Tailscale IP>`（ホストのみの場合はスクリプトが `<Pi5 のユーザー名>@` を付与する運用に合わせる）。
   - **ログ接頭辞例**: Pi5 `ansible-update-20260321-214954`（以降 Pi4 は連続実行で別ログ）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（本変更は API 追加なしのため Phase12 は回帰中心。帯 UI はスクリプト外）。
 - **Troubleshooting**:
@@ -687,7 +687,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **一覧取得**: 手動順番ページのみ、`hasQuery` に加え `useProductionScheduleQueryParams` の `hasResourceCategoryResourceSelection`（工程ONかつ資源選択あり）で `useKioskProductionSchedule` を有効化。ツールバー「取得中表示」や「検索してください」も同じ合成条件に合わせる。
   - **不変**: ソートモード（`MANUAL_ORDER_PAGE_SORT_MODE_STORAGE_KEY`）と共有登録製番履歴（`kioskProductionScheduleSharedStorageKeys`）はリセットしない。
 - **Deploy / verify（実績、2026-03-20）**:
-  - **第1弾（下ペイン初期化のみ）**: ブランチ **`feat/manual-order-pencil-lower-pane-reset`**（コミット例: `cf27935a`）。**対象**: Pi5 + Pi4×2 のみ（Pi3 除外）、[deployment.md](../guides/deployment.md) の **1台ずつ順番**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` → `--limit "raspberrypi5"` → `raspberrypi4` → `raspi4-robodrill01`、`--detach --follow`）。**Run ID 例**: `20260320-214327-13205`（Pi5）/ `20260320-215018-18468`（raspberrypi4）/ `20260320-215450-29665`（raspi4-robodrill01）、いずれも success。
+  - **第1弾（下ペイン初期化のみ）**: ブランチ **`feat/manual-order-pencil-lower-pane-reset`**（コミット例: `cf27935a`）。**対象**: Pi5 + Pi4×2 のみ（Pi3 除外）、[deployment.md](../guides/deployment.md) の **1台ずつ順番**（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"` → `--limit "raspberrypi5"` → `raspberrypi4` → `raspi4-robodrill01`、`--detach --follow`）。**Run ID 例**: `20260320-214327-13205`（Pi5）/ `20260320-215018-18468`（raspberrypi4）/ `20260320-215450-29665`（raspi4-robodrill01）、いずれも success。
   - **第2弾（登録製番チップ `activeQueries` 維持の実装反映）**: ブランチ **`feat/manual-order-pencil-preserve-seiban`**。**Run ID**: `20260320-223140-3362`（Pi5）/ `20260320-223518-30451`（raspberrypi4）/ `20260320-223949-27315`（raspi4-robodrill01）、いずれも success。手順は第1弾と同じ（Pi3 除外・1台ずつ）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**（API・deploy-status・manual-order-overview v2・Pi5 リモート・Pi4/Pi3 サービス・`verify-services-real.sh` まで含むサマリ）。第2弾デプロイ後に再実行して確認。
   - **main 取り込み**: fast-forward、`a6ab547ee4aea70703a133685a348394f6200d12`（2026-03-20）。
@@ -831,7 +831,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - raspberrypi4（研削メイン）: 初回はプリフライトで SSH 接続タイムアウト（UNREACHABLE）のため未デプロイ。接続復旧後に `--limit "raspberrypi4"` で再デプロイし**デプロイ済み**（3台完了）。
 - **実機検証**: OK。Pi5・raspi4-robodrill01 にて KUMITATE2 が除外され進捗一覧に表示されないこと、`GET /api/kiosk/production-schedule/resources` の `resourceItems[].excluded` が期待どおりであることを確認。
 - **トラブルシュート（Pi4 研削メインがデプロイ時に接続不可の場合）**:
-  - 症状: `ssh: connect to host 100.74.144.79 port 22: Connection timed out`、プリフライトで raspberrypi4 が UNREACHABLE。
+  - 症状: `ssh: connect to host <raspberrypi4 の Tailscale IP> port 22: Connection timed out`、プリフライトで raspberrypi4 が UNREACHABLE。
   - 確認: Pi5 上で `tailscale status` で raspberrypi4 の online/offline と IP を確認。電源・ネットワーク（Tailscale）の状態を確認。必要なら `group_vars/all.yml` の `tailscale_network.kiosk_ip`（または該当 Pi4 の `ansible_host`）が現状の Tailscale IP と一致しているか確認。
   - 復旧後: `./scripts/update-all-clients.sh feat/resource-exclusion-policy-sync infrastructure/ansible/inventory.yml --limit "raspberrypi4" --detach --follow` で再デプロイ。
 - **References**:
@@ -1820,7 +1820,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 
 ### 知見（B第3実装・実機検証時）
 
-- **Pi4サービス確認**: Macから直接Pi4にSSHするとタイムアウトする。Pi5経由（`ssh denkon5sd02@100.106.158.2 "ssh tools03@100.74.144.79 '...'"`）で接続する（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 参照）
+- **Pi4サービス確認**: Macから直接Pi4にSSHするとタイムアウトする。Pi5経由（`ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi4 のユーザー名>@<raspberrypi4 の Tailscale IP> '...'"`）で接続する（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 参照）
 
 ## B第3次段（全体ランキング可視化・閲覧専用、2026-03-07）
 
@@ -2390,7 +2390,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **本番デプロイ・実機検証（2026-04-29）**:
   - **ブランチ**: `feat/kiosk-leaderboard-device-memory-and-slot-sync`（代表コミット **`ba2e8da8`**）。
   - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**・キオスク SPA は Pi5 `web` 配信）。
-  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-leaderboard-device-memory-and-slot-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**複数ホスト運用では `--limit` を 1 台ずつ**。**Pi3 単体は資源僅少のため別手順（`deployment.md` の Pi3 節）**。
+  - **コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/kiosk-leaderboard-device-memory-and-slot-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**複数ホスト運用では `--limit` を 1 台ずつ**。**Pi3 単体は資源僅少のため別手順（`deployment.md` の Pi3 節）**。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-114156-3453`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・所要 **約 928s**。**Docker 再ビルド**含む）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **24s**・Tailscale）。
 
@@ -2420,7 +2420,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **本番デプロイ・実機検証（2026-04-29）**:
   - **ブランチ**: `feat/leaderboard-seiban-multiselect-or-clear`（代表コミット **`d26b50d3`**）。
   - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
-  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-multiselect-or-clear infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-multiselect-or-clear infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-123438-30137`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 348s**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **23s**・Tailscale）。
 
@@ -2441,7 +2441,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **本番デプロイ・実機検証（2026-04-29）**:
   - **ブランチ**: `fix/leaderboard-seiban-registration-sync`（代表コミット **`b4afb2d7`**）。
   - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
-  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/leaderboard-seiban-registration-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh fix/leaderboard-seiban-registration-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-143937-21499`**（**`failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
 
@@ -2464,7 +2464,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **本番デプロイ・実機検証（2026-04-29）**:
   - **ブランチ**: `feat/leaderboard-seiban-register-modal-close`（代表コミット **`a3265139`**）。
   - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
-  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-register-modal-close infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-register-modal-close infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-184211-20335`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 405s**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 90s**・Tailscale）。
   - **未完了検証**: 認証済み順位ボードで **鉛筆** → **製番登録** → **左パネル履歴反映** を現場目視する。
@@ -2490,7 +2490,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **本番デプロイ・実機検証（2026-04-29・初回・製番一覧パネル本体）**:
   - **ブランチ**: `feat/leaderboard-seiban-list-panel`（代表コミット **`f544a45c`**）。
   - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
-  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-list-panel infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-list-panel infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-193317-26767`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 436s**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 88s**・Tailscale）。
   - **未完了検証**: 認証済み順位ボードで **製番一覧の開閉**・**トグル登録/解除**・**左パネル履歴整合** を現場目視する。
@@ -2498,14 +2498,14 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **本番デプロイ・実機検証（2026-04-29・追補・接頭辞UI改修／末尾削除／全解除／3列／9桁表示）**:
   - **ブランチ**: `feat/leaderboard-seiban-panel-layout-and-prefix-controls`（代表コミット **`74d360b6`**）。
   - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
-  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-panel-layout-and-prefix-controls infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-panel-layout-and-prefix-controls infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-210617-3239`**（**`failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 139s**・Tailscale）。
 
 - **本番デプロイ・実機検証（2026-04-29・追補・接頭辞フィルタ／並べ替え／コントラスト／横幅）**:
   - **ブランチ**: `feat/leaderboard-seiban-panel-prefix-filter`（代表コミット **`900cb141`**）。
   - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
-  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-panel-prefix-filter infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-panel-prefix-filter infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-202355-27582`**（**`failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 106s**・Tailscale）。
 
@@ -2604,7 +2604,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **製番フィルタ時の行強調**: [`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) で **安定配色**、`ProductionScheduleLeaderOrderBoardPage` → `LeaderBoardGrid` → `LeaderOrderResourceCard` → `LeaderOrderResourceRow` へ **`activeQueries`** を伝播。**回帰**: [`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts)。
 - **デプロイ・実機検証（2026-05-01）**:
   - **ブランチ**: `feat/kiosk-leader-order-board-ux`（代表コミット **`84abca0b`**）。
-  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（ユーザー指定運用どおり）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（ユーザー指定運用どおり）。
   - **Detach Run ID**（`ansible-update-`）: **`20260501-224248-30928`** / **`20260501-224814-26947`** / **`20260501-225329-28559`** / **`20260501-225740-4207`** / **`20260501-230236-8738`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **67s**・Tailscale）。
 - **知見**: **`activeQueries`** は **クエリ駆動の「どの製番で絞っているか」**の単一ソースに寄せ、アクセントは **製番ごとにハッシュ安定色**へマップすると列が増えても見通しが保てる。**チップは 1 コンポーネント**にまとめると進捗一覧と納期アシストの **見え方ドリフト**を抑えられる。
@@ -2645,10 +2645,10 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **ブランチ**: `feat/kiosk-seiban-accent-palette-24`（実装 **`be936a6e`**）。
   - **PR**: [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)（squash マージ **`f8c1f6d2`**）。
 - **デプロイ・実機検証（2026-05-20）**:
-  - **手順**: [deployment.md](../archive/deployments/2026-05.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**マージ後は `main`**）。**デプロイ前**: ローカル git **クリーン**必須（`update-all-clients.sh` fail-fast）。
+  - **手順**: [deployment.md](../archive/deployments/2026-05.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**マージ後は `main`**）。**デプロイ前**: ローカル git **クリーン**必須（`update-all-clients.sh` fail-fast）。
   - **対象（1 台ずつ）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**。**Pi3**: **`skipping: no hosts matched`**（**Pi5 `web` SPA 配信** + Pi4 **`kiosk-browser` 再起動**のみ。**Pi3 専用手順は未実施で正**）。
   - **Detach Run ID**（`ansible-update-`）: **`20260520-141147-19965`**（Pi5·**`ok=134` `changed=4`**·Docker compose 再起動）/ **`20260520-141629-31940`**（Pi4·**`ok=122` `changed=10`**）/ **`20260520-142108-13167`**（robodrill·**`ok=122` `changed=9`**）/ **`20260520-142440-24963`**（fjv60-80·**`ok=122` `changed=9`**）/ **`20260520-142830-16409`**（StoneBase01·**`ok=129` `changed=10`**）。いずれも **`failed=0` / `unreachable=0` / exit `0`**。
-  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **31s**・Tailscale·Pi5 API `100.106.158.2`）。**`deploy-status`（Pi4×4）**: すべて **PASS**。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **31s**・Tailscale·Pi5 API `<Pi5 の Tailscale IP>`）。**`deploy-status`（Pi4×4）**: すべて **PASS**。
   - **現場目視（任意）**: [verification-checklist.md](../guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20) §6.6.23。
 - **知見**:
   - **「色を増やすだけ」で全件表示の識別性は改善**するが、**24 色でも被りは残る**（製番数 ≫ 24）。**OR フィルタ ~5 件**は **先頭 8 色不変**のため **運用変更なし**。
@@ -2707,7 +2707,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
     | `raspi4-fjv60-80` | `20260522-213340-9415` | `ok=122` `changed=9` `failed=0` |
     | `raspi4-kensaku-stonebase01` | `20260522-213908-14986` | `ok=129` `changed=10` `failed=0` |
 
-  - **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**マージ後 `main`**）。
+  - **標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**マージ後 `main`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 139s**·Tailscale）。
   - **Pi3**: **`skipping: no hosts matched`**（Pi5 SPA 配信 + Pi4 再起動のみ·**Pi3 専用手順は未実施で正**）。
 - **知見**:
@@ -2730,7 +2730,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **進捗一覧**: [`collectAggregatedProgressOverviewResourceProcesses.ts`](../../apps/web/src/features/kiosk/productionSchedule/collectAggregatedProgressOverviewResourceProcesses.ts) が **`resourceProcesses` を資源ごとに AND 完了**でまとめ、**`resourceCd` 昇順**・安定 **`rowId`**。型 **`AggregatedProgressOverviewResourceProcess`** は **features で定義**し、presentation レイヤへの型逆流を避ける。[`ProgressOverviewSeibanCard.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewSeibanCard.tsx) のヘッダ直下に [`KioskResourceProcessChips`](../../apps/web/src/components/kiosk/resourceProgress/KioskResourceProcessChips.tsx)。**回帰**: [`collectAggregatedProgressOverviewResourceProcesses.test.ts`](../../apps/web/src/features/kiosk/productionSchedule/__tests__/collectAggregatedProgressOverviewResourceProcesses.test.ts)。
 - **デプロイ・実機検証（2026-05-02）**:
   - **ブランチ**: `feat/kiosk-seiban-accent-and-progress-resource-strip`（代表コミット **`924a2ff4`**）。
-  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
   - **Detach Run ID**（`ansible-update-`）: **`20260502-094331-28033`** / **`20260502-094916-31090`** / **`20260502-095506-23348`** / **`20260502-095947-26960`** / **`20260502-100443-16279`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **114s**・Tailscale）。
 - **知見**: 順位ボードのアクセントを **クエリ入力の有無から切り離す**と、「登録済みだが検索クエリ無し」の行も **同色で追える**。進捗側の資源チップは **純関数集約 + 一覧と共有コンポーネント**に寄せると、カード先頭での **一覧との見え方の一貫性**が保てる。
@@ -2749,7 +2749,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **回帰**: [`collectLeaderBoardFooterResourceChips.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/collectLeaderBoardFooterResourceChips.test.ts)。
 - **デプロイ・実機検証（2026-05-02）**:
   - **ブランチ**: `fix/leaderboard-row-footer-resource-chips`（代表コミット **`16911165`**）。
-  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
   - **Detach Run ID**（`ansible-update-`）: **`20260502-105130-11663`** / **`20260502-105758-25070`** / **`20260502-110434-28709`** / **`20260502-110923-18185`** / **`20260502-111424-3838`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **130s**・Tailscale）。
 - **知見**: カード単位のフッターより **行単位**にチップ帯を載せると、**複数行カード**でも **製番ごとの帯が一意**に付き、グルーピング都合のヘッダ重複を避けられる。集約ロジックは **進捗一覧と共有の純関数**に寄せると仕様ドリフトが減る。
@@ -2767,7 +2767,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **Prisma**: 変更なし（クエリ応答組み立てのみ）。
 - **デプロイ・実機検証（2026-05-02）**:
   - **ブランチ**: `fix/leaderboard-resource-chips-join-and-scope`（代表コミット **`44aea2d9`**）。
-  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
   - **Detach Run ID**（`ansible-update-`）: **`20260502-125430-31676`** / **`20260502-130426-1173`** / **`20260502-131032-13145`** / **`20260502-131507-16128`** / **`20260502-132009-12509`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **152s**・Tailscale）。
 - **知見**: **一覧（progress-overview）と順位ボードのチップは、集約関数の入力キーを部品行に揃える**と、「同じ製番・別部品」の取り違えを防げる。**API と Web でマップキー規約を二重に定義しない**よう、クエリ側の部品行キーを Web の **`buildLeaderBoardPartResourceProcessKey` と同趣旨に寄せた**。
@@ -2806,7 +2806,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **単体テスト**: `sortLeaderBoardRowsForSeibanEvalDisplay.test.ts`・`seibanPriority.pure.test.ts`・`buildLeaderBoardViewModel.test.ts` 拡張など。
 - **本番デプロイ・実機検証（2026-05-04）**:
   - **ブランチ**: `feat/kiosk-seiban-priority-eval-mode`（代表 **`ffe250cb`**）。
-  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 は対象外**（今回の Ansible limit では play 自体スキップ）。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**・**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 は対象外**（今回の Ansible limit では play 自体スキップ）。
   - **Detach Run ID**（`ansible-update-`）: **`20260504-203034-22339`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **156s**）。
 - **知見**: 表示順の「試行」を **サーバに持ち込まない**ほうが、現場の一時並び替えと本番の手動順番 API の境界が曖昧にならない。**ランクは純粋関数でマップ化**してから既存比較器へ渡すと、テストが安定する。
@@ -2985,7 +2985,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
     - **`raspi4-robodrill01`** **`20260520-181206-12995`**（**`ok=122` `changed=9` `failed=0`**）
     - **`raspi4-fjv60-80`** **`20260520-181622-32182`**（**`ok=122` `changed=9` `failed=0`**）
   - **Pi3**: 各 run **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**）。
-  - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 76–88s**·Tailscale·Pi5 `100.106.158.2`）。
+  - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 76–88s**·Tailscale·Pi5 `<Pi5 の Tailscale IP>`）。
 - **知見**:
   - **API-only でも Pi4 をデプロイする理由**は **Ansible 慣行（キオスク repo 同期 + `kiosk-browser` 再起動）**であり、**本機能の正本は Pi5 `api` のみ**。
   - **Pi5 2 回目デプロイ**では diff が小さく **Docker 再ビルドが skip** されても、初回 **`164356-7722`** で API イメージは更新済み。**ref 確認**は `/opt/RaspberryPiSystem_002` の **`643e4f4b` 以降**。
@@ -3044,7 +3044,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **品名ホバー全文（2026-06-18）**: **`partNameLine`（`presentLeaderOrderRow` の trim 済み `fhinmei`）** は、製番と 2 列で **`truncate` されても** ネイティブ **`title` 属性**で **マウスホバー時に全文**を確認できる（工順・備考と同型。追加ライブラリ不要）。**Web のみ** · **サイネージ JPEG 対象外** · タッチ/キーボードの全文確認手段は追加しない。
   - **実装**: ブランチ **`feat/kiosk-leaderboard-fhinmei-hover-title`** · 代表 **`fc8e9c68`** · [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) に `title={pres.partNameLine}` · テスト [`LeaderOrderResourceRow.test.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/LeaderOrderResourceRow.test.tsx)
 - **本番デプロイ（2026-06-18 · FHINMEI ホバー全文 · Web のみ）**:
-  - **手順**: [deployment.md](../guides/deployment.md) 標準 · **`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`** · **`./scripts/update-all-clients.sh feat/kiosk-leaderboard-fhinmei-hover-title infrastructure/ansible/inventory.yml --limit <host> --detach --follow`** · **1 台ずつ** · **Pi3 除外**
+  - **手順**: [deployment.md](../guides/deployment.md) 標準 · **`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`** · **`./scripts/update-all-clients.sh feat/kiosk-leaderboard-fhinmei-hover-title infrastructure/ansible/inventory.yml --limit <host> --detach --follow`** · **1 台ずつ** · **Pi3 除外**
   - **対象順**: **`raspberrypi5` → `raspi4-kensaku-stonebase01` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`**
   - **Detach Run ID**（接頭辞 `ansible-update-`）:
 
@@ -3089,7 +3089,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **ローカル検証**: `leaderOrderRowPresentation.test.ts` **10 passed**（`fseibanLine` / `clusterTailSegments` 分割含む）· web lint · tsc · build OK。
 - **CI**: GitHub Actions **`26993180248`** **success**（`05ae1a70` push 後 · lint-build-unit / security-docker / api-db-and-infra / e2e 全ジョブ）。
 - **本番デプロイ（2026-06-05 · 標準 `update-all-clients.sh` · `--limit` 1 台ずつ）**:
-  - **手順**: [deployment.md §2026-06-05 カード行強調](../archive/deployments/2026-06.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · **`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`** · **`--detach --follow`**。
+  - **手順**: [deployment.md §2026-06-05 カード行強調](../archive/deployments/2026-06.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05) · **`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`** · **`--detach --follow`**。
   - **順序**: **`raspberrypi5`** → **`raspi4-kensaku-stonebase01`（先行実機 OK）** → **`raspberrypi4`** → **`raspi4-robodrill01`** → **`raspi4-fjv60-80`**。**Pi3 除外**。
   - **Detach Run ID**（接頭辞 `ansible-update-`）:
 
@@ -3126,11 +3126,11 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
   - **備考**: 空はグレー鉛筆、有りは強調色（`KioskPencilGlyph`）。
 - **デプロイ・実機検証（2026-04-17）**:
   - **ブランチ**: `feat/kiosk-leader-order-card-layout`（コミット **`d1a06409`**）。
-  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 は対象外**（リソース僅少・専用手順のため）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 は対象外**（リソース僅少・専用手順のため）。
   - **Detach Run ID**: `20260417-191501-20151` → `20260417-192029-29544` → `20260417-192519-8157` → `20260417-192909-2265` → `20260417-193514-20516`（各 **`failed=0` / `unreachable=0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **75s**）。
 - **トラブルシューティング**:
-  - **`RASPI_SERVER_HOST` 未設定**でスクリプトが接続に失敗: [deployment.md](../guides/deployment.md) 冒頭の例どおり **`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`** を実行してから **`update-all-clients.sh`** を再実行。
+  - **`RASPI_SERVER_HOST` 未設定**でスクリプトが接続に失敗: [deployment.md](../guides/deployment.md) 冒頭の例どおり **`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`** を実行してから **`update-all-clients.sh`** を再実行。
   - **カードが旧レイアウト**: Pi4 の **`kiosk-browser` 再起動後**のバンドル／`deploy-status` を確認し、意図したブランチが各ホスト **`/opt/RaspberryPiSystem_002`** に取り込まれているかを見る。
 
 ### Leader order board Pi4 performance (2026-04-24)
@@ -3141,12 +3141,12 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **Web 追補（2026-04-29）**: Pi4 の **15 秒ごとの `order-usage` 更新**で **全資源カード・全行に再レンダーが波及**しないよう、`LeaderBoardGrid.tsx` → `LeaderOrderResourceCard.tsx` → `LeaderOrderResourceRow.tsx` では **資源ごとの使用順位配列だけ**を渡す。`buildLeaderBoardViewModel.ts` は **中間配列を減らす 1 パス寄りのグループ化**へ寄せ、`LeaderOrderResourceCard.tsx` では **virtual row key を `row.id`** に固定し **overscan を抑制**、カード外枠の **`transition-all` は使わない**。見た目・API 契約は不変。
 - **デプロイ・実機検証（2026-04-24）**:
   - **ブランチ**: `feat/kiosk-leaderboard-pi4-performance-solid`（機能コミット **`95bec8b7`**。**`main` マージ後**はマージコミットを正とする）。
-  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**。
   - **Detach Run ID**（`ansible-update-`）: **`20260424-153647-24567`** / **`20260424-154843-4943`** / **`20260424-155623-24544`** / **`20260424-160421-6565`** / **`20260424-161137-27861`**。いずれも **`failed=0` / `unreachable=0`**。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Mac / Tailscale・本セッション）。
 - **本番デプロイ・実機検証（2026-04-29 追補・`order-usage` 再レンダー波及の追加抑制）**:
   - **ブランチ**: `feat/kiosk-leaderboard-pi4-followup`（代表コミット **`7902f5ac`**。**`main` マージ後**はマージコミットを正とする）。
-  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**（キオスク Web のみ・リソース僅少のため本節の Pi3 専用手順は不要）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**（キオスク Web のみ・リソース僅少のため本節の Pi3 専用手順は不要）。
   - **Detach Run ID**（`ansible-update-`）: **`20260429-214453-13263`** / **`20260429-215053-15127`** / **`20260429-215805-17537`** / **`20260429-220418-1032`** / **`20260429-221048-28118`**。いずれも **`failed=0` / `unreachable=0`**。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **64s**・Tailscale）。
 - **知見**: **`responseProfile` は既定なし＝従来**にしておくと、**順位ボードだけ軽量経路**へ切り替えやすい。Pi4 は **DOM 数**も律速になりうるため **仮想化**と **API 削減**の両面が効く。**ポーリングはオブジェクト同一性だけでなく「渡す props の粒度」**でも再レンダーが伝播しうる → 資源単位の **配列参照**に分離すると **`order-usage` 周期での体感**が安定しやすい。
@@ -3165,7 +3165,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **左ホーバー（製番検索カード）**: [`ProductionScheduleLeaderOrderBoardPage`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の `aside` に **`min-h-0`**、製番検索ブロックを **`flex-1 flex-col`**、登録済み一覧を **`min-h-0 flex-1 overflow-y-auto`** にし、旧 `max-h-28` 固定上限を撤去。下方の説明文・操作ボタンは **`shrink-0`**。
 - **実装ブランチ**: `feat/leaderboard-card-and-hover-layout`。
 - **本番デプロイ・実機検証（2026-04-03）**:
-  - **手順**: [deployment.md](../guides/deployment.md) の `scripts/update-all-clients.sh` **のみ**。**`RASPI_SERVER_HOST`**（例: `100.106.158.2`）・**`--detach --follow`**。**対象**: **`raspberrypi5` → Pi4 キオスク 4 台**（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）を **`--limit` 1 台ずつ**・**前段のリモート実行が成功してから次**。**Pi3 は対象外**（キオスク Web のみの変更。Pi3 が必要な変更では [deployment.md の Pi3 節](../guides/deployment.md) に従う）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `scripts/update-all-clients.sh` **のみ**。**`RASPI_SERVER_HOST`**（例: `<Pi5 の Tailscale IP>`）・**`--detach --follow`**。**対象**: **`raspberrypi5` → Pi4 キオスク 4 台**（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）を **`--limit` 1 台ずつ**・**前段のリモート実行が成功してから次**。**Pi3 は対象外**（キオスク Web のみの変更。Pi3 が必要な変更では [deployment.md の Pi3 節](../guides/deployment.md) に従う）。
   - **Detach Run ID（実績）**: `20260403-073232-5264`（`raspberrypi5`）/ `20260403-073742-21502`（`raspberrypi4`）/ `20260403-074155-24422`（`raspi4-robodrill01`）/ `20260403-074502-2900`（`raspi4-fjv60-80`）/ `20260403-074901-19118`（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0`**。Pi4 各ラウンドの後段プレイは **Pi3 signage で `no hosts matched`**（意図どおり）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-03・Mac / Tailscale・実測 **約 25s**。チェック項目数は従来どおり）。
 - **検証（開発者ローカル）**: `pnpm --filter @raspi-system/web lint` / `pnpm --filter @raspi-system/web test -- leaderOrderRowPresentation` / `pnpm --filter @raspi-system/web build`。
@@ -3232,7 +3232,7 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 
 - **本番デプロイ・実機検証（2026-04-02）**:
   - **ブランチ**: `feat/kiosk-leader-board-shared-history-notes-machine-names`（機能コミット例: `66b7ff9e`。**ドキュメント反映後**は `main` マージコミットを正とする）。
-  - **手順**: [deployment.md](../guides/deployment.md) の **`scripts/update-all-clients.sh`** のみ。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**・**`--detach --follow`**・**`RASPI_SERVER_HOST`**（例: `denkon5sd02@100.106.158.2`）。**Pi3 は対象外**（本変更はキオスク/API。Pi3 専用手順は不要）。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`scripts/update-all-clients.sh`** のみ。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**・**`--detach --follow`**・**`RASPI_SERVER_HOST`**（例: `<Pi5 のユーザー名>@<Pi5 の Tailscale IP>`）。**Pi3 は対象外**（本変更はキオスク/API。Pi3 専用手順は不要）。
   - **実績（デプロイ）**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を順次実行し、各 **`PLAY RECAP` `failed=0`**（同一セッションで完走。**項目数は Phase12 と同じ 40**）。
   - **実機回帰（自動）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・Mac / Tailscale・約 **54s**）。本 API はスクリプトに専用 grep が無いが、Pi5 `api` 更新込みの **全体回帰**で異常が無いことを確認。
   - **手動スモーク（任意・Pi4 / VNC）**: `/kiosk/production-schedule/leader-order-board` で **左の登録製番チップ**が生産スケジュール画面と **同じ履歴**に見えること。**子行の鉛筆**で備考モーダルが開き、保存後に **グレー↔アンバー**が切り替わること。**機種名**が一覧に MH/SH 行が無い製番でも埋まる場合があること（進捗基盤依存）。

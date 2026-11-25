@@ -20,10 +20,10 @@
 
 ```bash
 # Pi5上のnetwork_modeを確認
-ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 
 # 必要に応じて変更（Tailscaleモードの場合）
-ssh denkon5sd02@100.106.158.2 "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 ```
 
 詳細は [デプロイメントガイド](../../guides/deployment.md) を参照してください。
@@ -43,7 +43,7 @@ git ls-remote --heads origin feature/improve-visibility-color-theme
 
 ```bash
 # Pi5にSSH接続
-ssh denkon5sd02@100.106.158.2
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # リポジトリディレクトリに移動
 cd /opt/RaspberryPiSystem_002
@@ -217,17 +217,17 @@ curl http://localhost:4173
 
 1. **ネットワークモードの確認**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
    ```
 
 2. **コンテナのログ確認**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs web"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs web"
    ```
 
 3. **リポジトリの状態確認**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && git status"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && git status"
    ```
 
 ### 視認性が改善されていない場合
@@ -237,7 +237,7 @@ curl http://localhost:4173
 
 2. **コンテナの再ビルド**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
    ```
 
 ## 関連ドキュメント
