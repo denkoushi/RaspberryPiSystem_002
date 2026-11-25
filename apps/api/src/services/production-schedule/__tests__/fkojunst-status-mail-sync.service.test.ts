@@ -24,16 +24,16 @@ describe('mail sync external completion publication', () => {
     expect(assignments.reconcileStaleAssignments).toHaveBeenCalledOnce();
   });
 
-  it('clears the mail projection without refreshing superseded marks when there are no normalized rows', async () => {
+  it.each([0, 1])('clears the mail projection when there are no normalized rows (scanned=%s)', async (scanned) => {
     pipeline.loadFkojunstMailSourceRows.mockResolvedValueOnce({
-      scanned: 1, normalizedRows: [], skippedInvalidStatus: 1, skippedUnparseableDate: 0, rowsRevision: '2',
+      scanned, normalizedRows: [], skippedInvalidStatus: scanned, skippedUnparseableDate: 0, rowsRevision: '2',
     });
     const assignments = { reconcileStaleAssignments: vi.fn() };
-    const refresh = vi.fn().mockRejectedValue(new Error('should not refresh an empty source'));
+    const refresh = vi.fn().mockResolvedValue(undefined);
     const service = new ProductionScheduleFkojunstMailStatusSyncService(undefined, assignments as never, refresh);
     await service.syncFromStatusMailDashboard();
-    expect(refresh).not.toHaveBeenCalled();
-    expect(pipeline.runFkojunstMailClearTransaction).toHaveBeenCalledWith(expect.anything(), 1, 1, 0, '2');
+    expect(refresh).toHaveBeenCalledTimes(scanned);
+    expect(pipeline.runFkojunstMailClearTransaction).toHaveBeenCalledWith(expect.anything(), scanned, scanned, 0, '2');
     expect(assignments.reconcileStaleAssignments).toHaveBeenCalledOnce();
   });
 

@@ -1,15 +1,18 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
 import { buildFkojunstMailStatusKey } from '../fkojunst-mail-status-key.js';
+import { fetchFkojunstStatusMailSourceRowsOrdered } from '../fkojunst-status-mail-source-rows.reader.js';
+import { collectFkojunstMailNormalizedRowsFromSourceRows, dedupeFkojunstMailRowsByLatest } from '../fkojunst-status-mail-sync.pipeline.js';
 import { buildGrindingPlanningBoardRowItemId } from '../grinding-planning-board-projection.js';
 import { lockSupersededOrderCarryOverPairs } from '../superseded-order-carry-over.js';
-import { refreshSupersededProductionScheduleRows } from '../superseded-order-marker.js';
+import { refreshSupersededProductionScheduleRows, statusByKeyFromDedupedMailRows } from '../superseded-order-marker.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 
 const D = PRODUCTION_SCHEDULE_DASHBOARD_ID;
+const MAIL = PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID;
 const keyOf = (productNo: string) => ({
   FSEIBAN: 'BA1SC381', FHINCD: 'MD005279290', FSIGENCD: '200', FKOJUN: '10', ProductNo: productNo,
 });
@@ -188,5 +191,102 @@ describe('refreshSupersededProductionScheduleRows carry-over (real PostgreSQL)',
       await prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS fail_note_move ON "ProductionScheduleRowNote"`);
       await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS fail_note_move()`);
     }
+  });
+});
+
+describe('superseded refresh from status mail (real PostgreSQL)', () => {
+  beforeEach(async () => {
+    await reset();
+    await prisma.csvDashboard.deleteMany({ where: { id: MAIL } });
+    await prisma.csvDashboard.create({
+      data: {
+        id: MAIL, name: 'FKOJUNST_Status_Test', ingestMode: 'APPEND', columnDefinitions: [],
+        templateType: 'TABLE', templateConfig: { rowsPerPage: 10, fontSize: 14, displayColumns: [] },
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.csvDashboard.deleteMany({ where: { id: { in: [D, MAIL] } } });
+    await prisma.$disconnect();
+  });
+
+  async function createMailRow(
+    productNo: string,
+    statusCode: string,
+    options: { resource?: string; date?: string; sourceIngestRunId?: string; ordinal?: number } = {},
+  ) {
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: MAIL,
+        occurredAt: day('2026-11-25'),
+        sourceIngestRunId: options.sourceIngestRunId,
+        sourceRowOrdinal: options.ordinal,
+        rowData: {
+          FSEZONO: productNo, FKOJUN: '10', FKOTEICD: options.resource ?? '568',
+          FKOJUNST: statusCode, FUPDTEDT: options.date ?? '2026/11/25 00:00:00',
+        },
+      },
+    });
+  }
+
+  const markedRows = () => prisma.csvDashboardRow.findMany({
+    where: { csvDashboardId: D, supersededAt: { not: null } },
+    orderBy: { id: 'asc' },
+    select: { id: true },
+  });
+
+  it('候補の読み込みと全件読み込みで、最新日付と同日先勝ちを含めて同じ印になる', async () => {
+    await createRow('unrelated', '999', { FHINCD: 'OTHER' });
+    await createMailRow('999', 'X');
+    await createMailRow(' 0004000001 ', 'P', { date: '2026/11/24 00:00:00', ordinal: 1 });
+    await createMailRow('0004000001', 'X', { ordinal: 2 });
+    await createMailRow('0004000001', 'P', { ordinal: 3 });
+    await createMailRow('0004000001', 'X', { resource: '569' });
+    await createMailRow('0004000000', 'P');
+
+    const fullSourceRows = await fetchFkojunstStatusMailSourceRowsOrdered(prisma);
+    const { normalizedRows } = collectFkojunstMailNormalizedRowsFromSourceRows(fullSourceRows);
+    const statusByKey = statusByKeyFromDedupedMailRows(dedupeFkojunstMailRowsByLatest(normalizedRows));
+    await refreshSupersededProductionScheduleRows(prisma, { statusByKey });
+    const fullMarks = await markedRows();
+
+    await prisma.csvDashboardRow.updateMany({ where: { csvDashboardId: D }, data: { supersededAt: null } });
+    const result = await refreshSupersededProductionScheduleRows(prisma);
+    expect(result).toMatchObject({ marked: fullMarks.length, cleared: 0, supersededNow: fullMarks.length });
+    expect(await markedRows()).toEqual(fullMarks);
+  });
+
+  it.each([false, true])('読めるメール行が0件なら既存の印を保持する (取り込み中の行: %s)', async (processing) => {
+    if (processing) {
+      const run = await prisma.csvDashboardIngestRun.create({ data: { csvDashboardId: MAIL, status: 'PROCESSING' } });
+      await createMailRow('0004000001', 'P', { sourceIngestRunId: run.id });
+    }
+    await prisma.csvDashboardRow.update({ where: { id: 'old' }, data: { supersededAt: day('2026-11-25') } });
+
+    const result = await refreshSupersededProductionScheduleRows(prisma);
+    expect(result).toMatchObject({ marked: 0, cleared: 0, supersededNow: 1 });
+    expect(await markedRows()).toEqual([{ id: 'old' }]);
+  });
+
+  it('同じ4列キーに別番号がなくなったら既存の印を外す', async () => {
+    await createMailRow('0004000001', 'X');
+    await refreshSupersededProductionScheduleRows(prisma);
+    expect(await markedRows()).toEqual([{ id: 'old' }]);
+    await prisma.csvDashboardRow.deleteMany({ where: { id: { in: ['new', 'newer-old'] }, csvDashboardId: D } });
+
+    const result = await refreshSupersededProductionScheduleRows(prisma);
+    expect(result).toMatchObject({ marked: 0, cleared: 1, supersededNow: 0 });
+    expect(await markedRows()).toEqual([]);
+  });
+
+  it.each([false, true])('メール行はあるが候補の状態が空なら印を外す (候補の未正規化行: %s)', async (invalid) => {
+    if (invalid) await createMailRow('0004000001', 'X', { resource: '' });
+    else await createMailRow('999', 'X');
+    await prisma.csvDashboardRow.update({ where: { id: 'old' }, data: { supersededAt: day('2026-11-25') } });
+
+    const result = await refreshSupersededProductionScheduleRows(prisma);
+    expect(result).toMatchObject({ marked: 0, cleared: 1, supersededNow: 0 });
+    expect(await markedRows()).toEqual([]);
   });
 });

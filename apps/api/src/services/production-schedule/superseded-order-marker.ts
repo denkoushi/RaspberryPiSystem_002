@@ -3,6 +3,7 @@
  *
  * 定義: 行の (ProductNo, FSIGENCD, FKOJUN) の工程状態が X で、同じ4列キー(FSEIBAN+FHINCD+FSIGENCD+FKOJUN)に
  * 工程状態が X でない別の ProductNo の行がある → 印を付ける。条件に合わなくなった行は印を外す。
+ * 3列で一致する状態が無いときは、(ProductNo, FKOJUN) の最新状態が1件以上あり、全部 X の場合だけ X とみなす。
  * 工程状態が無い番号(取り込み直後など)は X でない扱い。両方 X のときは両方見える。
  *
  * 工程状態の正本は FKOJUNST_Status メールの生データ(ADR-20260508)。行に付けた状態の表
@@ -15,7 +16,10 @@ import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
 import { buildFkojunstMailStatusKey } from './fkojunst-mail-status-key.js';
-import { fetchFkojunstStatusMailSourceRowsOrdered } from './fkojunst-status-mail-source-rows.reader.js';
+import {
+  fetchFkojunstStatusMailSourceRowsOrdered,
+  hasVisibleFkojunstStatusMailSourceRows,
+} from './fkojunst-status-mail-source-rows.reader.js';
 import {
   collectFkojunstMailNormalizedRowsFromSourceRows,
   dedupeFkojunstMailRowsByLatest,
@@ -35,8 +39,8 @@ export type SupersedeCandidateRow = {
   productNo: string;
 };
 
-/** key = buildFkojunstMailStatusKey({ fkojun, fkoteicd(大文字), fsezono: ProductNo }) */
-export type StatusByTripleKey = ReadonlyMap<string, string>;
+/** FKOTEICD が空のキーは、同じ製造番号・工順の全工程コードの集約結果。 */
+type MarkerStatusByKey = ReadonlyMap<string, string>;
 
 export type SupersededRefreshResult = {
   total: number;
@@ -58,11 +62,10 @@ const statusKeyOf = (row: SupersedeCandidateRow): string =>
     fsezono: normalizeToken(row.productNo),
   });
 
-/** 印を付けるべき行 id の集合(純粋関数)。 */
-export function computeSupersededRowIds(
-  rows: readonly SupersedeCandidateRow[],
-  statusByKey: StatusByTripleKey
-): Set<string> {
+const statusKeyWithoutResource = (fkojun: string, fsezono: string): string =>
+  buildFkojunstMailStatusKey({ fkojun, fkoteicd: '', fsezono });
+
+function groupRowsWithMultipleProductNos(rows: readonly SupersedeCandidateRow[]): SupersedeCandidateRow[][] {
   const groups = new Map<string, SupersedeCandidateRow[]>();
   for (const row of rows) {
     // DB の winner 条件と同じく、4列は COALESCE(...,'') の完全一致(trim しない)で同じキーとみなす
@@ -71,11 +74,32 @@ export function computeSupersededRowIds(
     if (group) group.push(row);
     else groups.set(groupKey, [row]);
   }
+  return [...groups.values()].filter((group) => {
+    if (group.length < 2) return false;
+    const productNo = normalizeToken(group[0].productNo);
+    return group.some((row) => normalizeToken(row.productNo) !== productNo);
+  });
+}
 
+/** 印を付けるべき行 id の集合(純粋関数)。 */
+export function computeSupersededRowIds(
+  rows: readonly SupersedeCandidateRow[],
+  statusByKey: MarkerStatusByKey
+): Set<string> {
+  return computeSupersededGroupRowIds(groupRowsWithMultipleProductNos(rows), statusByKey);
+}
+
+function computeSupersededGroupRowIds(
+  groups: readonly SupersedeCandidateRow[][],
+  statusByKey: MarkerStatusByKey
+): Set<string> {
+  const isX = (row: SupersedeCandidateRow) => {
+    const status = statusByKey.get(statusKeyOf(row))
+      ?? statusByKey.get(statusKeyWithoutResource(normalizeToken(row.fkojun), normalizeToken(row.productNo)));
+    return status === SUPERSEDED_STATUS_CODE;
+  };
   const superseded = new Set<string>();
-  for (const group of groups.values()) {
-    if (group.length < 2) continue;
-    const isX = (row: SupersedeCandidateRow) => statusByKey.get(statusKeyOf(row)) === SUPERSEDED_STATUS_CODE;
+  for (const group of groups) {
     const alive = group.filter((row) => !isX(row));
     if (alive.length === 0) continue; // 全部 X なら全部見える
     for (const row of group) {
@@ -90,13 +114,6 @@ export function computeSupersededRowIds(
   return superseded;
 }
 
-/** メールの生データから、キーごとの最新の工程状態を読む。 */
-export async function loadLatestMailStatusByKey(client: Pick<PrismaClient, '$queryRaw'>): Promise<Map<string, string>> {
-  const sourceRows = await fetchFkojunstStatusMailSourceRowsOrdered(client);
-  const { normalizedRows } = collectFkojunstMailNormalizedRowsFromSourceRows(sourceRows);
-  return statusByKeyFromDedupedMailRows(dedupeFkojunstMailRowsByLatest(normalizedRows));
-}
-
 export function statusByKeyFromDedupedMailRows(
   dedupedRows: ReadonlyArray<{ fkojun: string; fkoteicd: string; fsezono: string; statusCode: string }>
 ): Map<string, string> {
@@ -106,6 +123,10 @@ export function statusByKeyFromDedupedMailRows(
       buildFkojunstMailStatusKey({ fkojun: row.fkojun, fkoteicd: row.fkoteicd, fsezono: row.fsezono }),
       row.statusCode
     );
+    // 正規化済みの3列キーには空の FKOTEICD は無い。非 X が一度でもあれば空文字を保持する。
+    const processKey = statusKeyWithoutResource(row.fkojun, row.fsezono);
+    if (row.statusCode !== SUPERSEDED_STATUS_CODE) map.set(processKey, '');
+    else if (!map.has(processKey)) map.set(processKey, SUPERSEDED_STATUS_CODE);
   }
   return map;
 }
@@ -137,7 +158,7 @@ async function updateInChunks(client: TxClient, ids: readonly string[], mode: 'm
 /** 印と引き継ぎを同じトランザクションで更新する。 */
 export async function refreshSupersededProductionScheduleRows(
   client: MarkerClient,
-  options?: { statusByKey?: StatusByTripleKey }
+  options?: { statusByKey?: MarkerStatusByKey }
 ): Promise<SupersededRefreshResult> {
   const refresh = async (tx: Prisma.TransactionClient): Promise<SupersededRefreshResult> => {
     await tx.$executeRaw`
@@ -161,12 +182,22 @@ export async function refreshSupersededProductionScheduleRows(
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     `);
 
-    const statusByKey = options?.statusByKey ?? (await loadLatestMailStatusByKey(tx));
-    if (statusByKey.size === 0) {
-      return { total: rows.length, marked: 0, cleared: 0, supersededNow: rows.filter((row) => row.marked).length, carriedOver: null };
+    const groups = groupRowsWithMultipleProductNos(rows);
+    let statusByKey = options?.statusByKey;
+    if (statusByKey === undefined) {
+      const productNos = [...new Set(groups.flatMap((group) => group.map((row) => normalizeToken(row.productNo))))].filter(Boolean);
+      // Ingestion trims FSEZONO. Use the indexed expression and bind all candidates as one array.
+      const sourceRows = productNos.length === 0 ? [] : await fetchFkojunstStatusMailSourceRowsOrdered(tx, {
+        where: Prisma.sql`BTRIM(r."rowData"->>'FSEZONO') = ANY(${productNos}::text[])`,
+      });
+      if (sourceRows.length === 0 && !(await hasVisibleFkojunstStatusMailSourceRows(tx))) {
+        return { total: rows.length, marked: 0, cleared: 0, supersededNow: rows.filter((row) => row.marked).length, carriedOver: null };
+      }
+      const { normalizedRows } = collectFkojunstMailNormalizedRowsFromSourceRows(sourceRows);
+      statusByKey = statusByKeyFromDedupedMailRows(dedupeFkojunstMailRowsByLatest(normalizedRows));
     }
 
-    const shouldMark = computeSupersededRowIds(rows, statusByKey);
+    const shouldMark = computeSupersededGroupRowIds(groups, statusByKey);
     const toMark = rows.filter((row) => shouldMark.has(row.id) && !row.marked).map((row) => row.id);
     const toClear = rows.filter((row) => !shouldMark.has(row.id) && row.marked).map((row) => row.id);
 

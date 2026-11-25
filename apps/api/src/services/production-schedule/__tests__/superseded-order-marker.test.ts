@@ -10,6 +10,7 @@ import { buildFkojunstMailStatusKey } from '../fkojunst-mail-status-key.js';
 import {
   computeSupersededRowIds,
   refreshSupersededProductionScheduleRows,
+  statusByKeyFromDedupedMailRows,
   type SupersedeCandidateRow,
 } from '../superseded-order-marker.js';
 
@@ -68,6 +69,25 @@ describe('computeSupersededRowIds', () => {
     expect([...ids]).toEqual(['old']);
   });
 
+  it.each([
+    { exact: undefined, other: ['X', 'X'], marks: ['old'] },
+    { exact: undefined, other: ['X', 'P'], marks: [] },
+    { exact: undefined, other: ['P', 'X'], marks: [] },
+    { exact: undefined, other: [], marks: [] },
+    { exact: 'P', other: ['X', 'X'], marks: [] },
+    { exact: '', other: ['X', 'X'], marks: [] },
+    { exact: 'X', other: ['P', 'X'], marks: ['old'] },
+  ])('3列一致が $exact、他の工程コードが $other のときは $marks に印を付ける', ({ exact, other, marks }) => {
+    const statuses = other.map((statusCode, i) => ({ fkoteicd: String(568 + i), statusCode }));
+    if (exact !== undefined) statuses.push({ fkoteicd: '200', statusCode: exact });
+    const statusByKey = statusByKeyFromDedupedMailRows([
+      ...statuses.map((status) => ({ ...status, fkojun: '10', fsezono: '1' })),
+      { fkoteicd: '568', statusCode: 'P', fkojun: '20', fsezono: '1' },
+      { fkoteicd: '568', statusCode: 'P', fkojun: '10', fsezono: '3' },
+    ]);
+    expect([...computeSupersededRowIds([row('old', '1'), row('new', '2')], statusByKey)]).toEqual(marks);
+  });
+
   it('キーが違う行(品番・資源・工順が違う)の X には印が付かない', () => {
     const ids = computeSupersededRowIds(
       [row('x', '0004000001'), row('other-part', '0004000002', { fhincd: 'OTHER' })],
@@ -88,7 +108,10 @@ describe('computeSupersededRowIds', () => {
 
 describe('refreshSupersededProductionScheduleRows', () => {
   it('acquires the refresh lock before reading rows or mail inside the transaction', async () => {
-    const tx = { $queryRaw: vi.fn().mockResolvedValue([]), $executeRaw: vi.fn().mockResolvedValue(1) };
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([{ present: false }]),
+      $executeRaw: vi.fn().mockResolvedValue(1),
+    };
     const client = {
       $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)),
@@ -125,15 +148,34 @@ describe('refreshSupersededProductionScheduleRows', () => {
     }
   });
 
-  it.each([undefined, new Map()])('preserves existing marks when there are no mail statuses (%s)', async (statusByKey) => {
+  it('preserves existing marks when there are no readable mail rows', async () => {
     const queryRaw = vi.fn(async ({ sql }: { sql: string }) =>
-      sql.includes('AS "marked"') ? [{ ...row('old', '1'), marked: true }] : []);
+      sql.includes('AS "marked"') ? [{ ...row('old', '1'), marked: true }] : [{ present: false }]);
     const executeRaw = vi.fn().mockResolvedValue(1);
     const result = await refreshSupersededProductionScheduleRows(
-      { $queryRaw: queryRaw, $executeRaw: executeRaw } as never, { statusByKey }
+      { $queryRaw: queryRaw, $executeRaw: executeRaw } as never
     );
-    expect(result).toMatchObject({ marked: 0, cleared: 0, carriedOver: null });
+    expect(result).toMatchObject({ marked: 0, cleared: 0, supersededNow: 1, carriedOver: null });
     expect(queryRaw.mock.calls.some(([query]) => query.sql.includes('UPDATE "CsvDashboardRow"'))).toBe(false);
+  });
+
+  it('clears a mark without fetching mail statuses when a group has only one distinct order number', async () => {
+    const queryRaw = vi.fn()
+      .mockResolvedValueOnce([
+        { ...row('old', '1'), marked: true },
+        { ...row('same-order', '1'), marked: false },
+      ])
+      .mockResolvedValueOnce([{ present: true }])
+      .mockResolvedValueOnce([{ id: 'old' }]);
+
+    const result = await refreshSupersededProductionScheduleRows({
+      $queryRaw: queryRaw, $executeRaw: vi.fn().mockResolvedValue(1),
+    } as never);
+
+    expect(result).toMatchObject({ marked: 0, cleared: 1, supersededNow: 0 });
+    expect(queryRaw).toHaveBeenCalledTimes(3);
+    expect(queryRaw.mock.calls[1][0].sql).toContain('SELECT EXISTS');
+    expect(queryRaw.mock.calls[2][0].sql).toContain('SET "supersededAt" = NULL');
   });
 
 
@@ -161,6 +203,9 @@ describe('refreshSupersededProductionScheduleRows', () => {
 
     expect(result).toMatchObject({ marked: 1, cleared: 1, carriedOver: { targets: 1 } });
     expect(queryRaw).toHaveBeenCalledTimes(4);
+    const mailQuery = queryRaw.mock.calls[1][0];
+    expect(mailQuery.sql).toContain(`BTRIM(r."rowData"->>'FSEZONO') = ANY(?::text[])`);
+    expect(mailQuery.values).toEqual([['1', '2']]);
     expect(lockSupersededOrderCarryOverPairs).toHaveBeenCalledWith(expect.anything(), ['old'], ['stale']);
     expect(vi.mocked(lockSupersededOrderCarryOverPairs).mock.invocationCallOrder.at(-1))
       .toBeLessThan(queryRaw.mock.invocationCallOrder[2]);

@@ -33,6 +33,15 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     const { scanned, normalizedRows, skippedInvalidStatus, skippedUnparseableDate, rowsRevision } =
       await loadFkojunstMailSourceRows(prisma);
 
+    // 順序は「印の付け直し → 状態の付与」。状態は印の無い行すべてに付く
+    if (scanned > 0) {
+      try {
+        await this.refreshSuperseded();
+      } catch (error) {
+        logger.error({ err: error }, '[ProductionScheduleFkojunstMailStatusSyncService] superseded mark refresh failed');
+      }
+    }
+
     if (normalizedRows.length === 0) {
       const result = await runFkojunstMailClearTransaction(
         prisma,
@@ -51,12 +60,6 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     }
 
     const dedupedRows = dedupeFkojunstMailRowsByLatest(normalizedRows);
-    // 順序は「印の付け直し → 状態の付与」。状態は印の無い行すべてに付く
-    try {
-      await this.refreshSuperseded();
-    } catch (error) {
-      logger.error({ err: error }, '[ProductionScheduleFkojunstMailStatusSyncService] superseded mark refresh failed');
-    }
     const winnerIdByKey = await resolveFkojunstMailWinnerIdByKey(prisma, dedupedRows);
     const { matched, unmatched, createInputs } = buildFkojunstMailReplacementCreateInputs(dedupedRows, winnerIdByKey);
     const processChangeResidualMaterialization =
