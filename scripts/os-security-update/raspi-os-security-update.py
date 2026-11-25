@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import tempfile
 import time
@@ -199,9 +200,34 @@ def timestamp(value):
         return None
 
 
-def active_requests(path, now):
+MAX_REQUEST_FILE_BYTES = 64 * 1024
+
+
+def read_request_file(path):
+    """Read a request file only if it is a regular file within the size limit."""
+    descriptor = None
     try:
-        requests = read_state(path)["requests"]
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_REQUEST_FILE_BYTES:
+            return {}
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = None
+            data = stream.read(MAX_REQUEST_FILE_BYTES + 1)
+        if len(data) > MAX_REQUEST_FILE_BYTES:
+            return {}
+        state = json.loads(data.decode("utf-8"))
+        return state if isinstance(state, dict) else {}
+    except (OSError, ValueError):
+        return {}
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def active_requests(path, now, reader=None):
+    try:
+        requests = (reader or read_state)(path)["requests"]
         if not isinstance(requests, list):
             return {}
         active = {}
@@ -215,6 +241,12 @@ def active_requests(path, now):
         return active
     except (OSError, ValueError, KeyError, TypeError):
         return {}
+
+
+def all_active_requests(state_dir, now):
+    merged = active_requests(state_dir / "request.json", now)
+    merged.update(active_requests(state_dir / "requests" / "request.json", now, read_request_file))
+    return merged
 
 
 def weekly_due(config, path, now):
@@ -286,7 +318,7 @@ def run(config, force=False):
         from zoneinfo import ZoneInfo
 
         now = datetime.now(ZoneInfo("Asia/Tokyo"))
-        requests = active_requests(path.with_name("request.json"), now)
+        requests = all_active_requests(path.parent, now)
         if not force and not requests and not weekly_due(config, path, now):
             return 0
     selected, installed, held_back = [], [], []

@@ -7,6 +7,10 @@ After=network-online.target
 Type=oneshot
 Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf
 ExecStart=/usr/bin/env python3 /usr/local/lib/raspi-status-agent/status-agent.py
+User={{ status_agent_user }}
+Group={{ status_agent_user }}
+SupplementaryGroups=systemd-journal
+StateDirectory=raspi-os-security-update/requests
 Nice=5
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -14,7 +18,7 @@ ProtectSystem=strict
 ProtectHome=read-only
 RuntimeDirectory=raspi-status-agent
 RuntimeDirectoryPreserve=yes
-ReadWritePaths=-/var/log -/var/lib/raspi-os-security-update
+ReadWritePaths=-/var/log/raspi-status-agent.log
 
 [Install]
 WantedBy=multi-user.target

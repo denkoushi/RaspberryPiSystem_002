@@ -34,6 +34,34 @@
   register: release_kiosk_labwc_directory_install
   when: manage_kiosk_browser | default(false) | bool
 
+- name: Create the status-agent group
+  ansible.builtin.group:
+    name: "{{ status_agent_user }}"
+    system: true
+  when: release_kiosk_services | length > 0
+
+- name: Create the status-agent user
+  ansible.builtin.user:
+    name: "{{ status_agent_user }}"
+    group: "{{ status_agent_user }}"
+    groups: systemd-journal
+    append: true
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+  when: release_kiosk_services | length > 0
+
+- name: Prepare the status-agent log file owner
+  ansible.builtin.file:
+    path: /var/log/raspi-status-agent.log
+    state: touch
+    owner: "{{ status_agent_user }}"
+    group: "{{ status_agent_user }}"
+    mode: '0640'
+    access_time: preserve
+    modification_time: preserve
+  when: release_kiosk_services | length > 0
+
 - name: Capture original Pi4 file ownership for rollback
   ansible.builtin.stat:
     path: "{{ item.dest }}"

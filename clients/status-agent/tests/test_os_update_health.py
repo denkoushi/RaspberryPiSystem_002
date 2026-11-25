@@ -211,6 +211,13 @@ class OsUpdateRequestsTest(unittest.TestCase):
         self.receive([])
         self.assertEqual(self.stored(), [])
 
+    def test_requests_directory_is_used_when_present(self):
+        (self.state_dir / "requests").mkdir()
+        with patch.object(health.subprocess, "run", side_effect=FileNotFoundError):
+            self.receive([self.request("r1")])
+        self.assertFalse(self.path.exists())
+        self.assertEqual(json.loads((self.state_dir / "requests/request.json").read_text())["requests"][0]["id"], "r1")
+
     def test_missing_key_and_malformed_response_preserve_requests(self):
         with patch.object(health.subprocess, "run", side_effect=FileNotFoundError):
             self.receive([self.request("keep")])

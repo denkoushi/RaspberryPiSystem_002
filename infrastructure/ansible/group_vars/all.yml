@@ -63,6 +63,8 @@ api_healthcheck_url: "{{ api_base_url }}/system/health"
 
 # 既存の変数名との互換性を保つためのエイリアス
 status_agent_api_base_url: "{{ api_base_url }}"
+# status-agent を root 以外で動かす専用ユーザー（グループ名も同じ）
+status_agent_user: raspi-status-agent
 nfc_agent_api_base_url: "{{ api_base_url }}"
 docker_server_ip: "{{ server_ip }}"
 
