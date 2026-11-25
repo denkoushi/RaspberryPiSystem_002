@@ -1,7 +1,6 @@
 import { OVERLAY_IMAGE_TRANSCRIPT_LIMITS as limits, overlayImageTranscriptSchema } from '@raspi-system/shared-types';
 import { useState } from 'react';
 
-import { findAssemblyProcedureTextCandidates } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
@@ -39,10 +38,11 @@ function candidateRows(candidates: AssemblyProcedureTextCandidateDto[], kind: Ov
   }).slice(0, limits.rows);
 }
 
-export function AssemblyProcedurePhotoTranscriptFields({ image, documentId, accessPassword, disabled, onConfirm }: {
+export type ReadPhotoText = (image: AssemblyProcedureImageOverlayElement) => Promise<AssemblyProcedureTextCandidateDto[]>;
+
+export function AssemblyProcedurePhotoTranscriptFields({ image, readText, disabled, onConfirm }: {
   image: AssemblyProcedureImageOverlayElement;
-  documentId?: string;
-  accessPassword: string;
+  readText?: ReadPhotoText;
   disabled: boolean;
   onConfirm: (transcript: OverlayImageTranscript | null) => void;
 }) {
@@ -60,15 +60,11 @@ export function AssemblyProcedurePhotoTranscriptFields({ image, documentId, acce
   const hasContent = draft.rows.some(row => row.some(cell => cell.trim())) || Boolean(draft.title?.trim());
 
   async function read() {
-    if (!documentId || !image.assetId || reading) return;
-    const { assetId, bbox, pageIndex, zIndex, objectFit } = image;
+    if (!readText || !image.assetId || reading) return;
     setReading(true);
     setError(null);
     try {
-      const candidates = await findAssemblyProcedureTextCandidates({
-        id: documentId, accessPassword, pageIndex, bbox, photoOnly: true,
-        overlays: [{ assetId, bbox, zIndex, objectFit }]
-      });
+      const candidates = await readText(image);
       const rows = candidateRows(candidates, draft.kind);
       if (!rows.length) {
         setError('文字が見つかりませんでした。');
@@ -116,7 +112,7 @@ export function AssemblyProcedurePhotoTranscriptFields({ image, documentId, acce
         className={`${buttonClass} aria-pressed:!border-[#5fc3e8] aria-pressed:!bg-[#5fc3e81f] aria-pressed:!text-[#5fc3e8]`}
         aria-pressed={draft.kind === kind} onClick={() => setKind(kind)}>{kind === 'table' ? '表' : '一覧'}</Button>)}
       <Button type="button" variant="ghostOnDark" className={buttonClass} aria-busy={reading}
-        disabled={!documentId || !image.assetId} onClick={() => void read()}>{reading ? '読み取り中…' : '読み取る'}</Button>
+        disabled={!readText || !image.assetId} onClick={() => void read()}>{reading ? '読み取り中…' : '読み取る'}</Button>
     </div>
     {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
     <div className={`grid min-w-0 gap-1 rounded border p-1 ${stale ? 'border-amber-400' : 'border-transparent'}`} data-stale={stale}>

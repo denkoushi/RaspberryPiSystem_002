@@ -1,16 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { findAssemblyProcedureTextCandidates } from '../../../api/client';
-
 import { AssemblyProcedureDocumentEditorInspector, percentToRatio, ratioToPercent } from './AssemblyProcedureDocumentEditorInspector';
 
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
-
-vi.mock('../../../api/client', async importOriginal => ({
-  ...await importOriginal<typeof import('../../../api/client')>(),
-  findAssemblyProcedureTextCandidates: vi.fn()
-}));
 
 const base = {
   id: 'overlay-1',
@@ -463,18 +456,14 @@ describe('photo transcript inspector', () => {
 
   it('keeps OCR in the grid until the edited table is confirmed through the existing update', async () => {
     const onUpdate = vi.fn();
-    vi.mocked(findAssemblyProcedureTextCandidates).mockResolvedValue([
+    const readPhotoText = vi.fn().mockResolvedValue([
       { text: '品番  シリアル番号', confidence: 1, bounds: null, pageIndex: 0, source: 'coordinate-ocr' },
       { text: '誤読', confidence: 1, bounds: { ...base.bbox, heightRatio: 0.02 }, pageIndex: 0, source: 'coordinate-ocr' },
       { text: '12345', confidence: 1, bounds: { ...base.bbox, xRatio: 0.55, heightRatio: 0.02 }, pageIndex: 0, source: 'coordinate-ocr' }
     ]);
-    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} element={photo} documentId="document" accessPassword="password" />);
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} element={photo} readPhotoText={readPhotoText} />);
     fireEvent.click(screen.getByRole('button', { name: '読み取る' }));
-    expect(findAssemblyProcedureTextCandidates).toHaveBeenCalledWith({
-      id: 'document', accessPassword: 'password', pageIndex: photo.pageIndex, bbox: photo.bbox,
-      overlays: [{ assetId: photo.assetId, bbox: photo.bbox, zIndex: photo.zIndex, objectFit: undefined }],
-      photoOnly: true
-    });
+    expect(readPhotoText).toHaveBeenCalledExactlyOnceWith(photo);
     expect(await screen.findByDisplayValue('誤読')).toBeVisible();
     expect(screen.getByRole('textbox', { name: '2行2列' })).toHaveValue('12345');
     expect(onUpdate).not.toHaveBeenCalled();
