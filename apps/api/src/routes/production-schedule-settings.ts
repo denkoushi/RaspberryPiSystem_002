@@ -1,3 +1,4 @@
+import { PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH } from '@raspi-system/shared-types';
 import { getSameModelResourceGroups, replaceSameModelResourceGroups, sameModelGroupsSchema } from '../services/production-schedule/same-model-resource-groups.service.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -12,7 +13,6 @@ import {
   listProductionScheduleResourceCategorySettingsLocations,
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
   upsertDueManagementAccessPassword,
-  ACCESS_PASSWORD_MIN_LENGTH,
   upsertProductionScheduleResourceCodeMappings,
   upsertProductionScheduleProcessingTypeOptions,
   upsertProductionScheduleResourceCategorySettings
@@ -88,7 +88,7 @@ const dueManagementAccessPasswordQuerySchema = z.object({
 
 const dueManagementAccessPasswordBodySchema = z.object({
   location: z.string().min(1).max(100).default(SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION),
-  password: z.string().trim().min(ACCESS_PASSWORD_MIN_LENGTH).max(128)
+  password: z.string().trim().min(PRODUCTION_SCHEDULE_ACCESS_PASSWORD_MIN_LENGTH).max(128)
 });
 
 const loadBalancingLocationQuerySchema = z.object({
