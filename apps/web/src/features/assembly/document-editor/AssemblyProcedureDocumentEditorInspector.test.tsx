@@ -1,9 +1,16 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { findAssemblyProcedureTextCandidates } from '../../../api/client';
+
 import { AssemblyProcedureDocumentEditorInspector, percentToRatio, ratioToPercent } from './AssemblyProcedureDocumentEditorInspector';
 
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+
+vi.mock('../../../api/client', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../api/client')>(),
+  findAssemblyProcedureTextCandidates: vi.fn()
+}));
 
 const base = {
   id: 'overlay-1',
@@ -447,5 +454,71 @@ describe('AssemblyProcedureDocumentEditorInspector', () => {
     expect(button).toBeDisabled();
     fireEvent.click(button);
     expect(onUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('photo transcript inspector', () => {
+  const photo = { ...base, kind: 'IMAGE' as const, assetId: 'photo' };
+  const saved = { assetId: 'photo', kind: 'list' as const, rows: [['確定した文字']], sel: [0], choices: [] };
+
+  it('keeps OCR in the grid until the edited table is confirmed through the existing update', async () => {
+    const onUpdate = vi.fn();
+    vi.mocked(findAssemblyProcedureTextCandidates).mockResolvedValue([
+      { text: '品番  シリアル番号', confidence: 1, bounds: null, pageIndex: 0, source: 'coordinate-ocr' },
+      { text: '誤読', confidence: 1, bounds: { ...base.bbox, heightRatio: 0.02 }, pageIndex: 0, source: 'coordinate-ocr' },
+      { text: '12345', confidence: 1, bounds: { ...base.bbox, xRatio: 0.55, heightRatio: 0.02 }, pageIndex: 0, source: 'coordinate-ocr' }
+    ]);
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} element={photo} documentId="document" accessPassword="password" />);
+    fireEvent.click(screen.getByRole('button', { name: '読み取る' }));
+    expect(findAssemblyProcedureTextCandidates).toHaveBeenCalledWith({
+      id: 'document', accessPassword: 'password', pageIndex: photo.pageIndex, bbox: photo.bbox,
+      overlays: [{ assetId: photo.assetId, bbox: photo.bbox, zIndex: photo.zIndex, objectFit: undefined }],
+      photoOnly: true
+    });
+    expect(await screen.findByDisplayValue('誤読')).toBeVisible();
+    expect(screen.getByRole('textbox', { name: '2行2列' })).toHaveValue('12345');
+    expect(onUpdate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: '2行1列' }), { target: { value: 'A7000' } });
+    fireEvent.click(screen.getByRole('button', { name: '2行目を選択中にする' }));
+    fireEvent.click(screen.getByRole('button', { name: '確定' }));
+    expect(onUpdate).toHaveBeenCalledExactlyOnceWith({ ...photo, transcript: {
+      assetId: 'photo', kind: 'table', rows: [['品番', 'シリアル番号'], ['A7000', '12345']], sel: [1], choices: []
+    } });
+  });
+
+  it('disables confirmation for a saved transcript and clears it through the same update', () => {
+    const onUpdate = vi.fn();
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} element={{ ...photo, transcript: saved }} />);
+    expect(screen.getByRole('button', { name: '一覧' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '確定済み' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '消す', exact: true }));
+    expect(onUpdate).toHaveBeenCalledWith({ ...photo, transcript: null });
+  });
+
+  it('shows a stale grid after replacing the asset and confirms it for the new photo', () => {
+    const onUpdate = vi.fn();
+    const props = commonProps(onUpdate);
+    const { rerender } = render(<AssemblyProcedureDocumentEditorInspector {...props} element={{ ...photo, transcript: saved }} />);
+    const replacement = { ...photo, assetId: 'rotated', transcript: saved };
+    rerender(<AssemblyProcedureDocumentEditorInspector {...props} element={replacement} />);
+    expect(screen.getByDisplayValue('確定した文字').closest('[data-stale]')).toHaveAttribute('data-stale', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'この写真で確定' }));
+    expect(onUpdate).toHaveBeenCalledWith({ ...replacement, transcript: { ...saved, assetId: 'rotated' } });
+  });
+
+  it('edits list choices and shifts their target after a row is removed', () => {
+    const onUpdate = vi.fn();
+    render(<AssemblyProcedureDocumentEditorInspector {...commonProps(onUpdate)} element={{ ...photo, transcript: saved }} />);
+    fireEvent.click(screen.getByRole('button', { name: '＋ 行' }));
+    fireEvent.change(screen.getByLabelText('2行1列'), { target: { value: '7000' } });
+    fireEvent.click(screen.getByRole('button', { name: '＋ 選択肢' }));
+    fireEvent.click(screen.getByRole('button', { name: '選択肢1の色を変える' }));
+    fireEvent.change(screen.getByLabelText('選択肢1の名前'), { target: { value: '7000シリーズ' } });
+    fireEvent.change(screen.getByLabelText('選択肢1の行'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: '1行目を消す' }));
+    fireEvent.click(screen.getByRole('button', { name: '確定' }));
+    expect(onUpdate).toHaveBeenCalledWith({ ...photo, transcript: {
+      assetId: 'photo', kind: 'list', rows: [['7000']], sel: [], choices: [{ label: '7000シリーズ', color: '#ffd400', row: 0 }]
+    } });
   });
 });

@@ -110,10 +110,39 @@ const textOverlayElementSchema = overlayElementBaseSchema.extend({
   style: textStyleSchema.optional()
 });
 
+export const OVERLAY_IMAGE_TRANSCRIPT_LIMITS = { rows: 60, columns: 8, cell: 200, choices: 8, label: 40 } as const;
+
+export const overlayImageTranscriptSchema = z.object({
+  assetId: z.string().trim().min(1).max(120),
+  kind: z.enum(['table', 'list']),
+  title: z.string().max(OVERLAY_IMAGE_TRANSCRIPT_LIMITS.cell).optional(),
+  rows: z.array(z.array(z.string().max(OVERLAY_IMAGE_TRANSCRIPT_LIMITS.cell)).min(1)
+    .max(OVERLAY_IMAGE_TRANSCRIPT_LIMITS.columns)).min(1).max(OVERLAY_IMAGE_TRANSCRIPT_LIMITS.rows),
+  sel: z.array(z.number().int().nonnegative()).max(OVERLAY_IMAGE_TRANSCRIPT_LIMITS.rows),
+  choices: z.array(z.object({
+    label: z.string().max(OVERLAY_IMAGE_TRANSCRIPT_LIMITS.label),
+    color: z.string().regex(/^#[0-9a-f]{6}$/i),
+    row: z.number().int().nonnegative()
+  })).max(OVERLAY_IMAGE_TRANSCRIPT_LIMITS.choices)
+}).superRefine(({ kind, rows, sel, choices }, ctx) => {
+  if (kind === 'list' && rows.some(row => row.length !== 1)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rows'], message: '一覧は各行を1セルで指定してください' });
+  }
+  sel.forEach((row, index) => {
+    if (row >= rows.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sel', index], message: '行番号が範囲外です' });
+  });
+  choices.forEach(({ row }, index) => {
+    if (row >= rows.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['choices', index, 'row'], message: '行番号が範囲外です' });
+  });
+});
+
+export type OverlayImageTranscript = z.infer<typeof overlayImageTranscriptSchema>;
+
 const imageOverlayElementSchema = overlayElementBaseSchema.extend({
   kind: z.literal('IMAGE'),
   assetId: z.string().trim().min(1).max(120),
-  objectFit: z.enum(['contain', 'cover', 'fill']).default('contain')
+  objectFit: z.enum(['contain', 'cover', 'fill']).default('contain'),
+  transcript: overlayImageTranscriptSchema.nullish()
 });
 
 const shapeOverlayElementSchema = overlayElementBaseSchema.extend({
@@ -196,6 +225,7 @@ export type OverlayImageElement = OverlayElementBase & {
   kind: 'IMAGE';
   assetId: string;
   objectFit?: OverlayImageObjectFit;
+  transcript?: OverlayImageTranscript | null;
 };
 
 export type OverlayShapeElement = OverlayElementBase & {

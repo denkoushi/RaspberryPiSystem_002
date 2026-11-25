@@ -393,6 +393,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           voiceContext={voiceContext}
           documentId={controller.document?.id}
           holderToken={controller.editLeaseToken}
+          accessPassword={controller.passwordInput}
           element={controller.selectedElement}
           onClose={closeInspector}
           onDuplicate={controller.duplicateSelectedOverlay}
