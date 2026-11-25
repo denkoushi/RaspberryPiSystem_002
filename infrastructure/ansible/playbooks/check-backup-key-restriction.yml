@@ -1,0 +1,62 @@
+---
+# Read-only check of the backup key line in each client's authorized_keys.
+# Usage: ansible-playbook playbooks/check-backup-key-restriction.yml \
+#   -e "backup_ssh_public_key='<public key line>'" [-e backup_ssh_allowed_from=IP] [--limit HOST]
+- name: Check backup key restriction on clients
+  hosts: "{{ client_host | default('clients') }}"
+  gather_facts: false
+  become: false
+  vars:
+    backup_ssh_public_key: ""
+    backup_ssh_allowed_from: ""
+    backup_key_home: "{{ '/root' if ansible_user == 'root' else '/home/' ~ ansible_user }}"
+    backup_key_body: "{{ (backup_ssh_public_key | trim).split()[1] | default('') }}"
+  tasks:
+    - name: Validate the public key input
+      ansible.builtin.assert:
+        that:
+          - backup_ssh_public_key | trim is match('^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp[0-9]+|sk-ssh-ed25519@openssh.com) [A-Za-z0-9+/=]+')
+        fail_msg: "backup_ssh_public_key must be one public key line (ssh-ed25519 ...)"
+        quiet: true
+      delegate_to: localhost
+      run_once: true
+      become: false
+
+    - name: Read authorized_keys
+      ansible.builtin.slurp:
+        src: "{{ backup_key_home }}/.ssh/authorized_keys"
+      register: backup_key_file
+      no_log: true
+      failed_when: false
+      become: false
+
+    - name: Find the backup key line
+      ansible.builtin.set_fact:
+        backup_key_lines: >-
+          {{ (backup_key_file.content | default('') | b64decode).splitlines()
+             | select('search', '(^|\s)' ~ (backup_key_body | regex_escape) ~ '(\s|$)') | list }}
+        backup_key_file_found: "{{ backup_key_file.content is defined }}"
+      no_log: true
+      become: false
+
+    - name: Evaluate the key options
+      ansible.builtin.set_fact:
+        backup_key_problems: >-
+          {{ (['authorized_keys is missing'] if not backup_key_file_found else
+              ['key line is missing'] if (backup_key_lines | length) == 0 else
+              (['restrict is missing'] if not (backup_key_lines | select('search', '(^|[\s,])restrict(,|\s)') | list)  else [])
+              + (['from= is missing'] if not (backup_key_lines | select('search', '(^|[\s,])from=\"') | list) else [])
+              + (['from= does not match'] if (backup_ssh_allowed_from | length) > 0
+                  and (backup_key_lines | select('search', 'from=\"[^\"]*' ~ (backup_ssh_allowed_from | regex_escape) ~ '[^\"]*\"') | list | length) == 0
+                  and (backup_key_lines | select('search', '(^|[\s,])from=\"') | list | length) > 0 else [])) }}
+      no_log: true
+      become: false
+
+    - name: Fail with the missing items
+      ansible.builtin.fail:
+        msg: "{{ inventory_hostname }}: {{ backup_key_problems | join(', ') }}"
+      when: backup_key_problems | length > 0
+
+    - name: Report OK
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: OK"

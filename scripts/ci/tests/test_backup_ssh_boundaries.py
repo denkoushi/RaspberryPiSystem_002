@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -18,6 +19,8 @@ BACKUP_INVENTORY_TEMPLATE = (
     ROOT / "infrastructure/ansible/templates/backup-client-inventory.yml.j2"
 ).read_text()
 GITIGNORE = (ROOT / ".gitignore").read_text()
+PLAYBOOKS_DIR = ROOT / "infrastructure/ansible/playbooks"
+RESTRICTION_CHECK = (PLAYBOOKS_DIR / "check-backup-key-restriction.yml").read_text()
 
 
 class BackupSshBoundaryTest(unittest.TestCase):
@@ -53,6 +56,40 @@ class BackupSshBoundaryTest(unittest.TestCase):
 
     def test_host_backup_authority_is_never_tracked(self):
         self.assertIn("/secrets/backup-ssh/", GITIGNORE.splitlines())
+
+
+class BackupKeyRestrictionCheckTest(unittest.TestCase):
+    ALLOWED_MODULES = {
+        "ansible.builtin.slurp",
+        "ansible.builtin.stat",
+        "ansible.builtin.assert",
+        "ansible.builtin.set_fact",
+        "ansible.builtin.debug",
+        "ansible.builtin.fail",
+    }
+
+    def test_never_escalates_privileges(self):
+        self.assertIsNone(re.search(r"become:\s*(true|yes)", RESTRICTION_CHECK, re.I))
+        self.assertIn("become: false", RESTRICTION_CHECK)
+
+    def test_uses_only_read_only_modules(self):
+        modules = set(re.findall(r"^\s+(ansible\.builtin\.\w+):", RESTRICTION_CHECK, re.M))
+        self.assertTrue(modules)
+        self.assertLessEqual(modules, self.ALLOWED_MODULES)
+
+    def test_no_public_key_literal_in_playbooks(self):
+        pattern = re.compile(r"(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+) AAAA")
+        for path in PLAYBOOKS_DIR.rglob("*.yml"):
+            self.assertIsNone(pattern.search(path.read_text()), str(path))
+
+    def test_authorized_keys_tasks_hide_content(self):
+        tasks = re.split(r"\n    - name: ", RESTRICTION_CHECK)
+        read_tasks = [t for t in tasks if "slurp:" in t]
+        self.assertEqual(len(read_tasks), 1)
+        self.assertIn("no_log: true", read_tasks[0])
+        for task in tasks:
+            if "backup_key_file" in task and "set_fact:" in task:
+                self.assertIn("no_log: true", task)
 
 
 if __name__ == "__main__":

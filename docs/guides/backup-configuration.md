@@ -327,6 +327,14 @@ Pi5本番で中核機能の環境再構築に必要な永続・一次ファイ�
 - バックアップ専用SSH公開鍵が対象端末へ承認済み権限で登録され、専用秘密鍵と固定`known_hosts`だけがAPIへread-only mountされていること
 - パスワード認証、ホスト鍵の自動受理、通常inventoryのVault復号をバックアップ処理へ追加しないこと
 
+**バックアップ鍵の登録行の制限**:
+
+1. 端末の接続ユーザーの `~/.ssh/authorized_keys` にあるバックアップ専用鍵の行の先頭に `restrict,from="<Pi5のLANのIP>,<Pi5のtailnetのIP>"` を付ける。
+2. 付けたら、デプロイを流すのと同じ操作端末のリポジトリで、公開鍵を渡して確かめる（読み取りのみ）。
+   `ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/check-backup-key-restriction.yml -e "backup_ssh_public_key='<公開鍵1行>'" -e backup_ssh_allowed_from=<Pi5のIP> --limit <端末名>`
+   端末ごとに `OK` が出れば付いている。足りない項目があるとホスト名と項目名で失敗する。`backup_ssh_allowed_from` は省略できる。
+3. 戻すときは、行の先頭に付けた `restrict,from="..."` を外す。
+
 **AnsibleとTailscale連携の注意事項**:
 
 - **接続先の解決**:
