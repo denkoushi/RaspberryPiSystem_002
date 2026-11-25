@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { assertZipExpansionWithinBudget } from '../../../lib/zip-expansion-budget.js';
 
 import { calendarDate, cellText, formulaWithoutResult, inferDate, normalize, readDate } from './date-cell.js';
 
@@ -54,6 +55,7 @@ export async function parseDScheduleMinutesXlsx(input: {
   if (!meetingDate) return fatal('NO_BASE_DATE');
   const workbook = new ExcelJS.Workbook();
   try {
+    assertZipExpansionWithinBudget(input.buffer);
     await workbook.xlsx.load(input.buffer as unknown as ExcelJS.Buffer);
   } catch {
     return fatal('INVALID_XLSX');

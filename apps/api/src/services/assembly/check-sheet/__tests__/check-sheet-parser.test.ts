@@ -4,6 +4,7 @@ import { assemblyCheckSheetProposalSchema } from '@raspi-system/shared-types';
 import { parseCheckSheetXlsx } from '../check-sheet-xlsx-parser.js';
 import { normalizeCheckSheet } from '../check-sheet-normalizer.js';
 import { makeCheckSheetWorkbook } from './check-sheet.fixture.js';
+import { makeOverDefaultBudgetZip } from '../../../../lib/__tests__/zip-test-helpers.js';
 
 describe('check-sheet parser and normalizer', () => {
   it('reads merged groups once, joins continuations, preserves blank fields and maps headers', async () => {
@@ -99,5 +100,9 @@ describe('check-sheet parser and normalizer', () => {
     expect(proposal.items[0].valueTarget).toMatchObject({ template: '・圧力({field1} psi)' });
     expect(proposal.items[1].inputSpec.fields?.map((field) => field.label)).toEqual(['X軸', 'Y軸', 'Z軸', 'θ軸']);
     expect(proposal.items[1].valueTarget).toMatchObject({ cell: 'F7' });
+  });
+
+  it('展開後の大きさが上限を超える xlsx は読み込まずに拒否する', async () => {
+    await expect(parseCheckSheetXlsx(await makeOverDefaultBudgetZip())).rejects.toMatchObject({ statusCode: 400, message: 'ファイルを展開すると大きすぎます' });
   });
 });

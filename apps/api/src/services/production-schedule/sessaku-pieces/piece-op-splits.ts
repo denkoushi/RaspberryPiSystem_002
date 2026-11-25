@@ -1,3 +1,4 @@
+import { deletePieceBoardRecords } from './piece-board-records.js';
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { SessakuPieceOpMergeRequest, SessakuPiecesMutationResponse } from '@raspi-system/shared-types';
@@ -57,9 +58,9 @@ export async function writePieceOpSplit(tx: Prisma.TransactionClient, c: PieceOp
       await tx.productionScheduleSessakuPieceOpSplit.delete({ where: { pieceId_fromOpNo: { pieceId, fromOpNo: boundary } } });
       // Removal alone leaves the previous interval's own placement untouched.
       for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, removed, [], params.audit);
-      await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: {
+      await deletePieceBoardRecords(tx, {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: params.itemId
-      } });
+      });
     } else {
       if (splits.length && params.itemId === `piece:${pieceId}` && boundary > splits[0].fromOpNo) conflict();
       if (splits.length && params.itemId !== `piece:${pieceId}`) await tx.productionScheduleSessakuPieceOpSplit.update({

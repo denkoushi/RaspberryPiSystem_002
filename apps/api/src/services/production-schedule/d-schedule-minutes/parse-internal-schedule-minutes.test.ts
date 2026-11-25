@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 
 import { parseInternalScheduleMinutesXlsx } from './parse-internal-schedule-minutes.js';
+import { makeOverDefaultBudgetZip } from '../../../lib/__tests__/zip-test-helpers.js';
 
 function fixture(name = '1106結果') {
   const workbook = new ExcelJS.Workbook();
@@ -144,5 +145,9 @@ describe('internal schedule minutes parser', () => {
   it('rejects conflicting duplicate dates while retaining an independent alias', async () => {
     const { workbook, sheet } = fixture(); sheet.addRow(['BA1SB203', null, null, null, null, '11/15']);
     expect(await parse(workbook)).toMatchObject({ ok: true, blocks: [{ seiban: 'BA1SB202', partsCompleteDate: '2026-11-12' }], warnings: [{ code: 'DUPLICATE_SEIBAN' }, { code: 'DUPLICATE_SEIBAN' }] });
+  });
+
+  it('展開後の大きさが上限を超える xlsx は読み込まずに fatal にする', async () => {
+    expect(await parseInternalScheduleMinutesXlsx({ buffer: await makeOverDefaultBudgetZip(), filename: '日程会議議事録_1106.xlsx', receivedAt: null })).toMatchObject({ ok: false, reason: 'INVALID_XLSX' });
   });
 });
