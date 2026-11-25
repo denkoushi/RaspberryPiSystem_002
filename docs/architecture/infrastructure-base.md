@@ -1,268 +1,132 @@
 ---
 title: インフラ基盤
-tags: [アーキテクチャ, インフラ, Docker, スケール性]
+tags: [アーキテクチャ, インフラ, Docker, 運用]
 audience: [アーキテクト, 運用者, 開発者]
-last-verified: 2025-11-27
-related: [overview.md, ../guides/deployment.md, ../guides/monitoring.md]
+last-verified: 2026-11-25
+related: [overview.md, ../guides/deployment.md, ../guides/monitoring.md, single-instance-state.md]
 category: architecture
 update-frequency: low
 ---
 
 # インフラ基盤
 
-## 概要
+最終更新: 2026-11-25
 
-本ドキュメントでは、Raspberry Pi NFC 持出返却システムのインフラ基盤について説明します。スケール性、可用性、保守性の観点から設計されています。
+## 1. 概要
 
-## インフラ構成
+本書は、工場向け Raspberry Pi システムの土台（サーバー、コンテナ、保存場所、配備、監視、バックアップ）を、現在のコードと設定に合わせて説明します。システム全体の位置づけは [overview.md](./overview.md) を参照してください。
 
-### 全体アーキテクチャ
+- Pi5 がサーバーで、API、Web、データベース、入口の Caddy を Docker Compose で動かします。
+- Pi4 は現場のキオスク、Pi3 はデジタルサイネージの表示端末です。端末の種類と役割は [../runbooks/device-model-roles.md](../runbooks/device-model-roles.md) にあります。
+- 設定の取り込みと配備は Ansible とスクリプトで行い、手作業での反映を標準にしません。
+
+根拠: `infrastructure/docker/docker-compose.server.yml`、`infrastructure/docker/docker-compose.phase3.yml`、`infrastructure/ansible/inventory.yml`
+
+## 2. 全体構成
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│              Raspberry Pi 5 (サーバー)                  │
-│                                                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
-│  │   Caddy      │  │   Fastify    │  │  PostgreSQL  │ │
-│  │ (リバース    │  │     API      │  │     DB      │ │
-│  │  プロキシ)   │  │  (Node.js)   │  │  (Container) │ │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘ │
-│         │                  │                  │         │
-│         └──────────────────┴──────────────────┘         │
-│                     内部ネットワーク                      │
-└─────────────────────────────────────────────────────────┘
-                          │ HTTPS
-                          │
-┌─────────────────────────┴─────────────────────────────────┐
-│              Raspberry Pi 4 (クライアント)                 │
-│                                                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
-│  │   React      │  │   NFC Agent  │  │  NFC Reader  │   │
-│  │  (Web UI)    │  │   (Python)   │  │  RC-S300/S1  │   │
-│  └──────┬───────┘  └──────┬───────┘  └──────────────┘   │
-│         │                  │                             │
-│         └──────────────────┘                             │
-│              WebSocket (localhost)                        │
-└───────────────────────────────────────────────────────────┘
+ 現場の端末(Pi4 キオスク / Pi3 サイネージ / モバイル)
+        │  HTTPS (Tailscale 経由)
+        ▼
+ ┌────────────────────── Pi5 ──────────────────────┐
+ │  gateway (Caddy)  80/443 だけを外へ公開          │
+ │     ├─ 現行スロット: web (静的ファイル + Caddy) │
+ │     │                 api (Fastify, 内部 8080)  │
+ │     └─ もう一方のスロット (切替・戻し用)         │
+ │  db (PostgreSQL + pgvector, ポート非公開)       │
+ │  保存場所: <repo>/storage/* (写真・PDF・描画等) │
+ └─────────────────────────────────────────────────┘
 ```
 
-### コンポーネント構成
+- 本番の構成は `docker-compose.phase3.yml` で、ブルー/グリーンの 2 スロットを切り替えて更新します。基本のサービス定義は `docker-compose.server.yml` にあります。
+- ホストに公開するポートは gateway の 80/443 だけです。API は内部の 8080、データベースの 5432 は公開しません。
+- 古い資料にある「単一の API コンテナ + 4173 番の Web」「ブルーグリーンは将来」は現在の構成ではありません。
 
-#### 1. データベース（PostgreSQL）
+根拠: `docker-compose.phase3.yml`、`docker-compose.server.yml`、`Caddyfile.gateway.template`、`Caddyfile.slot.template`
 
-- **イメージ**: `postgres:15-alpine`
-- **ポート**: `5432`
-- **データ永続化**: Dockerボリューム `db-data`
-- **役割**: 
-  - 従業員、アイテム、貸出履歴、トランザクションの永続化
-  - トランザクション管理とデータ整合性の保証
+## 3. コンテナ構成
 
-**スケール性の考慮**:
-- 現在は単一インスタンス構成
-- 将来の拡張: レプリケーション、読み取り専用レプリカの追加が可能
-- データベースサイズの増加に対応するため、定期的なバックアップとアーカイブ戦略が必要
+| サービス | 内容 |
+|---|---|
+| gateway | Caddy。TLS の固定入口。`/admin` の許可リストとセキュリティヘッダーを設定。認証ヘッダー(`X-Client-Key` など)はアクセスログで伏せる。内部用エンドポイントは外部からは 404 |
+| web | ビルド済みの静的ファイルを Caddy で配信(内部 80 番) |
+| api | Node 24 の Fastify。内部 8080 番 |
+| db | `pgvector/pgvector:pg18`。データは名前付きボリューム `db-data-pg18`。旧バージョンのデータは移行用に読み取り専用でのみ接続 |
 
-#### 2. APIサーバー（Fastify）
+- 資源の取り合いを避けるため `cpu_shares` を設定しています(db と api は 4096、web と gateway は 2048)。
+- ログは JSON 形式で、10MB × 3 世代で回転します。
+- API と Web のコンテナは `read_only`、`cap_drop: ALL`、`no-new-privileges`、`tmpfs` で締めています。
 
-- **ビルド**: `Dockerfile.api`
-- **ポート**: `8080`
-- **依存関係**: PostgreSQL
-- **役割**:
-  - REST APIエンドポイントの提供
-  - 認証・認可の処理
-  - ビジネスロジックの実行
+根拠: `docker-compose.server.yml`、`docker-compose.phase3.yml`、`Dockerfile.api`、`Dockerfile.web`
 
-**スケール性の考慮**:
-- **水平スケール**: 複数のAPIインスタンスを起動可能（ロードバランサー経由）
-- **垂直スケール**: Raspberry Pi 5のリソース制約内で最適化
-- **将来の拡張**: 
-  - 複数のRaspberry Pi 5への分散配置
-  - 外部ロードバランサーの導入
+## 4. データの置き場所
 
-#### 3. Webサーバー（Caddy）
+- 写真、サムネイル、PDF、PDF のページ画像、サイネージの描画結果、測定図面などの永続データは、Pi5 上のリポジトリ直下 `storage/` 配下をコンテナへバインドして保存します。どのフォルダを持つかは契約ファイルで定義し、Ansible の `pi5_storage` ロールが用意します。
+- データベースは前述のボリュームに保存します。
+- バックアップ設定は `<repo>/config` 配下の `backup.json` で、コンテナの `/app/config/backup.json` として読まれます(環境変数 `BACKUP_CONFIG_PATH` で変更可)。
 
-- **ビルド**: `Dockerfile.web`
-- **ポート**: `4173` (HTTP), `443` (HTTPS、本番環境)
-- **依存関係**: APIサーバー
-- **役割**:
-  - 静的ファイル（Reactビルド成果物）の配信
-  - APIリクエストのリバースプロキシ
-  - SPAルーティングのフォールバック
+根拠: `infrastructure/ansible/vars/pi5-storage-contract.yml`、`docker-compose.phase3.yml`、`apps/api/src/services/backup/`
 
-**スケール性の考慮**:
-- 静的ファイル配信は軽量で、複数インスタンスへの分散が容易
-- 本番環境ではHTTPS対応（Let's Encrypt自動証明書取得）
+## 5. セキュリティの基本
 
-#### 4. NFCエージェント（Python）
+- 通信は Tailscale を前提にし、gateway だけが外に出ます(公開ポートの扱いは [../runbooks/ports-unexpected-and-port-exposure.md](../runbooks/ports-unexpected-and-port-exposure.md))。
+- API は `@fastify/rate-limit` を全体に適用しています(1 分あたり 120 回。端末またはIPとルートごとに数えます)。CORS も登録済みです。以前の「レート制限は実質無効」は現在は当てはまりません。
+- 秘密情報は Ansible Vault で管理し、`templates/docker.env.j2` から環境ファイルとして配ります。リポジトリには置きません。
+- CI にはコードスキャン(CodeQL)と秘密情報の検出(gitleaks)が入っています。
 
-- **実行環境**: Raspberry Pi 4（クライアント側）
-- **ポート**: `7071` (WebSocket, REST API)
-- **役割**:
-  - NFCリーダー（RC-S300/S1）からのUID取得
-  - WebSocket経由でのUID配信
-  - オフライン時のキューイング（SQLite）
+根拠: `apps/api/src/plugins/rate-limit.ts`、`apps/api/src/app.ts`、`infrastructure/ansible/templates/docker.env.j2`、`.github/workflows/codeql.yml`、`.github/workflows/gitleaks.yml`
 
-**スケール性の考慮**:
-- クライアント側コンポーネントのため、サーバー側のスケール性に影響しない
-- 複数のRaspberry Pi 4クライアントを追加可能
+## 6. 監視とヘルスチェック
 
-## データ永続化
+- `GET /api/system/health` はコンテナのヘルスチェックから呼ばれ、データベース、メモリ、イベントループ、Playwright の状態を見ます。
+- `GET /api/system/metrics` は Prometheus 形式の指標を返します。
+- `GET /api/system/deploy-status` で配備の状態を確認できます。`/api/system/deploy-readiness/internal` は内部専用で、外部には閉じています。
+- 通知は Slack の 4 系統(deploy / ops / support / security)に振り分けます。設定は [../guides/slack-webhook-setup.md](../guides/slack-webhook-setup.md) を参照してください。
+- 運用の見方は [../guides/monitoring.md](../guides/monitoring.md) にあります。
 
-### Dockerボリューム
+根拠: `apps/api/src/routes/system/`、`apps/api/src/services/alerts/alerts-config.ts`
 
-- **`db-data`**: PostgreSQLのデータディレクトリ
-  - 場所: `/var/lib/postgresql/data`（コンテナ内）
-  - 永続化: Dockerボリュームとして管理
-  - バックアップ: `scripts/server/backup.sh`で定期バックアップ
+## 7. 配備(デプロイ)
 
-### バックアップ戦略
+- 通常の更新は `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` を使います。先に `--print-plan` で対象と順序を確認し、実行では `--limit PATTERN` か `--full-fleet` を明示します。
+- 中身は Ansible の `deploy-release-standard.yml` で、`server`、`release_pi5`、`release_kiosk`、`release_signage`、`signage` などのロールが使われます。
+- Pi5 は新しいスロットを起動して確認してから gateway を切り替えるため、更新中も入口は止まりません。
+- 端末ごとの制約と復旧は [../guides/deployment.md](../guides/deployment.md)、[../guides/quick-start-deployment.md](../guides/quick-start-deployment.md)、[../runbooks/deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) が正本です。
 
-- **データベース**: `pg_dump`によるフルダンプ（gzip圧縮）
-- **環境変数**: `.env`ファイルのバックアップ
-- **頻度**: 手動実行（将来はcronによる自動化）
+根拠: `scripts/update-all-clients.sh`、`infrastructure/ansible/playbooks/deploy-release-standard.yml`、`infrastructure/ansible/roles/`
 
-詳細は [バックアップ・リストア手順](../guides/backup-and-restore.md) を参照してください。
+## 8. CI
 
-## ネットワーク構成
+`.github/workflows/ci.yml` で、API、Web、DB とインフラ、配備の契約、コンテナ実行の予行、サイネージ成果物の契約、Docker のセキュリティ、E2E、リリースセットの各確認を行います。マージはすべて合格した場合に限ります。
 
-### サーバー側（Raspberry Pi 5）
+根拠: `.github/workflows/ci.yml`
 
-- **内部ネットワーク**: Docker Composeのデフォルトネットワーク
-  - サービス間通信: サービス名で解決（例: `api:8080`, `db:5432`）
-- **外部公開ポート**:
-  - `4173`: Web UI（HTTP）
-  - `8080`: API（直接アクセス用、本番環境では非公開推奨）
-  - `5432`: PostgreSQL（直接アクセス用、本番環境では非公開推奨）
+## 9. バックアップと災害復旧
 
-### クライアント側（Raspberry Pi 4）
+- アプリのバックアップ先は local / Dropbox / Gmail で、必要に応じて暗号化します(鍵は Vault 管理)。詳細は [../guides/backup-and-restore.md](../guides/backup-and-restore.md) と [../api/backup.md](../api/backup.md)。
+- Pi5 から Google Drive へ毎日 23:00(日本時間)に災害復旧用のコピーを取ります(`google_drive_dr_timer_enabled` で有効化)。手順は [../runbooks/google-drive-disaster-recovery.md](../runbooks/google-drive-disaster-recovery.md)。
+- Oracle 側への複写タイマー(毎日 04:30)は、認証ファイルが root 所有・権限 0600 の通常ファイルのときだけ有効になります。
+- 復元の訓練は [../runbooks/pi5-restore-drill.md](../runbooks/pi5-restore-drill.md) にあります。
 
-- **Web UI**: HTTPS経由でサーバーに接続
-- **NFCエージェント**: `localhost:7071`でWebSocket/REST APIを提供
-- **ネットワーク要件**: 
-  - サーバーへのHTTPS接続が可能であること
-  - 固定IPまたはDNS解決が推奨
+根拠: `infrastructure/ansible/playbooks/deploy-google-drive-disaster-recovery.yml`、`apps/api/src/services/backup/`
 
-## スケール性の設計
+## 10. 拡張するときの考え方
 
-### 現在の構成（小規模運用）
+- 機能は API のルート/サービス単位のモジュールとして足します(境界は [../decisions/001-module-structure.md](../decisions/001-module-structure.md))。
+- API は 1 台構成が前提です。メモリに持つ状態や定期処理のリーダー制御は [single-instance-state.md](./single-instance-state.md) を参照してください。
+- 新しい保存フォルダは契約ファイルに追加し、コンテナのバインド設定と合わせます。
 
-- **サーバー**: Raspberry Pi 5 × 1台
-- **クライアント**: Raspberry Pi 4 × 複数台（必要に応じて追加）
-- **想定ユーザー数**: 10-50名程度
+## 11. 確認できていない事項
 
-### 将来の拡張シナリオ
+次はコードと設定からは確認できなかったため、本書には書いていません。
 
-#### シナリオ1: ユーザー数の増加（50-200名）
-
-API は 1 台構成を前提に、一部の状態をプロセスのメモリに持っている。複数インスタンスにする前に [API の 1 台構成の前提](./single-instance-state.md) の項目を直す。
-
-**対応策**:
-- APIサーバーの水平スケール（複数インスタンス）
-- データベースの読み取り専用レプリカ追加
-- ロードバランサーの導入
-
-**必要な変更**:
-- Docker Composeの複数インスタンス設定
-- 外部ロードバランサー（例: Nginx, Traefik）の導入
-- データベースレプリケーション設定
-
-#### シナリオ2: 地理的な分散（複数拠点）
-
-**対応策**:
-- 各拠点にRaspberry Pi 5サーバーを配置
-- 中央データベースへの同期（将来的な機能）
-- または、各拠点で独立運用
-
-**必要な変更**:
-- データベース同期メカニズムの実装
-- または、マルチテナント対応
-
-#### シナリオ3: 高可用性の要件
-
-**対応策**:
-- サーバーの冗長化（Raspberry Pi 5 × 2台）
-- データベースのマスター-スレーブ構成
-- 自動フェイルオーバー
-
-**必要な変更**:
-- PostgreSQLレプリケーション設定
-- ヘルスチェックと自動フェイルオーバー機構
-- ロードバランサーによるトラフィック分散
-
-### リソース制約の考慮
-
-#### Raspberry Pi 5の制約
-
-- **CPU**: 4コア（ARM64）
-- **メモリ**: 8GB（推奨）
-- **ストレージ**: microSD（推奨: 64GB以上、Class 10以上）
-
-**最適化ポイント**:
-- Dockerイメージの軽量化（Alpine Linuxベース）
-- データベースクエリの最適化
-- 不要なログの削減
-
-#### Raspberry Pi 4の制約
-
-- **CPU**: 4コア（ARM64）
-- **メモリ**: 4GB以上推奨
-- **ネットワーク**: Wi-Fiまたは有線LAN
-
-**最適化ポイント**:
-- Web UIの軽量化（コード分割、遅延読み込み）
-- NFCエージェントの効率的な実装
-
-## セキュリティ考慮事項
-
-### 現在の実装
-
-- **認証**: JWT（アクセストークン + リフレッシュトークン）
-- **HTTPS**: 本番環境で有効化（Let's Encrypt）
-- **データベース**: 内部ネットワークのみアクセス可能
-- **環境変数**: `.env`ファイルで管理（Gitにコミットしない）
-
-### 将来の強化項目
-
-- **APIレート制限**: 現在は実質的に無効化（将来の実装予定）
-- **CORS設定**: 本番環境での適切な設定
-- **データベース暗号化**: 機密データの暗号化
-- **監査ログ**: 操作履歴の記録と分析
-
-## 監視とアラート
-
-### 現在の実装
-
-- **ヘルスチェック**: `/api/system/health`
-- **メトリクス**: `/api/system/metrics` (Prometheus形式)
-- **監視スクリプト**: `scripts/server/monitor.sh`
-
-詳細は [監視・アラートガイド](../guides/monitoring.md) を参照してください。
-
-### 将来の拡張
-
-- **Prometheus + Grafana**: メトリクスの可視化
-- **アラート通知**: メール、Slack、LINE通知
-- **ログ集約**: ELK Stack、Loki等の導入
-
-## デプロイメント
-
-### 現在の方法
-
-- **手動デプロイ**: `scripts/server/deploy.sh`
-- **更新方法**: `git pull` + Docker Compose再ビルド
-
-詳細は [デプロイメントガイド](../guides/deployment.md) を参照してください。
-
-### 将来の改善
-
-- **CI/CDパイプライン**: GitHub Actionsによる自動デプロイ
-- **ブルー・グリーンデプロイ**: ダウンタイムゼロのデプロイ
-- **ロールバック機能**: 問題発生時の自動ロールバック
+- Pi5/Pi4 の CPU、メモリ、ストレージの仕様
+- `scripts/server/deploy.sh` の現在の用途(標準手順は 7 章のスクリプト)
+- 監視スクリプト `scripts/server/monitor.sh` を定期実行している設定
 
 ## 関連ドキュメント
 
-- [システムアーキテクチャ概要](./overview.md)
-- [API の 1 台構成の前提](./single-instance-state.md)
-- [デプロイメントガイド](../guides/deployment.md)
-- [監視・アラートガイド](../guides/monitoring.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [overview.md](./overview.md)
+- [../guides/deployment.md](../guides/deployment.md)
+- [../guides/monitoring.md](../guides/monitoring.md)
+- [../guides/external-integration-ledger.md](../guides/external-integration-ledger.md)
