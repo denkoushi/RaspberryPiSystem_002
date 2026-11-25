@@ -1,304 +1,194 @@
 ---
-title: デジタルサイネージ軽量モード計画
-tags: [デジタルサイネージ, Raspberry Pi Zero, Raspberry Pi 3, 軽量クライアント]
+title: サイネージ軽量表示(端末側の仕組みと運用)
+tags: [デジタルサイネージ, Raspberry Pi 3, 軽量クライアント, 運用]
 audience: [開発者, 運用者]
-last-verified: 2025-11-28
-related: [README.md, ../../EXEC_PLAN.md, ../../scripts/client/setup-signage.sh]
+last-verified: 2026-11-26
+related: [README.md, ../../architecture/signage-module-architecture.md, ../../guides/signage-client-setup.md, ../../runbooks/pi3-signage-tailscale-recovery.md]
 category: modules
-update-frequency: high
+update-frequency: medium
 ---
 
-# デジタルサイネージ軽量モード計画
+# サイネージ軽量表示(端末側の仕組みと運用)
 
-## 背景
+最終更新: 2026-11-26
 
-- 工場現場では **Raspberry Pi 3 や Raspberry Pi Zero 2W** をクライアントとして常時稼働させたい。
-- 既存の `/signage`（React + Chromium）構成は、1GB未満のメモリ環境では CPU / メモリ負荷が高く、Chromium の警告ダイアログも表示される。
-- ラズパイ 5 で PDF を JPEG に変換する処理は完了したが、クライアントは依然としてブラウザ描画を行っているため、軽量とは言えない。
+## 1. この文書の範囲
 
-## 設計方針（安定化施策）
+サイネージの「軽量表示」は、表示端末が画面を自分で組み立てず、サーバー(Pi5)が描画した 1 枚の JPEG 画像を取得して全画面で出すだけの方式です。ブラウザ(Chromium)を使わないので、メモリの小さい Raspberry Pi 3 でも常時動かせます。
 
-### SDカードへの書込み削減（最優先）
-- **画像キャッシュをtmpfs（RAM）に配置**: `/run/signage` を使用することで、30秒ごとのJPEG更新によるSDカードへの書込みをほぼゼロ化
-- **効果**: SDカードの寿命延長、破損リスクの低減、システム安定性の向上
-- **実装**: systemd-tmpfilesで `/run/signage` ディレクトリを自動作成（再起動後も確実に作成される）
+この文書は、端末側の仕組みと運用(動作、設定、確認、トラブル時の見方)だけを扱います。次の内容は別の文書にあります。
 
-### 自動復旧機能
-- **watchdog**: 画像更新が停止した場合（2分以上更新されていない）を検知し、自動的に復旧を試行
-  - 1. `signage-lite-update.service` を手動実行
-  - 2. 復旧しない場合は `signage-lite.service` を再起動
-- **日次再起動**: 毎日深夜3時に自動再起動し、メモリリークや累積エラーのリセット
+- サイネージ全体の構成(スケジュール、表示できる種類、描画の仕組み、API 一覧、データベース): [../../architecture/signage-module-architecture.md](../../architecture/signage-module-architecture.md)
+- 端末の初期セットアップの案内(Android を含む): [../../guides/signage-client-setup.md](../../guides/signage-client-setup.md)
+- Pi3 が表示されなくなったときの復旧: [../../runbooks/pi3-signage-tailscale-recovery.md](../../runbooks/pi3-signage-tailscale-recovery.md)
 
-### サービス堅牢化
-- **DISPLAY準備待ち**: `ExecStartPre` でX11が利用可能になるまで待機（最大30秒）
-- **暴走防止**: `StartLimitIntervalSec/StartLimitBurst` で連続失敗時の制御
-- **enabled状態の収束**: Ansibleデプロイ時に必ず `enabled=true` を保証（サービス無効化ドリフトの防止）
+## 2. 対象の端末
 
-## 目的
+| 端末 | 表示方法 | 管理の方法 |
+|---|---|---|
+| Raspberry Pi 3(本番のサイネージ端末 1 台) | `feh` で画像を全画面表示 | Ansible の `signage` グループ(ロール `signage`)で配備 |
+| Android タブレットなど(型落ち端末) | ブラウザで Web の `/signage-lite` を開く | 端末側の設定のみ(Ansible の対象外) |
 
-1. **低スペック端末でも安定稼働する軽量表示経路**を提供する。
-2. **サーバー側レンダリング（静止画出力）**を導入し、クライアント処理を最小化する。
-3. Raspberry Pi 3 / Zero 2W で 24h 連続稼働できる構成を確立する。
+- Pi3 は `infrastructure/ansible/inventory.yml` の `signage` グループにあり、メモリが小さいため、配備中は画面管理の `lightdm` を一時停止します。
+- Raspberry Pi Zero 2W は表示端末にしません。機種ごとの役割は [../../runbooks/device-model-roles.md](../../runbooks/device-model-roles.md) を参照してください。以前の計画にあった Zero 2W での実機試験や 24 時間耐久試験は、現在の運用には含まれていません。
 
-## スコープ
+根拠: `infrastructure/ansible/inventory.yml`(`signage` グループ)、`infrastructure/ansible/roles/signage/tasks/main.yml`、`docs/guides/signage-client-setup.md`
 
-| 項目 | 内容 |
-|------|------|
-| 表示形式 | 静止画（JPEG）を基本とし、サーバー側で生成した1枚の画像をループ表示 |
-| クライアントOS | Raspberry Pi OS Lite（GUIなし）を基本とし、必要な最小限の X11 + ビューアのみを導入 |
-| ビューア | `feh` などの軽量画像ビューア、もしくは `imv` / `mpv` 等 |
-| コンテンツ更新 | HTTP で最新画像を取得、または rsync/SCP でローカルキャッシュを更新 |
+## 3. 端末の動き(Pi3)
 
-## 段階的な実装計画
+```
+signage-lite-update.timer(30 秒ごと)
+   └ signage-update.sh が Pi5 の /api/signage/current-image を取得
+        └ メモリ上の /run/signage/current.jpg に保存
+signage-lite.service
+   └ signage-display.sh が feh で current.jpg を全画面表示(ファイルの更新を検知して自動で再読込)
+signage-lite-watchdog.timer(1 分ごと)  … 更新の停止を検知して自動復旧
+signage-daily-reboot.timer(毎日 3:00)  … 日次の再起動
+```
 
-### Phase A: 設計とPoC
-- [ ] サーバー側でツール表示 / PDF表示 / 分割表示を **静止画にレンダリングするパイプライン**（例: Puppeteer, headless Chromium, html-to-image）を設計
-- [ ] 軽量クライアントの PoC（Raspberry Pi 3 + feh で `/tmp/signage/current.jpg` を表示）を用意
+### 3.1 画像の取得(signage-update.sh)
 
-### Phase B: サーバー側レンダリング機構
-- [ ] 既存 `/signage` UI を headless で撮影し `/storage/signage-rendered/latest.jpg` を生成
-- [ ] 30秒ごとに画像生成ジョブを実行、API `/api/signage/current-image` で配信
-- [ ] 生成失敗時のフォールバック画像/メッセージを用意
+- 取得先は `<サーバーURL>/api/signage/current-image` で、端末のクライアントキーを `x-client-key` ヘッダーで送ります。キーは curl の引数に出ないよう標準入力から渡します。
+- 取得は 10 秒で打ち切ります。失敗したり空のファイルだったときは、前回の画像をそのまま表示し続けます。通信が切れても表示は止まりません。
+- 初回だけ `mv` で作り、2 回目以降は `cat` で同じファイルへ上書きします(inode を変えない)。`feh --auto-reload` は `mv` による置き換えに追従できないことがあり、画面が更新されない、または飛んで見える原因になったためです。経緯は [KB-152](../../knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) を参照してください。
+- 更新タイマーは起動 1 分後から 30 秒ごとで、精度を 1 秒に指定しています(既定の 1 分精度だと更新が 1 分単位に丸められるため)。
+- 配備中は、画像の代わりに保守中の画面を表示します。Pi5 の `/api/system/deploy-status` を見て、配備中であれば保守画面(SVG を `rsvg-convert` で画像化)を `current.jpg` に書き、配備の進み具合を Pi5 へ返します。概要は [../../architecture/signage-module-architecture.md](../../architecture/signage-module-architecture.md) の「表示端末(Pi3)」にあります。
 
-### Phase C: 軽量クライアント実装
-- [x] Raspberry Pi OS Lite 用のセットアップスクリプトを追加（`scripts/client/setup-signage-lite.sh`）
-- [x] `feh` + systemd サービスで `current.jpg` をループ表示（再取得間隔 configurable）
-- [x] ネットワーク断時はローカルキャッシュを表示、復帰後に自動更新
+### 3.2 表示(signage-display.sh と signage-lite.service)
 
-### Phase D: モード切替と統合
-- [ ] 管理画面で「表示モード（通常 / 軽量）」を切り替えられるようにする
-- [ ] `setup-signage.sh` を通常モード、`setup-signage-lite.sh` を軽量モードとして提供
-- [ ] Raspberry Pi 3 / Zero 2W で 24時間連続稼働テストを実施し、温度/負荷/再接続テストを記録
+- 起動時に画面の自動オフ(スクリーンセーバーと省電力)を無効にします。
+- `current.jpg` がなければ、すぐに取得を試み、最大 12 回(5 秒間隔)待ちます。それでも画像がなければサービスは異常終了し、10 秒後に自動で再起動して再試行します。
+- `feh --fullscreen --auto-reload` で全画面表示します。`q` キーで `signage-lite.service` を停止できます。
+- ネットワークへの接続を待たずに起動します。オフラインでも、メモリ上に画像が残っていればそれを表示します。
+- 5 分間に 5 回失敗すると、それ以上の再起動を止めます(暴走防止)。
 
-## 軽量クライアントのセットアップ
+### 3.3 保存場所(tmpfs)
 
-### 前提条件
+- 画像は `/run/signage`(メモリ上)に置きます。30 秒ごとの更新で SD カードに書き込まないため、SD カードの寿命と破損リスクを守れます。
+- ディレクトリは systemd-tmpfiles が再起動のたびに作ります。
+- 再起動すると画像は消えます。起動後に Pi5 へ接続できなければ、画像が取得できるまで表示できません。
 
-- Raspberry Pi 3 / Zero 2W に Raspberry Pi OS Lite をインストール済み
-- X11が利用可能（GUI環境またはX11のみインストール）
-- サーバー（Raspberry Pi 5）のURLとクライアントキーを取得済み
+### 3.4 自動復旧
 
-### セットアップ手順
+- watchdog(1 分ごと)は、`current.jpg` が 120 秒より古いときに、まず `signage-lite-update.service` を実行し、5 秒後もまだ古ければ `signage-lite.service` を再起動します。画像がまだない起動直後は何もしません。
+- 日次再起動は毎日 3:00 です。メモリの累積的な劣化を毎日リセットします。
+- Ansible の配備のたびに、表示サービスと各タイマーを有効な状態に戻します(無効のまま残る状態を防ぐ)。
 
-1. **リポジトリをクローンまたは更新**:
-   ```bash
-   cd /opt
-   git clone https://github.com/denkoushi/RaspberryPiSystem_002.git
-   # または既存のリポジトリを更新
-   cd RaspberryPiSystem_002
-   git pull origin feature/signage-lite-client
-   ```
+根拠: `infrastructure/ansible/roles/signage/templates/`(`signage-update.sh.j2`、`signage-display.sh.j2`、`signage-lite.service.j2`、`signage-lite-update.timer.j2`、`signage-lite-watchdog.sh.j2`、`signage-lite-watchdog.timer.j2`、`signage-daily-reboot.timer.j2`、`signage-lite.tmpfiles.conf.j2`)、`infrastructure/ansible/roles/signage/tasks/main.yml`
 
-2. **セットアップスクリプトを実行**:
-   ```bash
-   sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
-   ```
-   
-   例:
-   ```bash
-   sudo ./scripts/client/setup-signage-lite.sh https://<Pi5 の LAN IP（自宅）> abc123def456...
-   ```
+## 4. 接続の安全性(TLS とクライアントキー)
 
-3. **動作確認**:
-   ```bash
-   # サービスステータス確認
-   systemctl status signage-lite
-   
-   # ログ確認
-   journalctl -u signage-lite -f
-   
-   # 画像更新タイマー確認
-   systemctl status signage-lite-update.timer
-   ```
+- 端末は、Pi5 の証明書の公開鍵を固定して接続します(`client_server_cert_pin` ロール、環境変数 `SIGNAGE_SERVER_CERT_PIN_ENABLED`)。固定が有効なときは、固定した鍵と一致する場合だけ接続します。
+- 固定が無効で、`SIGNAGE_ALLOW_INSECURE_TLS=1` のときだけ証明書の検証を省略します(自己署名の証明書など、やむを得ない場合の逃げ道です)。
+- 端末の設定は `/etc/raspisystem-signage/runtime.env` にあり、配備のたびに Ansible が書き直します。クライアントキーなどの秘密値は Ansible のボールト(vault)に置かれ、この文書には書きません。
+- 画像取得用のキーと、配備の状態を報告するキー(status-agent 用)は別々です。
 
-### 設定のカスタマイズ
+根拠: `infrastructure/ansible/roles/signage/templates/signage-runtime.env.j2`、`infrastructure/ansible/roles/signage/templates/signage-update.sh.j2`
 
-環境変数で更新間隔を変更可能：
+## 5. 設定と配備
+
+### 5.1 通常の配備(Ansible)
+
+Pi3 の更新は標準のローリング更新で行います。手順と対象の絞り方は [../../guides/deployment.md](../../guides/deployment.md) と [../../guides/quick-start-deployment.md](../../guides/quick-start-deployment.md) を正本とします。
+
+- Pi3 の設定(`inventory.yml` の `signage` グループ)で、サーバーの URL(`signage_server_url`)、画像取得用のクライアントキー(`signage_client_key`)、再起動対象のサービス一覧などを決めます。
+- 配備中のメモリ確保のため、`lightdm` を一時停止します。そのため配備の途中では、表示サービスが一時的に異常な状態になることがあります。配備の最後に復旧して、通常は動作中に戻ります。
+- Pi3 は負荷時に sudo の応答が遅れるため、接続の待ち時間を長めに設定してあります。
+
+### 5.2 手動のセットアップ(setup-signage-lite.sh)
+
+Ansible を使わず、端末で直接セットアップするときのスクリプトが `scripts/client/setup-signage-lite.sh` です。
 
 ```bash
-export SIGNAGE_UPDATE_INTERVAL=60  # 60秒間隔に変更
 sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
 ```
 
-デフォルトでは証明書を検証します(`curl -k` は付けません)。端末が信頼しない自己署名証明書のサーバーに接続する場合だけ、以下で検証をスキップできます。
+- 画像取得、表示、更新タイマーの設定を端末に入れ、古い Chromium 方式のサイネージ(`signage-display.service`、`kiosk-browser.service`)を止めます。
+- 更新間隔は環境変数 `SIGNAGE_UPDATE_INTERVAL`(秒、既定 30)で変えられます。
+- 証明書の検証をやむを得ず省略するときだけ `SIGNAGE_ALLOW_INSECURE_TLS=true` を付けます。
+- このスクリプトは、画像の取得と表示の仕組みを入れるものです。watchdog と日次再起動は Ansible の配備で入ります。本番の端末は、Ansible の配備に統一してください。
+
+### 5.3 サーバー側の設定(Pi5)
+
+軽量表示の画像は、サーバーが端末ごとに作ります。関係する設定は次のとおりです。設定は `infrastructure/docker/docker-compose.server.yml` の `api` サービスの環境変数で行います。
+
+| 環境変数 | 内容 | 既定値 |
+|---|---|---|
+| `SIGNAGE_RENDER_INTERVAL_SECONDS` | 描画の間隔(秒、10〜3600) | 30 |
+| `SIGNAGE_RENDER_WIDTH` / `SIGNAGE_RENDER_HEIGHT` | 画像の大きさ | 1920 / 1080 |
+| `SIGNAGE_PDF_DPI` | PDF を画像にするときの解像度 | Compose では 240 |
+| `SIGNAGE_RENDER_DIR` | 描画結果の保存先 | コンテナ内の `/app/storage/signage-rendered` |
+| `SIGNAGE_RENDER_KEEP_HISTORY` | `1` で履歴画像も残す | 残さない(推奨) |
+
+- 大きなモニターを近くで見るときは、解像度を上げると文字がはっきりします。ただし画像が大きくなり、描画の時間と転送量が増えます。上げる場合は、端末で表示できることを確かめてから本番に反映してください。
+- 描画の仕組みそのもの(スケジュール判定、スロット、worker での描画)は [../../architecture/signage-module-architecture.md](../../architecture/signage-module-architecture.md) を参照してください。
+
+根拠: `apps/api/src/config/env/signage.ts`、`infrastructure/docker/docker-compose.server.yml`、`apps/api/src/lib/pdf-storage.ts`、`apps/api/src/lib/signage-render-storage.ts`
+
+## 6. 画像の配信(Pi5 側の動作)
+
+- `GET /api/signage/current-image` は、端末のクライアントキー(`x-client-key` ヘッダー。ブラウザ表示用には `key` クエリも可)を確認し、その端末用の最新画像を返します。キーが未登録なら 401 を返します。
+- 端末用の画像がまだなければ、「表示するコンテンツがありません」というメッセージ画像を返します。
+- 管理者は `clientDeviceId` を指定して、特定の端末向けの画像を確認できます。
+- 画像は `Cache-Control: no-store` で返します。
+- 描画の状態は `GET /api/signage/render/status`、手動の再描画は `POST /api/signage/render`(管理者・マネージャーのみ)です。管理画面のサイネージのハブ画面にある「今すぐ映し直す」ボタンが、この再描画を呼びます。
+- 保存先には、端末ごとに最新の 1 枚(`current-<端末ID>.jpg`)だけを置きます。履歴画像は既定で作りません。もし履歴画像(`signage_*.jpg`)ができた場合は、毎日の `storage-maintenance` が削除し、最新の画像は残します。保存先の使用量が 80% と 90% を超えると、監視(`monitor.sh`)が警告を出します。経緯は [KB-130](../../knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) を参照してください。
+
+根拠: `apps/api/src/routes/signage/render.ts`、`apps/api/src/lib/signage-render-storage.ts`、`scripts/server/storage-maintenance.sh`、`apps/web/src/pages/admin/SignageHubPage.tsx`
+
+## 7. Android など(/signage-lite)
+
+型落ちの Android タブレットなどでは、Web の `/signage-lite` ページを開きます。
+
+- ページは、サーバーが描画した画像だけを 30 秒ごとに取り直して全画面で出します(重い `/signage` の画面は使いません)。
+- 端末の識別は URL の `?clientKey=<端末のキー>` で行い、初回に端末のブラウザ(localStorage)へ保存します。キーが未設定のときは、設定を促す案内を出します。
+- 取得できないときは、画面の上に確認の案内を出します。キーが Pi5 の端末として登録されていないと、画像の取得が 401 になります。
+- 手順と、Chrome のサイトデータが原因の不具合は [../../guides/signage-client-setup.md](../../guides/signage-client-setup.md) と [KB-337](../../knowledge-base/infrastructure/signage.md#kb-337-android-signage-lite-401-chrome) を参照してください。
+
+根拠: `apps/web/src/pages/signage/SignageLiteDisplayPage.tsx`、`apps/web/src/App.tsx`
+
+## 8. 動作確認とトラブルシュート
+
+端末(Pi3)で、次のように確認します。
 
 ```bash
-sudo SIGNAGE_ALLOW_INSECURE_TLS=true ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
+systemctl status signage-lite                    # 表示サービス
+systemctl status signage-lite-update.timer       # 画像の更新タイマー
+systemctl status signage-lite-watchdog.timer     # watchdog
+journalctl -u signage-lite -f                    # 表示のログ
+ls -l /run/signage/current.jpg                   # 画像の更新時刻
 ```
 
-### トラブルシューティング
-
-- **画像が表示されない**: `/run/signage/current.jpg` が存在するか確認（tmpfsのため再起動後は空）
-- **初回ダウンロードで `feh: No loadable images specified` が出る**: `signage-lite` サービス再起動前に `/usr/local/bin/signage-update.sh` を実行してキャッシュを生成
-- **ネットワークエラー**: サーバーURLとクライアントキーが正しいか確認
-- **自己署名証明書で失敗する**: 端末にルート証明書をインポートするか、やむを得ない場合だけ `SIGNAGE_ALLOW_INSECURE_TLS=true` で実行
-- **X11エラー**: `export DISPLAY=:0` が設定されているか確認
-- **画像更新が停止している**: `systemctl status signage-lite-watchdog.timer` でwatchdogが動作しているか確認。手動復旧: `systemctl start signage-lite-update.service`
-- **サービスが無効化されている**: `systemctl is-enabled signage-lite.service` で確認。`enabled` でない場合は `systemctl enable signage-lite.service` で再有効化
-- **デスクトップのみ（Tailscale Expired）**: [KB-386](../../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [Runbook](../../runbooks/pi3-signage-tailscale-recovery.md)。Pi5 からの自動復旧: `scripts/ops/recover-pi3-signage-remote.sh`（SSH 復帰後に `signage-update` + `signage-lite` 再起動）
-
-### 運用メモ（自動/手動レンダリング）
-
-- APIサーバー起動時に `SignageRenderScheduler` が自動で起動し、既定で30秒間隔 (`SIGNAGE_RENDER_INTERVAL_SECONDS`) で `current.jpg` を再生成します。  
-- 管理画面のサイネージスケジュール一覧には「再レンダリング」ボタンとステータス表示を追加済みで、`GET /api/signage/render/status` → `POST /api/signage/render` を内部で呼び出しています。  
-- 軽量クライアントは `/api/signage/current-image` を取得するだけなので、サーバー側で `current.jpg` が更新されているかを `docker compose exec api ls -lh /app/storage/signage-rendered/current.jpg` で確認すると切り分けが容易です。
-
-### ストレージ保存ポリシー（10年運用対応）
-
-**重要**: `SIGNAGE_RENDER_DIR`（デフォルト: `/opt/RaspberryPiSystem_002/storage/signage-rendered`）配下のファイル保存ポリシー：
-
-- **`current.jpg`のみが運用上必要**: このファイルのみが`/api/signage/current-image`エンドポイントで配信され、クライアントが取得する唯一の画像です。
-- **履歴画像は保持しない**: `signage_${Date.now()}.jpg`形式の履歴画像は**デフォルトでは生成されません**（環境変数`SIGNAGE_RENDER_KEEP_HISTORY=1`で有効化可能だが、推奨しない）。
-- **自動メンテナンス**: もし履歴画像が生成された場合、`storage-maintenance.service`（systemd timer）が毎日自動実行され、`signage_*.jpg`ファイルを削除します（`current.jpg`は保持）。
-- **ストレージ使用量の監視**: ディスク使用量が80%または90%を超えた場合、`monitor.sh`が`storage-usage-high`アラートを生成し、管理コンソールに表示されます。
-
-詳細は [KB-130](../../knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) を参照してください。
-
-### Pi3クライアント側のストレージ（tmpfs化）
-
-**画像キャッシュはtmpfs（RAM）に配置**:
-
-- **キャッシュディレクトリ**: `/run/signage`（tmpfs、再起動で消える）
-- **効果**: SDカードへの書込みをほぼゼロ化（30秒ごとのJPEG更新による書込みを削減）
-- **自動作成**: systemd-tmpfiles（`/etc/tmpfiles.d/signage-lite.conf`）で再起動後も確実に作成
-- **注意**: 再起動後は画像が消えるため、初回起動時にサーバーから取得する（ネットワーク未接続時は表示できない）
-
-### 画像更新方式（inode維持による安定化）
-
-**重要**: `signage-update.sh`は、既存`current.jpg`がある場合は**上書き更新（inode維持）**を使用します：
-
-- **初回**: `mv "${TEMP_IMAGE}" "${CURRENT_IMAGE}"`（inode変更）
-- **2回目以降**: `cat "${TEMP_IMAGE}" > "${CURRENT_IMAGE}"`（inode維持、上書き更新）
-
-**理由**: `feh --auto-reload`はinotifyでファイル変更を監視しますが、`mv`による置換（inode変更）には追従できない場合があります。上書き更新（inode維持）により、`feh --auto-reload`が確実にファイル変更を検知し、画面更新が安定します。
-
-詳細は [KB-152](../../knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) を参照してください。
-
-## 解像度設定
-
-50インチなどの大型モニタで近くから見る場合、文字のボケを防ぐため4K解像度（3840x2160）を推奨します。
-
-### 環境変数による設定
-
-`docker-compose.server.yml` の `api` サービスに以下の環境変数を追加：
-
-```yaml
-api:
-  environment:
-    # 4K解像度に設定（デフォルト: 1920x1080）
-    SIGNAGE_RENDER_WIDTH: "3840"
-    SIGNAGE_RENDER_HEIGHT: "2160"
-    # PDF変換DPIも上げる（デフォルト: 150、4Kの場合は300推奨）
-    SIGNAGE_PDF_DPI: "300"
-```
-
-### 解像度別の推奨設定
-
-| モニタサイズ | 解像度 | DPI | 用途 |
-|------------|--------|-----|------|
-| 32インチ以下 | 1920x1080 | 150 | 遠くから見る場合 |
-| 50インチ以上 | 3840x2160 | 300 | 近くから見る場合、文字の可読性重視 |
-
-**注意**: 4K解像度にすると、画像サイズが約4倍になり、レンダリング処理時間とネットワーク転送時間が増加します。
-
-## 自動レンダリング機能
-
-定期レンダリングは `node-cron` を使用して実装されています。APIサーバー起動時に自動的に開始されます。
-
-### 設定方法
-
-環境変数 `SIGNAGE_RENDER_INTERVAL_SECONDS` でレンダリング間隔を設定可能（デフォルト: 30秒）：
-
-```yaml
-# docker-compose.server.yml
-api:
-  environment:
-    SIGNAGE_RENDER_INTERVAL_SECONDS: "30"  # 30秒ごとにレンダリング
-    SIGNAGE_TIMEZONE: "Asia/Tokyo"        # スケジュール判定用タイムゾーン
-```
-
-### 動作確認
-
-1. **APIコンテナのログを確認**:
-   ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -i "signage render"
-   ```
-
-2. **レンダリングされた画像を確認**:
-   ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml exec api \
-     ls -la /app/storage/signage-rendered
-   ```
-
-3. **current-image APIで取得**:
-   ```bash
-   curl -H "x-client-key: <CLIENT_KEY>" \
-     http://localhost:8080/api/signage/current-image \
-     --output /tmp/current.jpg
-   ```
-
-## 計測機器持出アイテムの表示改善（2025-12-11）
-
-サイネージの工具データ左ペインで、計測機器の持出アイテムを視覚的に識別できるよう改善しました。
-
-### 変更内容
-
-1. **バックエンド（`signage.service.ts`）**:
-   - `getToolsData()` で `measuringInstrument` をincludeし、`isInstrument` / `managementNumber` フィールドを追加
-   - 計測機器の場合は名称・管理番号を計測機器マスターから取得
-
-2. **レンダラー（`signage.renderer.ts`）**:
-   - `buildToolCardGrid()` で `isInstrument` 判定を追加
-   - 計測機器: 藍系背景（`rgba(49,46,129,0.6)`）、藍系ストローク（`rgba(99,102,241,0.5)`）
-   - 計測機器: 管理番号を上段（藍色・小さめ）、名称を下段（白・標準）に表示
-   - 工具: 従来のダーク背景を維持
-
-3. **フロントエンド（`SignageDisplayPage.tsx`）**:
-   - `ToolCard` コンポーネントで `isInstrument` 判定を追加
-   - 計測機器は `bg-indigo-900/30` + `border-indigo-400/40` で表示
-   - 計測機器は管理番号＋名称の2行表示
-
-### 確認方法
+サーバー(Pi5)で、画像が作られているかを確認します。
 
 ```bash
-# サイネージコンテンツAPIで確認
-curl -s -H "x-client-key: $PI3_SIGNAGE_CLIENT_KEY" \
-  http://localhost:8080/api/signage/content | jq '.tools[] | {name, isInstrument, managementNumber}'
+docker compose -f infrastructure/docker/docker-compose.server.yml exec api ls -la /app/storage/signage-rendered
 ```
 
-## 安定化施策（実装済み）
+| 症状 | 見るところ |
+|---|---|
+| 画像が出ない | `/run/signage/current.jpg` があるか。再起動後は空なので、`/usr/local/bin/signage-update.sh` を実行して取得する |
+| `feh: No loadable images specified` | 画像の取得前に表示サービスが起動した。更新を実行してから表示サービスを再起動する |
+| 画像が更新されない | watchdog のタイマーが動いているか。手動で `systemctl start signage-lite-update.service` |
+| 取得に失敗する(TLS) | 証明書の固定の設定と、Pi5 の証明書を確認する。検証の省略はやむを得ない場合だけ |
+| 表示サービスが無効 | `systemctl is-enabled signage-lite.service`。無効なら配備で有効に戻す |
+| デスクトップだけが出る(Pi3) | Tailscale の鍵の期限切れなどで Pi5 に届かない場合がある。[KB-386](../../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) と [Runbook](../../runbooks/pi3-signage-tailscale-recovery.md)。Pi5 からの復旧用に `scripts/ops/recover-pi3-signage-remote.sh` がある |
+| Pi5 側で画像が作られない | API のログで描画の失敗を確認し、`GET /api/signage/render/status` で描画が動いているかを見る |
 
-- [x] **tmpfs化**: 画像キャッシュを `/run/signage`（tmpfs）に移行し、SDカードへの書込みを削減 ✅
-- [x] **watchdog**: 画像更新停止を検知して自動復旧 ✅
-- [x] **日次再起動**: 毎日深夜3時に自動再起動 ✅
-- [x] **サービス堅牢化**: DISPLAY準備待ち、StartLimit追加 ✅
-- [x] **enabled状態の収束**: Ansibleデプロイ時に必ず有効化を保証 ✅
+## 9. 確認できていない事項
 
-## 今後のタスク
+- 本番の Pi3 での、現在の実際の動作状態(サービスの稼働、表示の内容)。この文書は設定ファイルとコードから書いており、実機は確認していません。
+- 本番の Pi5 に設定されている `SIGNAGE_*` の実際の値(解像度、描画の間隔など)。上の既定値は、リポジトリの設定の値です。
+- `SIGNAGE_PDF_DPI` は、Compose で 240 に設定されています。コード側の初期値は 150 で、設定がないときだけ使われます。
+- 手動セットアップ(`setup-signage-lite.sh`)で作る表示サービスの実行ユーザーと、Ansible で作る表示サービスの実行ユーザーが同じかどうか。
+- 管理画面に、Pi3 の「通常 / 軽量」を切り替える設定があるかどうか。確かめた範囲では見つかっていません(Pi3 は軽量表示で固定されています)。
+- Raspberry Pi Zero 2W を表示端末として動かした実績。
+- 描画した画像に対する、Datadog や Prometheus などの外部監視への連携。確かめた範囲では見つかっていません。
 
-- [x] **自動レンダリング機能**: node-cron を使用して、定期的にコンテンツをレンダリングする機能を実装 ✅
-- [x] **計測機器持出アイテムの識別表示**: 藍系背景・管理番号表示で工具と識別 ✅
-- [ ] **管理画面からの手動トリガー**: 管理画面にボタンを追加して、必要時に手動でレンダリングを実行できるようにする
-- [ ] **Raspberry Pi Zero 2W での実機テスト**: 24時間連続稼働テストを実施し、CPU温度・メモリ使用量・ネットワーク断時の挙動を記録
-- [ ] **モード切替機能**: 管理画面またはセットアップスクリプトで「通常モード / 軽量モード」を選択できるようにする
-- Raspberry Pi Zero 2Wによる24時間耐久テストで温度・再接続シナリオを記録する。
-- 通常モード / 軽量モードをセットアップ時に選択できるようにする。
+## 関連ドキュメント
 
-## 追加で検討する項目
-
-- **ログ取得**: 軽量クライアントでも `journalctl -u signage-lite` でログを確認可能にする。
-- **キャッシュ戦略**: 画像を `/var/cache/signage/current.jpg` に保存し、サーバー更新が失敗しても前回画像を表示。
-- **セキュリティ**: HTTPS + client key を利用する場合、`curl` or `wget` で `--header` オプションを設定。
-- **監視**: サーバー側で最新画像の更新成否を Datadog / Prometheus などに送信。
-
-## 参考ソリューション
-
-- Screenly OSE / Screenly Lite
-- info-beamer
-- Pi Presents
-
-これらはローカルキャッシュ型・画像/動画プレイリスト型のアーキテクチャであり、今回の軽量モードも同様に「サーバー側で素材を整備し、クライアントは単純再生する」方針を採用する。
-
----
-
-この文書は `EXEC_PLAN.md` の Phase 8 と連動し、タスクの進捗に応じて更新する。
+- [../../architecture/signage-module-architecture.md](../../architecture/signage-module-architecture.md)
+- [README.md](./README.md)
+- [../../guides/signage-client-setup.md](../../guides/signage-client-setup.md)
+- [../../runbooks/pi3-signage-tailscale-recovery.md](../../runbooks/pi3-signage-tailscale-recovery.md)
+- [../../runbooks/device-model-roles.md](../../runbooks/device-model-roles.md)
