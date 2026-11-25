@@ -1,4 +1,7 @@
 ---
+- name: Resolve and validate kiosk browser executable
+  ansible.builtin.import_tasks: resolve-browser.yml
+
 - name: Prepare the optional GUI account for full provisioning
   ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-user.yml"
   when: manage_kiosk_browser | default(false) | bool
@@ -20,9 +23,6 @@
 
 - name: Run IME diagnostic (logs IBus state for troubleshooting)
   ansible.builtin.import_tasks: diagnose-ime.yml
-
-- name: Resolve and validate kiosk browser executable
-  ansible.builtin.import_tasks: resolve-browser.yml
 
 - name: Ensure chromium-browser compatibility symlink exists
   ansible.builtin.file:

@@ -120,11 +120,10 @@ export SIGNAGE_UPDATE_INTERVAL=60  # 60秒間隔に変更
 sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
 ```
 
-自己署名証明書を使用する環境では、デフォルトで `curl -k` を付与して証明書検証をスキップします。商用証明書を導入済みの場合は以下で無効化できます。
+デフォルトでは証明書を検証します(`curl -k` は付けません)。端末が信頼しない自己署名証明書のサーバーに接続する場合だけ、以下で検証をスキップできます。
 
 ```bash
-export SIGNAGE_ALLOW_INSECURE_TLS=false  # 証明書検証を有効化
-sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
+sudo SIGNAGE_ALLOW_INSECURE_TLS=true ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
 ```
 
 ### トラブルシューティング
@@ -132,7 +131,7 @@ sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアン�
 - **画像が表示されない**: `/run/signage/current.jpg` が存在するか確認（tmpfsのため再起動後は空）
 - **初回ダウンロードで `feh: No loadable images specified` が出る**: `signage-lite` サービス再起動前に `/usr/local/bin/signage-update.sh` を実行してキャッシュを生成
 - **ネットワークエラー**: サーバーURLとクライアントキーが正しいか確認
-- **自己署名証明書で失敗する**: `SIGNAGE_ALLOW_INSECURE_TLS=true` のまま実行するか、端末にルート証明書をインポート
+- **自己署名証明書で失敗する**: 端末にルート証明書をインポートするか、やむを得ない場合だけ `SIGNAGE_ALLOW_INSECURE_TLS=true` で実行
 - **X11エラー**: `export DISPLAY=:0` が設定されているか確認
 - **画像更新が停止している**: `systemctl status signage-lite-watchdog.timer` でwatchdogが動作しているか確認。手動復旧: `systemctl start signage-lite-update.service`
 - **サービスが無効化されている**: `systemctl is-enabled signage-lite.service` で確認。`enabled` でない場合は `systemctl enable signage-lite.service` で再有効化

@@ -29,7 +29,7 @@ kiosk_browser_flags_chromium:
   - "--allow-insecure-localhost"
   - "--allow-running-insecure-content"
   # 証明書の扱いは kiosk-launch.sh.j2 が kiosk_server_cert_spki_sha256 から決める
-  # （指定あり: その公開鍵だけ許可 / 指定なし: 従来どおり --ignore-certificate-errors）
+  # （Chromium では必須。その公開鍵だけを許可し、未指定ならデプロイ前に止める）
   # 警告バーを非表示にする（証明書関連フラグの警告も抑制）
   - "--disable-infobars"
   # テストモードとして実行（コマンドラインフラグの警告を抑制）
