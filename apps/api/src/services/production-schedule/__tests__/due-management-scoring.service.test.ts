@@ -51,6 +51,9 @@ describe('due-management-scoring.service', () => {
       candidateFseibans: ['A'],
     });
 
+    expect(vi.mocked(prisma.$queryRaw).mock.calls[0][0]).toMatchObject({
+      sql: expect.stringContaining('"CsvDashboardRow"."supersededAt" IS NULL'),
+    });
     const signal = result.get('A');
     expect(signal).toBeDefined();
     expect(signal?.coverageRatio).toBe(1);

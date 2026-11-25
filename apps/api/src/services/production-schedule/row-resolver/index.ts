@@ -2,6 +2,7 @@ export {
   PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS,
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
   PRODUCTION_SCHEDULE_PRODUCT_NO_COLUMN,
+  PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS,
   isUnassignedProductionSeiban,
   productionScheduleKeyColumnsForRow,
   calculateProductionScheduleDataHash,

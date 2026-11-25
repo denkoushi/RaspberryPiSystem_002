@@ -336,7 +336,7 @@ describe('grinding-planning-board-projection', () => {
     const result = projectGrindingPlanningBoard(params);
     const item = result.items[0];
     expect(buildGrindingPlanningBoardLogicalKey(params.rows[0]!.rowData)).toBe(
-      '["S-001","P-001","G-01","20"]'
+      '["S-001","P-001","G-01","20","10"]'
     );
     expect(item?.itemId).toBe(buildGrindingPlanningBoardRowItemId(params.rows[0]!.rowData));
     expect(item?.machineName).toBe('機種A');
@@ -430,7 +430,7 @@ describe('grinding-planning-board-projection', () => {
       })
     );
     expect(buildGrindingPlanningBoardLogicalKey(first.rowData)).toBe(
-      '["S-001","P-001","G-01","20"]'
+      '["S-001","P-001","G-01","20","10"]'
     );
     expect(result.items.map((item) => item.itemId)).toEqual([
       buildGrindingPlanningBoardRowItemId(second.rowData),
@@ -501,9 +501,28 @@ describe('grinding-planning-board-projection', () => {
       })
     );
     expect(result.items.map((item) => item.progress)).toEqual([
-      { completed: 1, total: 3, quantityKnown: false }
+      { completed: 1, total: 2, quantityKnown: false }
     ]);
     expect(result.progress.bySeiban.get('S-001')).toEqual({ completed: 1, total: 3 });
+  });
+
+  it('keeps two ProductNos on one 4-column key as separate items with separate keys and progress', () => {
+    const result = projectGrindingPlanningBoard(
+      baseParams({
+        rows: [sourceRow({ ProductNo: '10' }, 'row-1'), sourceRow({ ProductNo: '11' }, 'row-2')],
+        details: new Map([['row-1', detail()], ['row-2', detail()]]),
+        progressRows: [
+          { rowId: 'row-1', fseiban: 'S-001', productNo: '10', fhincd: 'P-001', isCompleted: true },
+          { rowId: 'row-2', fseiban: 'S-001', productNo: '11', fhincd: 'P-001', isCompleted: false }
+        ]
+      })
+    );
+    expect(result.items).toHaveLength(2);
+    expect(new Set(result.items.map((item) => item.itemId)).size).toBe(2);
+    expect(buildGrindingPlanningBoardLogicalKey(sourceRow({ ProductNo: '10' }).rowData))
+      .not.toBe(buildGrindingPlanningBoardLogicalKey(sourceRow({ ProductNo: '11' }).rowData));
+    expect(result.items.map((item) => item.progress.total).sort()).toEqual([1, 1]);
+    expect(result.items.map((item) => item.progress.completed).sort()).toEqual([0, 1]);
   });
 
   it('counts every unfinished item once in both original and effective resource loads', () => {

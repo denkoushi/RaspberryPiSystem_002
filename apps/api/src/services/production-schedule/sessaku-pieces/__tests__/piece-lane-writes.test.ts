@@ -6,7 +6,7 @@ import { sessakuPieceParentItemId } from '../piece-key.js';
 import { legacyReplaceSiteItems } from './legacy-site-items.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 
-const key = { fseiban: 'lot', fhincd: 'part', fsigencd: '10', fkojun: '100' };
+const key = { fseiban: 'lot', fhincd: 'part', fsigencd: '10', fkojun: '100', productNo: '' };
 const parent = sessakuPieceParentItemId(key);
 const override = (itemKey: string, alternateRank: number, extra: Partial<Override> = {}): Override => ({
   id: itemKey, csvDashboardId: 'production-schedule', siteKey: 'site', itemKey, alternateRank,

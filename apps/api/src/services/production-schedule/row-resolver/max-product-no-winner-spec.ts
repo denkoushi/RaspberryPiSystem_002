@@ -1,4 +1,4 @@
-import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS, PRODUCTION_SCHEDULE_UNASSIGNED_SEIBAN } from './constants.js';
+import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from './constants.js';
 
 const SQL_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -11,7 +11,7 @@ export const quoteSqlIdentifierOrThrow = (identifier: string): string => {
 };
 
 /**
- * 「同一論理キー」を `COALESCE(rowData->>'col','')` 列の並びとして表現（ PARTITION / 結合キー共通）。
+ * 「同一行キー」(4列 + ProductNo)を `COALESCE(rowData->>'col','')` 列の並びとして表現（ PARTITION / 結合キー共通）。
  *
  * NOTE: `buildMaxProductNoWinnerCondition` の相関サブクエリと完全一致させることが契約。
  */
@@ -20,7 +20,7 @@ export const buildMaxProductNoLogicalKeyPartitionExprs = (rowAlias: string): str
   const columns = PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS.map(
     (column) => `COALESCE(${rowAliasQuoted}."rowData"->>'${column}', '')`
   ).join(', ');
-  return `${columns}, CASE WHEN BTRIM(COALESCE(${rowAliasQuoted}."rowData"->>'FSEIBAN', '')) = '${PRODUCTION_SCHEDULE_UNASSIGNED_SEIBAN}' THEN BTRIM(COALESCE(${rowAliasQuoted}."rowData"->>'ProductNo', '')) ELSE '' END`;
+  return `${columns}, BTRIM(COALESCE(${rowAliasQuoted}."rowData"->>'ProductNo', ''))`;
 };
 
 /**
@@ -52,5 +52,5 @@ export const buildMaxProductNoLogicalKeyMatchAndSql = (
     (column) =>
       `COALESCE(${inner}."rowData"->>'${column}', '') = COALESCE(${outer}."rowData"->>'${column}', '')`
   ).join('\n      AND ');
-  return `${conditions}\n      AND (BTRIM(COALESCE(${outer}."rowData"->>'FSEIBAN', '')) <> '${PRODUCTION_SCHEDULE_UNASSIGNED_SEIBAN}' OR BTRIM(COALESCE(${inner}."rowData"->>'ProductNo', '')) = BTRIM(COALESCE(${outer}."rowData"->>'ProductNo', '')))`;
+  return `${conditions}\n      AND BTRIM(COALESCE(${inner}."rowData"->>'ProductNo', '')) = BTRIM(COALESCE(${outer}."rowData"->>'ProductNo', ''))`;
 };

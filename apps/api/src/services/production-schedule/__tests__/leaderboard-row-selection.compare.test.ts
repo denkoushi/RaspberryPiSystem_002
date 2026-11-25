@@ -45,9 +45,10 @@ describe('winner logical key specification (parity helper)', () => {
     expect(exprs).toContain('FHINCD');
     expect(exprs).toContain('FSIGENCD');
     expect(exprs).toContain('FKOJUN');
-    expect(exprs).toContain("THEN BTRIM(COALESCE(\"t\".\"rowData\"->>'ProductNo', '')) ELSE '' END");
+    expect(exprs).toContain("BTRIM(COALESCE(\"t\".\"rowData\"->>'ProductNo', ''))");
+    expect(exprs).not.toContain("'********'");
     const match = buildMaxProductNoLogicalKeyMatchAndSql('inner', 'outer');
-    expect(match).toContain("<> '********' OR");
+    expect(match).not.toContain("'********'");
     expect(match).toContain("\"inner\".\"rowData\"->>'ProductNo'");
   });
 });

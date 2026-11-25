@@ -4,7 +4,7 @@ import { lockAllSessakuPieceSets, lockSessakuPieceSourceRows, prepareSessakuPiec
 import { readSessakuPieceSets } from '../piece-key.js';
 import { publishSessakuPieceSourceCreates } from '../piece-source-publication.js';
 
-const key = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1' };
+const key = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1', productNo: '' };
 const rowData = { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '1', FKOJUN: '1' };
 function client(sets: unknown[] = []) {
   return {

@@ -60,7 +60,7 @@ describe('single resource windows', () => {
 });
 
 it('clips and compresses setup and operation metadata across a six-hour window', () => {
-  const item = { itemId: 'unit', kind: 'piece', parentItemId: 'parent', fseiban: 'S1', fhincd: 'H1', processOrder: '10',
+  const item = { itemId: 'unit', kind: 'piece', parentItemId: 'parent', fseiban: 'S1', fhincd: 'H1', productNo: '1', processOrder: '10',
     originalResourceCd: '305', unitRequiredMinutes: 420, requiredMinutes: 999, requiredMinutesKnown: true,
     ops: [{ opNo: 10, minutes: 1 }, { opNo: 20, minutes: 1 }], completedOpNos: [10] } as GrindingPlanningBoardItem;
   const layout = buildForwardPlanningBoardGanttLayout({ items: [item], allocation: 'alternate', view: 'resource',
@@ -82,7 +82,7 @@ it('clips and compresses setup and operation metadata across a six-hour window',
 
 
 it.each([1, 2, 4, 7, 14, 28, 56])('matches the full-scan folding result at scale %s, including gaps, boundaries and unknown bars', scale => {
-  const item = { itemId: 'base', kind: 'row', fseiban: 'S', fhincd: 'P', processOrder: '10',
+  const item = { itemId: 'base', kind: 'row', fseiban: 'S', fhincd: 'P', productNo: '1', processOrder: '10',
     originalResourceCd: '305', requiredMinutes: 6000, requiredMinutesKnown: true } as GrindingPlanningBoardItem;
   const layout = buildForwardPlanningBoardGanttLayout({ items: [item], allocation: 'alternate', view: 'resource', resources: ['305'],
     seibanOrder: [], dailyHoursByResource: {}, today: '2026-11-09', now: new Date('2026-11-09T08:00:00+09:00'), scale });

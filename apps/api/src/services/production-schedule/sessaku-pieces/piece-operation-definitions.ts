@@ -14,7 +14,7 @@ import { stateOrder } from '../grinding-planning-board/state.js';
 
 export async function readOperationDefinitionPieceKeys(tx: Prisma.TransactionClient, fhincd: string) {
   return tx.$queryRaw<SessakuPieceLogicalKey[]>`
-    SELECT "fseiban", "fhincd", "fsigencd", "fkojun" FROM "ProductionScheduleSessakuPieceSet"
+    SELECT "fseiban", "fhincd", "fsigencd", "fkojun", "productNo" FROM "ProductionScheduleSessakuPieceSet"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND BTRIM("fhincd", ${STRING_TRIM_CHARACTERS}) = ${fhincd.trim()}`;
 }
 
@@ -119,7 +119,7 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
   const sets: SessakuPieceSet[] = [];
   for (let start = 0; start < keys.length; start += 300) {
     sets.push(...await tx.productionScheduleSessakuPieceSet.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: keys.slice(start, start + 300).map(({ fseiban, fhincd, fsigencd, fkojun }) => ({ fseiban, fhincd, fsigencd, fkojun })) },
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: keys.slice(start, start + 300).map(({ fseiban, fhincd, fsigencd, fkojun, productNo }) => ({ fseiban, fhincd, fsigencd, fkojun, productNo })) },
       include: { pieces: { include: { opSplits: true } } }
     }));
   }

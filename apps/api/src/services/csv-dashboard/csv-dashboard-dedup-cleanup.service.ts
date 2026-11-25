@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { chunk } from '../../lib/chunk.js';
 import { prisma } from '../../lib/prisma.js';
 import { requestProductionSchedulePartNameLookupRebuild } from '../production-schedule/production-schedule-part-name-lookup-rebuild.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
@@ -36,15 +37,6 @@ type CleanupDuplicateLosersGloballyParams = {
   scanLimit?: number;
   maxScans?: number;
   deadline?: Date;
-};
-
-const chunk = <T>(items: T[], size: number): T[][] => {
-  if (size <= 0) return [items];
-  const result: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    result.push(items.slice(i, i + size));
-  }
-  return result;
 };
 
 const toSafeColumnIdentifier = (column: string): string => {

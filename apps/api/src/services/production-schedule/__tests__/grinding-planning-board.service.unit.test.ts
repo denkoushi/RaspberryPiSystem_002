@@ -158,8 +158,8 @@ function configurePersistence(): void {
     return normalized || null;
   });
   mocks.resolveSeibanMachineDisplayNamesBatched.mockResolvedValue({ machineNames: { 'ORDER-A': 'Machine A' } });
-  mocks.buildGrindingPlanningBoardLogicalKey.mockImplementation((data: Record<string, unknown>) => JSON.stringify([data.FSEIBAN, data.FHINCD, data.FSIGENCD, data.FKOJUN]));
-  mocks.buildGrindingPlanningBoardRowItemId.mockImplementation((data: Record<string, unknown>) => `row:${Buffer.from(JSON.stringify([data.FSEIBAN, data.FHINCD, data.FSIGENCD, data.FKOJUN])).toString('base64url')}`);
+  mocks.buildGrindingPlanningBoardLogicalKey.mockImplementation((data: Record<string, unknown>) => JSON.stringify([data.FSEIBAN, data.FHINCD, data.FSIGENCD, data.FKOJUN, data.ProductNo]));
+  mocks.buildGrindingPlanningBoardRowItemId.mockImplementation((data: Record<string, unknown>) => `row:${Buffer.from(JSON.stringify([data.FSEIBAN, data.FHINCD, data.FSIGENCD, data.FKOJUN, data.ProductNo])).toString('base64url')}`);
   mocks.projectGrindingPlanningBoard.mockReturnValue({
     allItems: [{
       productNo: '1',
@@ -1788,7 +1788,7 @@ describe('bulk grinding resource order service', () => {
       items[1]!
     ];
     mocks.prisma.productionScheduleSessakuPiece.findMany.mockResolvedValue([{
-      id: 'a', pieceSet: { fseiban: 'ORDER-A', fhincd: 'PART-A', fsigencd: '305', fkojun: '1' }
+      id: 'a', pieceSet: { fseiban: 'ORDER-A', fhincd: 'PART-A', fsigencd: '305', fkojun: '1', productNo: mocks.sourceRow.rowData.ProductNo }
     }]);
     const payload = { siteKey: 'site-a', itemId: target.itemId, itemRevision: target.itemRevision, overrideVersion: 0 };
     const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: payload.siteKey };

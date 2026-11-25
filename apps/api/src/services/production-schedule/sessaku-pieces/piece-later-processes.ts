@@ -10,7 +10,7 @@ export type LaterProcess = { key: SessakuPieceLogicalKey; rowId?: string; set: A
 export async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>, discoverUnsplit: boolean) {
   const rows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => {
     const candidate = sessakuPieceKeyFromRow(row.rowData);
-    return supportsSessakuPieceRelations(candidate) && candidate.fhincd === key.fhincd && isLaterProcessOrder(candidate.fkojun, key.fkojun);
+    return supportsSessakuPieceRelations(candidate) && candidate.fhincd === key.fhincd && candidate.productNo === key.productNo && isLaterProcessOrder(candidate.fkojun, key.fkojun);
   });
   const details = await readRowDetails(tx, rows.map((row) => row.id));
   const sets = await readSessakuPieceSets(tx, rows);

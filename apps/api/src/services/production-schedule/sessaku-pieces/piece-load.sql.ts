@@ -7,6 +7,7 @@ export const SESSAKU_PIECE_LOAD_JOINS_SQL = Prisma.sql`
     AND ps."fhincd" = COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')
     AND ps."fsigencd" = COALESCE("CsvDashboardRow"."rowData"->>'FSIGENCD', '')
     AND ps."fkojun" = COALESCE("CsvDashboardRow"."rowData"->>'FKOJUN', '')
+    AND ps."productNo" = COALESCE("CsvDashboardRow"."rowData"->>'ProductNo', '')
   LEFT JOIN "ProductionScheduleSessakuPiece" pc ON pc."pieceSetId" = ps."id"
 `;
 

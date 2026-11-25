@@ -19,6 +19,15 @@ const boardRow = (extra: Partial<MissingStandardHoursBoardRow> = {}): MissingSta
 });
 
 describe('missing standard hours selection', () => {
+  it('excludes superseded schedule rows from the donor and resource selection', async () => {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn() },
+    };
+    await replaceMissingStandardHoursProcesses(tx as never, [mail()]);
+    expect(tx.$queryRaw.mock.calls[0][0].sql).toContain('"CsvDashboardRow"."supersededAt" IS NULL');
+  });
+
   it.each(['R', 'S'])('accepts visible %s state for 0004091808/710/587', (statusCode) => {
     expect(buildMissingStandardHoursProcesses([mail({ statusCode })], [schedule()])).toEqual([
       expect.objectContaining({ fsezono: '0004091808', fkojun: '710', fkoteicd: '587', statusCode, csvDashboardRowId: 'donor' })

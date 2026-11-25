@@ -3,7 +3,7 @@ import { resolveToMaxProductNoPerLogicalKey } from '../max-product-no-resolver.j
 import { calculateProductionScheduleDataHash } from '../constants.js';
 
 describe('resolveToMaxProductNoPerLogicalKey', () => {
-  it('keeps the row with max ProductNo for the same logical key', () => {
+  it('keeps every ProductNo for the same logical key', () => {
     const rows = [
       {
         data: {
@@ -28,8 +28,7 @@ describe('resolveToMaxProductNoPerLogicalKey', () => {
     ];
 
     const resolved = resolveToMaxProductNoPerLogicalKey(rows);
-    expect(resolved).toHaveLength(1);
-    expect(resolved[0]?.data.ProductNo).toBe('1000000009');
+    expect(resolved.map((r) => r.data.ProductNo)).toEqual(['1000000001', '1000000009']);
   });
 
   it('does not collapse rows with different logical keys', () => {
@@ -66,7 +65,7 @@ describe('resolveToMaxProductNoPerLogicalKey', () => {
 
     expect(rows.map((row) => row.data.ProductNo)).toEqual(['0003729969', '0004104427']);
     expect(calculateProductionScheduleDataHash(oldOrder)).not.toBe(calculateProductionScheduleDataHash(newOrder));
-    expect(calculateProductionScheduleDataHash({ ...oldOrder, FSEIBAN: 'BA1S2320' })).toBe(
+    expect(calculateProductionScheduleDataHash({ ...oldOrder, FSEIBAN: 'BA1S2320' })).not.toBe(
       calculateProductionScheduleDataHash({ ...newOrder, FSEIBAN: 'BA1S2320' })
     );
   });

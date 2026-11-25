@@ -8,6 +8,7 @@ import {
   runFkojunstMailClearTransaction,
   runFkojunstMailReplacementTransaction,
 } from './fkojunst-status-mail-sync.pipeline.js';
+import { refreshSupersededProductionScheduleRows } from './superseded-order-marker.js';
 import { FkojunstExternalCompletionSyncService } from './external-completion/fkojunst-external-completion-sync.service.js';
 import { ProductionScheduleOrderAssignmentReconciliationService } from './order-assignment/order-assignment-reconciliation.service.js';
 import {
@@ -17,19 +18,40 @@ import {
 
 export type ProductionScheduleFkojunstMailStatusSyncResult = import('./fkojunst-status-mail-sync.pipeline.js').FkojunstMailSyncResult;
 
+type MailStatusSyncEffects = {
+  externalCompletionSyncService: Pick<FkojunstExternalCompletionSyncService, 'syncFromDedupedStatusMailRows'>;
+  orderAssignmentReconciliationService: Pick<ProductionScheduleOrderAssignmentReconciliationService, 'reconcileStaleAssignments'>;
+  refreshSuperseded: () => Promise<unknown>;
+};
+
 /**
  * Syncs `ProductionScheduleFkojunstMailStatus` from the FKOJUNST_Status CsvDashboard rows
- * onto the main production schedule dashboard (winner rows only). Latest FUPDTEDT per key is authoritative.
+ * onto the main production schedule dashboard (all rows not marked superseded). Latest FUPDTEDT per key is authoritative.
  */
 export class ProductionScheduleFkojunstMailStatusSyncService {
-  constructor(
-    private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService(),
-    private readonly orderAssignmentReconciliationService: ProductionScheduleOrderAssignmentReconciliationService = new ProductionScheduleOrderAssignmentReconciliationService()
-  ) {}
+  private readonly mailStatusSyncEffects: MailStatusSyncEffects;
+
+  constructor(mailStatusSyncEffects: Partial<MailStatusSyncEffects> = {}) {
+    this.mailStatusSyncEffects = {
+      externalCompletionSyncService: mailStatusSyncEffects.externalCompletionSyncService ?? new FkojunstExternalCompletionSyncService(),
+      orderAssignmentReconciliationService: mailStatusSyncEffects.orderAssignmentReconciliationService ?? new ProductionScheduleOrderAssignmentReconciliationService(),
+      refreshSuperseded: mailStatusSyncEffects.refreshSuperseded ?? (() => refreshSupersededProductionScheduleRows(prisma)),
+    };
+  }
 
   async syncFromStatusMailDashboard(): Promise<ProductionScheduleFkojunstMailStatusSyncResult> {
+    const { externalCompletionSyncService, orderAssignmentReconciliationService } = this.mailStatusSyncEffects;
     const { scanned, normalizedRows, skippedInvalidStatus, skippedUnparseableDate, rowsRevision } =
       await loadFkojunstMailSourceRows(prisma);
+
+    // 順序は「印の付け直し → 状態の付与」。状態は印の無い行すべてに付く
+    if (scanned > 0) {
+      try {
+        await this.mailStatusSyncEffects.refreshSuperseded();
+      } catch (error) {
+        logger.error({ err: error }, '[ProductionScheduleFkojunstMailStatusSyncService] superseded mark refresh failed');
+      }
+    }
 
     if (normalizedRows.length === 0) {
       const result = await runFkojunstMailClearTransaction(
@@ -44,7 +66,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
         { scanned },
         '[ProductionScheduleFkojunstMailStatusSyncService] skip external completion sync (no normalized FKOJUNST_Status rows)'
       );
-      await this.orderAssignmentReconciliationService.reconcileStaleAssignments();
+      await orderAssignmentReconciliationService.reconcileStaleAssignments();
       return result;
     }
 
@@ -84,10 +106,10 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     logger.info(result, '[ProductionScheduleFkojunstMailStatusSyncService] FKOJUNST_Status mail sync completed');
 
     if (externalCompletionSynced) {
-      await this.orderAssignmentReconciliationService.reconcileStaleAssignments();
+      await orderAssignmentReconciliationService.reconcileStaleAssignments();
       return result;
     }
-    const extResult = await this.externalCompletionSyncService.syncFromDedupedStatusMailRows(dedupedRows);
+    const extResult = await externalCompletionSyncService.syncFromDedupedStatusMailRows(dedupedRows);
     if (!extResult.skipped) {
       logger.info(
         {
@@ -96,7 +118,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
         '[ProductionScheduleFkojunstMailStatusSyncService] external completion sync completed'
       );
     } else {
-      await this.orderAssignmentReconciliationService.reconcileStaleAssignments();
+      await orderAssignmentReconciliationService.reconcileStaleAssignments();
     }
 
     return result;

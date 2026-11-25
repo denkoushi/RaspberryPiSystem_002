@@ -73,10 +73,10 @@ describe('ProgressSyncFromCsvService', () => {
   });
 
   it('reconciles live pieces without a progress column after rereading sets', async () => {
-    vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mockResolvedValue([{ fseiban: '', fhincd: '', fsigencd: '', fkojun: '', pieces: [{ id: 'piece' }] }] as never);
+    vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mockResolvedValue([{ fseiban: '', fhincd: '', fsigencd: '', fkojun: '', productNo: '', pieces: [{ id: 'piece' }] }] as never);
     await service.sync({ candidates: [candidate], hasProgressColumn: false });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(synchronizeSessakuPieceSources).toHaveBeenCalledExactlyOnceWith(prisma, [{ fseiban: '', fhincd: '', fsigencd: '', fkojun: '' }]);
+    expect(synchronizeSessakuPieceSources).toHaveBeenCalledExactlyOnceWith(prisma, [{ fseiban: '', fhincd: '', fsigencd: '', fkojun: '', productNo: '' }]);
     expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,7 @@ describe('ProgressSyncFromCsvService', () => {
   });
   it('restarts with critical before logical locks when a first split appeared while waiting', async () => {
     vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mockResolvedValueOnce([]).mockResolvedValue([
-      { fseiban: '', fhincd: '', fsigencd: '', fkojun: '', pieces: [{ id: 'piece' }] }
+      { fseiban: '', fhincd: '', fsigencd: '', fkojun: '', productNo: '', pieces: [{ id: 'piece' }] }
     ] as never);
     await service.sync({ candidates: [candidate] });
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);

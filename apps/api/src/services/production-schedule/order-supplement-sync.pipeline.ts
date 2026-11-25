@@ -249,6 +249,7 @@ export async function resolveSupplementWinners(
         ) AS "winnerRank"
       FROM "CsvDashboardRow" AS "schedule_row"
       WHERE "schedule_row"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "schedule_row"."supersededAt" IS NULL
     )
     SELECT
       ranked_schedule."id",

@@ -3,6 +3,8 @@
  * 装飾・フッタ winner 選定で同一の境界入力を共有する（ADR-20260508 / KB-375 整合）。
  */
 
+import { chunk } from '../../../lib/chunk.js';
+
 /** 1 回の hydrate SQL で束ねる ID 数の上限（バインド数・巨大 IN の实务上限。composite は既に同値で chunked hydrate を採用） */
 export const LEADERBOARD_HYDRATE_SQL_BATCH_MAX = 900;
 
@@ -41,9 +43,5 @@ export function chunkLeaderboardRowIdsForHydrate(
   chunkSize: number = LEADERBOARD_HYDRATE_SQL_BATCH_MAX
 ): string[][] {
   const size = Math.max(1, Math.floor(chunkSize));
-  const chunks: string[][] = [];
-  for (let i = 0; i < uniqueOrdered.length; i += size) {
-    chunks.push(uniqueOrdered.slice(i, i + size));
-  }
-  return chunks;
+  return chunk(uniqueOrdered, size);
 }

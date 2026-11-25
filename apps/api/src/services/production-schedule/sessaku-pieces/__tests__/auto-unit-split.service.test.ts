@@ -14,7 +14,7 @@ vi.mock('../../grinding-planning-board/state.js', () => ({ ensurePlanningBoardSt
 vi.mock('../../grinding-planning-board/source.js', () => ({ readWinnerRowsByFseibans: mocks.rows, readRowDetails: mocks.details,
   readOverrides: mocks.overrides, readRanks: mocks.ranks }));
 vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../piece-key.js')>(), readSessakuPieceSets: mocks.sets }));
-vi.mock('../../grinding-planning-board-projection.js', () => ({ projectGrindingPlanningBoard: mocks.projection, buildGrindingPlanningBoardRowItemId: vi.fn() }));
+vi.mock('../../grinding-planning-board-projection.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../../grinding-planning-board-projection.js')>(), projectGrindingPlanningBoard: mocks.projection }));
 vi.mock('../../grinding-planning-board-resource-capacity.service.js', () => ({ getGrindingPlanningBoardResourceCapacity: mocks.capacity }));
 vi.mock('../../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: mocks.policy, isProductionScheduleCuttingResourceCd: (cd: string) => cd !== '305' }));
 vi.mock('../sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split,
@@ -157,7 +157,7 @@ describe('automatic unit split', () => {
       expect(mocks.split).toHaveBeenCalledOnce();
     });
   it('excludes a held set in the TS predicate before calling split', async () => {
-    const set = { id: 'held', fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10',
+    const set = { id: 'held', fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '',
       autoUnitSplitHeldAt: new Date(), pieces: [] };
     mocks.sets.mockResolvedValue(new Map([['held', set]]));
     mocks.items = [item({ itemId: sessakuPieceParentItemId(set) })];
@@ -523,7 +523,7 @@ describe('automatic unit split', () => {
     expect(mocks.split).toHaveBeenCalledTimes(2);
   });
   it('splits history-only lots without reading or writing history', async () => {
-    const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
+    const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '' };
     const id = `row:${Buffer.from(JSON.stringify(Object.values(key))).toString('base64url')}`;
     mocks.items = [item({ itemId: id }), item({ isCompleted: true }), item({ originalResourceCd: '305' })];
     mocks.history.mockResolvedValue([key]);
@@ -531,7 +531,7 @@ describe('automatic unit split', () => {
     expect(mocks.history).not.toHaveBeenCalled(); expect(mocks.mark).not.toHaveBeenCalled();
   });
   it.each([true, false])('does not recount touched siblings outside SQL candidates (has candidate=%s)', async (hasCandidate) => {
-    const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
+    const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '' };
     mocks.items = [item({ itemId: sessakuPieceParentItemId(key), sourceRowId: 'touched' }),
       item({ itemId: 'row:two', sourceRowId: 'source', fhincd: 'OTHER', isCompleted: !hasCandidate })];
     mocks.history.mockResolvedValue([key]);
@@ -558,7 +558,7 @@ describe('automatic unit split', () => {
   });
   it.each(['completed', 'quantity-warning', 'row-completed', 'operation'] as const)(
     'matches the SQL gate for a linked downstream %s before opening a lot transaction', async (protection) => {
-      const source = { id: 'source-set', fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10',
+      const source = { id: 'source-set', fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '',
         pieces: [{ id: 'editable', quantity: 3, isCompleted: false }] };
       const parentId = sessakuPieceParentItemId(source);
       const later = { ...source, id: 'later-set', fsigencd: '305', fkojun: '20', sourcePieceSetId: source.id,
@@ -740,7 +740,7 @@ describe('automatic unit split', () => {
     expect(mocks.query).toHaveBeenCalledTimes(4);
   });
   it.each(['projection', 'missing-projection', 'locked-ineligible', 'locked-structural'])('finishes after paging past a full page skipped by %s with no tail', async (stage) => {
-    const keys = Array.from({ length: candidatePageSize }, (_, i) => ({ fseiban: 'S', fhincd: `PART-${i}`, fsigencd: '021', fkojun: '10' }));
+    const keys = Array.from({ length: candidatePageSize }, (_, i) => ({ fseiban: 'S', fhincd: `PART-${i}`, fsigencd: '021', fkojun: '10', productNo: '' }));
     mocks.items = keys.map((key, i) => item({ itemId: sessakuPieceParentItemId(key), fhincd: key.fhincd, sourceRowId: `source-${i}`,
       plannedQuantity: stage === 'projection' ? 1 : 3 }));
     const sqlRows = mocks.items.map((item) => ({ id: item.sourceRowId, fseiban: 'S', parentId: item.itemId }));
