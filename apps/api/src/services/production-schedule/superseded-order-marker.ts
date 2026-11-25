@@ -176,7 +176,7 @@ export async function refreshSupersededProductionScheduleRows(
         COALESCE("rowData"->>'FHINCD', '') AS "fhincd",
         COALESCE("rowData"->>'FSIGENCD', '') AS "fsigencd",
         COALESCE("rowData"->>'FKOJUN', '') AS "fkojun",
-        BTRIM(COALESCE("rowData"->>'ProductNo', '')) AS "productNo",
+        COALESCE("rowData"->>'ProductNo', '') AS "productNo",
         ("supersededAt" IS NOT NULL) AS "marked"
       FROM "CsvDashboardRow"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
