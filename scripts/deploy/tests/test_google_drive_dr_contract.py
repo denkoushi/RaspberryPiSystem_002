@@ -385,6 +385,10 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
                     if "ansible.builtin.command" in step]
         self.assertIn('archive.open("rclone-v1.76.0-linux-arm64/rclone")', extract["argv"][2])
         self.assertEqual(extract["creates"], "{{ oracle_dr_rclone_root }}/rclone")
+        # check mode does not create the directory, so steps that write into it must be skipped.
+        for step in installer["block"][1:]:
+            with self.subTest(step=step["name"]):
+                self.assertEqual(step.get("when"), "not ansible_check_mode")
 
     def test_oracle_copy_only_lists_copies_verifies_and_measures(self) -> None:
         script = ORACLE_COPY_SCRIPT.read_text(encoding="utf-8")
