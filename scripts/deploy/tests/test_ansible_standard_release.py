@@ -1537,6 +1537,10 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             self.assertIn("release_kiosk_services", str(health_names[name]["when"]))
         self.assertNotIn("release_kiosk_services", str(health_names["Verify the kiosk Web endpoint"].get("when", "")))
         self.assertIn("ansible.builtin.uri", health_names["Verify the kiosk Web endpoint"])
+        self.assertEqual(
+            "{{ kiosk_full_url }}",
+            health_names["Verify the kiosk Web endpoint"]["ansible.builtin.uri"]["url"],
+        )
 
         rollback_names = {task["name"]: task for task in rollback}
         self.assertIn(
