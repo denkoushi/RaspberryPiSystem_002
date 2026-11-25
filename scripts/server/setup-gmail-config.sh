@@ -28,8 +28,8 @@ SUBJECT_PATTERN="${3:-}"
 FROM_EMAIL="${4:-}"
 REDIRECT_URI="https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback"
 
-# Pi5のIPアドレス（Tailscale経由）
-PI5_HOST="${PI5_HOST:-100.106.158.2}"
+# Pi5 の名前(Tailscale 経由)。証明書の名前と合わせる
+PI5_HOST="${PI5_HOST:-raspberrypi.tail7312a3.ts.net}"
 CURL_TLS_ARGS=()
 if [ -n "${PI5_CA_CERT:-}" ]; then
   CURL_TLS_ARGS=(--cacert "$PI5_CA_CERT")

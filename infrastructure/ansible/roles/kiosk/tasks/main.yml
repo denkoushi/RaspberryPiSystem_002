@@ -116,7 +116,7 @@
 
 - name: Verify kiosk UI is reachable
   ansible.builtin.uri:
-    url: "{{ kiosk_url | regex_replace('[?#].*$', '') }}"
+    url: "{{ kiosk_full_url }}"
     method: GET
     validate_certs: false
     status_code: 200
