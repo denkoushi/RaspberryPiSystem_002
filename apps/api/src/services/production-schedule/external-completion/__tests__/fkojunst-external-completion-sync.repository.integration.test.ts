@@ -123,6 +123,13 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
       // 本番では同じ工順に資源 10 の行が並ぶことが多い。除外資源の行は winner の数に入れない。
       const withExcludedSibling = await addRow(`${prefix}-sibling1`, excludedSiblingNo);
       await addRow(`${prefix}-sibling2`, excludedSiblingNo, '10');
+      // 自分の資源(021)の状態と、別資源の状態の組み合わせ。
+      const caseNo = (name: string) => `${productNo}-${name}`;
+      const ownStarted = await addRow(`${prefix}-own-s`, caseNo('own-s'));
+      const ownNewer = await addRow(`${prefix}-own-newer`, caseNo('own-newer'));
+      const ownOlderR = await addRow(`${prefix}-own-older-r`, caseNo('own-older-r'));
+      const otherX = await addRow(`${prefix}-other-x`, caseNo('other-x'));
+      const otherExcluded = await addRow(`${prefix}-other-excluded`, caseNo('other-excluded'));
       const status = (number: string, resourceCd: string, code: string, day = '25') =>
         toFkojunstMailNormalizedRow(`${number}-${resourceCd}-${day}`, {
           FSEZONO: number, FKOJUN: '10', FKOTEICD: resourceCd, FKOJUNST: code,
@@ -136,10 +143,15 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
         status(ambiguousNo, '041', 'P'),
         status(scheduleChangeNo, '301', 'C'),
         status(excludedSiblingNo, '301', 'C'),
+        status(caseNo('own-s'), '021', 'S', '24'), status(caseNo('own-s'), '301', 'C'),
+        status(caseNo('own-newer'), '021', 'R', '26'), status(caseNo('own-newer'), '301', 'C'),
+        status(caseNo('own-older-r'), '021', 'R', '24'), status(caseNo('own-older-r'), '301', 'C'),
+        status(caseNo('other-x'), '301', 'X'),
+        status(caseNo('other-excluded'), '10', 'C'),
         // winner の無い工程は証拠に残さない。
         status(`${productNo}-nowinner`, '301', 'C'),
       ];
-      expect(await replaceFkojunstMailProjections(tx, rows)).toMatchObject({ matched: 1, unmatched: 7 });
+      expect(await replaceFkojunstMailProjections(tx, rows)).toMatchObject({ matched: 4, unmatched: 12 });
       expect(await tx.productionScheduleFkojunstResourceSwapEvidence.count({
         where: { sourceCsvDashboardId: mailDashboardId, productNo: `${productNo}-nowinner` },
       })).toBe(0);
@@ -154,6 +166,10 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
         isExternallyCompleted: true, externallyCompletedFromFkojunstMailStatus: true, externallyCompletedFromFkojunstResourceSwap: false,
       });
       expect(await readExternal(tx, withExcludedSibling)).toMatchObject({ isExternallyCompleted: true, externallyCompletedFromFkojunstResourceSwap: true });
+      expect(await readExternal(tx, ownOlderR)).toMatchObject({ isExternallyCompleted: true, externallyCompletedFromFkojunstResourceSwap: true });
+      for (const blocked of [ownStarted, ownNewer, otherX, otherExcluded]) {
+        expect(await readExternal(tx, blocked)).toMatchObject({ isExternallyCompleted: false, externallyCompletedFromFkojunstResourceSwap: false });
+      }
       expect(await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true)).toBe(0);
 
       const nextRows = dedupeFkojunstMailRowsByLatest([...rows, status(productNo, '301', 'P', '26')]);
@@ -167,7 +183,7 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
       await tx.csvDashboardRow.update({ where: { id: oldWinner }, data: { supersededAt: new Date() } });
       const replacement = await addRow(`${prefix}-replacement`, scheduleChangeNo);
       expect(await replaceFkojunstMailProjections(tx, nextRows, true)).toMatchObject({
-        matched: 0, unmatched: 8, pruned: 1, prunedEvidence: 0,
+        matched: 3, unmatched: 13, pruned: 1, prunedEvidence: 0,
       });
       await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true);
       expect(await readExternal(tx, replacement)).toMatchObject({

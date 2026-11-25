@@ -16,7 +16,8 @@ export type FkojunstExternalCompletionSyncResult =
   | { skipped: true; reason: 'empty_status_csv' }
   | { skipped: false };
 
-const EXTERNAL_COMPLETION_TX_TIMEOUT_MS = 60_000;
+// 生産日程の取り込み後に、状態と付け替えの証拠の置き換えも同じ transaction で行う。メール同期と同じ上限にそろえる。
+const EXTERNAL_COMPLETION_TX_TIMEOUT_MS = 300_000;
 const EXTERNAL_COMPLETION_TX_MAX_WAIT_MS = 15_000;
 
 /**
