@@ -1,0 +1,14 @@
+[Unit]
+Description=Queue Oracle disaster-recovery copy failure alert
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=WEBHOOK_URL=
+ExecStart=/bin/bash {{ google_drive_dr_project_root }}/scripts/generate-alert.sh storage-backup-oracle-dr-copy-failed "Oracle DR copy failed" "service=oracle-dr-copy;failureType=service-failed"
+TimeoutStartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal

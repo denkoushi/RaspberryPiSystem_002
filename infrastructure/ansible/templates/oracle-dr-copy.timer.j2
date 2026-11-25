@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Business Pi5 Oracle disaster-recovery copy
+
+[Timer]
+Unit=oracle-dr-copy.service
+OnCalendar=*-*-* 04:30:00 Asia/Tokyo
+Persistent=false
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

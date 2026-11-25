@@ -20,6 +20,7 @@
     google_drive_dr_repository: rclone:google-drive:RaspberryPiSystem_002/business-pi5
     google_drive_dr_service_name: raspi-google-drive-dr.service
     google_drive_dr_timer_name: raspi-google-drive-dr.timer
+    oracle_dr_rclone_root: "{{ google_drive_dr_install_root }}/bin/rclone-v1.76.0"
 
   pre_tasks:
     - name: Refuse any host other than the Business Pi5
@@ -143,6 +144,88 @@
       loop:
         - offline-dr-copy
         - offline-dr-copy-check
+        - oracle-dr-copy
+
+    - name: Check for the dedicated Oracle DR rclone binary
+      ansible.builtin.stat:
+        path: "{{ oracle_dr_rclone_root }}/rclone"
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      register: oracle_dr_rclone_binary
+
+    - name: Install the dedicated Oracle DR rclone when absent
+      when: not oracle_dr_rclone_binary.stat.exists
+      block:
+        - name: Create the dedicated rclone directory
+          ansible.builtin.file:
+            path: "{{ oracle_dr_rclone_root }}"
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Download the pinned Linux ARM64 rclone archive
+          ansible.builtin.get_url:
+            url: https://downloads.rclone.org/v1.76.0/rclone-v1.76.0-linux-arm64.zip
+            dest: "{{ oracle_dr_rclone_root }}/rclone.zip"
+            checksum: sha256:ee169016675e23a69d77240565133ff7dbc9b33d16fa8f7053d4af39f1eaeb78
+            owner: root
+            group: root
+            mode: '0600'
+
+        - name: Extract only the rclone binary with Python
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - |
+                import shutil
+                import sys
+                import tempfile
+                from pathlib import Path
+                from zipfile import ZipFile
+
+                destination = Path(sys.argv[2])
+                with tempfile.TemporaryDirectory(dir=destination.parent) as directory:
+                    binary = Path(directory) / destination.name
+                    with ZipFile(sys.argv[1]) as archive:
+                        with archive.open("rclone-v1.76.0-linux-arm64/rclone") as source, binary.open("wb") as output:
+                            shutil.copyfileobj(source, output)
+                    binary.chmod(0o755)
+                    binary.replace(destination)
+              - "{{ oracle_dr_rclone_root }}/rclone.zip"
+              - "{{ oracle_dr_rclone_root }}/rclone"
+            creates: "{{ oracle_dr_rclone_root }}/rclone"
+
+        - name: Remove the downloaded rclone archive
+          ansible.builtin.file:
+            path: "{{ oracle_dr_rclone_root }}/rclone.zip"
+            state: absent
+
+    - name: Inspect metadata of the pre-provisioned OCI files
+      ansible.builtin.stat:
+        path: "{{ google_drive_dr_credential_root }}/oci/{{ item }}"
+        get_checksum: false
+        get_mime: false
+        get_attributes: false
+      loop:
+        - pi5-dr-writer.pem
+        - config
+        - oracle.env
+      register: oracle_dr_credential_stats
+      no_log: true
+
+    - name: Determine whether all OCI files are regular root-owned 0600 files
+      ansible.builtin.set_fact:
+        oracle_dr_credentials_ready: >-
+          {{ oracle_dr_credential_stats.results
+             | selectattr('stat.isreg', 'defined')
+             | selectattr('stat.isreg', 'equalto', true)
+             | selectattr('stat.uid', 'equalto', 0)
+             | selectattr('stat.mode', 'equalto', '0600')
+             | list | length == oracle_dr_credential_stats.results | length }}
+      no_log: true
 
     - name: Install the non-secret DR environment contract
       ansible.builtin.template:
@@ -192,6 +275,19 @@
         - timer
       notify: Reload systemd units
 
+    - name: Install the Oracle DR copy units
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/oracle-dr-copy{{ item }}.j2"
+        dest: "/etc/systemd/system/oracle-dr-copy{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - .service
+        - .timer
+        - -alert.service
+      notify: Reload systemd units
+
     - name: Flush unit installation handlers before managing the timers
       ansible.builtin.meta: flush_handlers
 
@@ -207,6 +303,17 @@
         name: offline-dr-copy-check.timer
         enabled: true
         state: started
+
+    - name: Apply the Oracle DR copy timer state based on OCI file readiness
+      ansible.builtin.systemd:
+        name: oracle-dr-copy.timer
+        enabled: "{{ oracle_dr_credentials_ready | bool }}"
+        state: "{{ 'started' if (oracle_dr_credentials_ready | bool) else 'stopped' }}"
+
+    - name: Explain why the Oracle DR copy timer was stopped
+      ansible.builtin.debug:
+        msg: "必要な OCI の事前ファイル（root 所有、0600 の通常ファイル）が揃っていないため、oracle-dr-copy.timer を停止しました。"
+      when: not (oracle_dr_credentials_ready | bool)
 
   handlers:
     - name: Reload systemd units

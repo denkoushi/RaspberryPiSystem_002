@@ -23,6 +23,10 @@ TIMER_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr.timer.j2"
 ENV_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr.env.j2"
 COPY_CHECK_SERVICE = ANSIBLE_ROOT / "templates/offline-dr-copy-check.service.j2"
 COPY_CHECK_TIMER = ANSIBLE_ROOT / "templates/offline-dr-copy-check.timer.j2"
+ORACLE_COPY_SCRIPT = ROOT / "scripts/google_drive_dr/oracle-dr-copy.sh"
+ORACLE_COPY_SERVICE = ANSIBLE_ROOT / "templates/oracle-dr-copy.service.j2"
+ORACLE_COPY_TIMER = ANSIBLE_ROOT / "templates/oracle-dr-copy.timer.j2"
+ORACLE_COPY_ALERT = ANSIBLE_ROOT / "templates/oracle-dr-copy-alert.service.j2"
 STANDARD_PLAYBOOK = ANSIBLE_ROOT / "playbooks/deploy-release-standard.yml"
 INTEGRATION_SCRIPT = (
     ROOT / "scripts/deploy/tests/test-google-drive-dr-postgres-restic-integration.sh"
@@ -284,11 +288,13 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
             "{{ playbook_dir }}/../templates/raspi-google-drive-dr-alert.service.j2",
             "{{ playbook_dir }}/../templates/raspi-google-drive-dr.timer.j2",
             "{{ playbook_dir }}/../templates/offline-dr-copy-check.{{ item }}.j2",
+            "{{ playbook_dir }}/../templates/oracle-dr-copy{{ item }}.j2",
         }
         self.assertEqual(template_sources, expected_sources)
         for template_path in (
             ENV_TEMPLATE, SERVICE_TEMPLATE, ALERT_TEMPLATE, TIMER_TEMPLATE,
             COPY_CHECK_SERVICE, COPY_CHECK_TIMER,
+            ORACLE_COPY_SERVICE, ORACLE_COPY_TIMER, ORACLE_COPY_ALERT,
         ):
             with self.subTest(template_path=template_path):
                 self.assertTrue(template_path.is_file())
@@ -300,7 +306,7 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
             "owner": "root", "group": "root", "mode": "0755",
         }
         task = next(task for task in self.tasks if task.get("ansible.builtin.copy") == script_copy)
-        self.assertEqual(task["loop"], ["offline-dr-copy", "offline-dr-copy-check"])
+        self.assertEqual(task["loop"], ["offline-dr-copy", "offline-dr-copy-check", "oracle-dr-copy"])
         for script in task["loop"]:
             self.assertTrue((ROOT / f"scripts/google_drive_dr/{script}.sh").is_file())
 
@@ -358,6 +364,79 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
             alert = json.loads(alert_file.read_text(encoding="utf-8"))
             self.assertEqual(alert["type"], "offline-dr-copy-overdue")
             self.assertEqual(alert["details"], "lastOk=none;days=-1")
+
+    def test_oracle_copy_uses_the_pinned_arm64_rclone(self) -> None:
+        installer, = [
+            task for task in self.play["tasks"]
+            if any("ansible.builtin.get_url" in step for step in task.get("block", []))
+        ]
+        self.assertEqual(installer["when"], "not oracle_dr_rclone_binary.stat.exists")
+        download, = [step["ansible.builtin.get_url"] for step in installer["block"]
+                     if "ansible.builtin.get_url" in step]
+        self.assertEqual(
+            download["url"],
+            "https://downloads.rclone.org/v1.76.0/rclone-v1.76.0-linux-arm64.zip",
+        )
+        self.assertEqual(
+            download["checksum"],
+            "sha256:ee169016675e23a69d77240565133ff7dbc9b33d16fa8f7053d4af39f1eaeb78",
+        )
+        extract, = [step["ansible.builtin.command"] for step in installer["block"]
+                    if "ansible.builtin.command" in step]
+        self.assertIn('archive.open("rclone-v1.76.0-linux-arm64/rclone")', extract["argv"][2])
+        self.assertEqual(extract["creates"], "{{ oracle_dr_rclone_root }}/rclone")
+
+    def test_oracle_copy_only_lists_copies_verifies_and_measures(self) -> None:
+        script = ORACLE_COPY_SCRIPT.read_text(encoding="utf-8")
+        commands = re.findall(r'"\$RCLONE"\s+--config\s+"\$CONF"\s+(\w+)', script)
+        self.assertEqual(commands, ["lsf", "copy", "check", "size"])
+        self.assertNotRegex(script, r"\b(?:sync|delete|purge|move)\b")
+        for flag in ('--immutable', '--exclude "locks/**"', '--oos-no-check-bucket', '--fast-list'):
+            self.assertIn(flag, script)
+
+    def test_oracle_copy_units_fail_loudly_and_queue_failure_alerts(self) -> None:
+        service = ORACLE_COPY_SERVICE.read_text(encoding="utf-8").splitlines()
+        self.assertIn("OnFailure=oracle-dr-copy-alert.service", service)
+        # a skipped unit raises no alert, so missing files must fail inside the script instead
+        self.assertFalse([line for line in service if line.startswith("ConditionPathExists=")])
+        self.assertIn("TimeoutStartSec=6h", service)
+        alert = ORACLE_COPY_ALERT.read_text(encoding="utf-8").splitlines()
+        self.assertIn(
+            "ExecStart=/bin/bash {{ google_drive_dr_project_root }}/scripts/generate-alert.sh "
+            'storage-backup-oracle-dr-copy-failed "Oracle DR copy failed" '
+            '"service=oracle-dr-copy;failureType=service-failed"',
+            alert,
+        )
+        timer = ORACLE_COPY_TIMER.read_text(encoding="utf-8").splitlines()
+        for directive in ("Unit=oracle-dr-copy.service", "OnCalendar=*-*-* 04:30:00 Asia/Tokyo",
+                          "Persistent=false", "WantedBy=timers.target"):
+            self.assertIn(directive, timer)
+
+        credentials, = [
+            task for task in self.tasks if task.get("register") == "oracle_dr_credential_stats"
+        ]
+        self.assertEqual(credentials["loop"], ["pi5-dr-writer.pem", "config", "oracle.env"])
+        self.assertIs(credentials["no_log"], True)
+        self.assertIs(credentials["ansible.builtin.stat"]["get_checksum"], False)
+        self.assertIs(credentials["ansible.builtin.stat"]["get_mime"], False)
+        timer_task, = [
+            task["ansible.builtin.systemd"] for task in self.tasks
+            if task.get("ansible.builtin.systemd", {}).get("name") == "oracle-dr-copy.timer"
+        ]
+        self.assertEqual(timer_task["enabled"], "{{ oracle_dr_credentials_ready | bool }}")
+        self.assertEqual(
+            timer_task["state"],
+            "{{ 'started' if (oracle_dr_credentials_ready | bool) else 'stopped' }}",
+        )
+
+    def test_oracle_copy_files_do_not_contain_oracle_identifiers(self) -> None:
+        for path in (
+            PLAYBOOK_PATH, ORACLE_COPY_SCRIPT, ORACLE_COPY_SERVICE, ORACLE_COPY_TIMER,
+            ORACLE_COPY_ALERT, Path(__file__), Path(__file__).with_name("test_oracle_dr_copy.py"),
+            ROOT / "docs/knowledge-base/KB-416-outside-intrusion-resilience-2026-10.md",
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn(b"ocid1" + b".", path.read_bytes().lower())
 
     def test_isolated_postgres_restic_harness_has_cleanup_and_restore_boundaries(self) -> None:
         script = INTEGRATION_SCRIPT.read_text(encoding="utf-8")
