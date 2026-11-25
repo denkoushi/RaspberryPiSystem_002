@@ -20,6 +20,7 @@ import { PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from './row-resolver/constants.js
 import type { GrindingPlanningBoardPerformance } from './grinding-planning-board-performance.js';
 import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
+import { chunk } from '../../lib/chunk.js';
 import { addPlanningTestBarLoad } from './grinding-planning-board-load-test-bars.js';
 import { readWithoutJit, type JitControlledClient, type JitControlledQueryClient } from './grinding-planning-board-load-without-jit.js';
 
@@ -138,14 +139,6 @@ function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverri
   } catch {
     return null;
   }
-}
-
-function chunk<T>(values: readonly T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push([...values.slice(index, index + size)]);
-  }
-  return chunks;
 }
 
 function buildSourceRowData(row: LoadSummarySourceRow): Record<string, string> {

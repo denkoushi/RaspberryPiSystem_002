@@ -7,6 +7,7 @@ import { logger } from '../../../lib/logger.js';
 import {
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
 } from '../row-resolver/constants.js';
+import { chunk } from '../../../lib/chunk.js';
 import { buildMaxProductNoLogicalKeyPartitionExprs } from '../row-resolver/max-product-no-winner-spec.js';
 import {
   computeBasisDateUtc,
@@ -42,15 +43,6 @@ const extractLogicalKey = (rowData: unknown): ProductionScheduleLogicalKey => {
     FKOJUN: coerceKeyPart(record?.FKOJUN),
     ProductNo: coerceKeyPart(record?.ProductNo),
   };
-};
-
-const chunk = <T>(items: T[], size: number): T[][] => {
-  if (size <= 0) return [items];
-  const result: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    result.push(items.slice(i, i + size));
-  }
-  return result;
 };
 
 export class ProductionScheduleCleanupService {
