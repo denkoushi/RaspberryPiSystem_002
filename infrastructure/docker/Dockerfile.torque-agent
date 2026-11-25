@@ -33,7 +33,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN apt-get update \
   && apt-get install -y --only-upgrade --no-install-recommends \
     apt libapt-pkg7.0 \
-    gzip libpcre2-8-0 libsqlite3-0 perl-base zlib1g \
+    gzip libpcre2-8-0 libsqlite3-0 perl-base zlib1g libzstd1 \
     bsdutils \
     libblkid1 \
     liblastlog2-2 \
