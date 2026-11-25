@@ -63,7 +63,7 @@ class StatusAgentUnitTest(unittest.TestCase):
             with self.subTest(unit=name):
                 service = service_section(path)
                 self.assertIn("raspi-status-agent" if name == "pi3" else "status_agent_user", service["User"])
-                self.assertEqual(service["SupplementaryGroups"], "systemd-journal")
+                self.assertEqual(service["SupplementaryGroups"], "systemd-journal video")
                 self.assertEqual(service["StateDirectory"], "raspi-os-security-update/requests")
         self.assertEqual(service_section(pi3)["RuntimeDirectory"], "raspi-status-agent")
         self.assertEqual(service_section(pi3)["RuntimeDirectoryPreserve"], "yes")

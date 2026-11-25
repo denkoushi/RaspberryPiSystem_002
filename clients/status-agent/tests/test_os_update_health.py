@@ -218,6 +218,19 @@ class OsUpdateRequestsTest(unittest.TestCase):
         self.assertFalse(self.path.exists())
         self.assertEqual(json.loads((self.state_dir / "requests/request.json").read_text())["requests"][0]["id"], "r1")
 
+    def test_requests_directory_takes_over_legacy_requests(self):
+        with patch.object(health.subprocess, "run", side_effect=FileNotFoundError):
+            self.receive([self.request("r1")])
+        legacy = self.stored()[0]
+        (self.state_dir / "requests").mkdir()
+        payload = {}
+        health.add_early_update_report(self.state_dir, payload)
+        self.assertEqual([r["id"] for r in payload["osSecurityUpdate"]["requests"]], ["r1"])
+        with patch.object(health.subprocess, "run", side_effect=AssertionError("baseline re-measured")):
+            self.receive([self.request("r1")])
+        moved = json.loads((self.state_dir / "requests/request.json").read_text())["requests"]
+        self.assertEqual(moved, [legacy])
+
     def test_missing_key_and_malformed_response_preserve_requests(self):
         with patch.object(health.subprocess, "run", side_effect=FileNotFoundError):
             self.receive([self.request("keep")])

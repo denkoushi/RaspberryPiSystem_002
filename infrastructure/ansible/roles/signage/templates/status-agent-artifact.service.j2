@@ -9,7 +9,7 @@ Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf
 ExecStart=/usr/local/bin/raspi-signage-status-agent.pyz
 User=raspi-status-agent
 Group=raspi-status-agent
-SupplementaryGroups=systemd-journal
+SupplementaryGroups=systemd-journal video
 StateDirectory=raspi-os-security-update/requests
 RuntimeDirectory=raspi-status-agent
 RuntimeDirectoryPreserve=yes
