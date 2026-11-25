@@ -29,7 +29,7 @@ jobs:
       publishable: ${{ steps.classify.outputs.release_pair }}
     steps:
       - name: Checkout code with history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -64,7 +64,7 @@ jobs:
       protocol_version: ${{ steps.evidence.outputs.protocol_version }}
     steps:
       - name: Checkout exact component sources with history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -315,7 +315,7 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact adopting main source with history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -339,14 +339,14 @@ jobs:
             --interval 10
 
       - name: Log in to GHCR for exact component verification
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Resolve the immutable existing torque-agent index
         env:
@@ -403,7 +403,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Sign adoption of the existing immutable torque-agent digest
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent
           subject-digest: ${{ steps.identity.outputs.index_digest }}
@@ -449,7 +449,7 @@ jobs:
         shell: bash
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TARGET_SHA }}
 
@@ -486,14 +486,14 @@ jobs:
           echo "config_hash=$config_hash" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR for signed release composition
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Pull and verify the exact signed v1 release set
         id: v1
@@ -637,7 +637,7 @@ jobs:
       - name: Publish torque release set as an immutable OCI image
         id: publish
         if: ${{ steps.existing.outputs.exists != 'true' }}
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: infrastructure/docker/Dockerfile.release-set
@@ -652,7 +652,7 @@ jobs:
 
       - name: Attest the torque release set after all fixed gates
         if: ${{ steps.existing.outputs.exists != 'true' }}
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set
           subject-digest: ${{ steps.publish.outputs.digest }}
