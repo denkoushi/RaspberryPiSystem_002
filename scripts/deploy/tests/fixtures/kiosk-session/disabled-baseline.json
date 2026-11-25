@@ -532,7 +532,7 @@
   "protected": {
     "roles/client/templates/sudoers-client.j2": "a08c381fbcc513f331fad1dc2e82b4f660b556cc5b3dede828de03a074541154",
     "roles/kiosk/tasks/package-integrity.yml": "9286b6270f8e5a16d241d30684a7b223f4d8d7c4a5edeac8f69ac9298263c157",
-    "roles/release_kiosk/templates/status-agent.service.j2": "7974a6e93450fa1d2c293a58bb84abdea492873a0f3474e9ea37fb7bd1d0e679",
+    "roles/release_kiosk/templates/status-agent.service.j2": "5de12f521bf6ae544869cb690c4c0c9adaa2406b5c0a641f7158953e0630b50b",
     "templates/security-review-kiosk-fetch.service.j2": "26f36410c4cf07994b85586de60ffdbc20fc34f9f12d37725c71fd805c403495",
     "playbooks/power-control.yml": "2d93ce69d3f6e9261e5d380bdc00c34f2cc51b770f5d006aa7b5ff1f610cd414"
   }

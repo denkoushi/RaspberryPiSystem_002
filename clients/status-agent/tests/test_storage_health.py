@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import Sequence
@@ -160,7 +161,7 @@ class StorageHealthTest(unittest.TestCase):
         self.assertEqual(throttled_logs[0]["level"], "WARN")
         self.assertEqual(throttled_logs[0]["context"]["signal"], "power_throttled_current")
 
-    def test_throttled_is_read_from_firmware_sysfs_before_vcgencmd(self) -> None:
+    def test_throttled_is_read_from_fresh_root_snapshot_before_vcgencmd(self) -> None:
         def unused_runner(args: Sequence[str], timeout: float) -> storage_health.CommandResult:
             raise AssertionError("vcgencmd should not run")
 
@@ -168,12 +169,13 @@ class StorageHealthTest(unittest.TestCase):
             return storage_health.CommandResult(tuple(args), 0, "throttled=0x0\n", "")
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "get_throttled"
-            path.write_text("50005\n", encoding="ascii")
-            missing = Path(temp_dir) / "missing"
-            self.assertEqual(storage_health.read_throttled(unused_runner, firmware_paths=(missing, path)), "throttled=0x50005")
-            self.assertEqual(storage_health.parse_throttled_value("throttled=0x50005"), 0x50005)
-            self.assertEqual(storage_health.read_throttled(vcgencmd_runner, firmware_paths=(missing,)), "throttled=0x0")
+            path = Path(temp_dir) / "throttled"
+            path.write_text(f"{int(time.time())} throttled=0x50005", encoding="ascii")
+            self.assertEqual(storage_health.read_throttled(unused_runner, snapshot_path=path), "throttled=0x50005")
+            self.assertIsNone(storage_health.read_throttled_snapshot(path, now=time.time() + 601))
+            path.write_text(f"{int(time.time())} throttled=0x5z", encoding="ascii")
+            self.assertEqual(storage_health.read_throttled(vcgencmd_runner, snapshot_path=path), "throttled=0x0")
+            self.assertEqual(storage_health.read_throttled(vcgencmd_runner, snapshot_path=Path(temp_dir) / "missing"), "throttled=0x0")
 
     def test_command_failures_do_not_raise(self) -> None:
         def failing_runner(args: Sequence[str], timeout: float) -> storage_health.CommandResult:
