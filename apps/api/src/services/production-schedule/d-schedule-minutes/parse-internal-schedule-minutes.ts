@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { assertZipExpansionWithinBudget } from '../../../lib/zip-expansion-budget.js';
 
 import { calendarDate, cellText, formulaWithoutResult, inferDate, normalize, plausibleDate, readDate } from './date-cell.js';
 import type { DScheduleMinutesBlock, DScheduleMinutesParseResult, DScheduleMinutesWarning } from './parse-d-schedule-minutes.js';
@@ -35,6 +36,7 @@ export async function parseInternalScheduleMinutesXlsx(input: {
   const fatal = (reason: string): DScheduleMinutesParseResult => ({ ok: false, reason, warnings });
   const workbook = new ExcelJS.Workbook();
   try {
+    assertZipExpansionWithinBudget(input.buffer);
     await workbook.xlsx.load(input.buffer as unknown as ExcelJS.Buffer);
   } catch {
     return fatal('INVALID_XLSX');

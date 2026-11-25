@@ -1,4 +1,6 @@
 import ExcelJS from 'exceljs';
+import { hasConditionWordsInLine } from './check-sheet-condition-line.js';
+import { assertZipExpansionWithinBudget } from '../../../lib/zip-expansion-budget.js';
 
 /** Keep blank runs: they are input slots, not cosmetic whitespace. */
 export function normalizeCheckSheetText(text: string): string {
@@ -30,6 +32,7 @@ const isAxisLine = (text: string) => /^(?:[XYZθ]軸\s*){2,}/.test(text);
 
 /** Reads only. No filesystem, storage, database, or workbook serialization. */
 export async function parseCheckSheetXlsx(buffer: Buffer, sheetName?: string): Promise<ParsedCheckSheet> {
+  assertZipExpansionWithinBudget(buffer);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
   const sheet = sheetName ? workbook.getWorksheet(sheetName) : workbook.worksheets.find((candidate) => {
@@ -116,7 +119,7 @@ export async function parseCheckSheetXlsx(buffer: Buffer, sheetName?: string): P
     const hasStampBorders = Boolean(stamp.border?.left || stamp.border?.right);
     const boundary = Boolean(stamp.border?.top?.style || previousStamp.border?.bottom?.style);
     // Borderless forms use bullets; printed forms may have a bullet inside a continued stamp box.
-    const startsItem = newGroup || !previous || /場合.*以下.*確認/.test(text) ||
+    const startsItem = newGroup || !previous || hasConditionWordsInLine(text) ||
       (!/^※/.test(text) && !isAxisLine(text) && (hasStampBorders ? boundary : isBullet(text)));
     if (startsItem) {
       result.items.push({
