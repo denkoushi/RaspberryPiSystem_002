@@ -123,8 +123,7 @@ sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアン�
 デフォルトでは証明書を検証します(`curl -k` は付けません)。端末が信頼しない自己署名証明書のサーバーに接続する場合だけ、以下で検証をスキップできます。
 
 ```bash
-export SIGNAGE_ALLOW_INSECURE_TLS=true  # 証明書検証をスキップ(-k)
-sudo ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
+sudo SIGNAGE_ALLOW_INSECURE_TLS=true ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー>
 ```
 
 ### トラブルシューティング

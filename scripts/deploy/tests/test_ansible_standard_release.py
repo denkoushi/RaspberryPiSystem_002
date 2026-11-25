@@ -1077,7 +1077,6 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         )
         names = [task.get("name") for task in yaml.safe_load(prepare_text)]
 
-        # The blanket switch must come only from the template's no-pin branch.
         self.assertNotIn("--ignore-certificate-errors", defaults["kiosk_browser_flags_chromium"])
         self.assertEqual(defaults["kiosk_server_cert_spki_sha256"], "")
         read = names.index("Read the server key the kiosk sees for the Chromium certificate pin")
@@ -1113,16 +1112,108 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         for unpinned in (render(), render(kiosk_server_cert_spki_sha256="")):
             self.assertNotIn("--ignore-certificate-errors", unpinned)
 
-        role_tasks = yaml.safe_load(
-            (ANSIBLE / "roles/kiosk/tasks/main.yml").read_text(encoding="utf-8")
+    def test_both_kiosk_roles_validate_the_chromium_pin_before_writes(self) -> None:
+        roles = ANSIBLE / "roles"
+        kiosk_tasks = roles / "kiosk/tasks"
+        resolver = yaml.safe_load((kiosk_tasks / "resolve-browser.yml").read_text(encoding="utf-8"))
+        kiosk = yaml.safe_load((kiosk_tasks / "main.yml").read_text(encoding="utf-8"))
+        release = yaml.safe_load(
+            (roles / "release_kiosk/tasks/prepare.yml").read_text(encoding="utf-8")
         )
-        role_names = [task.get("name") for task in role_tasks]
-        refuse = role_names.index("Refuse to deploy a Chromium launcher without the pinned server key")
-        self.assertLess(refuse, role_names.index("Deploy kiosk-launch script"))
-        self.assertIn(
-            "kiosk_server_cert_spki_sha256 | default('') | length > 0",
-            role_tasks[refuse]["ansible.builtin.assert"]["that"],
+
+        pin_check = "kiosk_server_cert_spki_sha256 | default('') | length > 0"
+        guards = [
+            (source, index)
+            for source, tasks in (("resolver", resolver), ("kiosk", kiosk), ("release", release))
+            for index, task in enumerate(tasks)
+            if pin_check in task.get("ansible.builtin.assert", {}).get("that", [])
+        ]
+        self.assertEqual(len(guards), 1, guards)
+        source, guard = guards[0]
+        self.assertEqual(source, "resolver")
+        self.assertEqual(resolver[guard - 1]["name"], "Validate kiosk browser engine")
+        self.assertEqual(
+            resolver[guard]["when"],
+            [
+                "manage_kiosk_browser | default(false) | bool",
+                "kiosk_browser_engine_resolved | default('') == 'chromium'",
+            ],
         )
+
+        kiosk_resolver = next(
+            i for i, task in enumerate(kiosk)
+            if task.get("ansible.builtin.import_tasks") == "resolve-browser.yml"
+        )
+        release_resolver = next(
+            i for i, task in enumerate(release)
+            if task.get("ansible.builtin.include_role") == {"name": "kiosk", "tasks_from": "resolve-browser"}
+        )
+        kiosk_names = [task["name"] for task in kiosk]
+        release_names = [task["name"] for task in release]
+        for write in (
+            "Prepare the optional GUI account for full provisioning",
+            "Apply kiosk IBus settings",
+            "Deploy kiosk-launch script",
+        ):
+            self.assertLess(kiosk_resolver, kiosk_names.index(write), write)
+        for write in (
+            "Prepare the client server certificate pin before configuring agents",
+            "Prepare the optional GUI account before release staging",
+            "Stage the SHA-bound kiosk launcher",
+        ):
+            self.assertLess(release_resolver, release_names.index(write), write)
+
+    def test_shared_kiosk_resolver_enforces_chromium_pin(self) -> None:
+        ansible_playbook = shutil.which("ansible-playbook")
+        if ansible_playbook is None:
+            self.skipTest("ansible-playbook is not installed")
+
+        resolver = ANSIBLE / "roles/kiosk/tasks/resolve-browser.yml"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            playbook = root / "resolve-browser.yml"
+            play = {
+                "hosts": "localhost",
+                "connection": "local",
+                "gather_facts": False,
+                "vars": {"kiosk_browser_firefox_binary": "/bin/sh"},
+                "tasks": [{"ansible.builtin.import_tasks": str(resolver)}],
+            }
+            playbook.write_text(yaml.safe_dump([play]), encoding="utf-8")
+            config = root / "ansible.cfg"
+            config.write_text("[defaults]\n", encoding="utf-8")
+            environment = dict(
+                os.environ,
+                ANSIBLE_CONFIG=str(config),
+                ANSIBLE_LOCAL_TEMP=str(root / "local"),
+                ANSIBLE_REMOTE_TEMP=str(root / "remote"),
+            )
+
+            for engine, manage, pin, rejected in (
+                ("chromium", True, "", True),
+                ("chromium", True, None, True),
+                ("firefox", True, "", False),
+                ("chromium", False, "", False),
+            ):
+                with self.subTest(engine=engine, manage=manage, pin=pin):
+                    variables = {"kiosk_browser_engine": engine, "manage_kiosk_browser": manage}
+                    if pin is not None:
+                        variables["kiosk_server_cert_spki_sha256"] = pin
+                    result = subprocess.run(
+                        [ansible_playbook, "-i", "localhost,", str(playbook), "-e", json.dumps(variables)],
+                        cwd=root,
+                        env=environment,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        check=False,
+                    )
+                    output = result.stdout + result.stderr
+                    if rejected:
+                        self.assertNotEqual(result.returncode, 0, output)
+                        self.assertIn("kiosk_server_cert_spki_sha256 が空です", output)
+                    else:
+                        self.assertEqual(result.returncode, 0, output)
 
     def test_pi4_image_pull_time_is_reported_per_host(self) -> None:
         import yaml

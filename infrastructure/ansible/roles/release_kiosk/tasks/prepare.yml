@@ -21,6 +21,12 @@
       Pi4 release requires an exact SHA, safe run ID, immutable OCI images,
       the supported torque protocol when selected, and an inventory host in the kiosk group.
 
+- name: Reuse kiosk role browser executable resolution for release staging
+  ansible.builtin.include_role:
+    name: kiosk
+    tasks_from: resolve-browser
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Prepare the client server certificate pin before configuring agents
   ansible.builtin.import_role:
     name: client_server_cert_pin
@@ -62,12 +68,6 @@
 
 - name: Prepare the optional GUI account before release staging
   ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-user.yml"
-  when: manage_kiosk_browser | default(false) | bool
-
-- name: Reuse kiosk role browser executable resolution for release staging
-  ansible.builtin.include_role:
-    name: kiosk
-    tasks_from: resolve-browser
   when: manage_kiosk_browser | default(false) | bool
 
 # The launcher template reads the kiosk role's browser flag defaults, but role
@@ -128,17 +128,6 @@
     - manage_kiosk_browser | default(false) | bool
     - kiosk_browser_engine_resolved | default('') == 'chromium'
     - kiosk_server_cert_spki_sha256 | default('') | length > 0
-
-- name: Refuse to stage a Chromium launcher without the pinned server key
-  ansible.builtin.assert:
-    that:
-      - kiosk_server_cert_spki_sha256 | default('') | length > 0
-    fail_msg: >-
-      kiosk_server_cert_spki_sha256 が空です。Chromium のキオスクは、サーバー証明書の
-      公開鍵(SPKI SHA-256)を指定しないと起動設定を作れません。inventory の kiosk グループ変数に値を入れてください。
-  when:
-    - manage_kiosk_browser | default(false) | bool
-    - kiosk_browser_engine_resolved | default('') == 'chromium'
 
 - name: Refuse to stage a Chromium launcher whose certificate pin does not match the server
   ansible.builtin.assert:

@@ -15,7 +15,7 @@ CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 UPDATE_INTERVAL="${SIGNAGE_UPDATE_INTERVAL:-30}" # デフォルト30秒
 ALLOW_INSECURE_TLS="${SIGNAGE_ALLOW_INSECURE_TLS:-false}"
 CURL_OPTIONS=(-s -f)
-if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
+if [[ "$ALLOW_INSECURE_TLS" == [Tt][Rr][Uu][Ee] ]]; then
   CURL_OPTIONS+=(-k)
 fi
 CURL_OPTIONS_STR="${CURL_OPTIONS[*]}"
@@ -24,6 +24,15 @@ if [[ $EUID -ne 0 ]]; then
   echo "root 権限で実行してください (sudo ./scripts/client/setup-signage-lite.sh <url> <key>)" >&2
   exit 1
 fi
+
+curl "${CURL_OPTIONS[@]}" -H "x-client-key: ${CLIENT_KEY}" \
+  -o /dev/null --max-time 10 --connect-timeout 5 "$IMAGE_URL" 2>/dev/null || {
+  if [[ $? -eq 60 ]]; then
+    echo "サイネージ画像の取得先で TLS 証明書の検証に失敗しました (curl 60)。" >&2
+    echo "接続先の CA 証明書を端末の信頼ストアに登録するか、やむを得ない場合は sudo SIGNAGE_ALLOW_INSECURE_TLS=true ./scripts/client/setup-signage-lite.sh <サーバーURL> <クライアントキー> を実行してください。" >&2
+    exit 60
+  fi
+}
 
 # 既存のChromiumベースのサイネージサービスを停止・無効化
 echo "既存のChromiumベースのサイネージサービスを確認中..."
