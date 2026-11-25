@@ -8,6 +8,13 @@ Type=oneshot
 Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf
 ExecStart=/usr/bin/env python3 /usr/local/lib/raspi-status-agent/status-agent.py
 Nice=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+RuntimeDirectory=raspi-status-agent
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=-/var/log -/var/lib/raspi-os-security-update
 
 [Install]
 WantedBy=multi-user.target

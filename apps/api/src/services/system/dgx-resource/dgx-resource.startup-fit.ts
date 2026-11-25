@@ -26,8 +26,11 @@ export function buildDgxModelStartupFit(
 ): DgxBusinessModelProfile['startupFit'] {
   const requiredGiB = estimateRequiredGiB(profile, metrics);
   const freeGiB = startupAvailableGiB(metrics);
+  const measuredGpuGiB = metrics?.gpuProcessMemoryUsedGiB;
   const reclaimedGiB = activeProfileId
-    ? metrics?.gpuProcessMemoryUsedGiB ?? (activeProfile ? estimateRequiredGiB(activeProfile, metrics) : undefined)
+    ? measuredGpuGiB != null
+      ? measuredGpuGiB + (metrics?.gpuProcessHostMemoryGiB ?? 0)
+      : (activeProfile ? estimateRequiredGiB(activeProfile, metrics) : undefined)
     : 0;
   const availableGiB = freeGiB != null && reclaimedGiB != null ? freeGiB + reclaimedGiB : undefined;
   const amounts = {

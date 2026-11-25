@@ -1,6 +1,8 @@
 #!/bin/bash
 # Gmail設定をAPI経由で更新するスクリプト
 # 使用方法: ./setup-gmail-config.sh <Client ID> <Client Secret> [Subject Pattern] [From Email]
+# 接続先の証明書は検証する。Pi5 のローカル CA で署名した証明書なら、その CA 証明書を
+# PI5_CA_CERT に指定する。接続先は PI5_HOST で変えられる(証明書の名前と一致させる)。
 # 例: ./setup-gmail-config.sh 993241073118-taao8eakjghtp608engeg93m7nlgdv7d.apps.google "client-secret-here" "[Pi5 CSV Import]" "powerautomate@example.com"
 
 set -euo pipefail
@@ -26,8 +28,12 @@ SUBJECT_PATTERN="${3:-}"
 FROM_EMAIL="${4:-}"
 REDIRECT_URI="https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback"
 
-# Pi5のIPアドレス（Tailscale経由）
-PI5_HOST="100.106.158.2"
+# Pi5 の名前(Tailscale 経由)。証明書の名前と合わせる
+PI5_HOST="${PI5_HOST:-raspberrypi.tail7312a3.ts.net}"
+CURL_TLS_ARGS=()
+if [ -n "${PI5_CA_CERT:-}" ]; then
+  CURL_TLS_ARGS=(--cacert "$PI5_CA_CERT")
+fi
 
 echo "Gmail設定を更新します..."
 echo "Client ID: $CLIENT_ID"
@@ -69,9 +75,12 @@ if [ -n "$TOTP_CODE" ]; then
   LOGIN_BODY+=",\"totpCode\":\"${TOTP_CODE}\""
 fi
 LOGIN_BODY+="}"
-LOGIN_RESPONSE=$(curl -s -k -X POST "https://${PI5_HOST}/api/auth/login" \
+LOGIN_RESPONSE=$(curl -sS ${CURL_TLS_ARGS[@]+"${CURL_TLS_ARGS[@]}"} -X POST "https://${PI5_HOST}/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d "$LOGIN_BODY")
+  -d "$LOGIN_BODY") || {
+  echo "エラー: https://${PI5_HOST} に接続できませんでした。証明書の検証で止まった場合は、PI5_CA_CERT に CA の証明書のパスを、PI5_HOST に証明書に含まれる名前を指定してください。" >&2
+  exit 1
+}
 
 # トークンを抽出
 ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
@@ -103,7 +112,7 @@ fi
 
 UPDATE_BODY+="}"
 
-UPDATE_RESPONSE=$(curl -s -k -X PUT "https://${PI5_HOST}/api/gmail/config" \
+UPDATE_RESPONSE=$(curl -sS ${CURL_TLS_ARGS[@]+"${CURL_TLS_ARGS[@]}"} -X PUT "https://${PI5_HOST}/api/gmail/config" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -d "$UPDATE_BODY")

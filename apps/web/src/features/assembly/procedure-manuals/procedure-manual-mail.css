@@ -122,18 +122,43 @@
   content: "\00a0";
 }
 
-.procedure-mail-keys {
-  display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  gap: calc(0.5 * var(--mail-unit));
+.procedure-mail-overlay .procedure-mail-narrow {
+  width: min(780px, calc(100vw - 24px));
 }
 
+.procedure-mail-narrow .procedure-mail-title {
+  font-size: 30px;
+}
+
+.procedure-mail-narrow .procedure-mail-address {
+  font-size: 40px;
+}
+
+.procedure-mail-narrow .procedure-mail-row button {
+  min-height: 68px;
+  font-size: 28px;
+}
+
+.procedure-mail-keys {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.procedure-mail-key-row {
+  display: flex;
+  gap: 6px;
+}
+
+/* 「組立 > 見る」の機種テンキーと同じ大きさにそろえる */
 .procedure-mail-keys button {
-  height: max(40px, calc(4.4 * var(--mail-unit)));
+  width: 64px;
+  height: 52px;
   border: 1px solid var(--mail-line);
-  border-radius: calc(0.6 * var(--mail-unit));
-  background: #27313b;
-  font: 700 calc(2 * var(--mail-unit)) ui-monospace, Menlo, monospace;
+  border-radius: 8px;
+  background: #1b222a;
+  font: 700 24px ui-monospace, Menlo, monospace;
 }
 
 .procedure-mail-keys button:active {
@@ -141,8 +166,8 @@
 }
 
 .procedure-mail-keys .procedure-mail-wide {
-  grid-column: span 2;
-  font-size: calc(1.6 * var(--mail-unit));
+  width: 134px;
+  font-size: 20px;
   font-family: inherit;
 }
 

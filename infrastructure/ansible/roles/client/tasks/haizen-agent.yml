@@ -22,12 +22,29 @@
     - haizen_agent_install_evdev | default(true) | bool
     - (haizen_agent_hid_device | default('') | length) > 0
 
+- name: Ensure haizen-agent group exists
+  ansible.builtin.group:
+    name: raspi-haizen
+    system: true
+    state: present
+
+- name: Ensure haizen-agent user exists
+  ansible.builtin.user:
+    name: raspi-haizen
+    group: raspi-haizen
+    groups: input
+    append: true
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+    state: present
+
 - name: Create haizen-agent configuration file
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/raspi-haizen-agent.conf.j2"
     dest: /etc/raspi-haizen-agent.conf
     owner: root
-    group: root
+    group: raspi-haizen
     mode: '0640'
   register: haizen_agent_config_result
   notify: restart haizen-agent

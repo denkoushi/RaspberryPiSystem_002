@@ -25,7 +25,7 @@ type Props = {
 type Sender = { uid: string; displayName: string; employeeCode: string };
 type Step = 'tag' | 'address' | 'confirm' | 'preview' | 'sending' | 'done' | 'error';
 
-const keys = [...'abcdefghijklmnopqrstuvwxyz0123456789.-_'];
+const keyRows = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm.-_'].map(row => [...row]);
 const validLocalPart = /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/;
 const tokyoTime = new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -137,7 +137,7 @@ export function ProcedureManualMailDialog({ documentId, revision, firstPage, pag
       returnFocus={false}
       overlayZIndex={90}
       overlayClassName="procedure-mail-overlay"
-      className={`procedure-mail-dialog${step === 'preview' ? ' procedure-mail-expanded' : ''}`}
+      className={`procedure-mail-dialog${step === 'preview' ? ' procedure-mail-expanded' : step === 'address' ? ' procedure-mail-narrow' : ''}`}
       titleClassName="procedure-mail-title"
     >
       {step === 'tag' ? <>
@@ -158,11 +158,17 @@ export function ProcedureManualMailDialog({ documentId, revision, firstPage, pag
           <span className="procedure-mail-local">{localPart}</span><span>@{domain}</span>
         </div>
         <div className="procedure-mail-keys">
-          {keys.map(key => (
-            <button key={key} type="button" onClick={() => setLocalPart(value => value.length < 40 ? value + key : value)}>{key}</button>
+          {keyRows.map((row, index) => (
+            <div key={row.join('')} className="procedure-mail-key-row">
+              {row.map(key => (
+                <button key={key} type="button" onClick={() => setLocalPart(value => value.length < 40 ? value + key : value)}>{key}</button>
+              ))}
+              {index === 2 ? <button type="button" aria-label="1文字消す" onClick={() => setLocalPart(value => value.slice(0, -1))}>⌫</button> : null}
+            </div>
           ))}
-          <button type="button" className="procedure-mail-wide" aria-label="1文字消す" onClick={() => setLocalPart(value => value.slice(0, -1))}>⌫</button>
-          <button type="button" className="procedure-mail-wide" onClick={() => setLocalPart('')}>全部消す</button>
+          <div className="procedure-mail-key-row">
+            <button type="button" className="procedure-mail-wide" onClick={() => setLocalPart('')}>全部消す</button>
+          </div>
         </div>
         <div className="procedure-mail-row">
           <button type="button" onClick={onClose}>やめる</button>

@@ -197,7 +197,7 @@ describe('procedure-manuals', () => {
     browser.readTag();
     const address = within(await screen.findByRole('dialog', { name: '宛先' }));
     const next = address.getByRole('button', { name: '次へ' });
-    expect(address.getAllByRole('button').slice(0, 39).map(key => key.textContent).join('')).toBe('abcdefghijklmnopqrstuvwxyz0123456789.-_');
+    expect(address.getAllByRole('button').slice(0, 40).map(key => key.textContent).join('')).toBe('1234567890qwertyuiopasdfghjkl⌫zxcvbnm.-_');
     expect(address.getByText('@example-co.co.jp')).toBeVisible();
     expect(next).toBeDisabled();
     for (const name of ['a', '.', '.', '9']) fireEvent.click(address.getByRole('button', { name, exact: true }));
