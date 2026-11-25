@@ -38,7 +38,7 @@
 ```
 
 - サーバー: Raspberry Pi 5 を1台。Docker Compose で API、Web、PostgreSQL、Caddy を動かします（定義は `infrastructure/docker/`）。
-- 端末: Raspberry Pi 4 のキオスク約 8 台、Raspberry Pi 3 のサイネージ 1 台（`infrastructure/ansible/inventory.yml` の定義による）。端末側には NFC、バーコード、トルクレンチ、状態送信などのエージェントがあり、`clients/` にあります。
+- 端末: Raspberry Pi 4 のキオスク 8 台、Raspberry Pi 3 のサイネージ 1 台（`infrastructure/ansible/inventory.yml` の定義による）。端末側には NFC、バーコード、トルクレンチ、状態送信などのエージェントがあり、`clients/` にあります。
 - 反映方式: Ansible による一括更新です。`scripts/update-all-clients.sh` がサーバーと端末を順に更新します。
 - 外部連携: Gmail、Dropbox、Slack などと連携します（[外部連携台帳](./docs/guides/external-integration-ledger.md)）。
 - DGX Spark（ローカル LLM の実行基盤）の排他調停、個人用 Pi 5 の管理画面、温度・履歴の監視は、別リポジトリ [`denkoushi/DGXSparkControlPlane`](https://github.com/denkoushi/DGXSparkControlPlane) の担当です。本リポジトリは業務キオスク、業務管理画面、業務 Pi 5 と Pi 4、および業務側からの DGX API 利用を担当します。通常は片方のリポジトリだけを変更し、DGX の互換 API や認証方式を変えるときだけ、両方を確認して別々の PR で進めます。詳細は [責任分界の正本](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md) を参照してください。
