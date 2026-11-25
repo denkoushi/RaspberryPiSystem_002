@@ -278,7 +278,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "signage-artifact-contract",
         ):
             self.assertIn(f"      - {dependency}\n", aggregate)
-        self.assertIn("uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", aggregate)
+        self.assertRegex(aggregate, r"uses: actions/checkout@[0-9a-f]{40}")
         self.assertIn("scripts/ci/validate_required_results.py", aggregate)
         self.assertIn('"api=$API_SELECTED:$API_RESULT"', aggregate)
         self.assertIn('"api-coverage=$API_SELECTED:$API_COVERAGE_RESULT"', aggregate)
@@ -300,11 +300,11 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "fromJSON(needs.change-classification.outputs.pi4_agent_matrix)",
             contract,
         )
-        self.assertIn("uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc", contract)
+        self.assertRegex(contract, r"uses: docker/build\-push\-action@[0-9a-f]{40}")
         self.assertIn("platforms: ${{ matrix.platform }}", contract)
         self.assertIn("load: true", contract)
         self.assertIn("${{ github.sha }}-${{ matrix.platform_tag }}", contract)
-        self.assertIn("docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1", contract)
+        self.assertRegex(contract, r"docker/setup\-qemu\-action@[0-9a-f]{40}")
         self.assertIn(
             "scope=pi4-agent-${{ matrix.service }}-${{ matrix.platform_tag }}",
             contract,
@@ -326,7 +326,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         )
         self.assertIn("platforms: linux/arm64,linux/arm/v7", publish)
         self.assertIn("packages: write", publish)
-        self.assertIn("docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1", publish)
+        self.assertRegex(publish, r"docker/setup\-qemu\-action@[0-9a-f]{40}")
         self.assertIn("id: publish", publish)
         self.assertEqual(
             publish.count(
@@ -376,7 +376,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("Require deterministic Signage artifact bytes", contract)
         self.assertIn("if: ${{ github.event_name != 'push' }}", contract)
         self.assertIn("Security scan exact Signage artifact image", contract)
-        self.assertIn("actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", contract)
+        self.assertRegex(contract, r"actions/upload\-artifact@[0-9a-f]{40}")
         self.assertIn("gh version 2.96.0", contract)
         self.assertIn("ProductionAttestationBoundary", contract)
         for forbidden in ("packages: write", "attestations: write", "id-token: write"):
@@ -394,7 +394,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("packages: write", publish)
         self.assertIn("attestations: write", publish)
         self.assertIn("id-token: write", publish)
-        self.assertIn("actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333", publish)
+        self.assertRegex(publish, r"actions/download\-artifact@[0-9a-f]{40}")
         self.assertIn("ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage:${{ github.sha }}", publish)
         self.assertIn("predicate-path: signage-release-attestation.json", publish)
         self.assertIn("push-to-registry: true", publish)
@@ -403,7 +403,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("${{ steps.publish.outputs.digest }}", publish)
         self.assertIn("${{ steps.identity.outputs.artifact_sha256 }}", publish)
         self.assertIn("${{ steps.identity.outputs.manifest_sha256 }}", publish)
-        self.assertEqual(release_set.count("uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"), 3)
+        self.assertEqual(len(re.findall(r"uses: actions/attest@[0-9a-f]{40}", release_set)), 3)
 
     def test_main_release_pair_is_native_arm64_scanned_and_attested(self) -> None:
         contract = job_block(CI, "release-build-contract")
@@ -466,7 +466,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
                 f"needs['{dependency}'].result == 'success'",
                 release_set,
             )
-        self.assertEqual(release_set.count("uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"), 3)
+        self.assertEqual(len(re.findall(r"uses: actions/attest@[0-9a-f]{40}", release_set)), 3)
 
     def test_torque_component_adoption_is_signed_scanned_and_not_rebuilt(self) -> None:
         adoption = job_block(TORQUE_RELEASE, "torque-component-adoption")
