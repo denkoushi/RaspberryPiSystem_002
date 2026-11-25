@@ -21,9 +21,13 @@ done
 [[ -f "$RCLONE" && -x "$RCLONE" ]] || fail "rclone missing or not executable: $RCLONE"
 [[ "$MAX_BYTES" =~ ^(0|[1-9][0-9]*)$ ]] || fail "ORACLE_DR_MAX_BYTES must be a non-negative integer"
 
-if "$SYSTEMCTL" is-active --quiet raspi-google-drive-dr.service; then
-  fail "Google Drive DR backup is running"
-fi
+# A oneshot backup reports "activating" while it runs, which is-active treats as not active.
+backup_state=$("$SYSTEMCTL" show -p ActiveState --value raspi-google-drive-dr.service) \
+  || fail "could not read Google Drive DR backup state"
+case "$backup_state" in
+  inactive | failed) ;;
+  *) fail "Google Drive DR backup is running (state: $backup_state)" ;;
+esac
 
 unset ORACLE_DR_NAMESPACE ORACLE_DR_COMPARTMENT ORACLE_DR_REGION
 source "$ORACLE_ENV" || fail "could not load oracle.env"

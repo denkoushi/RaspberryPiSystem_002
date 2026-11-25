@@ -23,7 +23,9 @@ PASS=/etc/raspi-google-drive-dr/restic-password
 SRC=google-drive:RaspberryPiSystem_002/business-pi5
 
 # preconditions
-systemctl is-active --quiet raspi-google-drive-dr.service && fail "DR is running"
+# A oneshot backup reports "activating" while it runs, which is-active treats as not active.
+dr_state=$(systemctl show -p ActiveState --value raspi-google-drive-dr.service) || fail "DR state unreadable"
+case "$dr_state" in inactive | failed) ;; *) fail "DR is running ($dr_state)" ;; esac
 next=$(systemctl show raspi-google-drive-dr.timer -p NextElapseUSecRealtime --value)
 [ -n "$next" ] && [ $(( $(date -d "$next" +%s) - $(date +%s) )) -lt 7200 ] && fail "the next DR run is less than 2 hours away"
 
