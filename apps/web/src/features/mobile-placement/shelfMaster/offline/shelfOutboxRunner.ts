@@ -1,6 +1,7 @@
 import { isAxiosError } from 'axios';
 
 import { api } from '../../../../api/http';
+import { isRetryableHttpError } from '../../../../lib/retryable-http-error';
 import { mobileRequest } from '../../connectivity';
 import { canSyncNow } from '../../sync/networkGate';
 import { requestSync } from '../../sync/syncScheduler';
@@ -65,7 +66,7 @@ function createRunner(store: ShelfOfflineQueueStore) {
         current.photo, { timeout: shelfRequestTimeoutMs }), { timeoutMs: shelfRequestTimeoutMs });
     } catch (error) {
       const response = isAxiosError(error) ? error.response : undefined;
-      if (response && response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+      if (response && response.status >= 400 && response.status < 500 && !isRetryableHttpError(error)) {
         await store.put({ ...current, status: 'needs_check', message: typeof response.data?.message === 'string'
           ? response.data.message : '登録内容を確認してください' });
         return 'needs_check';
