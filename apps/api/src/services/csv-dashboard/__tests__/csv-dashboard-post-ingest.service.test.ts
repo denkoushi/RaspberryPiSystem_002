@@ -34,6 +34,9 @@ vi.mock('../csv-dashboard-append-raw-row-prune.service.js', async (importOrigina
 const pruneCompleted = vi.hoisted(() => vi.fn());
 vi.mock('../../production-schedule/grinding-planning-board/completion.js', () => ({ pruneCompletedGrindingPlanningBoardSeibans: pruneCompleted }));
 
+const refreshSupersededProductionScheduleRows = vi.hoisted(() => vi.fn());
+vi.mock('../../production-schedule/superseded-order-marker.js', () => ({ refreshSupersededProductionScheduleRows }));
+
 const syncFromSupplementDashboard = vi.fn();
 const syncFromFkojunstDashboard = vi.fn();
 const syncFromStatusMailDashboard = vi.fn();
@@ -396,6 +399,8 @@ describe('CsvDashboardPostIngestService', () => {
     expect(hit.customerScawSync).toBeNull();
     expect(hit.purchaseOrderLookupSync).toBeNull();
     expect(syncFromCurrentStatusMailDashboard).toHaveBeenCalledTimes(1);
+    expect(refreshSupersededProductionScheduleRows).toHaveBeenCalledOnce();
+    expect(refreshSupersededProductionScheduleRows).toHaveBeenCalledBefore(syncFromCurrentStatusMailDashboard);
     expect(pruneCompleted).toHaveBeenCalledTimes(1);
     expect(pruneCompleted.mock.invocationCallOrder[0]).toBeGreaterThan(syncFromCurrentStatusMailDashboard.mock.invocationCallOrder[0]);
     expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
@@ -407,6 +412,23 @@ describe('CsvDashboardPostIngestService', () => {
     expect(markProductionScheduleResourceCdsCacheStale).toHaveBeenCalledTimes(1);
     expect(resetMachineNameFseibanMatchCaches).toHaveBeenCalledTimes(1);
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
+  });
+
+  it('continues external completion sync when the injected superseded refresh fails', async () => {
+    const error = new Error('marking failed');
+    const refreshSupersededRows = vi.fn().mockRejectedValue(error);
+    const svc = new CsvDashboardPostIngestService(undefined, { refreshSupersededRows });
+    await expect(svc.runAfterSuccessfulIngest({
+      dashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      ingestSource: 'gmail',
+    })).resolves.toBeDefined();
+    expect(refreshSupersededRows).toHaveBeenCalledOnce();
+    expect(refreshSupersededRows).toHaveBeenCalledBefore(syncFromCurrentStatusMailDashboard);
+    expect(refreshSupersededProductionScheduleRows).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(
+      { err: error, dashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      '[CsvDashboardPostIngestService] superseded mark refresh failed',
+    );
   });
 
   it('marks resource codes stale even if a later post-ingest projection fails', async () => {
@@ -577,7 +599,7 @@ describe('FKOBAINO age pruning after successful sync', () => {
     ])('runs once for %s', async (_name, dashboardId, calls) => {
       const recheck = vi.fn().mockResolvedValue({ checked: 0, matched: 0, mismatched: 0 });
       const svc = new CsvDashboardPostIngestService(
-        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, recheck
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, recheck
       );
       await svc.runAfterSuccessfulIngest({ dashboardId, ingestSource: 'gmail', ingestRunId: 'run-recheck' });
       expect(recheck).toHaveBeenCalledTimes(calls);
@@ -586,7 +608,7 @@ describe('FKOBAINO age pruning after successful sync', () => {
     it('does not fail the ingest when the recheck throws', async () => {
       const recheck = vi.fn().mockRejectedValue(new Error('recheck failed'));
       const svc = new CsvDashboardPostIngestService(
-        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, recheck
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, recheck
       );
       await expect(svc.runAfterSuccessfulIngest({ dashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, ingestSource: 'gmail' })).resolves.toBeDefined();
       expect(logError).toHaveBeenCalled();

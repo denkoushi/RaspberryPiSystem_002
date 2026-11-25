@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
-import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId, sessakuPieceIdFromItemId, sessakuPieceItemIds, resolveSessakuPieceItemKeys, findSessakuPieceWinner } from '../piece-key.js';
+import { buildGrindingPlanningBoardRowItemId } from '../../grinding-planning-board-projection.js';
+import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSetsByKeys, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId, sessakuPieceIdFromItemId, sessakuPieceItemIds, resolveSessakuPieceItemKeys, findSessakuPieceWinner } from '../piece-key.js';
 describe('piece identity and scoped generation', () => {
   it.each([['P2003', 'PIECE_REFERENCED'], ['P2002', 'STALE_SESSAKU_PIECES'], ['P2034', 'STALE_SESSAKU_PIECES']])('maps %s to a piece conflict', (code, expected) => {
     const error = new Prisma.PrismaClientKnownRequestError('constraint', { code, clientVersion: 'test' });
@@ -17,7 +18,7 @@ describe('piece identity and scoped generation', () => {
     const client = { productionScheduleSessakuPieceSet: { findUnique, findMany } } as never;
     await readSessakuPieceSet(client, key);
     expect(findUnique.mock.calls[0][0].include).toEqual({ pieces: { orderBy: { position: 'asc' }, include: { opSplits: { orderBy: { fromOpNo: 'asc' } } } } });
-    await readSessakuPieceSets(client, [{ rowData: { FSEIBAN: 'S', FHINCD: 'P', FSIGENCD: '021', FKOJUN: '1' } }]);
+    await readSessakuPieceSetsByKeys(client, [key]);
     expect(findMany.mock.calls[0][0].include.pieces.include).toEqual({ opCompletions: { select: { opNo: true } }, opSplits: { orderBy: { fromOpNo: 'asc' } }, sourcePiece: { select: { opSplits: { select: { fromOpNo: true }, orderBy: { fromOpNo: 'desc' }, take: 1 } } } });
   });
   it('resolves all interval IDs to their original piece logical locks', async () => {
@@ -31,8 +32,10 @@ describe('piece identity and scoped generation', () => {
     expect(findMany.mock.calls[0][0].where.id.in).toEqual(['id']);
   });
   it('preserves exact winner key strings across encoding', () => {
-    const key = sessakuPieceKeyFromRow({ FSEIBAN: ' A ', FHINCD: 'part', FSIGENCD: '01', FKOJUN: 2, ProductNo: 'unrelated' });
+    const rowData = { FSEIBAN: ' A ', FHINCD: 'part', FSIGENCD: '01', FKOJUN: 2, ProductNo: 'unrelated' };
+    const key = sessakuPieceKeyFromRow(rowData);
     expect(encodeSessakuPieceKey(key)).toBe('[" A ","part","01","2","unrelated"]');
+    expect(sessakuPieceParentItemId(key)).toBe(buildGrindingPlanningBoardRowItemId(rowData));
     expect(decodeSessakuPieceParentItemId(sessakuPieceParentItemId(key))).toEqual(key);
   });
   it.each(['piece:a', 'row:bad', 'row:WzFd'])('rejects malformed parent IDs %s', (value) => expect(() => decodeSessakuPieceParentItemId(value)).toThrow());

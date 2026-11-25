@@ -18,9 +18,13 @@ describe('mail sync external completion publication', () => {
     pipeline.runFkojunstMailReplacementTransaction.mockResolvedValue({ ...result, externalCompletionSynced: true });
     const assignments = { reconcileStaleAssignments: vi.fn() };
     const refresh = vi.fn().mockRejectedValue(new Error('marking failed'));
-    const service = new ProductionScheduleFkojunstMailStatusSyncService(undefined, assignments as never, refresh);
+    const service = new ProductionScheduleFkojunstMailStatusSyncService({
+      orderAssignmentReconciliationService: assignments,
+      refreshSuperseded: refresh,
+    });
     await expect(service.syncFromStatusMailDashboard()).resolves.toEqual(result);
     expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledBefore(pipeline.runFkojunstMailReplacementTransaction);
     expect(assignments.reconcileStaleAssignments).toHaveBeenCalledOnce();
   });
 
@@ -30,7 +34,10 @@ describe('mail sync external completion publication', () => {
     });
     const assignments = { reconcileStaleAssignments: vi.fn() };
     const refresh = vi.fn().mockResolvedValue(undefined);
-    const service = new ProductionScheduleFkojunstMailStatusSyncService(undefined, assignments as never, refresh);
+    const service = new ProductionScheduleFkojunstMailStatusSyncService({
+      orderAssignmentReconciliationService: assignments,
+      refreshSuperseded: refresh,
+    });
     await service.syncFromStatusMailDashboard();
     expect(refresh).toHaveBeenCalledTimes(scanned);
     expect(pipeline.runFkojunstMailClearTransaction).toHaveBeenCalledWith(expect.anything(), scanned, scanned, 0, '2');
@@ -42,7 +49,11 @@ describe('mail sync external completion publication', () => {
     pipeline.runFkojunstMailReplacementTransaction.mockResolvedValue({ ...result, ...(pieces ? { externalCompletionSynced: true } : {}) });
     const external = { syncFromDedupedStatusMailRows: vi.fn().mockResolvedValue({ skipped: false }) };
     const assignments = { reconcileStaleAssignments: vi.fn() };
-    const service = new ProductionScheduleFkojunstMailStatusSyncService(external as never, assignments as never, vi.fn().mockResolvedValue(undefined));
+    const service = new ProductionScheduleFkojunstMailStatusSyncService({
+      externalCompletionSyncService: external,
+      orderAssignmentReconciliationService: assignments,
+      refreshSuperseded: vi.fn().mockResolvedValue(undefined),
+    });
     expect(await service.syncFromStatusMailDashboard()).toEqual(result);
     expect(pipeline.runFkojunstMailReplacementTransaction).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ missingStandardHoursMailRows: [{}] }));
     expect(external.syncFromDedupedStatusMailRows).toHaveBeenCalledTimes(pieces ? 0 : 1);

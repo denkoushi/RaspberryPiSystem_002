@@ -2,7 +2,8 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
-import { buildGrindingPlanningBoardRowItemId } from '../grinding-planning-board-projection.js';
+import { buildGrindingPlanningBoardRowItemIdFromKey } from '../grinding-planning-board-projection.js';
+import { PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from '../row-resolver/constants.js';
 
 /** 分割の親の識別。研削ボードの行と同じ5要素(4列 + ProductNo)。 */
 export type SessakuPieceLogicalKey = { fseiban: string; fhincd: string; fsigencd: string; fkojun: string; productNo: string };
@@ -11,19 +12,17 @@ export type SessakuPieceSet = Omit<Prisma.ProductionScheduleSessakuPieceSetGetPa
   pieces: Array<Prisma.ProductionScheduleSessakuPieceGetPayload<object> & { sourcePiece?: { opSplits: Array<{ fromOpNo: number }> } | null; opCompletions?: Array<{ opNo: number }>; opSplits?: Array<{ fromOpNo: number; sourceResourceCd: string; leadingSourceResourceCd?: string | null }> }>;
 };
 const RELATED_KEY_CHUNK = 300;
-const columns = ['FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN', 'ProductNo'] as const;
 
 export function sessakuPieceKeyFromRow(data: unknown): SessakuPieceLogicalKey {
   const row = data as Record<string, unknown>;
-  const [fseiban, fhincd, fsigencd, fkojun, productNo] = columns.map((column) => String(row?.[column] ?? ''));
+  const [fseiban, fhincd, fsigencd, fkojun, productNo] = PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS.map((column) => String(row?.[column] ?? ''));
   return { fseiban, fhincd, fsigencd, fkojun, productNo };
 }
 export function encodeSessakuPieceKey(key: SessakuPieceLogicalKey): string {
   return JSON.stringify([key.fseiban, key.fhincd, key.fsigencd, key.fkojun, key.productNo]);
 }
 export function sessakuPieceParentItemId(key: SessakuPieceLogicalKey): string {
-  // 研削ボードの行 ID と同じ関数で作る。
-  return buildGrindingPlanningBoardRowItemId({ FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun, ProductNo: key.productNo });
+  return buildGrindingPlanningBoardRowItemIdFromKey(encodeSessakuPieceKey(key));
 }
 export function decodeSessakuPieceParentItemId(value: string): SessakuPieceLogicalKey {
   try {
@@ -93,7 +92,10 @@ export async function readSessakuPieceSet(client: SessakuPieceClient, key: Sessa
   });
 }
 export async function readSessakuPieceSets(client: SessakuPieceClient, rows: readonly { rowData: unknown }[]): Promise<Map<string, SessakuPieceSet>> {
-  const keys = new Map(rows.map((row) => { const key = sessakuPieceKeyFromRow(row.rowData); return [encodeSessakuPieceKey(key), key]; }));
+  return readSessakuPieceSetsByKeys(client, rows.map((row) => sessakuPieceKeyFromRow(row.rowData)));
+}
+export async function readSessakuPieceSetsByKeys(client: SessakuPieceClient, scheduleRowKeys: readonly SessakuPieceLogicalKey[]): Promise<Map<string, SessakuPieceSet>> {
+  const keys = new Map(scheduleRowKeys.map((key) => [encodeSessakuPieceKey(key), key]));
   if (!keys.size) return new Map();
   const sets = await client.productionScheduleSessakuPieceSet.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: [...new Set([...keys.values()].map((key) => key.fseiban))] } },

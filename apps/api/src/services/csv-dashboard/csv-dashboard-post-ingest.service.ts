@@ -54,16 +54,23 @@ export type CsvDashboardPostIngestResult = {
   scawStfutekigoSync: ScawStfutekigoSyncResult | null;
 };
 
+type ProductionScheduleStatusSync = {
+  fkojunstSyncService: Pick<ProductionScheduleFkojunstSyncService, 'syncFromFkojunstDashboard'>;
+  fkojunstMailStatusSyncService: Pick<ProductionScheduleFkojunstMailStatusSyncService, 'syncFromStatusMailDashboard'>;
+  externalCompletionSyncService: Pick<FkojunstExternalCompletionSyncService, 'syncFromCurrentStatusMailDashboard'>;
+  refreshSupersededRows: () => Promise<unknown>;
+};
+
 /**
  * Runs CSV dashboard side-effects that must occur after a successful ingest,
  * for both Gmail and manual upload paths (single place to extend).
  */
 export class CsvDashboardPostIngestService {
+  private readonly productionScheduleStatusSync: ProductionScheduleStatusSync;
+
   constructor(
     private readonly orderSupplementSyncService: ProductionScheduleOrderSupplementSyncService = new ProductionScheduleOrderSupplementSyncService(),
-    private readonly fkojunstSyncService: ProductionScheduleFkojunstSyncService = new ProductionScheduleFkojunstSyncService(),
-    private readonly fkojunstMailStatusSyncService: ProductionScheduleFkojunstMailStatusSyncService = new ProductionScheduleFkojunstMailStatusSyncService(),
-    private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService(),
+    productionScheduleStatusSync: Partial<ProductionScheduleStatusSync> = {},
     private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService(),
     private readonly customerScawSyncService: ProductionScheduleCustomerScawSyncService = new ProductionScheduleCustomerScawSyncService(),
     private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService(),
@@ -72,8 +79,14 @@ export class CsvDashboardPostIngestService {
     private readonly appendRawRowPruneService: CsvDashboardAppendRawRowPruneService = new CsvDashboardAppendRawRowPruneService(),
     private readonly fkobainoAgePruneService: CsvDashboardFkobainoAgePruneService = new CsvDashboardFkobainoAgePruneService(),
     private readonly slipVerifyRecheck: () => Promise<unknown> = () => recheckUnresolvedSlipVerifyRecords(),
-    private readonly refreshSupersededRows: () => Promise<unknown> = () => refreshSupersededProductionScheduleRows(prisma)
-  ) {}
+  ) {
+    this.productionScheduleStatusSync = {
+      fkojunstSyncService: productionScheduleStatusSync.fkojunstSyncService ?? new ProductionScheduleFkojunstSyncService(),
+      fkojunstMailStatusSyncService: productionScheduleStatusSync.fkojunstMailStatusSyncService ?? new ProductionScheduleFkojunstMailStatusSyncService(),
+      externalCompletionSyncService: productionScheduleStatusSync.externalCompletionSyncService ?? new FkojunstExternalCompletionSyncService(),
+      refreshSupersededRows: productionScheduleStatusSync.refreshSupersededRows ?? (() => refreshSupersededProductionScheduleRows(prisma)),
+    };
+  }
 
   private static readonly appendRawRowPruneInFlight = new Set<string>();
 
@@ -148,7 +161,7 @@ export class CsvDashboardPostIngestService {
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID) {
-      fkojunstSync = await this.fkojunstSyncService.syncFromFkojunstDashboard();
+      fkojunstSync = await this.productionScheduleStatusSync.fkojunstSyncService.syncFromFkojunstDashboard();
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: fkojunstSync },
         '[CsvDashboardPostIngestService] FKOJUNST status sync completed'
@@ -156,7 +169,7 @@ export class CsvDashboardPostIngestService {
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
-      fkojunstMailSync = await this.fkojunstMailStatusSyncService.syncFromStatusMailDashboard();
+      fkojunstMailSync = await this.productionScheduleStatusSync.fkojunstMailStatusSyncService.syncFromStatusMailDashboard();
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: fkojunstMailSync },
         '[CsvDashboardPostIngestService] FKOJUNST_Status mail sync completed'
@@ -167,7 +180,7 @@ export class CsvDashboardPostIngestService {
     if (params.dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
       // 新しく入った行は工程状態の表がまだ空でも、メールの生データから印を付ける(winner を使う後続の同期より先)
       try {
-        const supersededResult = await this.refreshSupersededRows();
+        const supersededResult = await this.productionScheduleStatusSync.refreshSupersededRows();
         logger.info(
           { dashboardId: params.dashboardId, ingestSource: params.ingestSource, supersededResult },
           '[CsvDashboardPostIngestService] superseded manufacturing order marks refreshed after production schedule ingest'
@@ -177,7 +190,7 @@ export class CsvDashboardPostIngestService {
         logger.error({ err: error, dashboardId: params.dashboardId }, '[CsvDashboardPostIngestService] superseded mark refresh failed');
       }
       markProductionScheduleResourceCdsCacheStale();
-      const externalCompletionSync = await this.externalCompletionSyncService.syncFromCurrentStatusMailDashboard();
+      const externalCompletionSync = await this.productionScheduleStatusSync.externalCompletionSyncService.syncFromCurrentStatusMailDashboard();
       try {
         await pruneCompletedGrindingPlanningBoardSeibans();
       } catch (error) {
