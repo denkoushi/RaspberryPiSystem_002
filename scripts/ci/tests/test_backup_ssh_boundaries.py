@@ -1,5 +1,9 @@
 from pathlib import Path
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 
@@ -90,6 +94,45 @@ class BackupKeyRestrictionCheckTest(unittest.TestCase):
         for task in tasks:
             if "backup_key_file" in task and "set_fact:" in task:
                 self.assertIn("no_log: true", task)
+
+
+@unittest.skipUnless(shutil.which("ansible-playbook"), "ansible-playbook is not installed")
+class BackupKeyRestrictionCheckRunTest(unittest.TestCase):
+    KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKeyBodyForCheckOnly0123456789"
+
+    def run_check(self, line, allowed_from=""):
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".ssh"))
+            if line is not None:
+                with open(os.path.join(home, ".ssh", "authorized_keys"), "w") as f:
+                    f.write(line + "\n")
+            cmd = [
+                "ansible-playbook", "-i", "localhost,", "-c", "local",
+                "-e", "client_host=localhost",
+                "-e", "backup_ssh_public_key='" + self.KEY + "'",
+                "-e", "backup_key_home=" + home,
+                str(PLAYBOOKS_DIR / "check-backup-key-restriction.yml"),
+            ]
+            if allowed_from:
+                cmd[-1:-1] = ["-e", "backup_ssh_allowed_from=" + allowed_from]
+            out = subprocess.run(cmd, capture_output=True, text=True).stdout
+        found = re.findall(r'"msg": "localhost: ([^"]*)"', out)
+        return found[-1] if found else out
+
+    def test_restricted_line_is_ok(self):
+        line = 'restrict,from="192.168.1.100,192.168.1.1" ' + self.KEY + " backup"
+        self.assertEqual(self.run_check(line, "192.168.1.1"), "OK")
+
+    def test_partial_address_does_not_match(self):
+        line = 'restrict,from="192.168.1.100" ' + self.KEY + " backup"
+        self.assertEqual(self.run_check(line, "192.168.1.1"), "from= does not match")
+
+    def test_options_in_comment_are_ignored(self):
+        line = self.KEY + ' restrict, from="192.168.1.1"'
+        self.assertEqual(self.run_check(line), "restrict is missing, from= is missing")
+
+    def test_missing_file(self):
+        self.assertEqual(self.run_check(None), "authorized_keys is missing")
 
 
 if __name__ == "__main__":

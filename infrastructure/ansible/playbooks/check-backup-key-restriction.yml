@@ -39,16 +39,32 @@
       no_log: true
       become: false
 
+    - name: Split the options field of the key line
+      ansible.builtin.set_fact:
+        backup_key_options: >-
+          {{ (backup_key_lines | first | default(''))
+             | regex_replace('[ \t]*[^ \t]+[ \t]+' ~ (backup_key_body | regex_escape) ~ '([ \t].*)?$', '') }}
+      no_log: true
+      become: false
+
+    - name: Read the from= list
+      ansible.builtin.set_fact:
+        backup_key_from_list: >-
+          {{ ((backup_key_options | regex_findall('(?:^|,)from="([^"]*)"')) or ['']) | first | split(',') | map('trim') | select | list }}
+      no_log: true
+      become: false
+
     - name: Evaluate the key options
       ansible.builtin.set_fact:
         backup_key_problems: >-
-          {{ (['authorized_keys is missing'] if not backup_key_file_found else
+          {{ ((['authorized_keys is missing'] if 'not found' in (backup_key_file.msg | default(''))
+               else ['authorized_keys could not be read']) if not backup_key_file_found else
               ['key line is missing'] if (backup_key_lines | length) == 0 else
-              (['restrict is missing'] if not (backup_key_lines | select('search', '(^|[\s,])restrict(,|\s)') | list)  else [])
-              + (['from= is missing'] if not (backup_key_lines | select('search', '(^|[\s,])from=\"') | list) else [])
+              (['restrict is missing'] if backup_key_options is not search('(^|,)restrict(,|$)') else [])
+              + (['from= is missing'] if (backup_key_from_list | length) == 0 else [])
               + (['from= does not match'] if (backup_ssh_allowed_from | length) > 0
-                  and (backup_key_lines | select('search', 'from=\"[^\"]*' ~ (backup_ssh_allowed_from | regex_escape) ~ '[^\"]*\"') | list | length) == 0
-                  and (backup_key_lines | select('search', '(^|[\s,])from=\"') | list | length) > 0 else [])) }}
+                  and (backup_key_from_list | length) > 0
+                  and (backup_ssh_allowed_from | trim) not in backup_key_from_list else [])) }}
       no_log: true
       become: false
 
