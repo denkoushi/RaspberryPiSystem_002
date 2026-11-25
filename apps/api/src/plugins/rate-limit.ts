@@ -43,6 +43,16 @@ const shouldSkip = (path: string): boolean => {
   return skipPrefixes.some((prefix) => path.startsWith(prefix));
 };
 
+// 端末(登録キーが無ければ接続元)ごと・経路ごとに数えるキー。端末を引くキャッシュは呼び出し側が持つ
+export const createRateLimitKeyGenerator = (
+  lookupDevice: (apiKey: string, sourceKey: string) => Promise<string | null>
+) => async (request: FastifyRequest): Promise<string> => {
+  const routePattern = request.routeOptions.url ?? normalizeRateLimitPath(request.url);
+  const apiKey = normalizeClientKey(request.headers['x-client-key']);
+  const deviceId = apiKey ? await lookupDevice(apiKey, request.ip) : null;
+  return deviceId ? `device:${deviceId}:${routePattern}` : `${request.ip}:${routePattern}`;
+};
+
 export const registerRateLimit = fp(async (app: FastifyInstance) => {
   const lookupDevice = createRateLimitDeviceCache({
     // Loaded on first use so importing this plugin does not open a DB pool.
@@ -53,12 +63,7 @@ export const registerRateLimit = fp(async (app: FastifyInstance) => {
     global: true,
     max: 120,
     timeWindow: '1 minute',
-    keyGenerator: async (request: FastifyRequest) => {
-      const routePattern = request.routeOptions.url ?? normalizeRateLimitPath(request.url);
-      const apiKey = normalizeClientKey(request.headers['x-client-key']);
-      const deviceId = apiKey ? await lookupDevice(apiKey, request.ip) : null;
-      return deviceId ? `device:${deviceId}:${routePattern}` : `${request.ip}:${routePattern}`;
-    },
+    keyGenerator: createRateLimitKeyGenerator(lookupDevice),
     // 特定パスをスキップ
     allowList: (request: FastifyRequest) => {
       return shouldSkip(normalizeRateLimitPath(request.url));

@@ -1,7 +1,6 @@
 import type { RateLimitOptions } from '@fastify/rate-limit';
-import type { FastifyRequest } from 'fastify';
-import { normalizeClientKey } from './client-key.js';
 import { createRateLimitDeviceCache } from '../plugins/rate-limit-device-cache.js';
+import { createRateLimitKeyGenerator } from '../plugins/rate-limit.js';
 
 /**
  * Ceiling for routes that kiosk terminals and other field devices call.
@@ -21,16 +20,9 @@ const lookupDevice = createRateLimitDeviceCache({
   lookup: async (apiKey) => (await import('./prisma.js')).prisma.clientDevice.findUnique({ where: { apiKey }, select: { id: true } })
 });
 
-const terminalRouteKey = async (request: FastifyRequest): Promise<string> => {
-  const route = request.routeOptions.url ?? request.url;
-  const apiKey = normalizeClientKey(request.headers['x-client-key']);
-  const deviceId = apiKey ? await lookupDevice(apiKey, request.ip) : null;
-  return deviceId ? `device:${deviceId}:${route}` : `${request.ip}:${route}`;
-};
-
 export const TERMINAL_ROUTE_RATE_LIMIT: RateLimitOptions = Object.freeze({
   max: TERMINAL_ROUTE_MAX_PER_MINUTE,
   timeWindow: '1 minute',
   allowList: [],
-  keyGenerator: terminalRouteKey,
+  keyGenerator: createRateLimitKeyGenerator(lookupDevice),
 });

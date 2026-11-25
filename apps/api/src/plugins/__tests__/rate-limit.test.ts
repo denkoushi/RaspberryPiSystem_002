@@ -133,12 +133,10 @@ describe('registerRateLimit', () => {
     findUnique.mockImplementation(async ({ where }: { where: { apiKey: string } }) => (
       where.apiKey.startsWith('kiosk-') ? { id: where.apiKey } : null
     ));
-    for (const url of ['/api/storage/terminal-route']) {
-      const codes = await hit(url, TERMINAL_ROUTE_MAX_PER_MINUTE + 1, { 'x-client-key': 'kiosk-a' });
-      expect(codes.slice(0, TERMINAL_ROUTE_MAX_PER_MINUTE).every((c) => c === 200)).toBe(true);
-      expect(codes.at(-1)).toBe(429);
-      expect(await hit(url, 1, { 'x-client-key': 'kiosk-b' })).toEqual([200]);
-    }
+    const codes = await hit('/api/storage/terminal-route', TERMINAL_ROUTE_MAX_PER_MINUTE + 1, { 'x-client-key': 'kiosk-a' });
+    expect(codes.slice(0, TERMINAL_ROUTE_MAX_PER_MINUTE).every((c) => c === 200)).toBe(true);
+    expect(codes.at(-1)).toBe(429);
+    expect(await hit('/api/storage/terminal-route', 1, { 'x-client-key': 'kiosk-b' })).toEqual([200]);
     const returns = await hit('/api/tools/loans/return', TERMINAL_ROUTE_MAX_PER_MINUTE + 1, { 'x-client-key': 'kiosk-a' }, 'POST', {});
     expect(returns.slice(0, TERMINAL_ROUTE_MAX_PER_MINUTE).every((c) => c === 200)).toBe(true);
     expect(returns.at(-1)).toBe(429);

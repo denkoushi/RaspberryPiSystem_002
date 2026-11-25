@@ -25,7 +25,9 @@ export function createPalletOutboxRunner(store: PalletOfflineQueueStore, send = 
       try {
         await send(record);
       } catch (error) {
-        if (!isAxiosError(error) || isRetryableHttpError(error) || error.response!.status < 400) break;
+        if (!isAxiosError(error)) break;
+        const status = error.response?.status;
+        if (status === undefined || isRetryableHttpError(error) || status < 400) break;
         const message = error.response?.data?.message ?? error.message;
         await store.fail(record, message);
         await refresh(message);
