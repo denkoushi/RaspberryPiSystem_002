@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import type { AssemblyCheckSheetLayout } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
+import { assertZipExpansionWithinBudget } from '../../../lib/zip-expansion-budget.js';
 
 function parseRange(address: string) {
   const [start, end = start] = address.replace(/\$/g, '').split(':');
@@ -23,6 +24,7 @@ function cellText(cell: ExcelJS.Cell) {
 
 /** Read-only projection; never serialize an original through ExcelJS. */
 export async function buildCheckSheetLayout(source: Buffer, sheetName: string): Promise<AssemblyCheckSheetLayout> {
+  assertZipExpansionWithinBudget(source);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(source as unknown as ExcelJS.Buffer);
   const sheet = workbook.getWorksheet(sheetName);

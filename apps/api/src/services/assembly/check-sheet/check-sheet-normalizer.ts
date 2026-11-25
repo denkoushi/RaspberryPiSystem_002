@@ -1,5 +1,6 @@
 import type { AssemblyCheckSheetItemProposal, AssemblyCheckSheetProposal } from '@raspi-system/shared-types';
 import type { ParsedCheckSheet } from './check-sheet-xlsx-parser.js';
+import { matchConditionHeader } from './check-sheet-condition-line.js';
 
 type Field = NonNullable<AssemblyCheckSheetItemProposal['inputSpec']['fields']>[number];
 const knownUnit = /^(N[・･·.]?m|mm|cm|MPa|kPa|kg|V|A|N|個|本|°|%)(?![a-zA-Z])/i;
@@ -93,11 +94,11 @@ export function normalizeCheckSheet(parsed: ParsedCheckSheet): AssemblyCheckShee
     const notes: string[] = [];
     const fragments = raw.fragments.map((fragment) => {
       let text = fragment.text;
-      const condition = text.match(/^(.*?場合[^\n]*?以下[^\n]*?確認[^\n]*?こと[。.]?)(?:\s*\n|\s*(?=[・･])|$)/);
+      const condition = matchConditionHeader(text);
       if (condition) {
-        conditionLabel = condition[1];
+        conditionLabel = condition.label;
         conditionNumber++;
-        text = text.slice(condition[0].length);
+        text = text.slice(condition.length);
       }
       text = text.split('\n').filter((line) => {
         if (line.trim().startsWith('※')) { notes.push(line.trim()); return false; }
