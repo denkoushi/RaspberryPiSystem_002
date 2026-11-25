@@ -69,6 +69,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
 
+      - name: Read the adopted torque-agent identity
+        id: adoption
+        run: python3 scripts/deploy/release_artifact_contract.py torque-adoption-outputs >> "$GITHUB_OUTPUT"
+
       - name: Require a push rehearsal to target the exact current main
         if: ${{ github.event_name == 'push' }}
         run: |
@@ -77,10 +81,12 @@ jobs:
 
       - name: Prove the adopted torque-agent source closure is unchanged or changed
         id: source_closure
+        env:
+          BASELINE_SHA: ${{ steps.adoption.outputs.source_sha }}
         run: |
           set +e
           git diff --exit-code \
-            39a2a0d386d36b6fce36a6da6508aa0dc3b1b83c \
+            "$BASELINE_SHA" \
             "$TARGET_SHA" -- \
             clients/torque-agent \
             infrastructure/docker/Dockerfile.torque-agent \
@@ -221,7 +227,7 @@ jobs:
       - name: Seal the passed combination rehearsal evidence
         id: evidence
         env:
-          BASELINE_SHA: 39a2a0d386d36b6fce36a6da6508aa0dc3b1b83c
+          BASELINE_SHA: ${{ steps.adoption.outputs.source_sha }}
           SOURCE_CLOSURE_UNCHANGED: ${{ steps.source_closure.outputs.source_closure_unchanged }}
         run: |
           python3 - <<'PY'
@@ -320,6 +326,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
 
+      - name: Read the adopted torque-agent identity
+        id: adoption
+        run: python3 scripts/deploy/release_artifact_contract.py torque-adoption-outputs >> "$GITHUB_OUTPUT"
+
       - name: Require this run to still target the exact current main
         run: |
           git fetch origin main --quiet
@@ -350,7 +360,7 @@ jobs:
 
       - name: Resolve the immutable existing torque-agent index
         env:
-          TORQUE_REFERENCE: ghcr.io/denkoushi/raspisys-torque-agent@sha256:3c384e891f6830be430993807a756301e3954a3719c2737a8b646825cc6c1e61
+          TORQUE_REFERENCE: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent@${{ steps.adoption.outputs.index_digest }}
         run: docker buildx imagetools inspect --raw "$TORQUE_REFERENCE" > torque-agent-index.json
 
       - name: Re-scan adopted torque-agent ARM64 digest under the required policy
@@ -359,7 +369,7 @@ jobs:
           TRIVY_PLATFORM: linux/arm64
         with:
           scan-type: image
-          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:3c384e891f6830be430993807a756301e3954a3719c2737a8b646825cc6c1e61
+          image-ref: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent@${{ steps.adoption.outputs.index_digest }}
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -372,7 +382,7 @@ jobs:
           TRIVY_PLATFORM: linux/arm/v7
         with:
           scan-type: image
-          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:3c384e891f6830be430993807a756301e3954a3719c2737a8b646825cc6c1e61
+          image-ref: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent@${{ steps.adoption.outputs.index_digest }}
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -381,6 +391,14 @@ jobs:
 
       - name: Create the non-provenance component adoption predicate
         id: identity
+        env:
+          INDEX_DIGEST: ${{ steps.adoption.outputs.index_digest }}
+          SOURCE_SHA: ${{ steps.adoption.outputs.source_sha }}
+          ARM64_DIGEST: ${{ steps.adoption.outputs.arm64_digest }}
+          ARMV7_DIGEST: ${{ steps.adoption.outputs.armv7_digest }}
+          ORIGIN_WORKFLOW: ${{ steps.adoption.outputs.origin_workflow }}
+          ORIGIN_RUN_ID: ${{ steps.adoption.outputs.origin_run_id }}
+          ORIGIN_JOB_ID: ${{ steps.adoption.outputs.origin_job_id }}
         run: |
           python3 scripts/deploy/torque_component_adoption.py \
             --repository-root . \
@@ -392,14 +410,14 @@ jobs:
             > torque-agent-adoption.json
           {
             echo 'repository=ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent'
-            echo 'index_digest=sha256:3c384e891f6830be430993807a756301e3954a3719c2737a8b646825cc6c1e61'
-            echo 'source_sha=39a2a0d386d36b6fce36a6da6508aa0dc3b1b83c'
-            echo 'arm64_digest=sha256:716dfaadfcdec9f17aa1c30e2d42f4b6cf22f5d67aff3c29d9a8718cab591610'
-            echo 'armv7_digest=sha256:a89da321146556da86f4072dae18a819576dba9365d501db45da521878cf4906'
+            echo "index_digest=$INDEX_DIGEST"
+            echo "source_sha=$SOURCE_SHA"
+            echo "arm64_digest=$ARM64_DIGEST"
+            echo "armv7_digest=$ARMV7_DIGEST"
             echo 'predicate_type=https://github.com/${{ github.repository }}/attestations/torque-agent-component-adoption/v1'
-            echo 'origin_workflow=.github/workflows/ci.yml'
-            echo 'origin_run_id=45552197863'
-            echo 'origin_job_id=138997961571'
+            echo "origin_workflow=$ORIGIN_WORKFLOW"
+            echo "origin_run_id=$ORIGIN_RUN_ID"
+            echo "origin_job_id=$ORIGIN_JOB_ID"
           } >> "$GITHUB_OUTPUT"
 
       - name: Sign adoption of the existing immutable torque-agent digest
