@@ -255,7 +255,7 @@ SQL、`EXPLAIN (ANALYZE, BUFFERS)`、関連テストを確認する。最後にP
 
 ## Concrete Steps
 
-リポジトリルート `/Users/tsudatakashi/RaspberryPiSystem_002` で実行する。
+リポジトリルート `~/RaspberryPiSystem_002` で実行する。
 
     git status --short
     git checkout main

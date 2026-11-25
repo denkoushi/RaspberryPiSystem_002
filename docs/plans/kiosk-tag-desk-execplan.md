@@ -74,7 +74,7 @@ Web では `apps/web/src/features/kiosk/tag-desk/` に画面部品を作り、`a
 
 ## Concrete Steps
 
-作業ディレクトリは `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--kiosk-tag-desk`。
+作業ディレクトリは `~/RaspberryPiSystem_002-worktrees/feat--kiosk-tag-desk`。
 
     pnpm --filter api prisma migrate dev --name nfc_tag_binding_event   # 開発DBがある場合。ない場合は SQL を手で書く
     pnpm --filter api test -- tag-desk

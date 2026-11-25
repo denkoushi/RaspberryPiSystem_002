@@ -233,7 +233,7 @@ local fixture or DGX-only result cannot stand in for this measurement.
 ## Concrete Steps
 
 All commands start in
-`/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-business-butler-gate`.
+`~/RaspberryPiSystem_002-worktrees/feat--hermes-business-butler-gate`.
 Use a unique temporary directory for disposable fixtures and logs.
 
 Begin with read-only inventory:

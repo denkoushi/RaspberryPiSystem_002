@@ -240,7 +240,7 @@ index.
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+Work from `~/RaspberryPiSystem_002`.
 
 Run focused contracts first:
 

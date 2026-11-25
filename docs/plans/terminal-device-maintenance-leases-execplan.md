@@ -205,7 +205,7 @@ queue, or peripheral agent behavior changes.
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+Work from `~/RaspberryPiSystem_002`.
 
     git switch main
     git pull --ff-only origin main

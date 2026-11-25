@@ -20,12 +20,12 @@
 ## 2. 再起動が「準備完了待ち」で止まり続けた（原因確定・修正済み）
 
 - 18:0x〜19:00 の起動 4 回が、すべて `Reducing Torch threads` の後で止まった。
-- 原因: Spark 2 の既定経路が Wi-Fi（`wlP9s9`、192.168.128.126）で、vLLM の `get_ip()` がその住所を返した。
+- 原因: Spark 2 の既定経路が Wi-Fi（`wlP9s9`、<DGX Spark 2 の Wi-Fi IP>）で、vLLM の `get_ip()` がその住所を返した。
   - rank1 の Worker_TP1 は、メッセージキュー（shm_broadcast）をその住所で待ち受けた。
   - Spark 1 からその住所へは IPv4 の経路が無い（`enP7s7` は IPv6 だけ、IPv4 の既定経路も無い）。
   - その結果、head は rank1 の READY を、rank1 は head の接続を待ち続けた。
 - 修正: `glm53-flash-tp2-adapter.sh` で、各機の `VLLM_HOST_IP` を 2 台をつなぐ線の住所に固定した（head=`BLUE_MASTER_ADDR`、worker=`BLUE_WORKER_SSH_TARGET` の host 部）。
-  - 実機には仮に当て、19:03 に起動完了（約 5 分）。rank1 の待ち受けがすべて 192.168.100.11 になったことを確認した。
+  - 実機には仮に当て、19:03 に起動完了（約 5 分）。rank1 の待ち受けがすべて <DGX Spark 2 の直結 IP> になったことを確認した。
 - 未解明: 同じ条件（Wi-Fi は 10/22 17:44 から接続、アダプタも同じ）で、朝 08:13 の起動は成功していた。
 
 ## 3. 18:28 の強制停止（想定どおりの動作）

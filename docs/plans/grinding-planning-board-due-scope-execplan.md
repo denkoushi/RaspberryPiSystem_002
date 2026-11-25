@@ -52,7 +52,7 @@ The PUT route validates the shared snapshot fields, locks target parents, rechec
 
 ## Concrete Steps
 
-Run from `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--planning-board-pane-layout`:
+Run from `~/RaspberryPiSystem_002-worktrees/feat--planning-board-pane-layout`:
 
     pnpm --filter @raspi-system/api prisma:generate
     pnpm --filter @raspi-system/shared-types build

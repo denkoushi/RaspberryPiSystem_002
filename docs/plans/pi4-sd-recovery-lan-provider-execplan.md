@@ -31,13 +31,13 @@ An operator must be able to rebuild an explicitly enabled Pi4 after its SD card 
 - Observation: changing only the SSH endpoint would leave the rebuilt terminal pointing at the Pi5 Tailscale API address.
   Evidence: `server_base_url`, `kiosk_url`, and agent URLs derive from `server_ip`, which derives from `current_network`; the global default is `network_mode: tailscale`.
 - Observation: LAN reachability cannot be assumed for every installation site.
-  Evidence: KB-315 records a real `No route to host` case between Pi5 and a new FJV Pi4, and the Sessaku LAN address is in `192.168.128.0/24` while Pi5's recorded LAN address is in `192.168.10.0/24`.
+  Evidence: KB-315 records a real `No route to host` case between Pi5 and a new FJV Pi4, and the Sessaku LAN address is in `<社内 LAN のアドレス帯>` while Pi5's recorded LAN address is in `<社内 LAN のアドレス帯>`.
 - Observation: a same-hardware SD replacement retains the Pi4 network-interface MAC address, so an existing DHCP reservation can continue assigning the declared LAN address.
   Evidence: the failure scope replaces the SD card, not the Pi4 board; the new contract therefore requires the operator-supplied bootstrap address to equal the inventory-declared management address instead of accepting an arbitrary temporary lease.
 - Observation: `ansible-inventory --host` still returns nested Jinja text for a derived URL even when host-variable precedence has selected `network_mode: local`.
-  Evidence: the raw result contained `https://{{ server_ip }}`, while an Ansible `debug` action evaluated the same fixture to `https://192.168.10.230`. The regression test therefore validates both raw precedence fields and the evaluated play result.
+  Evidence: the raw result contained `https://{{ server_ip }}`, while an Ansible `debug` action evaluated the same fixture to `https://<Pi5 の LAN IP>`. The regression test therefore validates both raw precedence fields and the evaluated play result.
 - Observation: the first complete deploy-contract attempt passed every Python, Docker/PostgreSQL, SQL, index, and API stage, then failed because the Ansible callback rendered a debug value as YAML instead of the JSON callback used by the focused run.
-  Evidence: the expected and observed value were both `https://192.168.10.230`; changing the assertion to require the field and value independently made it callback-format-neutral, and the complete rerun passed.
+  Evidence: the expected and observed value were both `https://<Pi5 の LAN IP>`; changing the assertion to require the field and value independently made it callback-format-neutral, and the complete rerun passed.
 - Observation: an older stopped test container, labelled volume, and labelled network already existed before this work and were not created or removed by this run. Docker Desktop also regenerated its built-in `bridge` network ID between the first pre/post snapshots.
   Evidence: the named resources with UUID `d57c85bc-02d3-44a7-8bda-e74a33afe89c` retained their container, volume, and network identities. Each new UUID reported `cleanup verified: run resources=0`; only Docker's unnamed built-in bridge changed from `57b0f751a767` to `498e4d3377e9`, outside the test script's named create/remove targets.
 
@@ -61,7 +61,7 @@ An operator must be able to rebuild an explicitly enabled Pi4 after its SD card 
 
 ## Outcomes & Retrospective
 
-Feature-branch implementation and local validation are complete, and draft PR #1148 is open. Five production inventory hosts resolve to `192.168.10.224`, `192.168.10.236`, `192.168.10.12`, `192.168.10.238`, and `192.168.128.187`, all with Pi5 service endpoint `192.168.10.230`, while Assembly resolves disabled and unconfigured. Recovery no longer has a Tailscale account, OAuth, auth-key, or recovery-secret dependency. The design does not create missing inter-site routing. Required CI/main integration, Pi5 deployment, and a physical drill remain separate gates; this plan cannot be marked complete until effective changes are in `origin/main` and the deployed Pi5 SHA and drill evidence are recorded.
+Feature-branch implementation and local validation are complete, and draft PR #1148 is open. Five production inventory hosts resolve to `<raspberrypi4 の LAN IP>`, `<raspi4-robodrill01 の LAN IP>`, `<raspi4-fjv60-80 の LAN IP>`, `<raspi4-kensaku-stonebase01 の LAN IP>`, and `<raspi4-sessaku-01 の LAN IP>`, all with Pi5 service endpoint `<Pi5 の LAN IP>`, while Assembly resolves disabled and unconfigured. Recovery no longer has a Tailscale account, OAuth, auth-key, or recovery-secret dependency. The design does not create missing inter-site routing. Required CI/main integration, Pi5 deployment, and a physical drill remain separate gates; this plan cannot be marked complete until effective changes are in `origin/main` and the deployed Pi5 SHA and drill evidence are recorded.
 
 ## Context and Orientation
 
@@ -87,7 +87,7 @@ Update `scripts/deploy/tests/test_recover_pi4.py` and its fixtures. Tests must c
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002` on `feat/pi4-sd-recovery-lan-provider`. Use `apply_patch` for tracked edits. During implementation run:
+Work from `~/RaspberryPiSystem_002` on `feat/pi4-sd-recovery-lan-provider`. Use `apply_patch` for tracked edits. During implementation run:
 
     python3 -m unittest scripts/deploy/tests/test_recover_pi4.py -v
     ANSIBLE_CONFIG=infrastructure/ansible/ansible.cfg ANSIBLE_ROLES_PATH=infrastructure/ansible/roles ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/resolve-pi4-recovery-contract.yml --syntax-check
@@ -129,7 +129,7 @@ Repository publication evidence is:
     draft PR:       https://github.com/denkoushi/RaspberryPiSystem_002/pull/1148
     base at open:   a3dcdbf591b375835991e9bc7fe9388e773d36b7
 
-The known LAN contract candidates are `192.168.10.224`, `192.168.10.236`, `192.168.10.12`, `192.168.10.238`, and `192.168.128.187`; the Pi5 LAN service candidate is `192.168.10.230`. These are configuration inputs, not proof of current routing or DHCP reservation.
+The known LAN contract candidates are `<raspberrypi4 の LAN IP>`, `<raspi4-robodrill01 の LAN IP>`, `<raspi4-fjv60-80 の LAN IP>`, `<raspi4-kensaku-stonebase01 の LAN IP>`, and `<raspi4-sessaku-01 の LAN IP>`; the Pi5 LAN service candidate is `<Pi5 の LAN IP>`. These are configuration inputs, not proof of current routing or DHCP reservation.
 
 Local validation evidence on 2026-08-01 JST is:
 

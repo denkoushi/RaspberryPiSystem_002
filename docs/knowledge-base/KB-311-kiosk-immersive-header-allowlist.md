@@ -101,7 +101,7 @@ category: knowledge-base
 
 - **ブランチ**: `feat/kiosk-bottom-center-header-reveal`（マージ代表 **`cbeb6bbc`**）
 - **標準**: [deployment.md §下端リビール](../archive/deployments/2026-05.md#kiosk-bottom-center-header-reveal-2026-05-22)
-- **`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`** · `update-all-clients.sh feat/kiosk-bottom-center-header-reveal infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）
+- **`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`** · `update-all-clients.sh feat/kiosk-bottom-center-header-reveal infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）
 
 | ホスト | Detach Run ID | PLAY RECAP |
 |--------|---------------|------------|
@@ -153,8 +153,8 @@ category: knowledge-base
 
 ### Pi5 から Pi4 へ SSH 検証でタイムアウト
 
-- Tailscale IP は [`group_vars/all.yml`](../../infrastructure/ansible/group_vars/all.yml) の **`tailscale_network`** を正本とする（誤 IP 例: `100.101.113.90` 台は **到達不可**）。
-- 正例: `raspberrypi4` **`100.74.144.79`** · robodrill **`100.123.1.113`** · fjv **`100.100.229.95`** · stonebase **`100.101.113.95`**。Mac から Pi4 直 SSH は不可のことが多い → **Pi5 踏み台**（[ansible-ssh-architecture.md](../guides/ansible-ssh-architecture.md)）。
+- Tailscale IP は [`group_vars/all.yml`](../../infrastructure/ansible/group_vars/all.yml) の **`tailscale_network`** を正本とする（誤 IP 例: `<IP アドレス>` 台は **到達不可**）。
+- 正例: `raspberrypi4` **`<raspberrypi4 の Tailscale IP>`** · robodrill **`<raspi4-robodrill01 の Tailscale IP>`** · fjv **`<raspi4-fjv60-80 の Tailscale IP>`** · stonebase **`<raspi4-kensaku-stonebase01 の Tailscale IP>`**。Mac から Pi4 直 SSH は不可のことが多い → **Pi5 踏み台**（[ansible-ssh-architecture.md](../guides/ansible-ssh-architecture.md)）。
 
 ### E2E / CI でキオスクナビが不可視
 

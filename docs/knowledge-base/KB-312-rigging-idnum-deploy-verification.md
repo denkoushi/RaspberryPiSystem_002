@@ -38,7 +38,7 @@ category: knowledge-base
   - `raspberrypi5`（サーバー）… デプロイサマリ・ヘルスチェックとも success
   - `raspberrypi4`（第2工場 kensakuMain キオスク）… 同上
 - **未実施（別日再挑戦）**:
-  - `raspi4-robodrill01` … preflight で **SSH `Connection timed out`**（inventory 上の Tailscale 先 `100.123.1.113:22`）。端末電源・Tailscale・ACL・現地ネットを確認のうえ、同コマンドで `--limit raspi4-robodrill01` のみ再実行
+  - `raspi4-robodrill01` … preflight で **SSH `Connection timed out`**（inventory 上の Tailscale 先 `<raspi4-robodrill01 の Tailscale IP>:22`）。端末電源・Tailscale・ACL・現地ネットを確認のうえ、同コマンドで `--limit raspi4-robodrill01` のみ再実行
 
 ### 追従（持出一覧レイアウト: 管理番号と idNum 同一行）
 
@@ -50,7 +50,7 @@ category: knowledge-base
 ### 自動確認（実施済み）
 
 - Pi5 上 API: `GET https://<Pi5>/api/system/health` → **200**、`status: ok`（2026-03-24、運用ネットワークからの到達確認）
-- **追従デプロイ後（2026-03-24）**: Tailscale 経由で `GET https://100.106.158.2/api/system/health` → **200**、`status: ok`（リモート自動確認。DB/memory 警告は既存の運用メッセージ）
+- **追従デプロイ後（2026-03-24）**: Tailscale 経由で `GET https://<Pi5 の Tailscale IP>/api/system/health` → **200**、`status: ok`（リモート自動確認。DB/memory 警告は既存の運用メッセージ）
 
 ### 運用手動確認（デプロイ済み Pi5 + raspberrypi4 を対象）
 

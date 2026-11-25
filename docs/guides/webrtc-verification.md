@@ -17,8 +17,8 @@
 
 ### ネットワーク設定
 
-- Pi5サーバーはTailscale経由でアクセス可能（`100.106.158.2`）
-- Pi4、Pi3、Macは同一ローカルネットワーク（`192.168.10.0/24`）またはTailscale経由で接続
+- Pi5サーバーはTailscale経由でアクセス可能（`<Pi5 の Tailscale IP>`）
+- Pi4、Pi3、Macは同一ローカルネットワーク（`<社内 LAN のアドレス帯>`）またはTailscale経由で接続
 - `network_mode: "tailscale"`が設定されていること
 
 **注意**: status-agentはローカルLANのIPアドレスを使用します（TailscaleのIPアドレスは使用しません）。発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです。
@@ -38,7 +38,7 @@
 
 ```bash
 # Pi5で確認
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -E 'WebRTC routes registered|WEBRTC_ENABLED' | tail -5"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -E 'WebRTC routes registered|WEBRTC_ENABLED' | tail -5"
 ```
 
 期待される出力：
@@ -61,7 +61,7 @@ Pi4など**マイクが未接続 / 無効**な端末でも、通話が即切断�
 #### 1.1 Pi5サーバーのヘルスチェック
 
 ```bash
-curl -k https://100.106.158.2/api/system/health
+curl -k https://<Pi5 の Tailscale IP>/api/system/health
 ```
 
 期待される結果: `{"status":"ok",...}` または `{"status":"degraded",...}`（メモリ使用率が高い場合）
@@ -70,15 +70,15 @@ curl -k https://100.106.158.2/api/system/health
 
 ```bash
 # Pi4のクライアントキーで確認
-curl -k -H 'x-client-key: client-key-raspberrypi4-kiosk1' https://100.106.158.2/api/kiosk/call/targets
+curl -k -H 'x-client-key: client-key-raspberrypi4-kiosk1' https://<Pi5 の Tailscale IP>/api/kiosk/call/targets
 
 # Macのクライアントキーで確認
-curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk/call/targets
+curl -k -H 'x-client-key: client-key-mac-kiosk1' https://<Pi5 の Tailscale IP>/api/kiosk/call/targets
 ```
 
 期待される結果: `{"selfClientId":"...","targets":[...]}` 形式のJSONが返る
 
-**注意**: 発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです（例: `192.168.10.224`）。TailscaleのIPアドレスは表示されません。
+**注意**: 発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです（例: `<raspberrypi4 の LAN IP>`）。TailscaleのIPアドレスは表示されません。
 
 #### 1.3 WebRTCシグナリングエンドポイントの確認
 
@@ -91,7 +91,7 @@ curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk
 
 #### 2.1 ブラウザでキオスク通話画面を開く
 
-1. MacのChrome/Safariで `https://100.106.158.2/kiosk/call` を開く
+1. MacのChrome/Safariで `https://<Pi5 の Tailscale IP>/kiosk/call` を開く
 2. 自己署名証明書の警告が出る場合は「詳細設定」→「続行」を選択
 3. ブラウザの開発者ツール（F12）を開き、Consoleタブを表示
 
@@ -113,9 +113,9 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 3. ページをリロード（Cmd+R）
 
 4. 発信先一覧にPi4が表示されることを確認：
-   - `raspberrypi4-kiosk1`（IP: `192.168.10.224`）が表示されること
-   - `raspberrypi3-signage1`（IP: `192.168.10.109`）が表示されること
-   - `raspberrypi5-server`（IP: `192.168.10.230`）が表示されること
+   - `raspberrypi4-kiosk1`（IP: `<raspberrypi4 の LAN IP>`）が表示されること
+   - `raspberrypi3-signage1`（IP: `<raspberrypi3 の LAN IP（現場）>`）が表示されること
+   - `raspberrypi5-server`（IP: `<Pi5 の LAN IP>`）が表示されること
 
 #### 2.3 WebSocket接続の確認
 
@@ -133,7 +133,7 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 
 2. 各発信先に「📞 発信」ボタンが表示されること
 
-**注意**: 発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです（例: `192.168.10.224`）。TailscaleのIPアドレスは表示されません。
+**注意**: 発信先一覧に表示されるIPアドレスはローカルLANのIPアドレスです（例: `<raspberrypi4 の LAN IP>`）。TailscaleのIPアドレスは表示されません。
 
 ### 3. Pi4の着信待機（常時接続）の確認
 
@@ -236,7 +236,7 @@ Pi3は通話対象外です。`/api/kiosk/call/targets` から除外されるた
 
 1. Pi5サーバーを一時停止：
 ```bash
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml stop api"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml stop api"
 ```
 
 2. Macのキオスク画面で以下を確認：
@@ -245,7 +245,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 3. Pi5サーバーを再起動：
 ```bash
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml start api"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml start api"
 ```
 
 4. 自動再接続が行われることを確認
@@ -270,7 +270,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 2. **APIログの確認**:
 ```bash
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api --since 10m | grep -E 'signaling|WebRTC|webrtc'"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api --since 10m | grep -E 'signaling|WebRTC|webrtc'"
 ```
 
 3. **ブラウザのコンソールログ確認**:
@@ -288,7 +288,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 1. **APIエンドポイントの確認**:
 ```bash
-curl -k -H 'x-client-key: client-key-mac-kiosk1' https://100.106.158.2/api/kiosk/call/targets
+curl -k -H 'x-client-key: client-key-mac-kiosk1' https://<Pi5 の Tailscale IP>/api/kiosk/call/targets
 ```
 
 2. **クライアントキーの確認**:
@@ -377,7 +377,7 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 3. **ログで確認**:
 ```bash
 # APIログでping/pongを確認
-ssh denkon5sd02@100.106.158.2 "docker logs --since 10m docker-api-1 2>&1 | grep -E 'ping|pong'"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "docker logs --since 10m docker-api-1 2>&1 | grep -E 'ping|pong'"
 ```
 
 4. **詳細**: [KB-134](../knowledge-base/api.md#kb-134-websocket接続の5分タイムアウト問題とkeepalive対策)参照
@@ -400,7 +400,7 @@ ssh denkon5sd02@100.106.158.2 "docker logs --since 10m docker-api-1 2>&1 | grep 
 
 ### ローカルLANのIPアドレスとTailscaleのIPアドレス
 
-- **status-agent**: ローカルLANのIPアドレスを使用します（例: `192.168.10.224`）
+- **status-agent**: ローカルLANのIPアドレスを使用します（例: `<raspberrypi4 の LAN IP>`）
 - **発信先一覧**: ローカルLANのIPアドレスが表示されます
 - **TailscaleのIPアドレス**: 現在は使用していません（将来的にサポートする可能性あり）
 

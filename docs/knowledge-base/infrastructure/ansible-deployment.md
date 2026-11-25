@@ -39,7 +39,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **Investigation**:
 - **CONFIRMED**: `scripts/update-all-clients.sh` の preflight は **Mac からの Ansible**ではなく、**Pi5 上で `ANSIBLE_BECOME=false ansible -i inventory.yml all -m ping --limit raspberrypi5`** を実行する。
-- **CONFIRMED**: Mac からの `ssh denkon5sd02@100.106.158.2` とローカル `ansible raspberrypi5 -m ping` は成功した一方、**Pi5 上での `ssh -o BatchMode=yes denkon5sd02@100.106.158.2`** は **`Permission denied (publickey)`** で失敗した。
+- **CONFIRMED**: Mac からの `ssh denkon5sd02@<Pi5 の Tailscale IP>` とローカル `ansible raspberrypi5 -m ping` は成功した一方、**Pi5 上での `ssh -o BatchMode=yes denkon5sd02@<Pi5 の Tailscale IP>`** は **`Permission denied (publickey)`** で失敗した。
 - **CONFIRMED**: Pi5 の **`~/.ssh/id_ed25519.pub`** は存在したが、**同じ内容が `~/.ssh/authorized_keys` に入っていなかった**。
 - **CONFIRMED**: preflight 失敗時に cleanup まで到達せず、**bootstrap 直後の lock** が残り得る。
 
@@ -54,7 +54,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - **恒久（再発防止）**: **server** ロール [`ssh-loopback-authorized.yml`](../../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml) が上記 **`authorized_keys` 冪等管理**を行う。`update-all-clients.sh` は **preflight 前**に **self-SSH チェック**を行い、**preflight 失敗時はリモート bootstrap lock を EXIT トラップで返却**する。次回ロック取得時は **`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`（既定 180s）** で **status artifact 無しの bootstrap lock** を掃除し得る。
 
 **Verification（2026-05-03 本番・当初障害復旧時）**:
-- self-SSH: `ssh -o BatchMode=yes denkon5sd02@100.106.158.2 "echo SELF_OK"` → **成功**
+- self-SSH: `ssh -o BatchMode=yes denkon5sd02@<Pi5 の Tailscale IP> "echo SELF_OK"` → **成功**
 - **ブランチ**: `feat/dgx-resource-dashboard-ui-phase8`
 - **Detach Run ID**: **`20260503-181600-946`**（`PLAY RECAP` **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
@@ -65,7 +65,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**）
 
 **Troubleshooting**:
-- Pi5 デプロイ前に **`ssh "denkon5sd02@100.106.158.2" 'ssh -o BatchMode=yes denkon5sd02@100.106.158.2 "echo SELF_OK"'"`** で self-SSH を確認すると、同症状を先に潰せる（**スクリプトも preflight 直前に `UPDATE_ALL_CLIENTS_SELF_SSH_OK` で同等チェック**する）。
+- Pi5 デプロイ前に **`ssh "denkon5sd02@<Pi5 の Tailscale IP>" 'ssh -o BatchMode=yes denkon5sd02@<Pi5 の Tailscale IP> "echo SELF_OK"'"`** で self-SSH を確認すると、同症状を先に潰せる（**スクリプトも preflight 直前に `UPDATE_ALL_CLIENTS_SELF_SSH_OK` で同等チェック**する）。
 - lock を手で消す前に、**`runPid` が無い / 対応する deploy artifact が無い / `ps -ef` に `ansible-playbook` や `ansible … -m ping` が無い**ことを確認する。
 
 **Prevention**:
@@ -261,7 +261,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **Context（何をしたか）**:
 - 第2工場キオスク用 Pi4 を **4台目**として追加（StoneBase01）。
-- `inventory.yml` に `raspi4-kensaku-stonebase01` を追加、`group_vars/all.yml` に LAN (`192.168.10.238`) と Tailscale (`100.101.113.95`) を反映。
+- `inventory.yml` に `raspi4-kensaku-stonebase01` を追加、`group_vars/all.yml` に LAN (`<raspi4-kensaku-stonebase01 の LAN IP>`) と Tailscale (`<raspi4-kensaku-stonebase01 の Tailscale IP>`) を反映。
 - `status_agent_client_id`: `raspi4-kensaku-stonebase01-kiosk1`、`status_agent_client_key` / NFC: `client-key-raspi4-kensaku-stonebase01-kiosk1`（固定文字列）。
 - Pi5 で `register-clients.sh` 実行後、`deploy-staged.yml --limit raspi4-kensaku-stonebase01` を実施。
 
@@ -865,7 +865,7 @@ git log --oneline origin/refactor/imports-ts-refactoring..refactor/imports-ts-re
 **状況**:
 - Pi5は **2025-12-15 17:01** に再起動（force pushの直後）
 - SSHサービスは正常に起動（`systemctl status ssh`）
-- WiFi接続も正常に確立（`wlan0: 192.168.10.230`）
+- WiFi接続も正常に確立（`wlan0: <Pi5 の LAN IP>`）
 
 **影響**:
 - 再起動によりネットワーク設定がリセットされた可能性
@@ -911,7 +911,7 @@ ssh -o StrictHostKeyChecking=accept-new denkon5sd02@raspberrypi.local
 ssh denkon5sd02@raspberrypi.local
 
 # または、IPアドレス直接指定
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 ```
 
 ##### 3. SSH設定の確認
@@ -935,7 +935,7 @@ ping -c 3 raspberrypi.local
 avahi-resolve -n raspberrypi.local
 
 # 直接IPアドレスで接続
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 ```
 
 **根本原因**:
@@ -1101,7 +1101,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-
 
 **事象**: 
 - Pi4の`status-agent.service`が再起動時に失敗（`failed to send status: <urlopen error [Errno -2] Name or service not known>`）
-- `status-agent.conf`の`API_BASE_URL`が`http://100.106.158.2:8080/api`に設定されていたが、Pi5のAPIコンテナは8080を外部公開していない
+- `status-agent.conf`の`API_BASE_URL`が`http://<Pi5 の Tailscale IP>:8080/api`に設定されていたが、Pi5のAPIコンテナは8080を外部公開していない
 
 **要因**: 
 - `group_vars/all.yml`の`api_base_url`が`http://{{ server_ip }}:8080/api`に設定されていた
@@ -1150,7 +1150,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-
 **有効だった対策**: 
 - ✅ **一時的な解決**（2026-01-03）:
   1. Pi5の`/etc/raspi-status-agent.conf`を直接修正
-  2. `API_BASE_URL`を`https://100.106.158.2/api`に変更（Caddy経由のHTTPS）
+  2. `API_BASE_URL`を`https://<Pi5 の Tailscale IP>/api`に変更（Caddy経由のHTTPS）
   3. `TLS_SKIP_VERIFY=1`を設定し、自己署名証明書を許可
   4. `LOCATION`を「ラズパイ5 - サーバー」に設定
   5. 手動実行で動作確認後、`status-agent.service`を再起動
@@ -1474,7 +1474,7 @@ ls -la infrastructure/ansible/roles/signage/templates/
 ls -la infrastructure/ansible/roles/signage/templates/signage-*.j2
 
 # Pi5上での確認
-ssh denkon5sd02@100.106.158.2 "ls -la /opt/RaspberryPiSystem_002/infrastructure/ansible/roles/signage/templates/"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "ls -la /opt/RaspberryPiSystem_002/infrastructure/ansible/roles/signage/templates/"
 ```
 
 **再発防止策**:
@@ -1607,8 +1607,8 @@ PY
 **確認コマンド**:
 ```bash
 # Pi3のstatus-agent状態確認
-ssh signageras3@100.105.224.86 "systemctl status status-agent.timer"
-ssh signageras3@100.105.224.86 "systemctl status status-agent.service"
+ssh signageras3@<raspberrypi3 の Tailscale IP> "systemctl status status-agent.timer"
+ssh signageras3@<raspberrypi3 の Tailscale IP> "systemctl status status-agent.service"
 
 # Macのstatus-agent状態確認
 launchctl list | grep status-agent
@@ -1850,7 +1850,7 @@ cat ~/.status-agent.conf
 **確認コマンド**:
 ```bash
 # デプロイ実行（プリフライト・ロック・リソースガードが自動実行される）
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 
 # 特定ホストのみ更新（--limitオプション）
@@ -2200,7 +2200,7 @@ staleClients: ✅ 正常に表示（DB alertsと共存）
 
 ```bash
 # APIレスポンスを確認（認証トークンが必要）
-curl -k -s "https://100.106.158.2/api/clients/alerts" \
+curl -k -s "https://<Pi5 の Tailscale IP>/api/clients/alerts" \
   -H "Authorization: Bearer <token>" | jq '{alerts:.alerts, dbAlertsLen:(.details.dbAlerts|length), fileAlertsLen:(.details.fileAlerts|length)}'
 
 # DBの未acknowledgedアラート数を確認
@@ -2474,15 +2474,15 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
 **確認コマンド**:
 ```bash
 # Pi4へのデプロイ実行（Pi4のみ）
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4
 
 # デプロイ後の確認
 # systemdサービス確認
-ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "systemctl is-active kiosk-browser.service status-agent.timer"'
+ssh ${RASPI_SERVER_HOST} 'ssh tools03@<raspberrypi4 の Tailscale IP> "systemctl is-active kiosk-browser.service status-agent.timer"'
 
 # APIヘルスチェック
-ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: client-key-raspberrypi4-kiosk1\" https://100.106.158.2/api/system/health"'
+ssh ${RASPI_SERVER_HOST} 'ssh tools03@<raspberrypi4 の Tailscale IP> "curl -k -H \"x-client-key: client-key-raspberrypi4-kiosk1\" https://<Pi5 の Tailscale IP>/api/system/health"'
 ```
 
 ---
@@ -2527,7 +2527,7 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
   - **原因**: Webコンテナが古いコードでビルドされていた（2時間前に作成されたコンテナが使用されていた）
   - **解決策**: Pi5のWebコンテナを再ビルド・再起動することで解決
     ```bash
-    ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml build web && docker compose -f infrastructure/docker/docker-compose.server.yml up -d web"
+    ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml build web && docker compose -f infrastructure/docker/docker-compose.server.yml up -d web"
     ```
   - **学んだこと**: デプロイ後は必ずWebコンテナを再ビルドする必要がある。ブラウザのキャッシュをクリアする必要がある場合もある（`Ctrl+Shift+R`でハードリロード）
 
@@ -2586,11 +2586,11 @@ ssh ${RASPI_SERVER_HOST} 'ssh tools03@100.74.144.79 "curl -k -H \"x-client-key: 
 **有効だった対策**:
 - ✅ **Pi5経由でSSH**: MacからPi5に接続し、Pi5上でPi4/Pi3へSSHする
   ```bash
-  # raspberrypi4 (tools03@100.74.144.79)
-  ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools03@100.74.144.79 'systemctl is-active kiosk-browser.service status-agent.timer'"
+  # raspberrypi4 (tools03@<raspberrypi4 の Tailscale IP>)
+  ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh -o StrictHostKeyChecking=no tools03@<raspberrypi4 の Tailscale IP> 'systemctl is-active kiosk-browser.service status-agent.timer'"
 
-  # raspi4-robodrill01 (tools04@100.123.1.113)
-  ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no tools04@100.123.1.113 'systemctl is-active kiosk-browser.service status-agent.timer'"
+  # raspi4-robodrill01 (tools04@<raspi4-robodrill01 の Tailscale IP>)
+  ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh -o StrictHostKeyChecking=no tools04@<raspi4-robodrill01 の Tailscale IP> 'systemctl is-active kiosk-browser.service status-agent.timer'"
   ```
 
 **学んだこと**:
@@ -2944,7 +2944,7 @@ ensure_local_repo_ready_for_deploy() {
 - `post_tasks`フェーズの最後の2タスクで`unreachable`が発生
 - デプロイ直後にPi3にSSH接続してサービス状態を確認:
   ```bash
-  ssh denkon5sd02@100.106.158.2 "ssh pi@100.106.158.3 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
+  ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh pi@<signage 端末の Tailscale IP> 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
   # 結果: active active
   ```
 - GUI/サイネージサービスも正常に稼働中（`lightdm`と`signage-lite.service`が`active`）
@@ -3164,13 +3164,13 @@ ensure_local_repo_ready_for_deploy() {
 
 **事象**:
 - MacからPi5へのSSH接続が`Connection refused`エラーで失敗
-- `ssh: connect to host 100.106.158.2 port 22: Connection refused`
+- `ssh: connect to host <Pi5 の Tailscale IP> port 22: Connection refused`
 - 管理コンソール（HTTPS）は正常にアクセス可能
 
 **症状**:
-1. **SSH接続失敗**: MacのTailscale IP（`100.64.230.31`）からPi5へのSSH接続が拒否される
-2. **HTTPSは正常**: ブラウザから`https://100.106.158.2/admin`にはアクセス可能
-3. **fail2banのBan確認**: `sudo fail2ban-client status sshd`で`Banned IP list: 100.64.230.31`が確認される
+1. **SSH接続失敗**: MacのTailscale IP（`<Mac の Tailscale IP>`）からPi5へのSSH接続が拒否される
+2. **HTTPSは正常**: ブラウザから`https://<Pi5 の Tailscale IP>/admin`にはアクセス可能
+3. **fail2banのBan確認**: `sudo fail2ban-client status sshd`で`Banned IP list: <Mac の Tailscale IP>`が確認される
 
 **根本原因の特定（2026-01-31実施）**:
 
@@ -3178,20 +3178,20 @@ ensure_local_repo_ready_for_deploy() {
 
 | 時刻 | イベント | 詳細 |
 |------|---------|------|
-| 09:30頃 | SSH認証失敗の連続発生 | `tsudatakashi`という存在しないユーザーでの認証試行が複数回発生 |
-| 09:30:14 | fail2ban Ban | `sshd` jailが`100.64.230.31`をBan（10分/5回の閾値） |
+| 09:30頃 | SSH認証失敗の連続発生 | `<Mac のユーザー名>`という存在しないユーザーでの認証試行が複数回発生 |
+| 09:30:14 | fail2ban Ban | `sshd` jailが`<Mac の Tailscale IP>`をBan（10分/5回の閾値） |
 | 09:50頃 | SSH接続試行 | MacからPi5へのSSH接続が`Connection refused`で失敗 |
 
 #### 根本原因（確定）
 
-**原因は「Pi5へ`tsudatakashi`という存在しないユーザーでSSH認証が複数回試行された」ことです。**
+**原因は「Pi5へ`<Mac のユーザー名>`という存在しないユーザーでSSH認証が複数回試行された」ことです。**
 
-- 正しいユーザー名は`denkon5sd02`だが、AIエージェントが誤って`tsudatakashi`を使用
-- fail2banの`sshd` jailが**10分/5回**の閾値で**Tailscale端末IP `100.64.230.31` をBan**
+- 正しいユーザー名は`denkon5sd02`だが、AIエージェントが誤って`<Mac のユーザー名>`を使用
+- fail2banの`sshd` jailが**10分/5回**の閾値で**Tailscale端末IP `<Mac の Tailscale IP>` をBan**
 - fail2banはSSHのみをBanするため、HTTPS（443）は正常にアクセス可能
 
 **有効だった対策**:
-- ✅ **fail2banのBan解除（2026-01-31）**: Pi5で`sudo fail2ban-client set sshd unbanip 100.64.230.31`を実行
+- ✅ **fail2banのBan解除（2026-01-31）**: Pi5で`sudo fail2ban-client set sshd unbanip <Mac の Tailscale IP>`を実行
 - ✅ **Ban解除の確認**: `sudo fail2ban-client status sshd`で`Banned IP list`が空であることを確認
 - ✅ **正しいユーザー名の使用**: 以降は`denkon5sd02`を使用してSSH接続
 
@@ -3215,7 +3215,7 @@ ensure_local_repo_ready_for_deploy() {
 ```bash
 # Pi5のデスクトップ（RealVNC経由）で実行
 sudo fail2ban-client status sshd
-sudo fail2ban-client set sshd unbanip 100.64.230.31
+sudo fail2ban-client set sshd unbanip <Mac の Tailscale IP>
 sudo fail2ban-client status sshd  # Banned IP listが空であることを確認
 ```
 
@@ -3397,7 +3397,7 @@ ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provi
 - **標準手順の未遵守**: `docs/guides/deployment.md`の標準手順（Tailscale IP経由）を遵守せず、DNS名を使用した
 
 **有効だった対策**:
-- ✅ **標準手順への回帰（2026-02-01）**: `inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイを実行
+- ✅ **標準手順への回帰（2026-02-01）**: `inventory.yml`の`raspberrypi5`に対してTailscale IP（`<Pi5 の Tailscale IP>`）経由でデプロイを実行
 - ✅ **デプロイ成功**: 標準手順に従ったデプロイが正常に完了（`failed=0`）
 - ✅ **Webコンテナの再ビルド**: デプロイ後、コード変更があったためWebコンテナを明示的に再ビルドして変更を反映
 
@@ -3425,11 +3425,11 @@ ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provi
 **復旧手順（参考）**:
 ```bash
 # 標準手順に従ったデプロイ（第2工場のPi5）
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feature/signage-visualization infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 
 # Webコンテナの再ビルド（コード変更があった場合）
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
 ```
 
 **参考情報**:
@@ -3458,7 +3458,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 **有効だった対策**:
 - ✅ **手動マイグレーション適用（2026-02-01）**: デプロイ完了後、手動で`pnpm prisma migrate deploy`を実行してマイグレーションを適用
   ```bash
-  ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy"
+  ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy"
   ```
 - ✅ **マイグレーション状態の確認**: `pnpm prisma migrate status`でマイグレーションが正常に適用されたことを確認
 
@@ -3669,7 +3669,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 **Fix**:
 - ✅ **解決済み（2026-02-06）**: `RASPI_SERVER_HOST`環境変数を設定してPi5上でリモート実行するように変更
   ```bash
-  RASPI_SERVER_HOST=100.106.158.2 bash scripts/update-all-clients.sh feat/signage-visualization-layout-improvement infrastructure/ansible/inventory.yml --limit raspberrypi5
+  RASPI_SERVER_HOST=<Pi5 の Tailscale IP> bash scripts/update-all-clients.sh feat/signage-visualization-layout-improvement infrastructure/ansible/inventory.yml --limit raspberrypi5
   ```
 - Pi5上でリモート実行すると、Pi5上の`ansible.cfg`（`become_ask_pass = False`）が正しく読み込まれ、sudoパスワードなしで実行できる
 - デプロイは成功し、`exitCode: 0`で完了
@@ -3910,7 +3910,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - ✅ **修正後の動作確認**: `RASPI_SERVER_HOST`未設定で`raspberrypi5`を対象にした場合、エラーで停止することを確認
   ```bash
   $ bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5
-  [ERROR] RASPI_SERVER_HOST is required when targeting raspberrypi5 (ansible_connection: local). Set RASPI_SERVER_HOST (e.g., export RASPI_SERVER_HOST=100.106.158.2).
+  [ERROR] RASPI_SERVER_HOST is required when targeting raspberrypi5 (ansible_connection: local). Set RASPI_SERVER_HOST (e.g., export RASPI_SERVER_HOST=<Pi5 の Tailscale IP>).
   ```
 - ✅ **CI実行**: 全ジョブ（lint-and-test, e2e-smoke, e2e-tests, docker-build）成功
 
@@ -4090,7 +4090,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - デプロイは成功していたが、メンテナンスフラグファイル（`/opt/RaspberryPiSystem_002/config/deploy-status.json`）が残存していた
 
 **Symptoms**:
-- Macのブラウザから `https://100.106.158.2/kiosk` にアクセスすると、メンテナンス画面が表示される
+- Macのブラウザから `https://<Pi5 の Tailscale IP>/kiosk` にアクセスすると、メンテナンス画面が表示される
 - APIエンドポイント `/api/system/deploy-status` が `{"kioskMaintenance":true}` を返す
 - Pi5上の `/opt/RaspberryPiSystem_002/config/deploy-status.json` に `{"kioskMaintenance": true, "scope": "kiosk", "startedAt": "2026-02-14T11:49:12Z"}` が残存
 
@@ -4108,7 +4108,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 **Fix**:
 - ✅ **即時対応**: Pi5上の `/opt/RaspberryPiSystem_002/config/deploy-status.json` を手動で削除
   ```bash
-  ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/config/deploy-status.json"
+  ssh denkon5sd02@<Pi5 の Tailscale IP> "rm -f /opt/RaspberryPiSystem_002/config/deploy-status.json"
   ```
 - ✅ **確認**: APIエンドポイント `/api/system/deploy-status` が `{"kioskMaintenance":false}` を返すことを確認
 
@@ -4162,11 +4162,11 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 **Fix**:
 - ✅ **即時対応**: ハングしたリモートプロセスを停止
   ```bash
-  ssh denkon5sd02@100.106.158.2 "kill -TERM 623983 624077 632478 624423 2>/dev/null || true"
+  ssh denkon5sd02@<Pi5 の Tailscale IP> "kill -TERM 623983 624077 632478 624423 2>/dev/null || true"
   ```
 - ✅ **ロック解除**: `trap cleanup EXIT` でプロセス終了時にロック解除されるが、kill で強制終了した場合は cleanup が実行されない可能性あり。ロックファイルが残存する場合は手動削除
   ```bash
-  ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/logs/.update-all-clients.lock"
+  ssh denkon5sd02@<Pi5 の Tailscale IP> "rm -f /opt/RaspberryPiSystem_002/logs/.update-all-clients.lock"
   ```
 - ✅ **単体再デプロイ**: Pi4 を 1 台ずつ `--limit` で再実行
   ```bash

@@ -60,7 +60,7 @@ hostname -I
 **記録事項:**
 - ユーザー名（例: `tools03`, `signageras3`）
 - ホスト名（例: `raspberrypi`, `raspberrypi4`）
-- IPアドレス（例: `192.168.128.102`）
+- IPアドレス（例: `<IP アドレス>`）
 
 ### 1.2 SSHサーバーの起動確認
 
@@ -105,8 +105,8 @@ cat ~/.ssh/id_ed25519.pub
 ssh-copy-id -i ~/.ssh/id_ed25519.pub <ユーザー名>@<IPアドレス>
 
 # 例:
-# ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@192.168.128.102
-# ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@192.168.128.152
+# ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@<IP アドレス>
+# ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@<raspberrypi3 の LAN IP>
 ```
 
 **方法2: 手動で公開鍵を追加（ssh-copy-idが使えない場合）**
@@ -169,11 +169,11 @@ tailscale status
 
 # Pi5からPi4へのping確認
 ping -c 3 <Pi4のTailscale IP>
-# 例: ping -c 3 100.123.1.113
+# 例: ping -c 3 <raspi4-robodrill01 の Tailscale IP>
 
 # Pi5からPi4へのSSH接続確認
 ssh <ユーザー名>@<Pi4のTailscale IP>
-# 例: ssh tools04@100.123.1.113
+# 例: ssh tools04@<raspi4-robodrill01 の Tailscale IP>
 ```
 
 **トラブルシューティング**:
@@ -190,9 +190,9 @@ ssh <ユーザー名>@<Pi4のTailscale IP>
 ssh <ユーザー名>@<IPアドレス>
 
 # 例（Tailscale経由）:
-# ssh tools04@100.123.1.113  # Pi4のTailscale IP
-# ssh tools03@100.74.144.79  # 既存Pi4のTailscale IP
-# ssh signageras3@100.105.224.86  # Pi3のTailscale IP
+# ssh tools04@<raspi4-robodrill01 の Tailscale IP>  # Pi4のTailscale IP
+# ssh tools03@<raspberrypi4 の Tailscale IP>  # 既存Pi4のTailscale IP
+# ssh signageras3@<raspberrypi3 の Tailscale IP>  # Pi3のTailscale IP
 ```
 
 **期待される結果:**
@@ -315,7 +315,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit 
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients
+https://<Pi5 の LAN IP（自宅）>/admin/clients
 ```
 
 **確認事項:**
@@ -330,12 +330,12 @@ https://192.168.128.131/admin/clients
 ```bash
 # ログインしてトークンを取得
 # 事前に ADMIN_USERNAME と ADMIN_PASSWORD を export しておく
-TOKEN=$(curl -sk -X POST https://192.168.128.131/api/auth/login \
+TOKEN=$(curl -sk -X POST https://<Pi5 の LAN IP（自宅）>/api/auth/login \
   -H "Content-Type: application/json" \
   -d "$(jq -cn --arg username "$ADMIN_USERNAME" --arg password "$ADMIN_PASSWORD" '{username: $username, password: $password}')" | jq -r '.accessToken')
 
 # クライアント状態を取得
-curl -sk https://192.168.128.131/api/clients/status \
+curl -sk https://<Pi5 の LAN IP（自宅）>/api/clients/status \
   -H "Authorization: Bearer $TOKEN" | jq '.clients[] | select(.clientId == "raspberrypi4-kiosk1")'
 ```
 

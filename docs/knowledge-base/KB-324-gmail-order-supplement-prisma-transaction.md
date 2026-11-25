@@ -46,7 +46,7 @@ category: knowledge-base
 ## Production デプロイ実績（2026-04-02）
 
 - **ブランチ**: `fix/order-supplement-sync-transaction`（本修正の API のみ。Web 変更なし）。
-- **手順**: [deployment.md](../guides/deployment.md) の `scripts/update-all-clients.sh`。Mac から実行する場合は `RASPI_SERVER_HOST` を Pi5 踏み台に設定（例: `denkon5sd02@100.106.158.2`）。
+- **手順**: [deployment.md](../guides/deployment.md) の `scripts/update-all-clients.sh`。Mac から実行する場合は `RASPI_SERVER_HOST` を Pi5 踏み台に設定（例: `denkon5sd02@<Pi5 の Tailscale IP>`）。
 - **順序・台数**: **Pi5（`raspberrypi5`）→ Pi4×4** を **`--limit` で 1 台ずつ**（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。**Pi3（サイネージ等）は対象外**とした。
 - **結果**: 各実行の `PLAY RECAP` は **`failed=0`**。確定した Detach Run ID は作業端末の Ansible ログ（`logs/ansible-update-*` 等）で追補可能。
 - **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 40 / WARN 0 / FAIL 0** であること（部品納期個数連携の自動項目は [verification-checklist.md](../guides/verification-checklist.md) §6.6.16 参照）。

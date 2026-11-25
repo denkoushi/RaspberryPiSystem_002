@@ -124,7 +124,7 @@ stop a workload during this routing verification.
 
 ## Concrete Steps
 
-Documentation validation from `/Users/tsudatakashi/RaspberryPiSystem_002`:
+Documentation validation from `~/RaspberryPiSystem_002`:
 
     git diff --check
     node scripts/docs/audit-docs.mjs --write

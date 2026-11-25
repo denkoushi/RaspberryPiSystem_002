@@ -61,7 +61,7 @@ PowerApps 吊具点検 CSV（Gmail 件名 `slingsInspectionRecord_PowerApps`）�
 **デプロイコマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/rigging-inspection-card-chrome-unify infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -118,7 +118,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 **デプロイコマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/loan-inspection-card-combined-mgmt-numbers infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -181,7 +181,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 **デプロイコマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/rigging-inspection-name-match-signage-merge infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -202,7 +202,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 **デプロイコマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/rigging-slings-inspection-gmail-signage infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 

@@ -101,7 +101,7 @@ Each step is executed by a Composer 2.5 worker subagent; the orchestrator verifi
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 API verification: `bash scripts/test/run-tests.sh` (auto-manages Docker container `postgres-test-local`; when the container is already up on 5432, export `POSTGRES_PORT=5432` explicitly — see phase-1 discovery).
 

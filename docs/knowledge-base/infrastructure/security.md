@@ -44,7 +44,7 @@ update-frequency: medium
 
 **実装のポイント**:
 - tailnet ノード名: `ubuntu-local-llm-system`
-- tailnet IP（2026-03-28時点）: `100.107.223.92`
+- tailnet IP（2026-03-28時点）: `<Ubuntu LocalLLM の Tailscale IP>`
 - タグ: `tag:llm`
 - 入口: `nginx:38081`
 - 内部推論: `llama-server:38082`
@@ -61,7 +61,7 @@ update-frequency: medium
 - Mac から Ubuntu LocalLLM へ直接 `curl` しても、ACL 上 **`tag:server -> tag:llm` のみ許可**なので到達しない。最終確認は **Pi5 API 経由**で行う
 - Mac ローカルの Docker 検証では、本番用 `docker-compose.server.yml` の `/opt/...` bind mount をそのまま使わず、**`docker-compose.mac-local.override.yml`** でワークスペース配下 `.docker/local/` へ逃がす
 - Pi5 **本番 API コンテナ**に `LOCAL_LLM_*` が入らないときは、Ubuntu 側より先に **Docker Compose の `env_file` 経路**を疑う（`apps/api/.env` のみ更新では届かないことがある。詳細は [KB-318](./ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）
-- **オンデマンド制御の入口も `38081` に同居**させる。tailnet IP `100.107.223.92` は Ubuntu ホストそのものではなく **`local-llm-system` の sidecar** なので、Pi5 からホスト nginx の `39091` を直接叩く設計は不整合になりやすい
+- **オンデマンド制御の入口も `38081` に同居**させる。tailnet IP `<Ubuntu LocalLLM の Tailscale IP>` は Ubuntu ホストそのものではなく **`local-llm-system` の sidecar** なので、Pi5 からホスト nginx の `39091` を直接叩く設計は不整合になりやすい
 - `compose-nginx-1` で `${LLM_RUNTIME_CONTROL_TOKEN}` を使うなら、`compose.yaml` の nginx `envsubst` 対象に **`LLM_RUNTIME_CONTROL_TOKEN`** を入れないと **`unknown "llm_runtime_control_token" variable`** で再起動ループする
 - `network_mode: service:tailscale` の nginx からホスト側 `control-server.mjs` を叩くとき、`127.0.0.1` は **コンテナ自身**を指す。`control-server.mjs` は **`0.0.0.0:39090`** で待受し、nginx は **Docker bridge gateway**（例: `172.19.0.1`）へ `proxy_pass` する
 
@@ -87,9 +87,9 @@ update-frequency: medium
 **状況**: リポジトリの `scripts/dgx-local-llm-system/`（例: `control-server.py` + 同梱 `runtime_stop_policy.py`）を DGX 本番パス `/srv/dgx/system-prod/bin/` へ反映する必要がある。通常の allowlist は **`tag:server -> tag:llm: tcp:38081`** のみであり、**API 疎通と「ホストへ SSH で配置」は別問題**である。
 
 **事象・切り分け**:
-- **Mac (`tag:admin`) から `100.118.82.72:38081` が timeout**: ACL 上 **想定どおり**（`tag:admin -> tag:llm` は閉じている）。`tailscale status` に DGX が出ない場合は、**制御プレーン未同期**（`offline` / network map 未受信）も疑う → Tailscale の再接続や端末側のオン/オフを試す。
+- **Mac (`tag:admin`) から `<DGX Spark の Tailscale IP>:38081` が timeout**: ACL 上 **想定どおり**（`tag:admin -> tag:llm` は閉じている）。`tailscale status` に DGX が出ない場合は、**制御プレーン未同期**（`offline` / network map 未受信）も疑う → Tailscale の再接続や端末側のオン/オフを試す。
 - **Pi5 (`tag:server`) から `:38081` は通るが `:22` が timeout**: 既定の grants では **Pi5→DGX の SSH が許可されていない**ため。**一時的に** `tag:server -> tag:llm` に `tcp:22` を足し、作業後に **元に戻す**（台帳: [tailscale-policy.md](../../security/tailscale-policy.md)）。
-- **`:22` が開いても `Permission denied`**: 経路はあるが **DGX 側 `authorized_keys` に Pi5 / 運用端末の公開鍵がない**。LAN 上の DGX（例: `192.168.128.156`）へ既存鍵（例: `~/.ssh/id_ed25519_raspi`）で入れる場合は、**同じ鍵を `ubudgxkoushi@100.118.82.72` 側にも登録**する必要がある（tailnet 越しのユーザーは環境に合わせる）。
+- **`:22` が開いても `Permission denied`**: 経路はあるが **DGX 側 `authorized_keys` に Pi5 / 運用端末の公開鍵がない**。LAN 上の DGX（例: `<DGX Spark 1 の LAN IP>`）へ既存鍵（例: `~/.ssh/id_ed25519_raspi`）で入れる場合は、**同じ鍵を `ubudgxkoushi@<DGX Spark の Tailscale IP>` 側にも登録**する必要がある（tailnet 越しのユーザーは環境に合わせる）。
 - **運用端末では SSH 成功するのに AI 実行環境だけ失敗**: AI 側は通常 `BatchMode`（非対話）で走るため、**パスワード入力前提の経路は使えない**。AI 側が提示する公開鍵を DGX `authorized_keys` に追加し、`ssh -o BatchMode=yes ...` で疎通確認する。
 - **反映後 `GET /v1/models` が `502` / `Connection reset`**: 多くは **vLLM（blue）の cold start**（重み load・`torch.compile`・FlashInfer autotune 等）で、**`docker logs system-prod-trtllm` が `Application startup complete` まで待つ**。`/healthz` だけ早くても推論系は未 ready になり得る。
 
@@ -97,7 +97,7 @@ update-frequency: medium
 1. 必要なら一時 grant: `{"src":["tag:server"],"dst":["tag:llm"],"ip":["tcp:22"]}` → 作業完了後 **削除**。
 2. 運用端末 → DGX（LAN または上記 SSH が通る経路）で `/srv/dgx/system-prod/bin` に `control-server.py` / `runtime_stop_policy.py` / `start-control-server.sh` 等を配置（旧版は `backup-YYYYMMDD-...` へ退避）。
 3. `start-control-server.sh` 相当で **control プロセスを再起動**（PID 管理のため **kill してから起動**が安全）。
-4. 検証: `127.0.0.1:39090` に `X-Runtime-Control-Token` 付き `GET /healthz` → `ok`。Pi5 から `http://100.118.82.72:38081/healthz` と、トークン付き `GET /v1/models`。blue かつ `BLUE_LLM_RUNTIME_KEEP_WARM=true`（または `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`）のとき **`POST /stop` 後も** `v1/models` が生存し、コンテナが落ちなければ **keep-warm no-op** が有効。
+4. 検証: `127.0.0.1:39090` に `X-Runtime-Control-Token` 付き `GET /healthz` → `ok`。Pi5 から `http://<DGX Spark の Tailscale IP>:38081/healthz` と、トークン付き `GET /v1/models`。blue かつ `BLUE_LLM_RUNTIME_KEEP_WARM=true`（または `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`）のとき **`POST /stop` 後も** `v1/models` が生存し、コンテナが落ちなければ **keep-warm no-op** が有効。
 
 **学んだこと / 再発防止**:
 - `control-server.py` は **`runtime_stop_policy.py` 同梱**が必須。片方だけ配置すると import 失敗。
@@ -224,8 +224,8 @@ update-frequency: medium
   4. 各デバイスで`sudo tailscale up`を実行して認証
   5. Tailscale IPアドレスを`group_vars/all.yml`に設定
   6. Mac側の`~/.ssh/config`に2つの接続設定を追加:
-     - `raspi5-tailscale`: 通常運用（Tailscale経由 `100.106.158.2`）
-     - `raspi5-local`: 緊急時のみ（ローカルネットワーク `192.168.10.230`）
+     - `raspi5-tailscale`: 通常運用（Tailscale経由 `<Pi5 の Tailscale IP>`）
+     - `raspi5-local`: 緊急時のみ（ローカルネットワーク `<Pi5 の LAN IP>`）
   7. Ansibleタスク（`roles/common/tasks/tailscale.yml`）を作成し、自動インストール可能にする
 
 **実装の詳細**:
@@ -550,11 +550,11 @@ update-frequency: medium
 **EXEC_PLAN.md参照**: Phase 7 テスト・検証（2025-12-05）
 
 **事象**: 
-- 会社のネットワーク（192.168.10.0/24）と自宅のネットワーク（192.168.128.0/24）で異なるIPアドレスを使用
-- UFWでVNCポート（5900/tcp）が `192.168.10.0/24` からのみ許可されていたため、自宅からRealVNC ViewerでPi5に接続できなかった
+- 会社のネットワーク（<社内 LAN のアドレス帯>）と自宅のネットワーク（<社内 LAN のアドレス帯>）で異なるIPアドレスを使用
+- UFWでVNCポート（5900/tcp）が `<社内 LAN のアドレス帯>` からのみ許可されていたため、自宅からRealVNC ViewerでPi5に接続できなかった
 
 **有効だった対策**: 
-- ✅ UFWのVNC許可ネットワークに `192.168.128.0/24` を追加（`sudo ufw allow from 192.168.128.0/24 to any port 5900`）
+- ✅ UFWのVNC許可ネットワークに `<社内 LAN のアドレス帯>` を追加（`sudo ufw allow from <社内 LAN のアドレス帯> to any port 5900`）
 - ✅ Ansibleの `group_vars/all.yml` の `ufw_vnc_allowed_networks` に両方のネットワークを定義し、次回デプロイ時に自動反映されるように設定
 - ✅ 複数のローカルネットワークに対応できるよう、リスト形式で管理
 
@@ -869,10 +869,10 @@ update-frequency: medium
 **発生日**: 2026-02-28
 
 **事象**: 
-- MacからPi5のVNCポート（5900）に接続できない（`nc -zv 100.106.158.2 5900`がタイムアウト）
+- MacからPi5のVNCポート（5900）に接続できない（`nc -zv <Pi5 の Tailscale IP> 5900`がタイムアウト）
 - Pi5側のwayvncは起動しており、ポート5900で待ち受けている
 - Pi5側のUFW設定も正しく設定されている（`100.64.0.0/10`からのアクセスを許可）
-- Pi5自身からは`127.0.0.1:5900`と`100.106.158.2:5900`に接続できる
+- Pi5自身からは`127.0.0.1:5900`と`<Pi5 の Tailscale IP>:5900`に接続できる
 
 **調査過程**:
 1. **UFW設定の確認**: `sudo ufw status verbose`で`5900/tcp ALLOW IN 100.64.0.0/10`が設定されていることを確認
@@ -934,21 +934,21 @@ update-frequency: medium
 
 **発生日**: 2026-06-03（本番デプロイ後の Mac 運用確認）
 
-**Context**: 運用 Mac は Tailscale **Connected**（例: `100.64.230.31`）。ブックマーク `https://100.106.158.2/admin` で管理画面を開く。Pi5 は `tag:server`（`100.106.158.2`）で稼働中。Pi4 キオスクは Pi5 API 経由で正常。
+**Context**: 運用 Mac は Tailscale **Connected**（例: `<Mac の Tailscale IP>`）。ブックマーク `https://<Pi5 の Tailscale IP>/admin` で管理画面を開く。Pi5 は `tag:server`（`<Pi5 の Tailscale IP>`）で稼働中。Pi4 キオスクは Pi5 API 経由で正常。
 
 **Symptoms**:
 
-- ブラウザで `https://100.106.158.2/admin` が **タイムアウト**（または長時間待って失敗）
-- `ping 100.106.158.2` が **100% loss**（ICMP 自体が ACL で通らない場合あり）
-- Mac: `/Applications/Tailscale.app/Contents/MacOS/Tailscale ping 100.106.158.2` → **`no matching peer`**
-- Mac: `tailscale status` の peer 一覧に **`raspberrypi` / `100.106.158.2` が出ない**
-- 同一 LAN では `https://192.168.10.230/admin` は **開ける**（Pi5 本体は正常）
+- ブラウザで `https://<Pi5 の Tailscale IP>/admin` が **タイムアウト**（または長時間待って失敗）
+- `ping <Pi5 の Tailscale IP>` が **100% loss**（ICMP 自体が ACL で通らない場合あり）
+- Mac: `/Applications/Tailscale.app/Contents/MacOS/Tailscale ping <Pi5 の Tailscale IP>` → **`no matching peer`**
+- Mac: `tailscale status` の peer 一覧に **`raspberrypi` / `<Pi5 の Tailscale IP>` が出ない**
+- 同一 LAN では `https://<Pi5 の LAN IP>/admin` は **開ける**（Pi5 本体は正常）
 
 **Investigation**:
 
 | 仮説 | 検証 | 結果 |
 |------|------|------|
-| Pi5 ダウン | LAN SSH / Pi5 上 `curl https://100.106.158.2/api/system/health` | **REJECTED**（Pi5 は応答） |
+| Pi5 ダウン | LAN SSH / Pi5 上 `curl https://<Pi5 の Tailscale IP>/api/system/health` | **REJECTED**（Pi5 は応答） |
 | Mac の Tailscale 未接続 | メニューバー Connected | **REJECTED** |
 | Mac に `tag:admin` なし | Mac `status --json` → `Self.Tags: null` · Pi5 `Self.Tags: ['tag:server']` | **CONFIRMED** |
 | UFW / Caddy 障害 | Pi5 上 443 listen · LAN から `/admin` 200 | **REJECTED** |
@@ -962,12 +962,12 @@ update-frequency: medium
 
 1. [Tailscale 管理画面](https://login.tailscale.com/admin/machines) → 運用 Mac → **Tags** に **`tag:admin`** を付与
 2. Mac の Tailscale を **オフ→オン** またはアプリ再起動
-3. `tailscale status` で **`100.106.158.2` / `raspberrypi` が peer に出る**こと · `tailscale ping 100.106.158.2` が成功することを確認
-4. `https://100.106.158.2/admin` を再試行
+3. `tailscale status` で **`<Pi5 の Tailscale IP>` / `raspberrypi` が peer に出る**こと · `tailscale ping <Pi5 の Tailscale IP>` が成功することを確認
+4. `https://<Pi5 の Tailscale IP>/admin` を再試行
 
 **Prevention**:
 
-- 管理画面アクセス不能時は **UFW より先に** `tailscale status` / **`Self.Tags`** / **`ping 100.106.158.2`** を確認する（[mac-ssh-access.md](../../guides/mac-ssh-access.md) 追補）
+- 管理画面アクセス不能時は **UFW より先に** `tailscale status` / **`Self.Tags`** / **`ping <Pi5 の Tailscale IP>`** を確認する（[mac-ssh-access.md](../../guides/mac-ssh-access.md) 追補）
 - Mac の Tailscale 再セットアップ後は **`tag:admin` 付与**をチェックリストに含める
 - 新規ポート追加時は KB-277 と同様 **grants に `tcp:<port>` を追加**する
 
@@ -989,19 +989,19 @@ update-frequency: medium
 
 **Context**:
 
-- キオスク端末: inventory **`raspberrypi4`** · LAN **`192.168.10.224`**（`tools03`）· Tailscale **`100.74.144.79`**（DNS **`raspberrypi-1`** · `tag:kiosk`）
-- Pi5 API/Web: **`100.106.158.2`**（`tag:server`）
-- `/usr/local/bin/kiosk-launch.sh` の正本 URL は **`https://100.106.158.2/kiosk?clientKey=client-key-raspberrypi4-kiosk1`**（Ansible テンプレ `kiosk-launch.sh.j2` と同型）
+- キオスク端末: inventory **`raspberrypi4`** · LAN **`<raspberrypi4 の LAN IP>`**（`tools03`）· Tailscale **`<raspberrypi4 の Tailscale IP>`**（DNS **`raspberrypi-1`** · `tag:kiosk`）
+- Pi5 API/Web: **`<Pi5 の Tailscale IP>`**（`tag:server`）
+- `/usr/local/bin/kiosk-launch.sh` の正本 URL は **`https://<Pi5 の Tailscale IP>/kiosk?clientKey=client-key-raspberrypi4-kiosk1`**（Ansible テンプレ `kiosk-launch.sh.j2` と同型）
 - 同一日に Mac **`tag:admin` 欠落**（[KB-442](#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）と Pi5 **`NeedsLogin` / node key expired**（下記 [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）も発生 — 切り分けを混同しないこと
 
 **Symptoms**:
 
 - 現場で **キオスク画面が真っ白 / 表示されない**
-- Pi4 上 Firefox は `https://100.106.158.2/kiosk?...` を開いているが **読み込めない**
-- Pi4: `curl -sk -o /dev/null -w "%{http_code}" "https://100.106.158.2/kiosk?..."` → **`000`**
-- Pi4: `curl -sk ... "https://192.168.10.230/kiosk?..."` → **`200`**（Pi5 は LAN では正常）
+- Pi4 上 Firefox は `https://<Pi5 の Tailscale IP>/kiosk?...` を開いているが **読み込めない**
+- Pi4: `curl -sk -o /dev/null -w "%{http_code}" "https://<Pi5 の Tailscale IP>/kiosk?..."` → **`000`**
+- Pi4: `curl -sk ... "https://<Pi5 の LAN IP>/kiosk?..."` → **`200`**（Pi5 は LAN では正常）
 - `tailscale status`（Pi4）で **`Logged out`** または、管理画面で **再ログイン承認直後**でも Pi5 が peer に出ない
-- 承認直後の `tailscale status --json` で **`BackendState: Running`** かつ **`InNetworkMap: true`** だが **`InMagicSock: false` / `InEngine: false`** · peer が **1 件程度** · `tailscale ping 100.106.158.2` → **`no matching peer`**
+- 承認直後の `tailscale status --json` で **`BackendState: Running`** かつ **`InNetworkMap: true`** だが **`InMagicSock: false` / `InEngine: false`** · peer が **1 件程度** · `tailscale ping <Pi5 の Tailscale IP>` → **`no matching peer`**
 
 **Investigation**:
 
@@ -1018,15 +1018,15 @@ update-frequency: medium
 **Root cause**:
 
 1. **Pi4 の Tailscale セッション失効**（`Logged out` 相当）により、Pi5 の Tailscale IP へルーティングできず、キオスク URL が開けない。
-2. **再ログイン承認だけ**では、一時的に **コントロールプレーンとの netmap / MagicSock が未同期**のまま残り、Pi5（`100.106.158.2`）が peer 一覧に現れないことがある。
-3. 調査中の **暫定**として `kiosk-launch.sh` の URL を **`192.168.10.230`（LAN）** に手変更すると LAN 経由では表示できるが、**標準運用（Tailscale URL + `tag:kiosk` ACL）から外れる**。
+2. **再ログイン承認だけ**では、一時的に **コントロールプレーンとの netmap / MagicSock が未同期**のまま残り、Pi5（`<Pi5 の Tailscale IP>`）が peer 一覧に現れないことがある。
+3. 調査中の **暫定**として `kiosk-launch.sh` の URL を **`<Pi5 の LAN IP>`（LAN）** に手変更すると LAN 経由では表示できるが、**標準運用（Tailscale URL + `tag:kiosk` ACL）から外れる**。
 
 **Fix（Pi4 · 標準復旧）**:
 
 ```bash
 # Pi5 経由 LAN SSH（例）
-ssh denkon5sd02@192.168.10.230
-ssh tools03@192.168.10.224
+ssh denkon5sd02@<Pi5 の LAN IP>
+ssh tools03@<raspberrypi4 の LAN IP>
 
 # 1) 再認証（未ログイン時は URL を表示して管理画面で承認）
 sudo tailscale up --advertise-tags=tag:kiosk
@@ -1038,13 +1038,13 @@ sudo tailscale up --advertise-tags=tag:kiosk --reset
 
 # 3) 疎通確認（Pi5 が peer に出る · ping 成功）
 tailscale status | head -5
-tailscale ping -c 2 100.106.158.2
+tailscale ping -c 2 <Pi5 の Tailscale IP>
 curl -sk -o /dev/null -w "ts:%{http_code}\n" \
-  "https://100.106.158.2/kiosk?clientKey=client-key-raspberrypi4-kiosk1" \
+  "https://<Pi5 の Tailscale IP>/kiosk?clientKey=client-key-raspberrypi4-kiosk1" \
   -H "x-client-key: client-key-raspberrypi4-kiosk1"
 
 # 4) kiosk-launch を標準 URL に戻す（手変更していた場合）
-sudo sed -i 's|https://192.168.10.230/kiosk|https://100.106.158.2/kiosk|' /usr/local/bin/kiosk-launch.sh
+sudo sed -i 's|https://<Pi5 の LAN IP>/kiosk|https://<Pi5 の Tailscale IP>/kiosk|' /usr/local/bin/kiosk-launch.sh
 # または .bak.202606031139 等から復元
 sudo systemctl restart kiosk-browser.service
 ```
@@ -1070,15 +1070,15 @@ sudo systemctl restart kiosk-browser.service
 | Git HEAD（Pi4） | **`b787c273`**（`main` · docs 先頭だが Pi5 と同 SHA） |
 | PLAY RECAP | `ok=122` `changed=11` **`failed=0`** |
 | Ansible サマリ | **`Git: changed`** · `kiosk-browser.service` 再起動 **ok** |
-| 実機 | Firefox `https://100.106.158.2/kiosk?...&_appRef=b787c273` · **現場正常化 OK** |
+| 実機 | Firefox `https://<Pi5 の Tailscale IP>/kiosk?...&_appRef=b787c273` · **現場正常化 OK** |
 
 **Prevention**:
 
-- キオスク真っ白時は **Firefox より先に** Pi4 の `tailscale ping 100.106.158.2` と `curl`（TS vs LAN）で層を切る。
+- キオスク真っ白時は **Firefox より先に** Pi4 の `tailscale ping <Pi5 の Tailscale IP>` と `curl`（TS vs LAN）で層を切る。
 - Tailscale **承認後**も ping 不可なら **`tailscaled` 再起動 + `tailscale up --advertise-tags=tag:kiosk --reset`** を手順化する（承認だけでは不十分なことがある）。
 - **Pi5 では `tag:server`**、**Pi4 では `tag:kiosk`** — `tailscale up` のタグを端末ごとに固定（Pi5 に `tag:kiosk` は誤り）。
-- LAN URL への手変更は **`.bak.<timestamp>` を残し**、TS 復旧後は **必ず `100.106.158.2` に戻す**。
-- inventory の **`100.74.144.79`（raspberrypi-1）** と **`100.105.224.86`（raspberrypi-2）** は別ノード。研削メインの到達確認は **LAN `192.168.10.224`** または Pi5 から `tailscale status` の **`active; direct 192.168.10.224`** を正とする。
+- LAN URL への手変更は **`.bak.<timestamp>` を残し**、TS 復旧後は **必ず `<Pi5 の Tailscale IP>` に戻す**。
+- inventory の **`<raspberrypi4 の Tailscale IP>`（raspberrypi-1）** と **`<raspberrypi3 の Tailscale IP>`（raspberrypi-2）** は別ノード。研削メインの到達確認は **LAN `<raspberrypi4 の LAN IP>`** または Pi5 から `tailscale status` の **`active; direct <raspberrypi4 の LAN IP>`** を正とする。
 
 **References**:
 
@@ -1096,18 +1096,18 @@ sudo systemctl restart kiosk-browser.service
 
 **発生日**: 2026-06-03（KB-442 対応後の Mac 管理画面再確認）
 
-**Context**: Pi5 **`raspberrypi`** · **`100.106.158.2`** · 正しい advertise タグは **`tag:server`**（`tag:kiosk` ではない）
+**Context**: Pi5 **`raspberrypi`** · **`<Pi5 の Tailscale IP>`** · 正しい advertise タグは **`tag:server`**（`tag:kiosk` ではない）
 
 **Symptoms**:
 
-- Mac で `tag:admin` 復旧後も **`https://100.106.158.2/admin` が不通**になることがある
+- Mac で `tag:admin` 復旧後も **`https://<Pi5 の Tailscale IP>/admin` が不通**になることがある
 - Pi5: `tailscale status` → **`NeedsLogin`** または netmap 更新失敗ログ
 - ログ例: **node key expired** · control plane への **netmap 更新が約 10 分失敗** → 自動ログアウト
 
 **Fix**:
 
 ```bash
-ssh denkon5sd02@192.168.10.230   # または LAN
+ssh denkon5sd02@<Pi5 の LAN IP>   # または LAN
 sudo tailscale up --advertise-tags=tag:server
 # 表示された https://login.tailscale.com/a/... を管理画面で承認 → Success
 tailscale status | head -3
@@ -1273,7 +1273,7 @@ tailscale status | head -3
 **検証結果**:
 - ✅ シンボリックリンク作成後、`chromium-browser --version`が正常に動作
 - ✅ `kiosk-browser.service`が正常に起動（`active (running)`）
-- ✅ chromiumプロセスが実行中で、キオスクURL（`https://100.106.158.2/kiosk`）を開いている
+- ✅ chromiumプロセスが実行中で、キオスクURL（`https://<Pi5 の Tailscale IP>/kiosk`）を開いている
 - ✅ 実機検証でキオスクが正常動作することを確認
 
 **再発防止**:
@@ -1301,7 +1301,7 @@ tailscale status | head -3
 
 **事象**:
 - KB-280で手動復旧していた`chromium-browser: not found`対策を、再発しない形で恒久化する必要があった
-- 全台デプロイ開始時、`raspberrypi4`（`100.74.144.79`）がSSH到達不可（`port 22 timeout`）でプリフライト停止した
+- 全台デプロイ開始時、`raspberrypi4`（`<raspberrypi4 の Tailscale IP>`）がSSH到達不可（`port 22 timeout`）でプリフライト停止した
 
 **根本原因**:
 - Debian Trixie環境では`chromium-browser`コマンド前提のままだと、端末追加時に再発余地が残る

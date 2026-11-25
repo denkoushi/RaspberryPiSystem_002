@@ -278,7 +278,7 @@ resources on both success and representative failure.
 
 Work from:
 
-    /Users/tsudatakashi/RaspberryPiSystem_002
+    ~/RaspberryPiSystem_002
 
 Use branch:
 

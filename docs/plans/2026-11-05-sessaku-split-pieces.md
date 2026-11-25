@@ -3,7 +3,7 @@
 
 この ExecPlan は生きた文書である。実装時は `.agent/PLANS.md` に従い、`Progress`、`Surprises & Discoveries`、`Decision Log`、`Outcomes & Retrospective` を更新する。本文のパスはリポジトリルートからの相対パスである。
 
-PR3 の作業場所は `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--sessaku-split-pieces-ui`。2026-11-06 の依頼で PR3 のローカル実装・検証と本書更新が承認された。PR2 はユーザー申告で main マージ・本番反映済み。commit、push、PR 作成、merge、release、deploy は今回の範囲外。秘密情報や `.env` は読まない。
+PR3 の作業場所は `~/RaspberryPiSystem_002-worktrees/feat--sessaku-split-pieces-ui`。2026-11-06 の依頼で PR3 のローカル実装・検証と本書更新が承認された。PR2 はユーザー申告で main マージ・本番反映済み。commit、push、PR 作成、merge、release、deploy は今回の範囲外。秘密情報や `.env` は読まない。
 
 ## Purpose / Big Picture
 

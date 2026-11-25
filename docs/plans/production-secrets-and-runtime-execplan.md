@@ -883,7 +883,7 @@ repository tests use an isolated generated CA and loopback endpoints.
 
 Work from:
 
-    cd /Users/tsudatakashi/RaspberryPiSystem_002
+    cd ~/RaspberryPiSystem_002
 
 The exact starting branch and SHA are:
 

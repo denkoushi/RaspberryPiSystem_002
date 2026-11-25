@@ -139,7 +139,7 @@ Note: full API `tsc --noEmit` still fails on pre-existing `rootDir` scope (`pris
 
 ### Deploy verification
 
-**DGX** (`ubudgxkoushi@100.118.82.72`):
+**DGX** (`ubudgxkoushi@<DGX Spark の Tailscale IP>`):
 
 - `control-server.py`, `gateway-server.py` running
 - Deployed files SHA-256 match repo: `resource_state.py`, `control-server.py`, `gateway-server.py`, `model_profiles.py`, `profile_launcher.py`, three manifests
@@ -147,7 +147,7 @@ Note: full API `tsc --noEmit` still fails on pre-existing `rootDir` scope (`pris
 - `GET /system/model-profiles` returns `runtimeProfile`
 - `GET /v1/models` → 200 when business vLLM ready
 
-**Pi5** (`denkon5sd02@100.106.158.2`):
+**Pi5** (`denkon5sd02@<Pi5 の Tailscale IP>`):
 
 - `docker-api-1` healthy, `docker-web-1` running
 - Web bundle includes: `DGX 所有`, `保守: モデルプロファイル起動`, `Strict Ready`, `vLLM memory budget`

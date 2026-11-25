@@ -12,7 +12,7 @@ The database row remains the fleet-wide source of truth, the localhost torque ag
 
 - [x] (2026-08-18 JST) Re-read repository safety, architecture, test, documentation and UI rules and the relevant torque-wrench ADRs, plans, runbooks and code.
 - [x] (2026-08-18 JST) Revalidated remote `origin/main` at `af4ac166125e8dc1ea2c93c6d9cefe45bbaa2944`; proved `71077ea`, `d8d3fd96`, `97ec77bc`, `56de0e47`, `7095fe18`, `a16d74f7`, `264d3188` and `af4ac166` are contained.
-- [x] (2026-08-18 JST) Protected the unrelated source worktree and created `/Users/tsudatakashi/RaspberryPiSystem_002-torque-wrench-global-ownership` on `feat/torque-wrench-global-ownership` from exact `af4ac166`.
+- [x] (2026-08-18 JST) Protected the unrelated source worktree and created `~/RaspberryPiSystem_002-torque-wrench-global-ownership` on `feat/torque-wrench-global-ownership` from exact `af4ac166`.
 - [x] (2026-08-18 JST) Created this ExecPlan and `docs/decisions/ADR-20260818-torque-wrench-global-ownership.md` before source edits.
 - [x] (2026-08-18 JST) Extracted and tested the common API lease policy, coordinator, Prisma repository, assembly/training adapters and owner-redacted status contract.
 - [x] (2026-08-18 JST) Implemented exact-token conditional release and bounded same-token communication recovery in torque-agent.
@@ -86,7 +86,7 @@ Finally, update `docs/runbooks/assembly-torque-agent.md` for cross-kind operatio
 
 ## Concrete Steps
 
-All source work occurs in `/Users/tsudatakashi/RaspberryPiSystem_002-torque-wrench-global-ownership`.
+All source work occurs in `~/RaspberryPiSystem_002-torque-wrench-global-ownership`.
 
 Inspect changes before and after each milestone with:
 

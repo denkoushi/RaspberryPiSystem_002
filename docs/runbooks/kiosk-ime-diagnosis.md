@@ -40,7 +40,7 @@ Pi4 キオスク端末に SSH 接続し、診断スクリプトを実行する�
 
 ```bash
 # 例: Pi5 経由で raspi4-robodrill01 に接続
-ssh denkon5sd02@100.106.158.2 'ssh tools04@<PI4_IP> "bash -s"' < scripts/kiosk/diagnose-ime.sh
+ssh denkon5sd02@<Pi5 の Tailscale IP> 'ssh tools04@<PI4_IP> "bash -s"' < scripts/kiosk/diagnose-ime.sh
 ```
 
 または、スクリプトを Pi4 にコピーしてから実行する。

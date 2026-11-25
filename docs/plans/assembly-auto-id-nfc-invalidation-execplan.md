@@ -262,7 +262,7 @@ WorkUnit削除は`RESTRICT`される。よって無効化状態をWorkUnitへ追
 
 ## Concrete Steps
 
-リポジトリルート `/Users/tsudatakashi/RaspberryPiSystem_002` で実行する。
+リポジトリルート `~/RaspberryPiSystem_002` で実行する。
 
 1. shared-types、Prisma schema、migration、APIサービスの順に編集する。
 2. `pnpm --filter @raspi-system/shared-types build` とAPI/Webの対象Vitestを反復実行する。

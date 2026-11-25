@@ -30,7 +30,7 @@
 
 ```bash
 # MacからPi5へSSH（Tailscale IP）
-ssh denkon5sd02@100.106.158.2
+ssh denkon5sd02@<Pi5 の Tailscale IP>
 
 # 稼働中のblue/green APIスロット内でバックフィル実行（locationKey はデフォルト "default"）
 cd /opt/RaspberryPiSystem_002
@@ -64,7 +64,7 @@ stats API は `totalCanonicalRows`・`totalFeatureKeys`・`topFeatures` を、`x
 
 ```bash
 # x-client-key はバックフィルした locationKey と同じ deviceScopeKey を持つ端末の client-key
-curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/actual-hours/stats" \
+curl -sk "https://<Pi5 の Tailscale IP>/api/kiosk/production-schedule/due-management/actual-hours/stats" \
   -H "x-client-key: <client-key>"
 ```
 

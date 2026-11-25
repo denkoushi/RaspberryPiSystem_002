@@ -121,7 +121,7 @@ Milestone 4 runs requested targeted tests, both TypeScript checks, changed-file 
 ## Concrete Steps
 
 
-Run in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--load-balancing-outsource-vendors`:
+Run in `~/RaspberryPiSystem_002-worktrees/feat--load-balancing-outsource-vendors`:
 
     pnpm --filter @raspi-system/api exec prisma generate
     pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/loadBalancing src/pages/kiosk/ProductionScheduleLoadBalancingPage.test.tsx

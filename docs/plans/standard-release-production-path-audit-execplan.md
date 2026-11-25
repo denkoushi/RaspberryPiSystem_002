@@ -449,7 +449,7 @@ as CI evidence.
 ## Concrete Steps
 
 Run all commands from the repository root
-`/Users/tsudatakashi/RaspberryPiSystem_002`.
+`~/RaspberryPiSystem_002`.
 
 Validate the matrix and write a report:
 

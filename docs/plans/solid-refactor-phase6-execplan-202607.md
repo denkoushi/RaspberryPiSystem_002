@@ -106,7 +106,7 @@ Each step is executed by a Composer 2.5 worker subagent, serially; the orchestra
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 API verification: `POSTGRES_PORT=5432 bash scripts/test/run-tests.sh` (container `postgres-test-local` on 5432; explicit port export required because the script auto-switches to 55432 when 5432 is occupied). Typecheck from apps/api: `tsc -p tsconfig.build.json --noEmit` (plain `tsc --noEmit` has a known pre-existing TS6059 failure).
 

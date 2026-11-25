@@ -138,7 +138,7 @@ APIへ無効化、履歴一覧、履歴詳細を追加する。Webの自主検�
 
 Repository root:
 
-    cd /Users/tsudatakashi/RaspberryPiSystem_002
+    cd ~/RaspberryPiSystem_002
 
 Prisma生成と静的検証:
 

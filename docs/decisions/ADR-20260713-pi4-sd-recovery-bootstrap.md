@@ -37,9 +37,9 @@ Raspberry Pi OS, join Wi-Fi, then report the old logical terminal, the new OS
 hostname, and its current IP. DHCP may not reuse the former address.
 
 Live factory evidence confirmed that Inventory is not authoritative for current
-LAN assignment. `raspberrypi4` was healthy at `192.168.10.223` while its declared
-address was `.224`; Sessaku was healthy at `192.168.10.104` while its declared
-address was on `192.168.128.187`. A fixed-address recovery precondition would
+LAN assignment. `raspberrypi4` was healthy at `<raspberrypi4 の実際の LAN IP>` while its declared
+address was `.224`; Sessaku was healthy at `<raspi4-sessaku-01 の実際の LAN IP>` while its declared
+address was on `<raspi4-sessaku-01 の LAN IP>`. A fixed-address recovery precondition would
 therefore reject healthy, correctly reachable replacements.
 
 Accepting an arbitrary IP without identity verification would be unsafe. The

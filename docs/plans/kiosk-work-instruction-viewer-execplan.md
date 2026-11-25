@@ -65,7 +65,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Context and Orientation
 
-作業worktreeは `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--kiosk-work-instruction-viewer`、branchは `feat/kiosk-work-instruction-viewer` である。他worktreeの未コミット変更には触れない。
+作業worktreeは `~/RaspberryPiSystem_002-worktrees/feat--kiosk-work-instruction-viewer`、branchは `feat/kiosk-work-instruction-viewer` である。他worktreeの未コミット変更には触れない。
 
 `apps/web/src/pages/kiosk/KioskSelfInspectionPage.tsx` は自主検査一覧のページcompositionを担当し、現在658行ある。既存の製造orderスキャン、氏名NFC、候補検索、仕掛中一覧、検査workflowを所有するため、新しい業務ロジックはここへ直接積まず、専用feature moduleからstateとeventを配線するだけにする。`apps/web/src/features/barcode-scan` の `useKeyboardWedgeScan` は高速キーボード入力をバーコードとしてまとめる既存hookである。
 
@@ -124,7 +124,7 @@ agent作業が衝突した場合はそのagentを止め、rootがdiffとownershi
 Lifecycle start evidence:
 
     branch: feat/kiosk-work-instruction-viewer
-    worktree: /Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--kiosk-work-instruction-viewer
+    worktree: ~/RaspberryPiSystem_002-worktrees/feat--kiosk-work-instruction-viewer
     origin_main_sha: 38823350dc3458fa0d959871f317e058ea6dd21b
     worktree_created: true
     warnings: []

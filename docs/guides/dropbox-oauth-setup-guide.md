@@ -36,7 +36,7 @@
 
 1. **Raspberry Pi 5にSSH接続**
    ```bash
-   ssh denkon5sd02@100.106.158.2
+   ssh denkon5sd02@<Pi5 の Tailscale IP>
    ```
 
 2. **設定ファイルのディレクトリを確認**

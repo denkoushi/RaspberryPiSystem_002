@@ -1,7 +1,7 @@
 # KB-421: kensakuMain で動画を開くと画面が止まって震えた（古い labwc / OS を更新して解消）
 
 - Status: `active`
-- Scope: Pi4 キオスク `raspberrypi4`（kensakuMain、tools03、Tailscale 100.74.144.79）の OS パッケージ。アプリのコードは変えていない。
+- Scope: Pi4 キオスク `raspberrypi4`（kensakuMain、tools03、Tailscale <raspberrypi4 の Tailscale IP>）の OS パッケージ。アプリのコードは変えていない。
 
 ## Context
 

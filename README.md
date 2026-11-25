@@ -6,7 +6,7 @@
 
 DGX SparkのLease・排他調停、Private Pi 5の管理ダッシュボード、温度・履歴監視は
 [`denkoushi/DGXSparkControlPlane`](https://github.com/denkoushi/DGXSparkControlPlane)
-（ローカル: `/Users/tsudatakashi/DGXSparkControlPlane`）が正本です。本リポジトリは業務キオスク、
+（ローカル: `~/DGXSparkControlPlane`）が正本です。本リポジトリは業務キオスク、
 業務管理画面、業務Pi 5／Pi 4、および業務側DGX API利用を担当します。
 
 通常は片方のリポジトリだけを変更します。DGXの互換API、モデルprofile、認証、workload識別子、
@@ -55,7 +55,7 @@ Hermes／StackChanのDGX起動方式を変える場合だけ、両方を確認�
 本プロジェクトは以下の環境で開発・運用されます：
 
 - **開発環境（Mac）**: IDE（Cursor/VSCodeなど）でコード編集・Git管理
-  - ローカルリポジトリ: `/Users/tsudatakashi/RaspberryPiSystem_002`（Mac上）
+  - ローカルリポジトリ: `~/RaspberryPiSystem_002`（Mac上）
   - AIアシスタントは Mac のローカルリポジトリを参照してコード編集を行う
   - コミット・プッシュは Mac 上で実行（基本は手動、必要に応じてAIが自動実行）
 
@@ -310,7 +310,7 @@ pnpm test:e2e:headed
    ```
    `.env` 例:  
    ```
-   API_BASE_URL=http://192.168.10.230:8080
+   API_BASE_URL=http://<Pi5 の LAN IP>:8080
    CLIENT_ID=pi4-tools03
    AGENT_MODE=production
    QUEUE_DB_PATH=/home/<user>/.local/share/nfc-agent/queue.db

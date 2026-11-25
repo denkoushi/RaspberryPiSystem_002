@@ -48,7 +48,7 @@
 ## Context and Orientation
 
 
-リポジトリはAPI（`apps/api`）、Web（`apps/web`）、共通型（`packages/shared-types`）で構成される。作業場所は `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--torque-wrench-optional-settings`。主worktreeや他作業の差分は変更しない。
+リポジトリはAPI（`apps/api`）、Web（`apps/web`）、共通型（`packages/shared-types`）で構成される。作業場所は `~/RaspberryPiSystem_002-worktrees/feat--torque-wrench-optional-settings`。主worktreeや他作業の差分は変更しない。
 
 `apps/api/src/services/torque-wrenches/torque-wrench-eligibility.policy.ts` は型番レンジ・校正・能力グループ・状態・登録設定を照合する。設定前判定は既に分離されている。通常締結の実処理は `assembly-torque-traceability.service.ts`、訓練は `torque-training.service.ts` と `torque-training-wrench-preparation.service.ts`。実測値の合否はボルト／訓練版の基準値で判定する。
 

@@ -337,7 +337,7 @@ cd apps/web && pnpm build && cd ../..
    ```
 
 2. **管理画面でCSVインポート**
-   - 管理画面にログイン: `https://100.106.158.2/admin`
+   - 管理画面にログイン: `https://<Pi5 の Tailscale IP>/admin`
    - 「マスターデータインポート」ページにアクセス
    - CSVファイルをアップロード
    - インポート結果を確認
@@ -366,8 +366,8 @@ cd apps/web && pnpm build && cd ../..
    - 注意: `rfidTagUid`は既存データと重複しない値を使用してください
 
 2. **管理画面でCSVインポート（UI経由）**
-   - 管理画面にログイン: `https://100.106.158.2/admin`
-   - 「一括登録」タブにアクセス: `https://100.106.158.2/admin/import`
+   - 管理画面にログイン: `https://<Pi5 の Tailscale IP>/admin`
+   - 「一括登録」タブにアクセス: `https://<Pi5 の Tailscale IP>/admin/import`
    - 「計測機器CSV (measuring-instruments.csv)」セクションでCSVファイルを選択
    - 選択したファイル名が表示されることを確認
    - 「既存データをクリアしてから取り込み（計測機器CSVのみ）」にチェックを入れるか選択
@@ -401,8 +401,8 @@ cd apps/web && pnpm build && cd ../..
    ```
 
 2. **管理画面でCSVインポート（UI経由）**
-   - 管理画面にログイン: `https://100.106.158.2/admin`
-   - 「一括登録」タブにアクセス: `https://100.106.158.2/admin/import`
+   - 管理画面にログイン: `https://<Pi5 の Tailscale IP>/admin`
+   - 「一括登録」タブにアクセス: `https://<Pi5 の Tailscale IP>/admin/import`
    - 「吊具CSV (rigging-gears.csv)」セクションでCSVファイルを選択
    - 選択したファイル名が表示されることを確認
    - 「既存データをクリアしてから取り込み（吊具CSVのみ）」にチェックを入れるか選択
@@ -485,8 +485,8 @@ cd apps/web && pnpm build && cd ../..
 - [x] 既存の計測機器を編集して`department`を変更できるか
 
 **検証手順**:
-1. 管理画面にログイン: `https://100.106.158.2/admin`
-2. 「計測機器」タブにアクセス: `https://100.106.158.2/admin/tools/measuring-instruments`
+1. 管理画面にログイン: `https://<Pi5 の Tailscale IP>/admin`
+2. 「計測機器」タブにアクセス: `https://<Pi5 の Tailscale IP>/admin/tools/measuring-instruments`
 3. 一覧表に「部署」列が表示されることを確認
 4. 「新規作成」または既存の計測機器の「編集」をクリック
 5. フォームに「部署」選択フィールドが表示されることを確認
@@ -990,8 +990,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 - PowerAutomateなどから、指定した件名パターンに合致するCSVファイルが添付されたメールがGmailに送信されていること
 
 **検証手順**:
-1. 管理画面にログイン: `https://100.106.158.2/admin`
-2. 「一括登録」タブにアクセス: `https://100.106.158.2/admin/import`
+1. 管理画面にログイン: `https://<Pi5 の Tailscale IP>/admin`
+2. 「一括登録」タブにアクセス: `https://<Pi5 の Tailscale IP>/admin/import`
 3. 同じ `/admin/import` ページのCSVインポートスケジュール欄を開く
 4. 「新規作成」ボタンをクリック
 5. スケジュール名、cron式（例: 1分ごとに実行する`* * * * *`）、プロバイダーを`Gmail`に設定
@@ -1038,15 +1038,15 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 - Pi5側の環境変数に`SLACK_KIOSK_SUPPORT_WEBHOOK_URL`が設定されていること
 
 **検証手順**:
-1. 管理画面にログイン: `https://100.106.158.2/admin`
+1. 管理画面にログイン: `https://<Pi5 の Tailscale IP>/admin`
 2. Pi5側の環境変数を確認:
    ```bash
-   ssh denkon5sd02@100.106.158.2
+   ssh denkon5sd02@<Pi5 の Tailscale IP>
    cd /opt/RaspberryPiSystem_002
    # Webhook URL は秘密情報なので値を表示せず、設定の有無だけを確認する
    scripts/server/run-in-active-api.sh sh -c 'test -n "$SLACK_KIOSK_SUPPORT_WEBHOOK_URL" && echo set || echo unset'
    ```
-3. キオスク画面にアクセス: `https://100.106.158.2/kiosk`
+3. キオスク画面にアクセス: `https://<Pi5 の Tailscale IP>/kiosk`
 4. ヘッダーの「お問い合わせ」ボタンをクリック
 5. モーダルが表示されることを確認
 6. **送信者ドロップダウン**から社員を選択（必須）

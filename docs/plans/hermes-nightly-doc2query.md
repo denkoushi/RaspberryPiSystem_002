@@ -60,7 +60,7 @@ From the task worktree, run the API's installed Vitest and ESLint against the ni
     pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit
     pnpm --filter @raspi-system/api exec eslint src/services/business-hermes/business-hermes-nightly.service.ts src/services/business-hermes/business-hermes-nightly-candidates.ts src/services/business-hermes/business-hermes-nightly-candidates.test.ts src/services/business-hermes/business-hermes-nightly-preparation.test.ts
 
-The first API command passed 3 tests; the second passed 8, including a final recheck after strengthening copied-question detection to recognize source-prefixed copies. Type checking and lint passed. From `services/hermes-answer-cache`, use the existing private Python environment at `/Users/tsudatakashi/Documents/Codex/2026-09-12/new-chat/work/gptcache-venv/bin/python` with `-m unittest test_maintenance test_catalogue test_experience`: 20 passed. After the copied-question guard changed, `-m unittest test_maintenance` passed all 13 affected tests. 
+The first API command passed 3 tests; the second passed 8, including a final recheck after strengthening copied-question detection to recognize source-prefixed copies. Type checking and lint passed. From `services/hermes-answer-cache`, use the existing private Python environment at `~/Documents/Codex/2026-09-12/new-chat/work/gptcache-venv/bin/python` with `-m unittest test_maintenance test_catalogue test_experience`: 20 passed. After the copied-question guard changed, `-m unittest test_maintenance` passed all 13 affected tests. 
 
 The default system Python lacks GPTCache; no dependencies were added to it. Test execution and environment repair stayed within the repository's 20-minute validation budget.
 

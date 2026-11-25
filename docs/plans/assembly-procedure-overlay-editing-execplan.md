@@ -151,13 +151,13 @@ Milestone 5ではfocused tests、実PostgreSQL、Playwright、SOP生成を行う
 
 作業場所は次のlinked worktreeだけである。
 
-    cd /Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--assembly-procedure-overlay-editing
+    cd ~/RaspberryPiSystem_002-worktrees/feat--assembly-procedure-overlay-editing
     git branch --show-current
     # feat/assembly-procedure-overlay-editing
 
 開始時の再現手順は元repoで次のとおりだった。既に開始済みなので同名worktreeを再作成しない。
 
-    cd /Users/tsudatakashi/RaspberryPiSystem_002
+    cd ~/RaspberryPiSystem_002
     python3 -m scripts.git_lifecycle.cli audit --json
     python3 -m scripts.git_lifecycle.cli start --branch feat/assembly-procedure-overlay-editing
 

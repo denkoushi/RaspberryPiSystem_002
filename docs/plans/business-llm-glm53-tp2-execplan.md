@@ -8,7 +8,7 @@
 
 ## Progress
 
-- [x] 2026-10-22 Spark 1 と Spark 2 を QSFP で直結した(192.168.100.10/.11、MTU 9000、両方向で約206Gb/s)。
+- [x] 2026-10-22 Spark 1 と Spark 2 を QSFP で直結した(<DGX Spark 1 の直結 IP>/.11、MTU 9000、両方向で約206Gb/s)。
 - [x] 2026-10-22 手動の `docker run` 2本で GLM の TP=2 試験をした。普通の会話、`reasoning_effort=low`、道具の呼び出し、画像入力に合格し、速度は 24〜36 tok/s だった。終了後は Qwen に戻した。
 - [x] 2026-10-22 公式文書、vLLM recipe、NVIDIA フォーラム、Mia-AiLab、両リポジトリを調査した。
 - [x] R1: 2026-10-22 ローカル実装・文書更新済み。`scripts/dgx-local-llm-system/tests` の全135テストが成功(sandbox 外で実行)。変更shellの `bash -n` は成功、shellcheck は未導入。

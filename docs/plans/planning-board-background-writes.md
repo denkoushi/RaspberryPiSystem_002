@@ -42,7 +42,7 @@ Finally run focused tests, inspect the final diff, submit a PR with the deploy-i
 
 Run commands from the task worktree unless noted. Reuse installed workspace dependencies without changing the lockfile. Build shared-types if its generated output is absent. From `apps/web`, run `pnpm exec vitest run src/features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue.test.ts src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.test.tsx`, then `pnpm exec tsc -b` and ESLint on changed source files. Update exact test names here if the queue module is renamed. Use hosted CI for the broader suite; do not duplicate its full container build locally.
 
-Deployment uses only `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit <exact hosts>`, followed by one `--detach` and canonical `--status <returned run id>`. Target raspberrypi5 and the six existing kiosk hosts (stonebase01, robodrill01, fjv60-80, sessaku-01, assembly-01, kensaku-02); allow only standard one-shot offline-host exclusions. Existing credential path is `/Users/tsudatakashi/RaspberryPiSystem_002/infrastructure/ansible/.vault-pass`; do not copy credentials into worktrees.
+Deployment uses only `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit <exact hosts>`, followed by one `--detach` and canonical `--status <returned run id>`. Target raspberrypi5 and the six existing kiosk hosts (stonebase01, robodrill01, fjv60-80, sessaku-01, assembly-01, kensaku-02); allow only standard one-shot offline-host exclusions. Existing credential path is `~/RaspberryPiSystem_002/infrastructure/ansible/.vault-pass`; do not copy credentials into worktrees.
 
 ## Validation and Acceptance
 
@@ -56,7 +56,7 @@ Do not reset/stash existing WIP, force-remove worktrees, bypass concurrency chec
 
 ## Artifacts and Notes
 
-Task evidence lives in `/Users/tsudatakashi/Documents/Codex/2026-09-14/new-chat-2/work/board-writes-*` and a final concise record under `outputs`. PR, CI, merge, run IDs, and final results will be recorded as they become known.
+Task evidence lives in `~/Documents/Codex/2026-09-14/new-chat-2/work/board-writes-*` and a final concise record under `outputs`. PR, CI, merge, run IDs, and final results will be recorded as they become known.
 
 ## Interfaces and Dependencies
 

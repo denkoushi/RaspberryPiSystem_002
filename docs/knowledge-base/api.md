@@ -482,7 +482,7 @@
   - ✅ `apps/api/.eslintrc.cjs` の `import/no-restricted-paths` を拡張し、`routes/kiosk -> routes/clients` と `routes/clients -> routes/kiosk` の相互依存を禁止
   - ✅ サービス層テストを追加（`import-history.service.test.ts`、`csv-import-config.service.test.ts`）
 - **トラブルシューティング**:
-  - 実機確認で `https://raspberrypi.local/api/system/health` が名前解決不可（`curl` exit code 6）になったため、Tailscale IP (`https://100.106.158.2/api/system/health`) で疎通確認して解消
+  - 実機確認で `https://raspberrypi.local/api/system/health` が名前解決不可（`curl` exit code 6）になったため、Tailscale IP (`https://<Pi5 の Tailscale IP>/api/system/health`) で疎通確認して解消
   - コンテナ内のマイグレーション確認で `npx` が存在しないため、`docker compose ... exec -T api pnpm prisma migrate status` に切り替えて確認
 - **検証**:
   - **追加分検証**: 追加した2ファイル対象で6件全件パス
@@ -637,7 +637,7 @@
 
 **本番デプロイ（2026-04-29 追補）**:
 - **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（可視化 JPEG・`/api/tools/machines/uninspected` は Pi5 `api`）。
-- **標準コマンド**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/uninspected-kpi-card-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **標準コマンド**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh fix/uninspected-kpi-card-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-174518-6203`**（リモート **`*.exit`=`0`**・`PLAY RECAP` **`failed=0` / `unreachable=0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 148s**・Tailscale）。
 
@@ -736,7 +736,7 @@
 - **順序**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → **`raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**・Pi3 は **他ホストと並列に起動しない**）。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: `20260422-135405-32716` → `20260422-140303-10184` → `20260422-140726-29698` → `20260422-141044-15315` → `20260422-141446-12382` → `20260422-141809-5836`。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
-- **HTTP スモーク**: `GET https://100.106.158.2/kiosk/pallet-visualization`・`…/admin/pallet-machine-illustrations` → **各 200**（認証前でも SPA エントリとして 200 になる構成）。
+- **HTTP スモーク**: `GET https://<Pi5 の Tailscale IP>/kiosk/pallet-visualization`・`…/admin/pallet-machine-illustrations` → **各 200**（認証前でも SPA エントリとして 200 になる構成）。
 
 **追補デプロイ（2026-04-22・UI/配信/ウェッジ）**:
 - ブランチ **`feat/pallet-visualization-ui-fixes`**・代表 **`d3c2f7b5`**（イラスト **公開 GET**・キオスク **左独立スクロール**・**パレット番号視認性**・**キーボードウェッジ**・API/Web 回帰テスト）。
@@ -758,7 +758,7 @@
 
 **追補（2026-04-22・`pallet-machine-illustrations` ストレージ永続化 / Pi5 `api`）**:
 - ブランチ **`fix/pallet-machine-illustrations-volume`**・代表 **`937684fd`**（compose bind + Ansible ホスト `0755` ディレクトリ + Mac override）。
-- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/pallet-machine-illustrations-volume infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260422-185725-32599`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh fix/pallet-machine-illustrations-volume infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260422-185725-32599`**（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **根因**: `api` コンテナ内の `…/pallet-machine-illustrations` に **host bind 無し**で書いていたため、`Rebuild/Restart docker compose services` 相当の再作成で **実ファイルが消えた**（DB 参照は残る）→ デプロイのたびに **404**。
 - **対策**: `docker-compose.server.yml` の `pallet-machine-illustrations-storage`（`type: none` + `device: /opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`）を `api` に付与。ローカル Mac は `docker-compose.mac-local.override.yml` で同パスをプロジェクト下に bind。計測機器ジャンル画像（[KB-343](./infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)）と同系。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録時 **約 74s**）。
@@ -768,14 +768,14 @@
 - **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Pi3**: 今回 **未デプロイ**（`/kiosk/tag`・`/kiosk/photo` は Pi4 キオスク向け）。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: `20260422-195055-26766` → `20260422-195523-3733` → `20260422-200022-22643` → `20260422-200451-21847` → `20260422-201046-31258`。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **65s**）。
-- **HTTP スモーク**: `GET https://100.106.158.2/kiosk/tag`・`…/kiosk/photo`・`…/kiosk/pallet-visualization` → **各 200**。
+- **HTTP スモーク**: `GET https://<Pi5 の Tailscale IP>/kiosk/tag`・`…/kiosk/photo`・`…/kiosk/pallet-visualization` → **各 200**。
 - **仕様**: 専用ページ `/kiosk/pallet-visualization` は据え置き。タグ持出・写真持出の **左ペイン余白**に **同一 API 契約**のパレット操作 UI を埋め込み（番号選択・**追加/上書/選択削除/全削除**（`copy.ts`）・スキャン部品一覧・ローカルストレージの選択機種 CD 共有）。狭い列向け **`PalletVizPalletNumberGrid` variant `compact`**。操作行の 1 行レイアウト・暗背景視認性は下記「操作行 UX」追補。
 - **トラブルシュート**: 多段デプロイの **ローカルロック**（exit 3）は [deployment.md の運用メモ](../guides/deployment.md) どおり **前ジョブ完了待ち**。
 
 **追補（2026-04-22・持出左ペイン パレット操作行 UX・Web のみ・Pi3 除外）**:
 - ブランチ **`feat/kiosk-pallet-embed-action-row-layout`**・代表 **`825a2f8d`**（`PalletVizActionRow`・`density`・`Button` **`ghostOnDark`**・`copy.ts`・`PalletVizEmbeddedPanel` イラスト高さ・[design preview](../design-previews/kiosk-borrow-left-pallet-embed-preview.html)）。
 - **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**（接頭辞 `ansible-update-`）: `20260422-212321-19726` → `20260422-212908-2306` → `20260422-213420-32381` → `20260422-213836-18696` → `20260422-214244-25414`。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **111s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/tag`・`…/kiosk/photo`・`…/kiosk/pallet-visualization` → **各 200**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **111s**）。**HTTP スモーク**: `GET https://<Pi5 の Tailscale IP>/kiosk/tag`・`…/kiosk/photo`・`…/kiosk/pallet-visualization` → **各 200**。
 - **仕様**: `palletVizCopy.actions` で **追加/上書/選択削除/全削除**。`PalletVizActionRow` に **`density?: 'default' | 'compact'`**（**`PalletVizEmbeddedPanel` のみ `compact`**・4 列 1 行・`min-h-10`・`truncate`）。3・4 番は **`variant="ghostOnDark"`**（暗背景で `ghost` が **`!text-slate-900`** のため見えない問題の回避）、全削除は **赤系**の上書き `className`。埋め込みイラストは **`h-32`**。専用 `/kiosk/pallet-visualization` は `density` 省略（default）で **後段ボタンの視認性修正のみ共有**。
 - **知見**: **Pi5 のみ** `Rebuild/Restart docker compose services`（**`web` 再ビルド**）。
 - **トラブルシュート**: 操作行が暗パネル上で読めないときは **`ghost` のままになっていないか**確認（→ **`ghostOnDark`**）。**直列デプロイ**で **前 `--detach --follow` 未完了**に次を起動すると **Mac ローカルロック** exit 3。
@@ -790,15 +790,15 @@
 
 **追補（2026-04-24・配膳スマホ パレット可視化 カード単体スクロール・Web のみ・Pi5 のみ）**:
 - ブランチ **`feat/mobile-pallet-viz-scroll-layout`**・代表 **`c6a7e655`**（レイアウト）+ **`b292a5db`**（E2E: `e2e/mobile-pallet-viz-scroll-investigation.spec.ts` の CDP タッチはカード上のみ等）。
-- **本番デプロイ（実績）**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-pallet-viz-scroll-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260424-093828-22068`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（本画面は Pi5 `web` の `/kiosk/...`）。
+- **本番デプロイ（実績）**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/mobile-pallet-viz-scroll-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260424-093828-22068`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（本画面は Pi5 `web` の `/kiosk/...`）。
 - **仕様**: テンキー・操作行 **固定**・部品カード **`PalletVizItemList` ルートのみ**縦スクロール（flex 親を `flex flex-col min-h-0 flex-1` で接続）。**API/DB 変更なし**。モバイルで **誤ったスクロール伝播**を抑えるため **`touch-action: pan-y`**・親チェーンの **`wheel` / `touchmove`（`passive: false`）** を併用（[KB-339 §V25](./KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz` → **200**（`curl -k`）。**手動**: カード複数で **一覧だけ**フリックスクロール。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。**HTTP スモーク**: `GET https://<Pi5 の Tailscale IP>/kiosk/mobile-placement/pallet-viz` → **200**（`curl -k`）。**手動**: カード複数で **一覧だけ**フリックスクロール。
 - **到達性**: 実行環境によっては Pi5 **SSH タイムアウト**の例あり→ **Tailscale 到達可な端末**でデプロイ（[deployment.md](../guides/deployment.md) §2026-04-24）。
 - **ナレッジ**: [KB-339 §V25](./KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24）。
 
 **追補（2026-04-25・部品カード UI・Web のみ・Pi5 のみ）**:
 - ブランチ **`feat/pallet-viz-item-card-solid-local`**・代表 **`c986162c`**（`PalletVizItemCard`・`palletVizItemCardTokens`・`palletVizListItem`・`palletVizItemCardFormatters`・`PalletVizItemList` 薄化・**外寸非表示**）。
-- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-viz-item-card-solid-local infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-094225-8483`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/pallet-viz-item-card-solid-local infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-094225-8483`**（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **仕様**: 専用 `/kiosk/pallet-visualization`・配膳スマホ `/kiosk/mobile-placement/pallet-viz`・**持出左ペイン**（`PalletVizEmbeddedPanel`）の **`PalletVizItemList`** が同カード。静的プレビュー整合は [pallet-viz-card-layout-preview.html](../design-previews/pallet-viz-card-layout-preview.html)。**`outsideDimensionsDisplay`** は **表示しない**（データは温存）。機種名が無いとき行1 中央は **空**（[KB-339 §V27](./KB-339-mobile-placement-barcode-survey.md#v27-pallet-viz-item-card-ui-2026-04-25)）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **134s**）。
 - **トラブルシュート**: 未追跡 `docs/design-previews/...` で **デプロイ fail-fast**（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）→ **commit** か **`git stash push -u`**。見た目が古い → **スーパーリロード**。
@@ -832,14 +832,14 @@
 
 **追補（2026-04-25・パレット可視化ボード サイネージ JPEG レンダラー・API のみ・Pi5 のみ）**:
 - ブランチ **`feat/pallet-board-jpeg-illustration-and-text-clip`**・代表 **`d01eb79c`**（`PalletBoardRenderer`・`pallet-board-single-layout.ts`・`pallet-board-illustration-data-uri.ts`・`pallet-card-thumbnail-data-uri.ts`・`pallet-board-svg-text.ts`・`apps/api` `build` の **assets コピー**）。
-- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-jpeg-illustration-and-text-clip infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-121049-5082`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（`current-image` は Pi5 API の JPEG を取得するだけ・[deployment.md 冒頭](../guides/deployment.md) 同補足）。
+- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/pallet-board-jpeg-illustration-and-text-clip infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-121049-5082`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（`current-image` は Pi5 API の JPEG を取得するだけ・[deployment.md 冒頭](../guides/deployment.md) 同補足）。
 - **仕様**: シングルマシン領域で、**左ペイン**は `illustrationUrl` 解決成功時 **`<image>`**（`preserveAspectRatio="xMidYMid meet"`）・未登録/失敗時は従来の **「機械イラスト」** テキスト。各スロット左は **同梱 PNG**（`assets/pallet-card-thumbnail.png`）を data URI 化して表示、**読み込み失敗**時は **線画 `palletBoardFixtureInnerSvg`**。全スロット **`clipPath`** 内にカード地・サムネ・**`<text>`** を収め、長文は **概算文字数＋`…`**（`pallet-board-svg-text.ts`）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本セッション **約 58s**）。**手動目視（残）**: 管理 **`/admin/signage/preview`** で当該スケジュールの **1 台専用レイアウト**（パレット可視化）を確認（イラスト・サムネ・長い FHIN/機種名の省略）。
 - **トラブルシュート**: 左イラストが常にプレースホルダのまま → `illustrationUrl` 欠如、または `readIllustration` 失敗（**未マウント再作成で実ファイル喪失**した場合は **再アップロード**（上記 **「追補（2026-04-22・`pallet-machine-illustrations` ストレージ永続化 / Pi5 `api`）」**）と同系）。**固定サムネが出ない** → `getPalletCardThumbnailDataUri()` が **`dist/.../pallet-board/assets` を解決**できていない（`build` の **assets コピー**要確認）。隣と文字が重なる → **本変更前**の SVG を疑い、**`d01eb79c` 以降の `api` イメージ**か確認。
 
 **追補（2026-04-25・パレット可視化ボード スロット幾何・下段4明細 全幅・API のみ・Pi5 のみ）**:
 - ブランチ **`feat/pallet-board-slot-geometry-and-fullwidth-details`**・代表 **`b67476da`**（`computePalletSlotCardLayout`・`pallet-board-slot-card-layout.ts`・`pallet-board-single-layout.ts`・Vitest）。
-- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-slot-geometry-and-fullwidth-details infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-133302-18334`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（JPEG は Pi5 `api`）。
+- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/pallet-board-slot-geometry-and-fullwidth-details infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-133302-18334`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（JPEG は Pi5 `api`）。
 - **仕様**: カード内の **機種1行**は従来どおり右ペイン基準の `bodyX`／`machineBaselineY`。**下段4明細**（製番・品番・品名・着手日）は **`fullWidthX`** 起点で **カード内全幅**に配置し、長文は **`maxFullWidthChars` 相当の `ellipsize`**。幾何は **`pallet-board-slot-card-layout.ts`** に集約し、`renderSlot` は純粋関数の出力を `<text>` に流し込むだけに薄い。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **59s**）。**手動目視（推奨）**: 管理 **`/admin/signage/preview`** で **パレット可視化**・1台専用レイアウトの **下段4行の左揃え全幅**。
 - **知見（テスト）**: フィクスチャ SVG に **ネストした `</g>`** があるため、スロット全体を `<g>…</g>` で切り出すと **先に誤マッチ**し得る。下段4行の **`x` 位置の回帰**は **出力 SVG 末尾4つの `<text x="…">`** で検証（単一1スロット想定。`pallet-board-single-layout.test.ts`）。
@@ -848,28 +848,28 @@
 **追補（2026-04-23・スマホ配膳 パレット可視化・機種別 `palletCount`・Pi5→Pi4×4→Pi3）**:
 - ブランチ **`feat/mobile-pallet-viz-machine-pallet-count`**・代表 **`17c39259`**（Prisma `PalletMachineIllustration.palletCount`・`PATCH /api/tools/pallet-visualization/machines/:machineCd/pallet-count`・`KioskMobilePalletVisualizationPage`・`pallet-board-renderer` 可変段数 等）。
 - **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → `raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-113519-6942`** → **`20260423-114540-21117`** → **`20260423-115005-11668`** → **`20260423-115332-29019`** → **`20260423-115720-25646`** → **`20260423-120114-31885`**。Pi3 初回は post_tasks の **`Start signage services after lightdm restore`** で **`signage-lite-update.timer`** 起動が **`Could not find the requested service`** となり **`failed=1`**；**`20260423-120929-13353`** に **再デプロイ**（**`--limit raspberrypi3` のみ**）し **`failed=0`**（**`signage-lite.service is active`**）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization`・`…/admin/pallet-machine-illustrations` → **各 200**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。**HTTP スモーク**: `GET https://<Pi5 の Tailscale IP>/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization`・`…/admin/pallet-machine-illustrations` → **各 200**。
 - **仕様**: 管理で **加工機ごとの `palletCount`（1..60、未設定行は API 既定 10）** を保持。スマホ **`/kiosk/mobile-placement/pallet-viz`**: 加工機セレクト・0-9 テンキー（**1 回→1 桁、2 回→2 桁**）→**カメラスキャン**で `addBarcodeToPallet`。キオスク専用ページ・埋め込みは **動的 `palletCount`** で番号グリッド。サイネージ **`pallet_board`** は **パレット行を `m.pallets.length` 分**描画。
 - **トラブルシュート（Pi3）**: **`signage-lite-update.timer` 起動**で **unit 未登録**相当が出た場合、**同じ** `--limit raspberrypi3` **を再実行**（本記録では収束）。併せて [deployment.md の運用メモ（2026-04-23 先頭）](../guides/deployment.md) を参照。
 
 **追補（2026-04-23・配膳スマホ パレット可視化 Web モジュール分割・Pi5→Pi4×4・Pi3 除外）**:
 - ブランチ **`feat/mobile-pallet-viz-solid`**・代表 **`25cdbe9b`**（`apps/web/src/features/kiosk/pallet-visualization/*` の分割・`design-previews/kiosk-mobile-pallet-viz.html`・API/DB 変更なし）。
 - **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-130413-22550`** → **`20260423-130834-5856`** → **`20260423-131244-3832`** → **`20260423-131556-13627`** → **`20260423-132037-22553`**。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **23s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization` → **各 200**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **23s**）。**HTTP スモーク**: `GET https://<Pi5 の Tailscale IP>/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization` → **各 200**。
 - **仕様**: テンキー桁の純関数（`pushPalletTenkeyDigit`）+ Vitest、`useKioskMobilePalletDigitBuffer`（`resetKey: selectedMachineCd`）、注文スキャン適用（`applyMobilePalletOrderScan`）、`PalletVizBarcodeGlyph` / `palletVizMobileTenkeyTokens` / `PalletVizMobileTenkeyPad` 等。**ページ**は薄く保ち、テンキー操作でローカルエラーを消す処理は **`setLocalError(null)` を各ハンドラにインライン**（`useCallback` で包んだ `clearErrorAnd(() => …)` をやめ、将来の exhaustive-deps 迷子を避ける）。
 - **トラブルシュート**: 挙動不変のリファクタだが、**配膳スマホ**で `/kiosk/mobile-placement/pallet-viz` を開き **加工機選択→テンキー→スキャン**の目視を推奨。デプロイ直列は [deployment.md](../guides/deployment.md) 冒頭どおり **Mac ロック**に注意。
 
 **追補（2026-04-23・配膳スマホ パレット可視化 カード・テンキー即時同期・表示項目拡張・Pi5→Pi4×4→Pi3）**:
 - ブランチ **`feat/mobile-pallet-viz-card-and-tenkey`**・代表 **`faa6e6db`**（`pallet-visualization-display-fields`・`pallet-visualization-query.service.ts`・`pallet-visualization-board-data-source`・`resolvePalletNoFromTenkeyDigitsImmediate`・`palletVizListItemMapping`・`usePalletTenkeyNavBusy`・`KioskMobilePalletVisualizationPage` / `PalletVizItemList` 等）。
 - **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → `raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**・Pi3 は **他ホストと並列起動しない**・[deployment.md の Pi3 節](../archive/deployments/legacy-operator-guide-through-2026-07.md#ラズパイ3サイネージの更新)）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-140752-20500`** → **`20260423-141809-14243`** → **`20260423-142223-32575`** → **`20260423-142535-28478`** → **`20260423-143027-7377`** → **`20260423-143404-3250`**。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization` → **各 200**（**`curl` は自己署名のため `curl -k`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**）。**HTTP スモーク**: `GET https://<Pi5 の Tailscale IP>/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization` → **各 200**（**`curl` は自己署名のため `curl -k`**）。
 - **仕様**: 可視化ボード item に **正規化済み機種名（`machineNameDisplay`）**・**着手日**・**個数**・**外寸**を追加。`scheduleSnapshot` を拡張し、**既存 CSV 行は `csvDashboardRowId` からフォールバック**。配膳スマホは **テンキー確定で `palletNo` を即同期**（1〜99・純関数化）、リスト行マッピングを **`palletVizListItemMapping`** に集約。UI は **カード高さ固定**・**製番ラベル整理**・**パレット番号は数字のみ**。
 - **知見**: Pi5 で **`api`/`web` コンテナ再ビルド**（差分検知時）。Pi4 は **Git 同期 + `kiosk-browser` 再起動**。Pi3 は本記録で **ヘルス収集時に `signage-lite` が一時 `exit-code`** でも **post_tasks 後 `signage-lite.service is active`**。
 - **トラブルシュート**: 直列デプロイで **前ジョブの Mac 終了前**に次を起動すると **ローカルロック** exit 3。Pi3 の **`unreachable=1`** や長時間 **`exit-code` のみ**は [deployment.md](../guides/deployment.md)・[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)。
 
 **追補（2026-04-23・キオスク／配膳スマホ バーコード読取チューニング・Web のみ・Pi5 のみ）**:
 - ブランチ **`feat/kiosk-barcode-reader-tuning`**・代表 **`70cb9e09`**（`apps/web/src/features/barcode-scan/readerOptionPresets.ts`・`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE`・各 `BarcodeScanModal`・`KioskDocumentsPage` は **保守的 400/200ms**）。
-- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-barcode-reader-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-211624-9136`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/kiosk-barcode-reader-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-211624-9136`**（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **52s**・Mac / Tailscale）。
 - **仕様**: 配膳 `/kiosk/mobile-placement`・パレット可視化（キオスク／スマホ）・部品測定は **一次元コア形式 + 220/120ms**。要領書 `/kiosk/documents` は **全一次元形式のまま**、デコード間隔は **400/200ms**（負荷配慮）。購買照会は **`PURCHASE_ORDER` プリセット + 短時間2連続一致**（[KB-297 §FKOBAINO](./KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）を継続。
 - **トラブルシュート**: 形式を広げるとデコード負荷が上がる。遅延改善と Pi4 同時負荷は **要領書＝保守的間引き**、業務スキャン＝**コア形式 + やや積極的間引き**で切り分ける（[KB-313](./KB-313-kiosk-documents.md)・[KB-339](./KB-339-mobile-placement-barcode-survey.md) V24）。
@@ -877,7 +877,7 @@
 
 **追補（2026-04-23・管理コンソール サイネージスケジュール 可視化選択・Pi5 のみ）**:
 - ブランチ **`main`**・代表 **`8e72335e`**（`SignageSchedulesPage.tsx`・`VisualizationDashboardGroupedSelect`・`Link` 誘導）。
-- **本番**: **`raspberrypi5` のみ**（管理 SPA は Pi5 `web`）・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-173454-25250`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **本番**: **`raspberrypi5` のみ**（管理 SPA は Pi5 `web`）・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-173454-25250`**（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **後追い実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **114s**・Tailscale）。
 - **仕様**: 可視化ダッシュボード一覧 API は **無効行も含めて取得**し、セレクトでは **`（無効）`** を付与。`<optgroup label="パレット可視化">` は **`dataSourceType === pallet_visualization_board`** のみ。パレット系が **0 件**のとき **`/admin/visualization-dashboards` へ誘導**（**`isListPending` / `isListError` のときはバナー非表示**でチラつき回避）。
 - **トラブルシュート**: 「パレット可視化がドロップダウンに無い」は **DB に `pallet_visualization_board` ダッシュボードが無い**ことが多い（管理の **パレット可視化プリセット**で作成）。Mac 側 **未追跡ファイル**でデプロイ fail-fast する場合は **`git stash push -u`**（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）。
@@ -2065,8 +2065,8 @@ app.get('/kiosk/employees', { config: { rateLimit: false } }, async (request) =>
 **実機検証結果**:
 - ✅ **すべて正常に動作**（2026-01-04）:
   1. **APIコンテナ**: `docker-api-1`が正常に起動し、再起動ループが停止
-  2. **ヘルスチェック**: `https://100.106.158.2/api/system/health`がHTTP 200を返す
-  3. **サイネージ画像**: `https://100.106.158.2/api/signage/current-image`が正常に取得できる（約419KB）
+  2. **ヘルスチェック**: `https://<Pi5 の Tailscale IP>/api/system/health`がHTTP 200を返す
+  3. **サイネージ画像**: `https://<Pi5 の Tailscale IP>/api/signage/current-image`が正常に取得できる（約419KB）
   4. **ストレージメンテナンス**: `storage-maintenance.timer`が有効化され、次回実行予定が設定されている
 
 **学んだこと**:

@@ -63,7 +63,7 @@ Add a dedicated API integration test file for a quantity-five, partially interle
 
 ## Concrete Steps
 
-Work only in `/Users/tsudatakashi/RaspberryPiSystem_002-self-inspection-entry-gate` on branch `fix/self-inspection-per-entry-inspector-gate`, based at `3c890fb9eaf357e109e8b0e78d42163fce21410e` (`origin/main`). Keep the original worktree untouched. Make small commits by concern (`fix`, `test`, `docs`) and run `git diff --check` before each handoff.
+Work only in `~/RaspberryPiSystem_002-self-inspection-entry-gate` on branch `fix/self-inspection-per-entry-inspector-gate`, based at `3c890fb9eaf357e109e8b0e78d42163fce21410e` (`origin/main`). Keep the original worktree untouched. Make small commits by concern (`fix`, `test`, `docs`) and run `git diff --check` before each handoff.
 
 For database verification, start a uniquely named `pgvector/pgvector:pg15` container with no named volume or custom network, use a shell trap to remove only that container, set `DATABASE_URL` to its auto-assigned port, run `pnpm --dir apps/api exec prisma migrate deploy`, run the SQL audit and `EXPLAIN (ANALYZE, BUFFERS)` for the operator unique key, inspector unique key, and persistence-status index, then run the focused related API tests. Never use the repository helper that deletes `postgres-test-local`.
 

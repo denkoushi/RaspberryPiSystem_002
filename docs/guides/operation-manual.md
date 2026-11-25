@@ -272,7 +272,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients
+https://<Pi5 の LAN IP（自宅）>/admin/clients
 ```
 
 **表示内容:**
@@ -286,7 +286,7 @@ https://192.168.128.131/admin/clients
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients
+https://<Pi5 の LAN IP（自宅）>/admin/clients
 ```
 
 （『ログ』タブ）
@@ -303,16 +303,16 @@ https://192.168.128.131/admin/clients
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(curl -ksS -X POST https://192.168.128.131/api/auth/login \
+TOKEN=$(curl -ksS -X POST https://<Pi5 の LAN IP（自宅）>/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # クライアント状態を取得
-curl -ksS -X GET https://192.168.128.131/api/clients/status \
+curl -ksS -X GET https://<Pi5 の LAN IP（自宅）>/api/clients/status \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 
 # クライアントログを取得
-curl -ksS -X GET "https://192.168.128.131/api/clients/logs?clientId=raspberrypi5-server&limit=10" \
+curl -ksS -X GET "https://<Pi5 の LAN IP（自宅）>/api/clients/logs?clientId=raspberrypi5-server&limit=10" \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 ```
 

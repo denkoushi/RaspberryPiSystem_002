@@ -10,7 +10,7 @@
 ## 検証環境
 
 - **デバイス**: Raspberry Pi 5
-- **IPアドレス**: 100.106.158.2 (Tailscale経由)
+- **IPアドレス**: <Pi5 の Tailscale IP> (Tailscale経由)
 - **ブランチ**: `feature/improve-visibility-color-theme`
 - **コミット**: `58b233e` (security: Docker Composeのポートマッピングを削除してセキュリティ強化)
 

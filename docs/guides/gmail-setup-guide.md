@@ -40,7 +40,7 @@ tailscale status
 
 出力例：
 ```
-100.106.158.2  raspberrypi        raspberrypi.tail7312a3.ts.net
+<Pi5 の Tailscale IP>  raspberrypi        raspberrypi.tail7312a3.ts.net
 ```
 
 この場合、FQDNは`raspberrypi.tail7312a3.ts.net`です。
@@ -51,7 +51,7 @@ Pi5で以下のコマンドを実行して、TailscaleのMagicDNSドメイン用
 
 ```bash
 # SSH接続（Macのターミナルから）
-ssh denkon5sd02@100.106.158.2
+ssh denkon5sd02@<Pi5 の Tailscale IP>
 
 # 証明書ディレクトリに移動
 cd /opt/RaspberryPiSystem_002/certs
@@ -92,8 +92,8 @@ Macのブラウザで`https://raspberrypi.tail7312a3.ts.net`にアクセスし�
 
 ```bash
 # Macのターミナルで実行（管理者権限が必要）
-cd /Users/tsudatakashi/RaspberryPiSystem_002
-./scripts/mac/setup-etc-hosts-for-gmail-oauth.sh 100.106.158.2 raspberrypi.tail7312a3.ts.net
+cd ~/RaspberryPiSystem_002
+./scripts/mac/setup-etc-hosts-for-gmail-oauth.sh <Pi5 の Tailscale IP> raspberrypi.tail7312a3.ts.net
 ```
 
 スクリプトが以下を自動的に実行します：
@@ -107,10 +107,10 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 sudo nano /etc/hosts
 ```
 
-以下の行を追加（`100.106.158.2`は実際のPi5のTailscale IPアドレスに置き換えてください）：
+以下の行を追加（`<Pi5 の Tailscale IP>`は実際のPi5のTailscale IPアドレスに置き換えてください）：
 
 ```
-100.106.158.2 raspberrypi.tail7312a3.ts.net
+<Pi5 の Tailscale IP> raspberrypi.tail7312a3.ts.net
 ```
 
 保存して終了（`Ctrl+O` → `Enter` → `Ctrl+X`）。

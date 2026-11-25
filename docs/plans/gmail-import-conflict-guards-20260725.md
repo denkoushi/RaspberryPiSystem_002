@@ -207,7 +207,7 @@ detailed evidence rather than duplicating the same validation transcript.
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`. Node 22 or newer is
+All commands run from `~/RaspberryPiSystem_002`. Node 22 or newer is
 required. On this Mac, prepend the bundled Node 24 directory returned by the Codex workspace
 dependency loader to `PATH` and use pnpm 9.15.9.
 
@@ -231,7 +231,7 @@ branch, and open a pull request. Wait for CI, CodeQL, secret scanning, and revie
 After merge, identify the exact immutable SHA resolved by `origin/main`, ensure the clean
 local checkout is at that SHA, and run:
 
-    RASPI_SERVER_HOST=denkon5sd02@100.106.158.2 \
+    RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP> \
       scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
       --limit raspberrypi5 --print-plan
 

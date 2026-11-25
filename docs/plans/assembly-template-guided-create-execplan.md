@@ -31,7 +31,7 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
   Evidence: `orderProcedureItemsByFirstStep`が保存payloadを生成し、現行Reactテストも手動移動より初出順を期待している。
 
 - Observation: システムNodeはv18でpackage engine要件外だが、Codex bundled Node 24が利用可能である。
-  Evidence: `node --version`はv18.20.8、workspace dependencyのNodeは`/Users/tsudatakashi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node`。
+  Evidence: `node --version`はv18.20.8、workspace dependencyのNodeは`~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node`。
 
 - Observation: workspaceのpnpm wrapperは非対話実行時に古いストアのpurgeを試みるため、検証スクリプトではbundled Node 24から各CLIを直接起動する必要があった。
   Evidence: wrapper実行時のpurge確認を避け、Vitest、ESLint、TypeScript、Vite、Prisma、PlaywrightのCLI entry pointをNode 24で直接実行した。
@@ -100,9 +100,9 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 
 ## Concrete Steps
 
-作業ディレクトリは`/Users/tsudatakashi/RaspberryPiSystem_002`とする。Nodeとpnpmは次を使用する。
+作業ディレクトリは`~/RaspberryPiSystem_002`とする。Nodeとpnpmは次を使用する。
 
-    export PATH="/Users/tsudatakashi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/Users/tsudatakashi/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH"
+    export PATH="~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:~/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:$PATH"
 
 focused Web test、API integration、Playwright、full test、lint、buildを順に実行する。Docker検証では`pgvector/pgvector:pg15`がなければpullし、固有tokenを付けたcontainer、volume、networkを作る。`pnpm test:postgres:start`は固定名の既存containerを削除するため使用しない。
 

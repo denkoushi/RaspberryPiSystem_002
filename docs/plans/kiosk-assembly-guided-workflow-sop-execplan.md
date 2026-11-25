@@ -54,7 +54,7 @@
 
 ## Recovery and Safety
 
-- 元repo `/Users/tsudatakashi/RaspberryPiSystem_002` は読み取り専用扱いとし、WIP 2ファイルを変更しない。
+- 元repo `~/RaspberryPiSystem_002` は読み取り専用扱いとし、WIP 2ファイルを変更しない。
 - Dockerは固有label/nameの一時container・volume・networkだけを作り、EXIT/INT/TERMで削除する。
 - 既存DB/既存containerを再利用せず、検証後にcontainer、volume、network、storageをinspectして残存ゼロを確認する。
 - 失敗時は変更を破棄せず、ExecPlanのSurprises/Decision Logへ原因と再開地点を記録する。

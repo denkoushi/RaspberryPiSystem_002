@@ -78,7 +78,7 @@ Use ESLint's API with synthetic imports and real file paths to prove forbidden d
 
 ## Concrete Steps
 
-Run commands from the task worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--production-schedule-lookup-boundary`. Use Node on `/opt/homebrew/opt/node@24/bin`, Corepack and pnpm 9.15.9; keep package.json and pnpm-lock.yaml unchanged.
+Run commands from the task worktree `~/RaspberryPiSystem_002-worktrees/feat--production-schedule-lookup-boundary`. Use Node on `/opt/homebrew/opt/node@24/bin`, Corepack and pnpm 9.15.9; keep package.json and pnpm-lock.yaml unchanged.
 
     corepack pnpm install --frozen-lockfile --offline --ignore-scripts
     corepack pnpm --filter @raspi-system/api exec prisma generate

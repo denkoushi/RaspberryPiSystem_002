@@ -144,7 +144,7 @@ Each step is executed by a worker subagent, then the orchestrator runs verificat
 
 ## Concrete Steps
 
-All commands run from the repository root `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from the repository root `~/RaspberryPiSystem_002`.
 
 Baseline and per-step API verification:
 

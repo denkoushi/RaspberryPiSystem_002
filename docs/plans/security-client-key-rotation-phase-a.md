@@ -77,7 +77,7 @@ Phase A implementation, publication, and review gate are complete. PR #1225 is R
 
 ## Context and Orientation
 
-The repository is `/Users/tsudatakashi/Documents/Codex/2026-08-09/client-key-rotation`, on branch `security/externalize-client-keys`, based exactly on `origin/main` `61c3d7f550182dad30120b7a06d81f61c2f5430e`. The original repository `/Users/tsudatakashi/RaspberryPiSystem_002` is read-only and contains two pre-existing protected WIP files: `scripts/deploy/rolling_release/route_preflight.py` and `scripts/deploy/tests/test_route_preflight.py`. Neither this branch nor the original repository may modify those files.
+The repository is `~/Documents/Codex/2026-08-09/client-key-rotation`, on branch `security/externalize-client-keys`, based exactly on `origin/main` `61c3d7f550182dad30120b7a06d81f61c2f5430e`. The original repository `~/RaspberryPiSystem_002` is read-only and contains two pre-existing protected WIP files: `scripts/deploy/rolling_release/route_preflight.py` and `scripts/deploy/tests/test_route_preflight.py`. Neither this branch nor the original repository may modify those files.
 
 The API signage renderer creates display images and adds Pi3 system metrics to some signage layouts. Its current metrics method first identifies the Pi3 by an API credential and then reads the matching `ClientStatus`. The existing Ansible inventory gives the Pi3 status agent the stable identity `raspberrypi3-signage1`; that identity is not a secret. The corrected method reads `ClientStatus` directly by that identity and retains the existing server-metrics fallback.
 
@@ -105,7 +105,7 @@ After the standard signage release, the operator must confirm the new credential
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/Documents/Codex/2026-08-09/client-key-rotation`.
+Work from `~/Documents/Codex/2026-08-09/client-key-rotation`.
 
     git status --short --branch
     git rev-parse HEAD

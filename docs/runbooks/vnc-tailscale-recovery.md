@@ -86,19 +86,19 @@ nc -vz -w 3 <Pi4_RoboDrill01_IP> 5900
 
 | 端末 | ホスト名 | Tailscale IP |
 |------|----------|--------------|
-| Pi4 研削メイン | raspberrypi-1 | 100.74.144.79 |
-| Pi3 サイネージ | raspberrypi-2 | 100.105.224.86 |
-| Pi4 RoboDrill01 | raspi4-robodrill01 | 100.123.1.113 |
+| Pi4 研削メイン | raspberrypi-1 | <raspberrypi4 の Tailscale IP> |
+| Pi3 サイネージ | raspberrypi-2 | <raspberrypi3 の Tailscale IP> |
+| Pi4 RoboDrill01 | raspi4-robodrill01 | <raspi4-robodrill01 の Tailscale IP> |
 
 ### 3.4 MacでSSHトンネルを張る
 
 ```bash
 # Macで実行（接続中はターミナルを開いたまま）
 ssh -N \
-  -L 5904:100.74.144.79:5900 \
-  -L 5905:100.123.1.113:5900 \
-  -L 5903:100.105.224.86:5900 \
-  denkon5sd02@100.106.158.2
+  -L 5904:<raspberrypi4 の Tailscale IP>:5900 \
+  -L 5905:<raspi4-robodrill01 の Tailscale IP>:5900 \
+  -L 5903:<raspberrypi3 の Tailscale IP>:5900 \
+  denkon5sd02@<Pi5 の Tailscale IP>
 ```
 
 **注意**: IPは環境により変わる。`tailscale status`（Pi5で実行）で最新のIPを確認すること。
@@ -107,7 +107,7 @@ ssh -N \
 
 | 端末 | 接続先 |
 |------|--------|
-| Pi5 | `100.106.158.2:5900`（直接） |
+| Pi5 | `<Pi5 の Tailscale IP>:5900`（直接） |
 | Pi4 研削メイン | `localhost:5904`（トンネル経由） |
 | Pi4 RoboDrill01 | `localhost:5905`（トンネル経由） |
 | Pi3 | `localhost:5903`（トンネル経由） |

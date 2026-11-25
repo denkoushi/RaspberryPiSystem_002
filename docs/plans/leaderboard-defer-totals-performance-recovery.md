@@ -150,7 +150,7 @@ New concepts in composite hook + interaction lock policy:
 **Command** (standard):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/leaderboard-defer-totals \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -201,7 +201,7 @@ API-side shell selection / winner materialization / COUNT path profiling and min
 
 Read-only Pi5 measurements from Mac confirmed the current bottleneck is still API-side, not only Pi4 browser rendering.
 
-Observed against `https://100.106.158.2`:
+Observed against `https://<Pi5 の Tailscale IP>`:
 
 | Probe | Result |
 |-------|--------|
@@ -309,7 +309,7 @@ Deployment status: **not deployed**. Next step is to run the same `stonebase` sh
 **Command** (standard):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh chore/leaderboard-board-perf-logging \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -354,7 +354,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 **Command** (standard):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh chore/leaderboard-residual-context-measurement \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -406,7 +406,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 **Command** (standard):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/fkojunst-source-row-order-sync \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -423,10 +423,10 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 | Check | Result |
 |-------|--------|
-| `curl -sk https://100.106.158.2/api/system/health` | initial `status: ok` (`database` / `memory` / `playwright` all `ok`) |
+| `curl -sk https://<Pi5 の Tailscale IP>/api/system/health` | initial `status: ok` (`database` / `memory` / `playwright` all `ok`) |
 | `node ./scripts/test/benchmark-leaderboard-board-shell.mjs --profile stonebase --runs 1` | `shellMs=54880` · `rows=569` · `total=3619` |
 | `NODE_TLS_REJECT_UNAUTHORIZED=0 node ./scripts/test/benchmark-leaderboard-continue-chunk.mjs --profile stonebase` | initial probe hit `HTTP 503` while Pi5 health was `memory:error` (`95.5%`) |
-| `curl -sk https://100.106.158.2/api/system/health` after cooldown | recovered to `status: ok` with `memory` warning level (~89.9%) |
+| `curl -sk https://<Pi5 の Tailscale IP>/api/system/health` after cooldown | recovered to `status: ok` with `memory` warning level (~89.9%) |
 
 **Interpretation**:
 

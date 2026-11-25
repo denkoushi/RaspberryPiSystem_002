@@ -56,10 +56,10 @@ hostname -I
 
 ```bash
 # Pi5のTailscale IPで接続テスト（標準）
-ssh denkon5sd02@100.106.158.2
+ssh denkon5sd02@<Pi5 の Tailscale IP>
 
 # または、ローカルIPで接続テスト（緊急時のみ）
-# ssh denkon5sd02@192.168.10.230
+# ssh denkon5sd02@<Pi5 の LAN IP>
 
 # 接続成功したら、Pi5のシェルが起動します
 # 接続できない場合:
@@ -97,18 +97,18 @@ ssh denkon5sd02@100.106.158.2
 3. **Tailscale IPの確認**（`network_mode: "tailscale"`の場合）:
    ```yaml
    tailscale_network:
-     raspberrypi5_ip: "100.106.158.2"    # Pi5のTailscale IP（通常は変更不要）
-     raspberrypi4_ip: "100.74.144.79"   # Pi4のTailscale IP（通常は変更不要）
-     raspberrypi3_ip: "100.105.224.86"  # Pi3のTailscale IP（通常は変更不要）
+     raspberrypi5_ip: "<Pi5 の Tailscale IP>"    # Pi5のTailscale IP（通常は変更不要）
+     raspberrypi4_ip: "<raspberrypi4 の Tailscale IP>"   # Pi4のTailscale IP（通常は変更不要）
+     raspberrypi3_ip: "<raspberrypi3 の Tailscale IP>"  # Pi3のTailscale IP（通常は変更不要）
    ```
 
 **確認**:
 ```bash
 # Pi5上で確認
-ssh denkon5sd02@100.106.158.2 "grep -A 3 'network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "grep -A 3 'network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 
 # 実際に使われるIPを確認
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberrypi4 -i infrastructure/ansible/inventory.yml -m debug -a 'var=kiosk_ip'"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible raspberrypi4 -i infrastructure/ansible/inventory.yml -m debug -a 'var=kiosk_ip'"
 ```
 
 **⚠️ 注意**: 
@@ -122,13 +122,13 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
 
 ```bash
 # Pi5からPi4への接続テスト（Tailscale IPを使用、標準）
-ssh denkon5sd02@100.106.158.2 'ssh -o StrictHostKeyChecking=no tools03@100.74.144.79 "echo Pi4接続成功 && hostname"'
+ssh denkon5sd02@<Pi5 の Tailscale IP> 'ssh -o StrictHostKeyChecking=no tools03@<raspberrypi4 の Tailscale IP> "echo Pi4接続成功 && hostname"'
 
 # Pi5からPi3への接続テスト（Tailscale IPを使用、標準）
-ssh denkon5sd02@100.106.158.2 'ssh -o StrictHostKeyChecking=no signageras3@100.105.224.86 "echo Pi3接続成功 && hostname"'
+ssh denkon5sd02@<Pi5 の Tailscale IP> 'ssh -o StrictHostKeyChecking=no signageras3@<raspberrypi3 の Tailscale IP> "echo Pi3接続成功 && hostname"'
 
 # または、Ansible接続テスト（推奨、実際に使われるIPでテスト）
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
 ```
 
 **期待される結果**:
@@ -149,7 +149,7 @@ raspberrypi
 
 ```bash
 # Pi5に接続（実際のIPアドレスに置き換える）
-# Tailscale経由の場合: ssh denkon5sd02@100.106.158.2
+# Tailscale経由の場合: ssh denkon5sd02@<Pi5 の Tailscale IP>
 # ローカルネットワークの場合: ssh denkon5sd02@<pi5のIP>
 
 # Pi5上で実行: Pi4に公開鍵を追加（実際のIPアドレスに置き換える）
@@ -171,7 +171,7 @@ ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@<pi3のIP>
 
 ```bash
 # Pi5に接続（実際のIPアドレスに置き換える）
-# Tailscale経由の場合: ssh denkon5sd02@100.106.158.2
+# Tailscale経由の場合: ssh denkon5sd02@<Pi5 の Tailscale IP>
 # ローカルネットワークの場合: ssh denkon5sd02@<pi5のIP>
 
 # Pi5上で実行: Ansible接続テスト

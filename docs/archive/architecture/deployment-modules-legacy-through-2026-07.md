@@ -293,7 +293,7 @@ dependency_map:
       "target": "server",
       "checks": [
         {"name": "api_health", "status": "pass", "url": "http://localhost:8080/api/system/health"},
-        {"name": "web_ui", "status": "pass", "url": "https://192.168.10.230/"}
+        {"name": "web_ui", "status": "pass", "url": "https://<Pi5 の LAN IP>/"}
       ],
       "overall_status": "pass"
     }
@@ -620,7 +620,7 @@ echo "$VERIFY_RESULT" | jq '.'
 - **テストスクリプト**: 全6つの実機検証テストスクリプトが実装済み
 - **ローカル検証**: Mac環境でのdry-runテスト完了（全てOK）
 - **基本動作確認**: Raspberry Pi 5上で全6つのテストスクリプトの実行確認完了（全てOK）
-  - Pi5経由でTailscale IP `100.106.158.2`を使用して接続
+  - Pi5経由でTailscale IP `<Pi5 の Tailscale IP>`を使用して接続
   - テストスクリプトがPi5上で正常に動作することを確認
 - **詳細検証項目**:
   - Phase 1: エッジケース（変更なし、複数ファイル変更等）の詳細確認 → ✅ 完了（包括的テストで確認済み）
@@ -711,20 +711,20 @@ echo "$VERIFY_RESULT" | jq '.'
 
 1. **環境確認とIPアドレス選択**:
    - **オフィスから接続する場合**: ローカルネットワークのIPアドレスを使用
-     - Pi5: `192.168.10.230`（`group_vars/all.yml`の`local_network.raspberrypi5_ip`）
+     - Pi5: `<Pi5 の LAN IP>`（`group_vars/all.yml`の`local_network.raspberrypi5_ip`）
      - `group_vars/all.yml`の`network_mode: "local"`を確認
    - **自宅から接続する場合**: Tailscale経由のIPアドレスを使用
-     - Pi5: `100.106.158.2`（`group_vars/all.yml`の`tailscale_network.raspberrypi5_ip`）
+     - Pi5: `<Pi5 の Tailscale IP>`（`group_vars/all.yml`の`tailscale_network.raspberrypi5_ip`）
      - `group_vars/all.yml`の`network_mode: "tailscale"`を確認
    - **ローカルIPが不明な場合**: ユーザーに確認を求める
 
 2. **実機検証の実行**（MacからPi5へSSH接続）:
 ```bash
 # オフィスから接続する場合（ローカルIP使用）
-ssh -o StrictHostKeyChecking=no denkon5sd02@192.168.10.230 "cd /opt/RaspberryPiSystem_002 && scripts/deploy/tests/test-change-detector-real.sh"
+ssh -o StrictHostKeyChecking=no denkon5sd02@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && scripts/deploy/tests/test-change-detector-real.sh"
 
 # 自宅から接続する場合（Tailscale IP使用）
-ssh -o StrictHostKeyChecking=no denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && scripts/deploy/tests/test-change-detector-real.sh"
+ssh -o StrictHostKeyChecking=no denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && scripts/deploy/tests/test-change-detector-real.sh"
 ```
 
 3. **Pi5上で直接実行する場合**:
@@ -1166,7 +1166,7 @@ infrastructure/ansible/
 **手順**:
 ```bash
 # 1. Pi5にSSH接続
-ssh denkon5sd02@192.168.10.230  # またはTailscale IP
+ssh denkon5sd02@<Pi5 の LAN IP>  # またはTailscale IP
 
 # 2. 設定変更・コード変更を検知・デプロイ実行
 cd /opt/RaspberryPiSystem_002
@@ -1259,10 +1259,10 @@ ansible-playbook -i inventory.yml playbooks/deploy.yml -v
 curl http://localhost:8080/api/system/health
 
 # Pi4キオスク
-curl https://192.168.10.230/kiosk
+curl https://<Pi5 の LAN IP>/kiosk
 
 # Pi3サイネージ
-curl https://192.168.10.230/api/signage/content
+curl https://<Pi5 の LAN IP>/api/signage/content
 ```
 
 ---

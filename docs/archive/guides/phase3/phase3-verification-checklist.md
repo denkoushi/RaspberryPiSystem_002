@@ -5,7 +5,7 @@
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **IPアドレス**: `100.106.158.2`（Tailscale経由）
+- **IPアドレス**: `<Pi5 の Tailscale IP>`（Tailscale経由）
 
 ## 検証項目
 
@@ -123,7 +123,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api ls
 
 **検証日時**: 2025-12-17 09:26 JST
 **検証者**: AI Assistant
-**検証環境**: Raspberry Pi 5 (100.106.158.2)
+**検証環境**: Raspberry Pi 5 (<Pi5 の Tailscale IP>)
 **最新コミット**: `03aacf8 fix: CSVインポート時にDropboxStorageProviderにrefreshTokenを渡すように修正`
 
 **検証結果**: 

@@ -112,7 +112,7 @@ Ansible関連資産は`infrastructure/ansible/`にあり、メインの`playbook
 1. **棚卸し結果の文書化**（完了）。`rg`などで抽出したタスクを手作業で表へ整理済み。
 2. **ロールスケルトン作成。**
 
-        cd /Users/tsudatakashi/RaspberryPiSystem_002
+        cd ~/RaspberryPiSystem_002
         for r in common server client kiosk signage; do \
           mkdir -p infrastructure/ansible/roles/$r/{defaults,tasks,handlers}; \
           touch infrastructure/ansible/roles/$r/{defaults,handlers,tasks}/main.yml; \
@@ -127,7 +127,7 @@ Ansible関連資産は`infrastructure/ansible/`にあり、メインの`playbook
 7. **新プレイブックと文書更新。** `playbooks/deploy.yml`作成、旧プレイブック委譲、ドキュメント更新。
 8. **検証。**
 
-        cd /Users/tsudatakashi/RaspberryPiSystem_002/infrastructure/ansible
+        cd ~/RaspberryPiSystem_002/infrastructure/ansible
         ansible-playbook playbooks/deploy.yml --syntax-check
         ansible-playbook playbooks/deploy.yml --list-tasks
         ansible-playbook playbooks/deploy.yml --limit raspberrypi4 --check

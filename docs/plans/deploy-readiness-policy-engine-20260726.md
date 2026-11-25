@@ -230,7 +230,7 @@ the existing fast deploy-contract job instead of adding a new heavy CI job.
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 Implement registry and policy tests first, then run:
 

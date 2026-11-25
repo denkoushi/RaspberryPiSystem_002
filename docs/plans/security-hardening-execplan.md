@@ -85,13 +85,13 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - `ansible raspberrypi5 ... -e network_mode={local,tailscale}` で `server_ip/kiosk_ip/signage_ip` が期待どおりに 192.168.10.x ⇔ 100.x.x.x を往復することを確認  
   - `curl http://localhost:8080/api/system/network-mode` のレスポンスが自動判定（detectedMode=maintenance / configuredMode=local / status=internet_connected）を返すことを確認
 - [x] (2025-12-05) Tailscale接続テスト  
-  - Mac → Pi5 へ `ssh denkon5sd02@100.106.158.2`、`curl -kI https://100.106.158.2` を実施し、Tailscale経由でもAPI/UIへ到達できることを確認  
-  - RealVNCは自宅ネットワーク `192.168.128.0/24` をUFWに追加したうえで接続確認済み
+  - Mac → Pi5 へ `ssh denkon5sd02@<Pi5 の Tailscale IP>`、`curl -kI https://<Pi5 の Tailscale IP>` を実施し、Tailscale経由でもAPI/UIへ到達できることを確認  
+  - RealVNCは自宅ネットワーク `<社内 LAN のアドレス帯>` をUFWに追加したうえで接続確認済み
 - [x] (2025-12-05) ファイアウォール設定の動作確認  
   - `sudo ufw status numbered` で 80/443/22/5900 のみ許可、その他遮断であることを確認  
-  - VNC用に `192.168.128.0/24` を追加し、Ansible変数 `ufw_vnc_allowed_networks` にも反映
+  - VNC用に `<社内 LAN のアドレス帯>` を追加し、Ansible変数 `ufw_vnc_allowed_networks` にも反映
 - [x] (2025-12-05) HTTPS強制の動作確認  
-  - `curl -I http://192.168.10.230` が 301 と `Location: https://...` を返し、`curl -kI https://{local,tailscale}` が 200 で応答することを確認
+  - `curl -I http://<Pi5 の LAN IP>` が 301 と `Location: https://...` を返し、`curl -kI https://{local,tailscale}` が 200 で応答することを確認
 - [x] (2025-12-05) fail2banの動作確認  
   - `sudo fail2ban-client set sshd banip 203.0.113.50` で架空IPをBanし、`security-monitor.sh` 実行で `alerts/alert-20251205-182352.json` が生成されることを確認  
   - `fail2ban-client set sshd unbanip` で解除後に Banned IP が空へ戻ることを確認
@@ -105,7 +105,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 ### Phase 8: サイネージ／キオスク回帰対応（新規）
 - [x] (2025-12-05) Pi4キオスク実機の状態確認  
   - ✅ `kiosk-browser.service` の稼働とChromiumプロセスを確認（Pi5経由のSSHで `systemctl status` / `ps` を取得）  
-  - ✅ `kiosk-launch.sh` が `https://100.106.158.2/kiosk` （Tailscale経路）を指していることを特定  
+  - ✅ `kiosk-launch.sh` が `https://<Pi5 の Tailscale IP>/kiosk` （Tailscale経路）を指していることを特定  
   - ⚠️ ローカル運用モード時でもTailscale URLがハードコードされ、旧レイアウト（tagモード）が表示されることを確認。`network_mode` の切り替えと再デプロイでURLを上書きするタスクを追加
 - [ ] Pi3サイネージ描画の現状把握（`/var/cache/signage/current.jpg` 収集、SignageRendererのSVG出力確認）
 - [x] (2025-12-05) サーバー側 SignageRenderer のUI刷新（Sharp生成SVGをモダンデザインへ更新し、PDF/TOOLS/SPLIT全モードを整備）  
@@ -124,9 +124,9 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 ### Phase 9: インターネット接続時の追加防御（新規）
 - [x] (2025-12-13) 管理画面へのIP制限を導入（CaddyでADMIN_ALLOW_NETS環境変数による制限）  
   - ✅ Caddyfile/Caddyfile.productionに`@admin_protect`マッチャーを追加し、`/admin*`パスを許可ネットワークに限定  
-  - ✅ docker-compose.server.ymlに`ADMIN_ALLOW_NETS`環境変数を追加（デフォルト: `192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32`）  
+  - ✅ docker-compose.server.ymlに`ADMIN_ALLOW_NETS`環境変数を追加（デフォルト: `<社内 LAN のアドレス帯> <社内 LAN のアドレス帯> 100.64.0.0/10 127.0.0.1/32`）  
   - ✅ docs/guides/deployment.mdにIP制限手順とTailscale ACL推奨を追記  
-  - ✅ 実機テスト完了（2025-12-14）: 許可IP（Tailscale経由）から `curl -kI https://100.106.158.2/admin` が200 OKを確認。`ADMIN_ALLOW_NETS`環境変数が正しく設定されていることを確認。  
+  - ✅ 実機テスト完了（2025-12-14）: 許可IP（Tailscale経由）から `curl -kI https://<Pi5 の Tailscale IP>/admin` が200 OKを確認。`ADMIN_ALLOW_NETS`環境変数が正しく設定されていることを確認。  
 - [x] (2025-12-13) アラートの外部通知を追加（Slack/Webhook等へ `generate-alert.sh` から送信）  
   - ✅ `scripts/generate-alert.sh`にWebhook送信機能を追加（未設定時は従来のファイルアラートのみ）  
   - ✅ `infrastructure/ansible/group_vars/all.yml`に`alert_webhook_url`/`alert_webhook_timeout_seconds`を追加  
@@ -150,7 +150,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - ✅ `scripts/test/check-caddy-https-headers.sh`を追加（HTTP→HTTPSリダイレクトとHSTS/X-Content-Type-Options/X-Frame-Options/Referrer-Policyを確認）  
   - ✅ docs/guides/deployment.mdにHTTPS/ヘッダー確認手順を追記  
   - ✅ `Caddyfile.local.template`に`Strict-Transport-Security`ヘッダーを追加（`max-age=31536000; includeSubDomains; preload`）  
-  - ✅ 実機テスト完了（2025-12-14）: `TARGET_HOST=100.106.158.2 bash scripts/test/check-caddy-https-headers.sh` を実行。HTTP→HTTPSリダイレクト（301）と主要セキュリティヘッダー（Strict-Transport-Security/X-Content-Type-Options/X-Frame-Options/X-XSS-Protection/Referrer-Policy）がすべて確認できた。  
+  - ✅ 実機テスト完了（2025-12-14）: `TARGET_HOST=<Pi5 の Tailscale IP> bash scripts/test/check-caddy-https-headers.sh` を実行。HTTP→HTTPSリダイレクト（301）と主要セキュリティヘッダー（Strict-Transport-Security/X-Content-Type-Options/X-Frame-Options/X-XSS-Protection/Referrer-Policy）がすべて確認できた。  
 - [x] (2025-12-13) ログ保持とローテーション方針の明文化・適用  
   - ✅ `infrastructure/ansible/templates/logrotate-security.conf.j2`を追加（fail2ban/clamav/trivy/rkhunter/alertsを週次ローテーション、12週保持）  
   - ✅ `infrastructure/ansible/roles/server/tasks/security.yml`にlogrotate設定のデプロイタスクを追加  
@@ -158,7 +158,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - [x] (2025-12-13) 管理画面アクセス制御とセキュリティヘッダーを確認する自動テストを追加  
   - ✅ `scripts/test/security-e2e.sh`を追加（check-caddy-https-headers.shを呼び出し、任意で管理画面アクセス確認）  
   - ✅ ADMIN_URL/ADMIN_EXPECT_STATUS環境変数で管理画面チェックを制御可能  
-  - ✅ 実機テスト完了（2025-12-14）: `TARGET_HOST=100.106.158.2 ADMIN_URL=https://100.106.158.2/admin ADMIN_EXPECT_STATUS=200 bash scripts/test/security-e2e.sh` を実行。HTTP→HTTPSリダイレクト（301）を確認。管理画面へのアクセスが200 OKで動作することを確認。  
+  - ✅ 実機テスト完了（2025-12-14）: `TARGET_HOST=<Pi5 の Tailscale IP> ADMIN_URL=https://<Pi5 の Tailscale IP>/admin ADMIN_EXPECT_STATUS=200 bash scripts/test/security-e2e.sh` を実行。HTTP→HTTPSリダイレクト（301）を確認。管理画面へのアクセスが200 OKで動作することを確認。  
 - [x] (2025-12-13) インターネット公開時のDDoS/ブルートフォース緩和  
   - ✅ Fastifyレイヤーでレート制限を再導入（`apps/api/src/plugins/rate-limit.ts`）  
     - グローバル: 120 req/min  
@@ -211,8 +211,8 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 - 観測: IPアドレスが複数の設定ファイルに直接記述されており、ネットワーク環境変更時に複数箇所を手動で修正する必要がある。
   エビデンス: `inventory.yml`、テンプレートファイル、スクリプトなどにIPアドレスが直接記述されている。
   対応: Ansibleの`group_vars/all.yml`にIPアドレス変数を定義し、一括管理できるようにする。
-- 観測: Pi4キオスクがTailscale経路 (`https://100.106.158.2/kiosk`) を指したままになっており、ローカル運用時に旧UI（tagモード）のまま表示され続けている。  
-  エビデンス: `ssh tools03@100.74.144.79 'cat /usr/local/bin/kiosk-launch.sh'` の結果より、`--app` 引数がTailscale IPに固定されていることを確認。  
+- 観測: Pi4キオスクがTailscale経路 (`https://<Pi5 の Tailscale IP>/kiosk`) を指したままになっており、ローカル運用時に旧UI（tagモード）のまま表示され続けている。  
+  エビデンス: `ssh tools03@<raspberrypi4 の Tailscale IP> 'cat /usr/local/bin/kiosk-launch.sh'` の結果より、`--app` 引数がTailscale IPに固定されていることを確認。  
   対応: `network_mode=local` で再デプロイし、`kiosk_url` をローカルIPへ再設定する。合わせてAnsibleタスクに「現在のnetwork_modeとURLの乖離を検知するヘルスチェック」を追加予定。
 - 観測: Pi3サイネージの物理画面はReact版の新デザインへ更新されていない。  
   エビデンス: `SignageRenderer`（`apps/api/src/services/signage/signage.renderer.ts`）は旧SVGレイアウトを生成しており、Pi3はこのJPEGを表示している。React側のスタイル変更だけでは実機に反映されない。  
@@ -228,7 +228,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 - 観測: UFWを有効化する際、既存のSSHセッションを保持しつつローカルネットワークとTailscaleだけを許可する必要がある。
   エビデンス: デフォルトallowのままだとインターネット経由の22番ポートが開いたままになる。
-  対応: `ufw allow from 192.168.10.0/24`および`100.64.0.0/10`のみ許可し、その他はdenyに設定。
+  対応: `ufw allow from <社内 LAN のアドレス帯>`および`100.64.0.0/10`のみ許可し、その他はdenyに設定。
 
 - 観測: Debian bookworm系ではTrivyがaptに含まれていないため、公式インストールスクリプトを使用する必要があった。
   エビデンス: `apt-cache search trivy`ではパッケージ未提供。公式ドキュメントはinstall.sh経由を想定。
@@ -448,7 +448,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 3. **テンプレートファイルの修正**
    - `infrastructure/ansible/templates/*.j2`のデフォルト値を修正
-   - 古いIPアドレス（`192.168.128.131`など）を削除
+   - 古いIPアドレス（`<Pi5 の LAN IP（自宅）>`など）を削除
    - 変数のみ参照するように変更
 
 4. **スクリプトの修正**
@@ -590,7 +590,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 ```bash
 # IPアドレス直接記述箇所の洗い出し
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd ~/RaspberryPiSystem_002
 grep -r "192\.168\.\d+\.\d+" --include="*.yml" --include="*.yaml" --include="*.j2" --include="*.sh" infrastructure/ansible/ scripts/
 ```
 
@@ -598,7 +598,7 @@ grep -r "192\.168\.\d+\.\d+" --include="*.yml" --include="*.yaml" --include="*.j
 
 ```bash
 # 1. Ansibleの変数定義作成
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd ~/RaspberryPiSystem_002
 mkdir -p infrastructure/ansible/group_vars
 cat > infrastructure/ansible/group_vars/all.yml << 'EOF'
 # ネットワークモード: local または tailscale
@@ -606,9 +606,9 @@ network_mode: "local"
 
 # ローカルネットワーク用IPアドレス
 local_network:
-  raspberrypi5_ip: "192.168.10.230"
-  raspberrypi4_ip: "192.168.10.223"
-  raspberrypi3_ip: "192.168.10.109"
+  raspberrypi5_ip: "<Pi5 の LAN IP>"
+  raspberrypi4_ip: "<raspberrypi4 の実際の LAN IP>"
+  raspberrypi3_ip: "<raspberrypi3 の LAN IP（現場）>"
 
 # Tailscale用IPアドレス（通常運用の標準）
 # 注意: Tailscale IPアドレスは動的に割り当てられるが、デバイスごとに固定される
@@ -632,7 +632,7 @@ EOF
 
 ```bash
 # Raspberry Pi 5にTailscaleクライアントをインストール（通常運用）
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 # 認証URLが表示されるので、Macのブラウザで開いて承認
@@ -649,12 +649,12 @@ sudo tailscale up
 
 ```bash
 # ufwのインストールと設定（Pi5）
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 sudo apt update
 sudo apt install -y ufw
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw allow from 192.168.10.0/24 to any port 22
+sudo ufw allow from <社内 LAN のアドレス帯> to any port 22
 sudo ufw enable
 sudo ufw status
 ```
@@ -663,7 +663,7 @@ sudo ufw status
 
 ```bash
 # ClamAVのインストール（Pi5）
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 sudo apt update
 sudo apt install -y clamav clamav-daemon
 sudo freshclam
@@ -706,7 +706,7 @@ sudo freshclam
 ```bash
 # Pi5上で実行（またはMacから）
 # 許可IPからのアクセス確認
-curl -kI https://100.106.158.2/admin
+curl -kI https://<Pi5 の Tailscale IP>/admin
 # → 200または302が返ることを確認
 
 # 非許可IPからのアクセス確認（別ネットワークから、またはADMIN_ALLOW_NETSを一時的に変更）
@@ -757,7 +757,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 #### 5. HTTPS/ヘッダー確認テスト
 ```bash
 # Pi5上で実行（またはMacから）
-export TARGET_HOST="100.106.158.2"
+export TARGET_HOST="<Pi5 の Tailscale IP>"
 bash /opt/RaspberryPiSystem_002/scripts/test/check-caddy-https-headers.sh
 # → HTTP→HTTPSリダイレクト（301）と主要セキュリティヘッダーが確認できることを確認
 ```
@@ -782,8 +782,8 @@ ls -lh /var/log/clamav/*.log*
 #### 7. セキュリティE2Eテスト
 ```bash
 # Pi5上で実行（またはMacから）
-export TARGET_HOST="100.106.158.2"
-export ADMIN_URL="https://100.106.158.2/admin"
+export TARGET_HOST="<Pi5 の Tailscale IP>"
+export ADMIN_URL="https://<Pi5 の Tailscale IP>/admin"
 export ADMIN_EXPECT_STATUS="200"  # または403（IP制限が有効な場合）
 bash /opt/RaspberryPiSystem_002/scripts/test/security-e2e.sh
 # → HTTPS/ヘッダー確認と管理画面アクセス確認が成功することを確認

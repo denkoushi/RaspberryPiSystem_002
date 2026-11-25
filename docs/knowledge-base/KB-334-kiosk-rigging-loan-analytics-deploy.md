@@ -33,7 +33,7 @@ category: knowledge-base
 ```bash
 BRANCH=main
 INV=infrastructure/ansible/inventory.yml
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh "$BRANCH" "$INV" --limit raspberrypi5 --detach --follow
 ```
 
@@ -46,7 +46,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ```bash
 BRANCH=main
 INV=infrastructure/ansible/inventory.yml
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh "$BRANCH" "$INV" --limit raspberrypi5 --detach --follow
 ./scripts/update-all-clients.sh "$BRANCH" "$INV" --limit raspberrypi4 --detach --follow
 ./scripts/update-all-clients.sh "$BRANCH" "$INV" --limit raspi4-robodrill01 --detach --follow
@@ -79,7 +79,7 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 ### 2026-04-17（UI バランス調整・`feat/kiosk-analytics-ui-balance-refine`・`f5e58e2e`・Pi5→Pi4×4 順次・Pi3 除外）
 
 - **差分**: `KioskRiggingAnalyticsPage` のシェル整理、`KioskAnalyticsPanels` / `KioskAnalyticsKpiStrip` のレスポンシブ行・枠線統一、ランキング密度トグル、`analyticsDisplayPolicy` の `uiDisplayMode` 拡張とテスト。
-- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-ui-balance-refine infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3**: 対象外。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-ui-balance-refine infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3**: 対象外。
 - **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260417-220620-25346` → `20260417-221119-9068` → `20260417-221607-22959` → `20260417-221948-32509` → `20260417-222428-19933`、各 **`failed=0` / `unreachable=0` / exit `0`**。
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **53s**）。
 - **CI**: GitHub Actions Run **`24564671757`** success（デプロイ前確認）。
@@ -89,17 +89,17 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 ### 2026-04-17（BI ダッシュボード再設計・`feat/kiosk-analytics-bi-dashboard`・`9eda66b4`・Pi5 のみ）
 
 - **差分**: `KioskAnalyticsKpiStrip` 新設、`KioskAnalyticsPanels` を BI 向けに再編、`KioskRiggingAnalyticsPage` を **2x2 グリッド + overflow-hidden** 化、`analyticsDisplayPolicy.ts` / `analyticsDisplayPolicy.test.ts` で表示専用ポリシーを分離。静的プレビューは `docs/design-previews/kiosk-analytics-bi-dashboard-preview.html`。
-- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-bi-dashboard infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Pi3**: 対象外（本変更は Pi5 Web / API のみ）。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-bi-dashboard infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Pi3**: 対象外（本変更は Pi5 Web / API のみ）。
 - **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260417-203348-20065`、**`failed=0` / `unreachable=0` / exit `0`**。
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **101s**）。
 - **API スモーク**: `GET /api/rigging-gears/loan-analytics`、`GET /api/tools/items/loan-analytics`、`GET /api/measuring-instruments/loan-analytics` はいずれも **200**。
 - **Health**: `GET /api/system/health` はデプロイ直後に memory **96.4%** で一時 **`degraded`** を返したが、短時間の warm-up 後に **`ok`** へ復帰。
-- **画面確認**: IDE 内蔵ブラウザは Pi5 Tailscale URL に到達できなかったため、Mac 側 Playwright で `https://100.106.158.2/kiosk/rigging-analytics` を 1440x900 で表示。**`scrollHeight == clientHeight == 900`**、**`scrollWidth == clientWidth == 1440`**、KPI / Top 8 / 当日イベント文言を確認し、スクリーンショットを取得してレイアウト崩れがないことを確認。
+- **画面確認**: IDE 内蔵ブラウザは Pi5 Tailscale URL に到達できなかったため、Mac 側 Playwright で `https://<Pi5 の Tailscale IP>/kiosk/rigging-analytics` を 1440x900 で表示。**`scrollHeight == clientHeight == 900`**、**`scrollWidth == clientWidth == 1440`**、KPI / Top 8 / 当日イベント文言を確認し、スクリーンショットを取得してレイアウト崩れがないことを確認。
 
 ### 2026-04-15（4パネル・当日イベント・`periodEvents`・`feat/kiosk-analytics-four-panel-today-events`・`323dd9f0`・Pi5→Pi4×4 順次・Pi3 除外）
 
 - **差分**: Web `KioskAnalyticsPanels` / `kiosk-loan-analytics/{period,view-model}`・`KioskRiggingAnalyticsPage` 再構成；API 3系統に `periodEvents`；`Dockerfile.web` で `musl` / `openssl` / `libcrypto3` / `libssl3` / `zlib` 等を更新（Trivy）。
-- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-four-panel-today-events infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**事前**: 未追跡プレビュー HTML 等で fail-fast → **`git stash push -u`**。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-four-panel-today-events infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**事前**: 未追跡プレビュー HTML 等で fail-fast → **`git stash push -u`**。
 - **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260415-162422-11542` → `20260415-163600-7918` → `20260415-164041-17295` → `20260415-164408-5423` → `20260415-164824-29880`、各 **`failed=0` / `unreachable=0` / exit `0`**。
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**・Mac / Tailscale）。
 - **Pi3**: 対象外（キオスク/API 変更のため Pi3 専用手順は未実施）。
@@ -108,7 +108,7 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 ### 2026-04-14（月選択モーダル・タブ別資産フィルタ・`feat/kiosk-analytics-month-and-asset-filters`・`8ce1a9da`・Pi5→Pi4×4 順次・Pi3 除外）
 
 - **差分**: Web `KioskMonthPickerModal`・`KioskRiggingAnalyticsPage` の月/資産 UI・hooks；API は 3 系統 loan-analytics に対象 ID クエリと repository/service 絞り込み；CI: `KioskMonthPickerModal` の `aria-pressed` / 月ラベルを **string 子**にして Docker ビルド時 **tsc** 通過（`fix(web): satisfy KioskMonthPickerModal button types for CI`）。
-- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-month-and-asset-filters infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3**: 本変更はキオスク/API のため **対象外**（Pi3 専用の単独・軽量手順は不要）。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-month-and-asset-filters infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3**: 本変更はキオスク/API のため **対象外**（Pi3 専用の単独・軽量手順は不要）。
 - **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260414-211347-29532` → `20260414-212701-15420` → `20260414-213153-7546` → `20260414-213547-9533` → `20260414-214120-20816`、各 **`failed=0` / `unreachable=0` / exit `0`**。
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **57s**・Mac / Tailscale）。
 - **残作業（手動）**: 各 Pi4 で **`/kiosk/rigging-analytics`** を開き、**対象月**ボタン・**吊具/表示名/計測機器**ドロップダウン・タブ切替で状態が期待どおりか目視。

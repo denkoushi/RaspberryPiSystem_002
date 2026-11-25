@@ -197,7 +197,7 @@ directory, then removed from both Pi4 and Pi5 with absence checks.
 
 ## Context and Orientation
 
-The repository root is `/Users/tsudatakashi/RaspberryPiSystem_002`.
+The repository root is `~/RaspberryPiSystem_002`.
 
 `apps/web/src/pages/kiosk/KioskAssemblyWorkSessionPage.tsx` owns session loading, NFC
 authorization, torque-wrench workflow, completion rules, and the two-pane work layout.

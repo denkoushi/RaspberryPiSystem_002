@@ -97,7 +97,7 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 | `raspi4-fjv60-80` | **`20260519-221143-3419`** | `ok=122` `changed=9` `failed=0` |
 | `raspi4-kensaku-stonebase01` | **`20260519-221558-18199`** | `ok=129` `changed=10` `failed=0` |
 
-**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **70s**·Tailscale·Pi5 `100.106.158.2`）·**`deploy-status`（Pi4×4）** すべて **PASS**。
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **70s**·Tailscale·Pi5 `<Pi5 の Tailscale IP>`）·**`deploy-status`（Pi4×4）** すべて **PASS**。
 
 **知見**: Phase 1 は **Pi5 のみ**だったため、Pi4×4 は **Phase 1 + Phase 2 を同時に初反映**（IDB は端末ローカル）。**初回アクセスは IDB 空**のため体感改善は **continue 完走後の 2 回目以降**で評価する（Phase 1 と同型）。
 

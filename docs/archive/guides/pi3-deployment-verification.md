@@ -23,7 +23,7 @@ Pi3デプロイの成功率向上のため、改修後の動作を検証し、�
 **手順**:
 ```bash
 # Pi3にSSH接続
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP>"
 
 # デプロイ前のサービスファイル状態を確認
 ls -la /etc/systemd/system/signage-lite.service
@@ -33,7 +33,7 @@ cd /opt/RaspberryPiSystem_002
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3
 
 # デプロイ中のサービスファイル状態を確認（別ターミナルから）
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -la /etc/systemd/system/signage-lite.service'"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'ls -la /etc/systemd/system/signage-lite.service'"
 ```
 
 **期待結果**:
@@ -53,7 +53,7 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -la /etc/syste
 **手順**:
 ```bash
 # Pi3にSSH接続
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP>"
 
 # デプロイ前のメモリ状態を確認
 free -m
@@ -65,7 +65,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit 
 # デプロイ中のメモリ状態を確認（別ターミナルから、30秒間隔で3回）
 for i in {1..3}; do
   echo "=== Check $i ==="
-  ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'free -m'"
+  ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'free -m'"
   sleep 30
 done
 ```
@@ -113,10 +113,10 @@ cat /Users/<user>/RaspberryPiSystem_002/.cursor/debug.log | jq -r '.message' | s
 **手順**:
 ```bash
 # Pi5上でAnsibleプロセスを確認
-ssh denkon5sd02@100.106.158.2 "ps aux | grep -E '(ansible|AnsiballZ)' | grep -v grep"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "ps aux | grep -E '(ansible|AnsiballZ)' | grep -v grep"
 
 # Pi3上でAnsibleプロセスを確認
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ps aux | grep -E \"(ansible|AnsiballZ)\" | grep -v grep'"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'ps aux | grep -E \"(ansible|AnsiballZ)\" | grep -v grep'"
 ```
 
 **期待結果**:

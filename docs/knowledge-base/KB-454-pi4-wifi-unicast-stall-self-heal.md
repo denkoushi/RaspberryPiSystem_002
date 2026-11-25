@@ -6,7 +6,7 @@
 
 ## Symptoms
 
-`raspi4-assembly-01` が約2日間通信不能になった。NetworkManager は wlan0 を connected と表示し、IP も保持していたが、ゲートウェイ（192.168.10.1）と Pi5（192.168.10.230）への個別宛て通信が止まり、再起動で回復した。
+`raspi4-assembly-01` が約2日間通信不能になった。NetworkManager は wlan0 を connected と表示し、IP も保持していたが、ゲートウェイ（<ゲートウェイの IP>）と Pi5（<Pi5 の LAN IP>）への個別宛て通信が止まり、再起動で回復した。
 
 ## Investigation
 

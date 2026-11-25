@@ -32,7 +32,7 @@ category: knowledge-base
 
 - **ブランチ**: `feat/admin-loan-report-gmail-draft`（代表コミット **`6bc00a00`**）。
 - **対象ホスト**: **`raspberrypi5` のみ**（運用上 Pi5 の `api` + `web`）。**Pi4 / Pi3 は未デプロイ**（今回の指示範囲外。Pi3 はリソース制約のため専用手順を別途）。
-- **手順**: [deployment.md](../guides/deployment.md)。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/admin-loan-report-gmail-draft infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **手順**: [deployment.md](../guides/deployment.md)。`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/admin-loan-report-gmail-draft infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
 - **Detach Run ID**: **`20260418-152952-9706`**（`PLAY RECAP` **`failed=0` / `unreachable=0`**・Mac exit `0`）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **59s**）。**WARN**: Pi5 から `raspi4-fjv60-80` への SSH 直確認不可（スクリプト既定・`deploy-status` は PASS）。
 - **CI**: GitHub Actions Run **`24598528235`** success（ブランチ push 時）。
@@ -84,7 +84,7 @@ category: knowledge-base
   - **supply 系ツリーマップ**を `LoanReport` HTML（プレビュー／印刷想定）へ復旧・統合（`apps/api/src/services/reports/loan-report/treemap/*`）。
   - **デザインプレビュー HTML**（`docs/design-previews/*`）と本番レンダラの整合を、再統合時の回帰防止用の固定物として扱う。
 - **対象ホスト**: **`raspberrypi5` のみ**（Pi4/Pi3 未デプロイ・Pi3 は専用手順）。**複数台デプロイ時は `--limit` を 1 台ずつ**（本記録は Pi5 単独）。
-- **手順**: [deployment.md](../guides/deployment.md) どおり・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/loan-report-supply-treemap-recovery infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **手順**: [deployment.md](../guides/deployment.md) どおり・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/loan-report-supply-treemap-recovery infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
 - **Detach Run ID**: **`20260419-130715-8630`**（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（fjv60-80 SSH WARN はベースライン同型・`deploy-status` は PASS）。
 - **追加スモーク**: 未認証 `GET …/preview?category=rigging` → **`401`**。

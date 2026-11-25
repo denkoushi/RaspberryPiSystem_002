@@ -9,8 +9,8 @@
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **IPアドレス**: `100.106.158.2`（Tailscale経由）
-- **管理画面URL**: `https://100.106.158.2/admin`
+- **IPアドレス**: `<Pi5 の Tailscale IP>`（Tailscale経由）
+- **管理画面URL**: `https://<Pi5 の Tailscale IP>/admin`
 
 ---
 
@@ -20,7 +20,7 @@
 
 1. ブラウザで以下のURLにアクセス：
    ```
-   https://100.106.158.2/admin
+   https://<Pi5 の Tailscale IP>/admin
    ```
 
 2. ログイン画面が表示されることを確認
@@ -32,7 +32,7 @@
 
 **注意**: パスワードが不明な場合は、データベースから確認できます：
 ```bash
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c \"SELECT username, role FROM \\\"User\\\" WHERE role = 'ADMIN';\""
+ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c \"SELECT username, role FROM \\\"User\\\" WHERE role = 'ADMIN';\""
 ```
 
 ---
@@ -121,7 +121,7 @@ curl -X GET 'http://localhost:8080/api/backup/history?status=COMPLETED&limit=10'
 
 1. Pi5にSSH接続：
    ```bash
-   ssh denkon5sd02@100.106.158.2
+   ssh denkon5sd02@<Pi5 の Tailscale IP>
    ```
 
 2. `backup.json`を編集：

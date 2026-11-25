@@ -20,7 +20,7 @@
 
 2. **トークンを確認**
    - 左側のメニューから「Local Storage」または「Session Storage」を選択
-   - `https://100.106.158.2`をクリック
+   - `https://<Pi5 の Tailscale IP>`をクリック
    - `token`というキーを探す
    - 値をコピー（これが認証トークンです）
 

@@ -210,7 +210,7 @@ remain unchanged.
   `9b34d0beff0acc72d6bcf9d2e5795f3ad4c4695b33101c8b147f587cc7049dd6`.
   Their canonical non-secret contracts differed only at
   `VITE_AGENT_WS_URL`: CI resolved the server-owned
-  `ws://100.106.158.2:7071/stream`, but `docker.env.j2` omitted the variable,
+  `ws://<Pi5 の Tailscale IP>:7071/stream`, but `docker.env.j2` omitted the variable,
   so Compose used `ws://localhost:7071/stream`.
 
 - Observation: the later Pi5 Web build still omitted the separate stream-mode
@@ -478,7 +478,7 @@ the Phase 2 implementation log.
 
 Work from:
 
-    /Users/tsudatakashi/Documents/Codex/2026-07-28/new-chat-2/RaspberryPiSystem_002-phase2
+    ~/Documents/Codex/2026-07-28/new-chat-2/RaspberryPiSystem_002-phase2
 
 The branch is:
 

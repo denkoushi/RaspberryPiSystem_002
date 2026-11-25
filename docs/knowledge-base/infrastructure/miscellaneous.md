@@ -204,7 +204,7 @@ update-frequency: medium
 - ✅ **解決済み**（2025-11-28）: 
   1. Caddyfile.localをテンプレート化（`Caddyfile.local.template`）し、`$NFC_AGENT_HOST`をプレースホルダーとして使用
   2. Dockerfile.webで起動時に`sed`コマンドで環境変数`NFC_AGENT_HOST`の値を置換してCaddyfile.localを生成
-  3. docker-compose.server.ymlで環境変数`NFC_AGENT_HOST`を設定可能に（デフォルト値: `192.168.128.102`）
+  3. docker-compose.server.ymlで環境変数`NFC_AGENT_HOST`を設定可能に（デフォルト値: `<IP アドレス>`）
   4. Wi-Fi変更時は、環境変数を変更してWebコンテナを再起動するだけで対応可能（再ビルド不要）
 
 **学んだこと**: 
@@ -427,10 +427,10 @@ update-frequency: medium
 - RealVNC Viewerでは接続できているため、パスワードは正しい
 - SSH鍵認証を設定したが機能しない
 - ホスト名 `raspberrypi` で接続を試みたが、サーバー側のログに接続試行が記録されない
-- IPアドレス `192.168.128.131` で接続すると成功する
+- IPアドレス `<Pi5 の LAN IP（自宅）>` で接続すると成功する
 
 **要因**: 
-- **ホスト名解決の問題**: Mac側で `raspberrypi` というホスト名が正しいIPアドレス（`192.168.128.131`）に解決されていない
+- **ホスト名解決の問題**: Mac側で `raspberrypi` というホスト名が正しいIPアドレス（`<Pi5 の LAN IP（自宅）>`）に解決されていない
 - Mac側の `/etc/hosts` やDNS設定に `raspberrypi` のエントリがない、または古いIPアドレスが登録されている可能性
 - SSH接続時にホスト名解決が失敗し、別のホスト（または存在しないホスト）に接続しようとしていた
 - そのため、サーバー側のログに接続試行が記録されず、パスワード認証も鍵認証も機能しなかった
@@ -444,7 +444,7 @@ update-frequency: medium
 
 **有効だった対策**: 
 - ✅ **解決済み**（2025-12-01）: IPアドレスを直接指定してSSH接続する
-  - `ssh denkon5sd02@192.168.128.131` で接続成功
+  - `ssh denkon5sd02@<Pi5 の LAN IP（自宅）>` で接続成功
   - ホスト名解決の問題を回避できる
   - SSH鍵認証も正常に機能する
 

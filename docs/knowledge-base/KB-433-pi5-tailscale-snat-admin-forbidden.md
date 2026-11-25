@@ -6,12 +6,12 @@
 
 ## Symptoms
 
-- Mac から Tailscale 経由（`https://100.106.158.2/admin/...`）で管理画面を開くと、Caddy が `Forbidden`（403）を返した。
+- Mac から Tailscale 経由（`https://<Pi5 の Tailscale IP>/admin/...`）で管理画面を開くと、Caddy が `Forbidden`（403）を返した。
 - `/kiosk` と `/api` は同じ経路でも 200 だった。Tailscale の HTTPS 入口（`:8443`）経由でも 403 だった。
 
 ## Investigation
 
-- Pi5 の許可リスト（`logs/deploy/bluegreen/admin-allow-nets.caddy`）は `192.168.10.0/24 192.168.128.0/24 100.64.0.0/10 127.0.0.1/32` で、Mac の `100.64.230.31` を含んでいた。
+- Pi5 の許可リスト（`logs/deploy/bluegreen/admin-allow-nets.caddy`）は `<社内 LAN のアドレス帯> <社内 LAN のアドレス帯> 100.64.0.0/10 127.0.0.1/32` で、Mac の `<Mac の Tailscale IP>` を含んでいた。
 - Caddy のアクセスログでは、Pi5 自身以外の接続元がすべて `172.18.0.1`（gateway コンテナの bridge のゲートウェイ）だった。2026-02 の古いログには本来の `100.x` が残っていた。いつから変わったかは、ログが残っておらず確定できない。
 - 仕組み: tailnet からの 443 は Docker の DNAT で gateway コンテナ（`172.18.0.5`）へ転送される。`ts-forward` が `tailscale0` から入った転送パケットに印を付け、`ts-postrouting` の MASQUERADE が接続元を bridge のアドレスへ書き換える。Mac から1回アクセスすると、この MASQUERADE の計数が増えることを確認した。
 - Pi5 の Tailscale は `NoSNAT: false`（`--snat-subnet-routes` の既定値）のままだった。Pi5 は subnet route も exit node も出していない。

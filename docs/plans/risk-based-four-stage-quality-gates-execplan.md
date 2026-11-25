@@ -206,7 +206,7 @@ runtime target was in scope.
 
 ## Context and Orientation
 
-The repository root is `/Users/tsudatakashi/Documents/Codex/2026-08-10/development-four-stage-quality-gates/worktree`.
+The repository root is `~/Documents/Codex/2026-08-10/development-four-stage-quality-gates/worktree`.
 `scripts/ci/classify_event_changes.py` collects a GitHub event diff and calls
 `scripts/ci/classify_changes.py`, which emits schemaVersion 6 JSON containing
 `changes`, statuses, paths, categories, and fail-closed reasons. The existing

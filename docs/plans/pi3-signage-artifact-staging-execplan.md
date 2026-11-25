@@ -211,7 +211,7 @@ prevents release submission.
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 Run the new RED E2E first:
 

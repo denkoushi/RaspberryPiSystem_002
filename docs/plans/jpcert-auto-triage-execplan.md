@@ -113,7 +113,7 @@
 
 ## Concrete Steps
 
-各段階は worktree `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--jpcert-auto-triage`(段階2と3は新しい branch)で行う。変えた部品の型チェックと関係するテストを流す(`~/.local/heavy-run/bin/check-summary`)。
+各段階は worktree `~/RaspberryPiSystem_002-worktrees/feat--jpcert-auto-triage`(段階2と3は新しい branch)で行う。変えた部品の型チェックと関係するテストを流す(`~/.local/heavy-run/bin/check-summary`)。
 
 ## Validation and Acceptance
 

@@ -129,7 +129,7 @@ All behavior changes will be protected with focused component tests. Layout prop
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002` on `feat/kiosk-self-inspection-layout-density`.
+Work from `~/RaspberryPiSystem_002` on `feat/kiosk-self-inspection-layout-density`.
 
 1. Implement presentation models and density tokens, then update focused unit tests.
 2. Modify the self-inspection list and mocked layout E2E for the one/two-pane contract.

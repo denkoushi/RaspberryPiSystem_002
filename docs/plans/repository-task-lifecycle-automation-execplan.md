@@ -58,7 +58,7 @@ Implement immutable observation/result models and pure classification in `policy
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--repository-task-lifecycle-automation`.
+Work from `~/RaspberryPiSystem_002-worktrees/feat--repository-task-lifecycle-automation`.
 
 1. Add the Python modules and unit/integration tests.
 2. Run `python3 -m unittest discover -s scripts/git_lifecycle/tests -p 'test_*.py'` and `python3 -m compileall -q scripts/git_lifecycle`.

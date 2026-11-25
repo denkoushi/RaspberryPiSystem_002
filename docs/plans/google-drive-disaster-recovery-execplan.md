@@ -11,7 +11,7 @@ An operator will be able to run `capacity` before any cloud write, run `backup` 
 ## Progress
 
 - [x] (2026-08-20 JST) Confirmed the implementation boundary: a separate Python DR lane, independent from the TypeScript backup factory, normal Dropbox configuration, public HTTP API, UI, Prisma schema, and migrations.
-- [x] (2026-08-20 JST) Confirmed the dedicated branch/worktree boundary: `feat/google-drive-disaster-recovery` in `/Users/tsudatakashi/RaspberryPiSystem_002-google-drive-disaster-recovery`, based on the fetched `origin/main`.
+- [x] (2026-08-20 JST) Confirmed the dedicated branch/worktree boundary: `feat/google-drive-disaster-recovery` in `~/RaspberryPiSystem_002-google-drive-disaster-recovery`, based on the fetched `origin/main`.
 - [x] (2026-08-20 JST) Read the current backup implementation and documentation. Existing API backup is primarily Dropbox/local and the current code rejects `.ssh` authority paths; the old Pi 4 one-shot recovery command was removed in commit `f02c4be3` on 2026-08-08.
 - [x] (2026-08-20 JST) Added the design record, this living plan, the operator Runbook, the index links, and corrections to the general backup guide.
 - [x] (2026-08-20 JST) Implemented `source_policy`, `snapshot_builder`, `restic_repository`, `restore_validator`, `command_port`, and `runner` under `scripts/google_drive_dr/`, with redacted events and focused tests.
@@ -117,14 +117,14 @@ Finally run the focused contracts and the isolated integration validation. The M
 
 ## Concrete Steps
 
-All work occurs in `/Users/tsudatakashi/RaspberryPiSystem_002-google-drive-disaster-recovery`.
+All work occurs in `~/RaspberryPiSystem_002-google-drive-disaster-recovery`.
 
 The branch boundary is created from the latest fetched remote without checking out or altering the user's unrelated worktree:
 
     git fetch origin
     git status --short
     git worktree add -b feat/google-drive-disaster-recovery \
-      /Users/tsudatakashi/RaspberryPiSystem_002-google-drive-disaster-recovery \
+      ~/RaspberryPiSystem_002-google-drive-disaster-recovery \
       origin/main
 
 Before implementation, inspect the current branch and confirm that the working tree contains only this feature's changes:

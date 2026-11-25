@@ -68,7 +68,7 @@ Only a passing gate permits the later application design: a server-owned busines
 
 ## Concrete Steps
 
-All commands below run from `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-business-butler-gate`. Temporary fixture files and runtime state belong under `/tmp` and must be removed after the gate. Never place a credential in the fixture or repository.
+All commands below run from `~/RaspberryPiSystem_002-worktrees/feat--hermes-business-butler-gate`. Temporary fixture files and runtime state belong under `/tmp` and must be removed after the gate. Never place a credential in the fixture or repository.
 
     python3 -m scripts.git_lifecycle.cli audit --json
     git status --short --branch

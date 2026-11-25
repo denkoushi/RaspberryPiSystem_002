@@ -176,7 +176,7 @@ Maintained in accordance with `.agent/PLANS.md`.
 - Observation: ファイル差し替え連打で abort 済みリクエストの成功コールバックが後から走ると **古い preview が勝つ**
   Evidence: レビュー → 成功パスでも `controller.signal.aborted` を確認（`8307c995`）
 
-- Observation: Pi5 上で `curl http://127.0.0.1:3000/api/system/health` が **000** でも、Tailscale **`https://100.106.158.2/api/...`** は正常（Caddy 経由）
+- Observation: Pi5 上で `curl http://127.0.0.1:3000/api/system/health` が **000** でも、Tailscale **`https://<Pi5 の Tailscale IP>/api/...`** は正常（Caddy 経由）
   Evidence: 2026-06-02 デプロイ後検証 — SSH localhost 直は本番構成では使わない
 
 - Observation: DEV プレビューで `previewVisuals` を渡しても hook が `enabled` 既定 true だと **不要な visual-templates API** が走る

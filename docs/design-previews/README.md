@@ -76,13 +76,13 @@
 ターミナルから:
 
 ```bash
-open -a Safari "/Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews/manual-order-leader-overview-preview.html"
-open -a Safari "/Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews/manual-order-schedule-to-overview-flow-preview.html"
-open -a Safari "/Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews/manual-order-peek-accordion-schedule-preview.html"
-open -a Safari "/Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews/manual-order-edit-focus-gray-preview.html"
-open -a Safari "/Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews/manual-order-overview-pane-row-detail-preview.html"
-open -a Safari "/Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews/manual-order-device-card-location-machine-preview.html"
-open -a Safari "/Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews/manual-order-band-to-operator-rank-preview.html"
+open -a Safari "~/RaspberryPiSystem_002/docs/design-previews/manual-order-leader-overview-preview.html"
+open -a Safari "~/RaspberryPiSystem_002/docs/design-previews/manual-order-schedule-to-overview-flow-preview.html"
+open -a Safari "~/RaspberryPiSystem_002/docs/design-previews/manual-order-peek-accordion-schedule-preview.html"
+open -a Safari "~/RaspberryPiSystem_002/docs/design-previews/manual-order-edit-focus-gray-preview.html"
+open -a Safari "~/RaspberryPiSystem_002/docs/design-previews/manual-order-overview-pane-row-detail-preview.html"
+open -a Safari "~/RaspberryPiSystem_002/docs/design-previews/manual-order-device-card-location-machine-preview.html"
+open -a Safari "~/RaspberryPiSystem_002/docs/design-previews/manual-order-band-to-operator-rank-preview.html"
 ```
 
 ※ **ダブルクリックだけ**だと、既定ブラウザが Chrome 等の場合 Safari で開きません。
@@ -92,7 +92,7 @@ open -a Safari "/Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews/m
 **ローカルサーバ経由**（`http://localhost`）ならブラウザのローカルファイル制限を避けられます。
 
 ```bash
-cd /Users/tsudatakashi/RaspberryPiSystem_002/docs/design-previews
+cd ~/RaspberryPiSystem_002/docs/design-previews
 python3 -m http.server 8765
 ```
 

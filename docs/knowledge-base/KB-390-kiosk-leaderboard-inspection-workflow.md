@@ -137,7 +137,7 @@ This section preserves the original 2026-06-15 workflow and print layout contrac
 **Standard command**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh main \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -154,7 +154,7 @@ Reference: [deployment.md](../guides/deployment.md) · [quick-start-deployment.m
 | **PLAY RECAP** | **`ok=134` `changed=4` `failed=0`** |
 | **Docker** | `api` + `web` rebuild/recreate (`Git: changed`) |
 | **Prisma** | `migrate deploy` and `migrate status` OK; migration `20260625120000_add_self_inspection_paper_reports` applied |
-| **Health** | `https://100.106.158.2/api/system/health` returned `status: ok` |
+| **Health** | `https://<Pi5 の Tailscale IP>/api/system/health` returned `status: ok` |
 | **Operator real-machine validation** | 2026-06-25: user reported実機検証OK after Pi5 deploy |
 
 ### Production deploy (2026-06-15 · workflow + plannedQuantity · Pi5 only)

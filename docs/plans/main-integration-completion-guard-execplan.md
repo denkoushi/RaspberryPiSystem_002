@@ -83,7 +83,7 @@ Finally update `AGENTS.md`, `.agent/PLANS.md`, and `docs/guides/deployment.md`. 
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002` on `feat/main-integration-completion-guard`.
+Work from `~/RaspberryPiSystem_002` on `feat/main-integration-completion-guard`.
 
 1. Add the pure audit module and focused tests under `scripts/deploy/tests/`.
 2. Attach the audit to print-plan and application outputs, then update existing facade/application tests.

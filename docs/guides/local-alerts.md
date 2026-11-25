@@ -173,7 +173,7 @@ environment:
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin
+https://<Pi5 の LAN IP（自宅）>/admin
 ```
 
 **アラートバナーの表示**:
@@ -233,12 +233,12 @@ https://192.168.128.131/admin
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(curl -k -s -X POST https://192.168.128.131/api/auth/login \
+TOKEN=$(curl -k -s -X POST https://<Pi5 の LAN IP（自宅）>/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # アラート情報を取得
-curl -k -X GET https://192.168.128.131/api/clients/alerts \
+curl -k -X GET https://<Pi5 の LAN IP（自宅）>/api/clients/alerts \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 ```
 
@@ -246,7 +246,7 @@ curl -k -X GET https://192.168.128.131/api/clients/alerts \
 
 ```bash
 # アラートIDを指定して確認済みにする
-curl -k -X POST https://192.168.128.131/api/clients/alerts/20251201-103259/acknowledge \
+curl -k -X POST https://<Pi5 の LAN IP（自宅）>/api/clients/alerts/20251201-103259/acknowledge \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -343,12 +343,12 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
 2. **APIレスポンスの直接確認**:
    ```bash
    # 認証トークンを取得
-   TOKEN=$(curl -k -s -X POST https://100.106.158.2/api/auth/login \
+   TOKEN=$(curl -k -s -X POST https://<Pi5 の Tailscale IP>/api/auth/login \
      -H "Content-Type: application/json" \
      -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
    
    # APIレスポンスを確認（dbAlertsが0でないことを確認）
-   curl -k -s "https://100.106.158.2/api/clients/alerts" \
+   curl -k -s "https://<Pi5 の Tailscale IP>/api/clients/alerts" \
      -H "Authorization: Bearer $TOKEN" | jq '{alerts:.alerts, dbAlertsLen:(.details.dbAlerts|length), fileAlertsLen:(.details.fileAlerts|length)}'
    ```
    - `dbAlertsLen`が0でない場合、APIは正常に動作している（UI側の問題の可能性）

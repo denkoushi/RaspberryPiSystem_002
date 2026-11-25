@@ -279,7 +279,7 @@ sizes, and layout regressions.
 
 ## Concrete Steps
 
-Run all commands from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+Run all commands from `~/RaspberryPiSystem_002`.
 
 Focused Web validation:
 

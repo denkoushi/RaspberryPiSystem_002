@@ -8,7 +8,7 @@ Hermes consultation responses currently make one service responsible for upstrea
 
 ## Progress
 
-- [x] (2026-09-09 10:05 JST) Created branch `feat/hermes-consultation-boundaries` with the lifecycle CLI at `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-consultation-boundaries`, anchored to `83684c8a870dd130954598da3af23fb22797bbb0`; the original dirty worktree was not modified.
+- [x] (2026-09-09 10:05 JST) Created branch `feat/hermes-consultation-boundaries` with the lifecycle CLI at `~/RaspberryPiSystem_002-worktrees/feat--hermes-consultation-boundaries`, anchored to `83684c8a870dd130954598da3af23fb22797bbb0`; the original dirty worktree was not modified.
 - [x] (2026-09-09 10:22 JST) Adopted only the consultation service/MCP changes, optional Web DTO and summary/detail UI changes, and official Hermes profile templates from the approved WIP. Runtime patches, comparison scripts, and unrelated documentation were excluded.
 - [x] (2026-09-09 10:23 JST) Moved Responses receive/parse/normalize functions to `apps/api/src/services/business-hermes/business-hermes-responses.ts` and evidence key validation, merging, and display projection to `apps/api/src/services/business-hermes/business-hermes-evidence.ts`.
 - [x] (2026-09-09 10:24 JST) Reduced `SOUL.md.j2`, `CONTEXT.md.j2`, and `SKILL.md.j2` to their distinct responsibilities. JSON response keys, evidence display rules, record view rules, and confirmation shape remain in the API instruction contract only.
@@ -51,7 +51,7 @@ This implementation stage adds no database migration, route change, generic clas
 
 ## Concrete Steps
 
-Run from `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-consultation-boundaries`:
+Run from `~/RaspberryPiSystem_002-worktrees/feat--hermes-consultation-boundaries`:
 
     python3 -m scripts.git_lifecycle.cli start --branch feat/hermes-consultation-boundaries
 
@@ -86,7 +86,7 @@ The first supervisor synthetic comparison found a semantic failure: the PN-A dim
 
 ## Idempotence and Recovery
 
-All edits are confined to the dedicated linked worktree. Re-running focused tests and builds is safe. The original worktree at `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-latency-measurement` must remain untouched. If review rejects a template or module change, revert only the corresponding uncommitted file in this worktree; do not reset or clean the original dirty worktree. No database or running process is changed by this plan.
+All edits are confined to the dedicated linked worktree. Re-running focused tests and builds is safe. The original worktree at `~/RaspberryPiSystem_002-worktrees/feat--hermes-latency-measurement` must remain untouched. If review rejects a template or module change, revert only the corresponding uncommitted file in this worktree; do not reset or clean the original dirty worktree. No database or running process is changed by this plan.
 
 ## Artifacts and Notes
 

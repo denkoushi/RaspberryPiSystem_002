@@ -36,7 +36,7 @@ update-frequency: medium
 # IPアドレスを確認
 hostname -I
 
-# 例: 192.168.10.230
+# 例: <Pi5 の LAN IP>
 ```
 
 ### 1.2 MacからSSH接続のテスト
@@ -45,7 +45,7 @@ hostname -I
 
 ```bash
 # SSH接続のテスト
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 
 # 初回接続時は、ホスト鍵の確認を求められます
 # Are you sure you want to continue connecting (yes/no)? yes
@@ -76,7 +76,7 @@ cat ~/.ssh/id_ed25519.pub
 
 ```bash
 # Macのターミナルで実行
-ssh-copy-id denkon5sd02@192.168.10.230
+ssh-copy-id denkon5sd02@<Pi5 の LAN IP>
 ```
 
 **方法2: 手動で追加**
@@ -87,7 +87,7 @@ ssh-copy-id denkon5sd02@192.168.10.230
 cat ~/.ssh/id_ed25519.pub
 
 # Raspberry Pi 5に接続して公開鍵を追加
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
@@ -100,7 +100,7 @@ exit
 ```bash
 # Macのターミナルで実行
 # パスワードなしで接続できるか確認
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 ```
 
 ---
@@ -120,7 +120,7 @@ nano ~/.ssh/config
 
 ```
 Host raspi5
-    HostName 192.168.10.230
+    HostName <Pi5 の LAN IP>
     User denkon5sd02
     IdentityFile ~/.ssh/id_ed25519
     ServerAliveInterval 60
@@ -215,7 +215,7 @@ ssh raspi5
 
 # 接続できない場合、IPアドレスが変わっている可能性がある
 # Raspberry Pi 5のIPアドレスを確認（管理画面または直接確認）
-ping -c 1 192.168.10.230
+ping -c 1 <Pi5 の LAN IP>
 ```
 
 ### 4.3 IPアドレスが変わった場合の対応
@@ -294,20 +294,20 @@ ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/do
 **解決方法:**
 ```bash
 # Raspberry Pi 5のIPアドレスを確認
-ping -c 1 192.168.10.230
+ping -c 1 <Pi5 の LAN IP>
 
 # SSH接続をテスト
-ssh -v denkon5sd02@192.168.10.230
+ssh -v denkon5sd02@<Pi5 の LAN IP>
 ```
 
-### Tailscale 接続済みなのに `https://100.106.158.2/admin` が開けない場合（2026-06-03）
+### Tailscale 接続済みなのに `https://<Pi5 の Tailscale IP>/admin` が開けない場合（2026-06-03）
 
 **症状**:
 
-- Tailscale メニューは **Connected**（例: Mac `100.64.230.31`）
-- ブックマーク `https://100.106.158.2/admin` が **タイムアウト**
-- `tailscale ping 100.106.158.2` → **`no matching peer`**
-- 工場 LAN では `https://192.168.10.230/admin` は開ける
+- Tailscale メニューは **Connected**（例: Mac `<Mac の Tailscale IP>`）
+- ブックマーク `https://<Pi5 の Tailscale IP>/admin` が **タイムアウト**
+- `tailscale ping <Pi5 の Tailscale IP>` → **`no matching peer`**
+- 工場 LAN では `https://<Pi5 の LAN IP>/admin` は開ける
 
 **原因（典型）**:
 
@@ -318,7 +318,7 @@ ssh -v denkon5sd02@192.168.10.230
 ```bash
 /Applications/Tailscale.app/Contents/MacOS/Tailscale status
 /Applications/Tailscale.app/Contents/MacOS/Tailscale status --json | python3 -c "import json,sys; print(json.load(sys.stdin)['Self'].get('Tags'))"
-/Applications/Tailscale.app/Contents/MacOS/Tailscale ping 100.106.158.2
+/Applications/Tailscale.app/Contents/MacOS/Tailscale ping <Pi5 の Tailscale IP>
 ```
 
 **解決**:
@@ -330,12 +330,12 @@ ssh -v denkon5sd02@192.168.10.230
 
 ### Pi5 が `NeedsLogin` で admin が再び開けない場合（2026-06-03）
 
-**症状**: Mac の `tag:admin` は付いているが、`https://100.106.158.2/admin` が再び不通 · Pi5 で `tailscale status` → **`NeedsLogin`**（node key expired / netmap 更新失敗のあと自動ログアウトしうる）
+**症状**: Mac の `tag:admin` は付いているが、`https://<Pi5 の Tailscale IP>/admin` が再び不通 · Pi5 で `tailscale status` → **`NeedsLogin`**（node key expired / netmap 更新失敗のあと自動ログアウトしうる）
 
 **対処（Pi5 · LAN SSH 可）**:
 
 ```bash
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 sudo tailscale up --advertise-tags=tag:server
 # 表示 URL を Tailscale 管理画面で承認
 ```
@@ -347,7 +347,7 @@ sudo tailscale up --advertise-tags=tag:server
 ### fail2banによるBanが発生した場合
 
 **症状**:
-- `ssh: connect to host 100.106.158.2 port 22: Connection refused`エラーが発生
+- `ssh: connect to host <Pi5 の Tailscale IP> port 22: Connection refused`エラーが発生
 - 管理コンソール（HTTPS）は正常にアクセス可能
 - 正しいユーザー名（`denkon5sd02`）を使用しているにもかかわらず接続できない
 
@@ -360,19 +360,19 @@ sudo tailscale up --advertise-tags=tag:server
 1. **RealVNCでPi5のデスクトップにアクセス**:
    ```bash
    # MacからRealVNC接続（Tailscale経由）
-   # RealVNC Viewerで 100.106.158.2:5900 に接続
+   # RealVNC Viewerで <Pi5 の Tailscale IP>:5900 に接続
    ```
 
 2. **Pi5のターミナルでfail2banのBanを確認**:
    ```bash
    sudo fail2ban-client status sshd
-   # Banned IP list: 100.64.230.31 などが表示される
+   # Banned IP list: <Mac の Tailscale IP> などが表示される
    ```
 
 3. **Banを解除**:
    ```bash
-   # MacのTailscale IPをBan解除（例: 100.64.230.31）
-   sudo fail2ban-client set sshd unbanip 100.64.230.31
+   # MacのTailscale IPをBan解除（例: <Mac の Tailscale IP>）
+   sudo fail2ban-client set sshd unbanip <Mac の Tailscale IP>
    
    # Ban解除の確認
    sudo fail2ban-client status sshd
@@ -382,7 +382,7 @@ sudo tailscale up --advertise-tags=tag:server
 4. **SSH接続を再試行**:
    ```bash
    # Macから実行
-   ssh denkon5sd02@100.106.158.2
+   ssh denkon5sd02@<Pi5 の Tailscale IP>
    ```
 
 **再発防止**:
@@ -426,12 +426,12 @@ SSH接続が失敗した場合（fail2ban Banなど）、RealVNC経由でPi5の�
    ```bash
    # Pi5で実行（または管理コンソールで確認）
    tailscale status
-   # 例: 100.106.158.2
+   # 例: <Pi5 の Tailscale IP>
    ```
 
 3. **RealVNC Viewerで接続**:
    - RealVNC Viewerを起動
-   - 接続先: `100.106.158.2:5900`（Tailscale IP:ポート5900）
+   - 接続先: `<Pi5 の Tailscale IP>:5900`（Tailscale IP:ポート5900）
    - 認証情報を入力して接続
 
 ### セキュリティに関する注意事項
@@ -467,7 +467,7 @@ SSH接続が失敗した場合（fail2ban Banなど）、RealVNC経由でPi5の�
 3. **SSH経由のポートフォワーディング**（代替案）:
    ```bash
    # Macから実行（SSH経由でポートフォワーディング）
-   ssh -L 5900:localhost:5900 denkon5sd02@100.106.158.2
+   ssh -L 5900:localhost:5900 denkon5sd02@<Pi5 の Tailscale IP>
    # その後、RealVNC Viewerで localhost:5900 に接続
    ```
 
@@ -497,7 +497,7 @@ SSH接続が失敗した場合（fail2ban Banなど）、RealVNC経由でPi5の�
 2. **ポート5900の確認**:
    ```bash
    # Macで実行
-   nc -vz -w 3 100.106.158.2 5900
+   nc -vz -w 3 <Pi5 の Tailscale IP> 5900
    # Connection succeeded が表示されることを確認
    ```
 

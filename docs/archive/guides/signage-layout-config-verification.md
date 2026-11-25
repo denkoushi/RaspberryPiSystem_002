@@ -31,7 +31,7 @@
 
 1. **Pi3のサイネージサービスを起動**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl start signage-lite.service'"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'sudo systemctl start signage-lite.service'"
    ```
 
 2. **検証スクリプトを実行**:
@@ -43,12 +43,12 @@
 
 1. **現在のスケジュール状態を確認**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/schedules | jq '.'"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/schedules | jq '.'"
    ```
 
 2. **現在のコンテンツを確認**（レガシー形式が新形式へ変換されていることを確認）:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/content | jq '{contentType, layoutConfig}'"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/content | jq '{contentType, layoutConfig}'"
    ```
 
 3. **Pi3での表示確認**:
@@ -58,7 +58,7 @@
 ### 検証2: 新形式のスケジュール作成と確認
 
 1. **管理コンソールにアクセス**:
-   - `https://100.106.158.2/admin/signage/schedules` にアクセス
+   - `https://<Pi5 の Tailscale IP>/admin/signage/schedules` にアクセス
    - ログイン（管理者権限が必要）
 
 2. **新形式のスケジュールを作成**:
@@ -98,7 +98,7 @@
 
 3. **APIでスケジュールを確認**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/schedules | jq '.schedules[] | select(.layoutConfig != null) | {name, layoutConfig}'"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/schedules | jq '.schedules[] | select(.layoutConfig != null) | {name, layoutConfig}'"
    ```
 
 4. **Pi3での表示確認**:
@@ -115,7 +115,7 @@
 
 2. **保存後のスケジュールを確認**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/schedules | jq '.schedules[] | select(.id == \"<スケジュールID>\") | {name, layoutConfig}'"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/schedules | jq '.schedules[] | select(.id == \"<スケジュールID>\") | {name, layoutConfig}'"
    ```
 
 3. **Pi3での表示確認**:
@@ -128,39 +128,39 @@
 
 ```bash
 # Pi3のサイネージサービスを起動
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl start signage-lite.service'"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'sudo systemctl start signage-lite.service'"
 
 # サービス状態を確認
-ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"
+ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'systemctl is-active signage-lite.service'"
 ```
 
 ### サイネージ画像が更新されない
 
 1. **APIのサイネージ画像を確認**:
    ```bash
-   curl -k -s -H "x-client-key: ${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}" https://100.106.158.2/api/signage/current-image -o /tmp/test-signage.jpg && file /tmp/test-signage.jpg
+   curl -k -s -H "x-client-key: ${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}" https://<Pi5 の Tailscale IP>/api/signage/current-image -o /tmp/test-signage.jpg && file /tmp/test-signage.jpg
    ```
 
 2. **Pi3の画像ファイルを確認**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /var/cache/signage/current.jpg'"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'ls -lh /var/cache/signage/current.jpg'"
    ```
 
 3. **サイネージサービスを再起動**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl restart signage-lite.service'"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'sudo systemctl restart signage-lite.service'"
    ```
 
 ### レイアウトが期待通りに表示されない
 
 1. **APIのコンテンツを確認**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "curl -k -s https://100.106.158.2/api/signage/content | jq '{contentType, layoutConfig}'"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/content | jq '{contentType, layoutConfig}'"
    ```
 
 2. **APIログを確認**:
    ```bash
-   ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api --tail 50 | grep -i signage"
+   ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api --tail 50 | grep -i signage"
    ```
 
 ## 検証チェックリスト

@@ -89,7 +89,7 @@ Milestone 5: E2E検証
 
 ## Concrete Steps
 
-1. `cd /Users/tsudatakashi/RaspberryPiSystem_002`
+1. `cd ~/RaspberryPiSystem_002`
 2. `pnpm prisma migrate dev --name add_client_status_logs`
 3. `pnpm prisma generate`
 4. API/フロントのテストを順次実行（詳細は Validation セクション参照）
@@ -115,7 +115,7 @@ Milestone 5: E2E検証
         -d '{
              "clientId": "pi-kiosk-01",
              "hostname": "pi-kiosk-01",
-             "ipAddress": "192.168.0.30",
+             "ipAddress": "<pi-kiosk-01 の LAN IP>",
              "cpuUsage": 32.5,
              "memoryUsage": 41.2,
              "diskUsage": 58.0,

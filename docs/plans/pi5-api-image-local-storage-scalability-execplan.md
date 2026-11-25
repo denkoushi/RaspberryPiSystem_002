@@ -318,7 +318,7 @@ links. Do not claim that integrity metadata is a backup.
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002`.
+All commands run from `~/RaspberryPiSystem_002`.
 
 For PR1, run focused unit and contract tests, then build the exact production
 target locally:

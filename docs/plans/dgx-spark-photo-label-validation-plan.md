@@ -95,7 +95,7 @@ update-frequency: high
 - API コンテナ内で
   - `photo_label -> dgx_primary`
   - `document_summary -> dgx_primary`
-  - 管理 Chat / status 用 `LOCAL_LLM_BASE_URL -> http://100.118.82.72:38081`
+  - 管理 Chat / status 用 `LOCAL_LLM_BASE_URL -> http://<DGX Spark の Tailscale IP>:38081`
   を確認した
 - その状態で `./scripts/deploy/verify-phase12-real.sh` を再実行し、**PASS 43 / WARN 0 / FAIL 0** を確認した
 
@@ -224,9 +224,9 @@ update-frequency: high
 
 ### 2026-04-26 `/embed` 移管後の backfill と Ubuntu 停止確認
 
-- Ubuntu 退役前の最後の live 依存だった `PHOTO_TOOL_EMBEDDING_URL` を、Pi5 で **`http://100.118.82.72:38081/embed`** へ切り替えた
+- Ubuntu 退役前の最後の live 依存だった `PHOTO_TOOL_EMBEDDING_URL` を、Pi5 で **`http://<DGX Spark の Tailscale IP>:38081/embed`** へ切り替えた
 - DGX 側は
-  - 外部入口: `http://100.118.82.72:38081/embed`
+  - 外部入口: `http://<DGX Spark の Tailscale IP>:38081/embed`
   - 内部 backend: `127.0.0.1:38100`
   の構成で、Pi5 API の既存契約 `POST { jpegBase64, modelId } -> { embedding, modelId }` を受けるようにした
 - Pi5 API コンテナ内の direct probe では **`status=200` / `dim=512`** を確認した
@@ -234,7 +234,7 @@ update-frequency: high
 - その後に Ubuntu PC を実際に停止し、停止後も
   - `./scripts/deploy/verify-phase12-real.sh` -> **PASS 43 / WARN 0 / FAIL 0**
   - Pi5 -> DGX の `POST /start` / `/v1/chat/completions` / `/embed` / `/stop` は成功
-  - 旧 Ubuntu endpoint `http://100.107.223.92:38081/healthz` は **timeout**
+  - 旧 Ubuntu endpoint `http://<Ubuntu LocalLLM の Tailscale IP>:38081/healthz` は **timeout**
   を確認した
 
 したがって、**本計画で必要だった「Ubuntu PC を停止しても DGX 単独で current system が維持できること」の確認まで完了**した。本計画における Ubuntu fallback は、役割を終えたと判断してよい。

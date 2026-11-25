@@ -457,7 +457,7 @@ sequenceDiagram
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/load-balancing-overview-chart-review infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -479,13 +479,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
   "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
 # 実績: HTTP 200（約 0.36s）
 
-ssh denkon5sd02@100.106.158.2 \
+ssh denkon5sd02@<Pi5 の Tailscale IP> \
   'JS=/srv/site/assets/index-BuE63Pux.js; \
    docker exec docker-web-1 sh -c "grep -oE \"gapBelowResourceCd:5|tickMargin:2|clipPaddingBottom:8|writingMode:\\\"vertical-rl\\\"|stroke:\\\"#94a3b8\\\"\" $JS | sort -u"'
 # 実績: gapBelowResourceCd:5, tickMargin:2, clipPaddingBottom:8, writingMode:"vertical-rl", stroke:"#94a3b8"
@@ -553,7 +553,7 @@ ssh denkon5sd02@100.106.158.2 \
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-axis-label-gap infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -575,13 +575,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
   "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
 # 実績: HTTP 200（約 0.20s）
 
-ssh denkon5sd02@100.106.158.2 \
+ssh denkon5sd02@<Pi5 の Tailscale IP> \
   'JS=/srv/site/assets/index-CzS0ipSK.js; \
    docker exec docker-web-1 sh -c "grep -oE \"gapBelowResourceCd:10|lineHeight:13|tickMargin:6|rotationDeg:90\" $JS | sort -u"'
 # 実績: gapBelowResourceCd:10, lineHeight:13, rotationDeg:90, tickMargin:6
@@ -641,7 +641,7 @@ ssh denkon5sd02@100.106.158.2 \
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-chart-axis-padding infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -663,13 +663,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
   "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
 # 実績: HTTP 200（約 0.28s）
 
-ssh denkon5sd02@100.106.158.2 \
+ssh denkon5sd02@<Pi5 の Tailscale IP> \
   'JS=/srv/site/assets/index-Dz8ctC9S.js; \
    docker exec docker-web-1 sh -c "grep -oE \"tickMargin:8|dy:10|dy:28|rotationDeg:90\" $JS | sort -u"'
 # 実績: dy:10, dy:28, rotationDeg:90, tickMargin:8
@@ -714,7 +714,7 @@ ssh denkon5sd02@100.106.158.2 \
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-chart-axis-labels-downward infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -736,13 +736,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
   "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
 # 実績: HTTP 200（約 0.29s）
 
-ssh denkon5sd02@100.106.158.2 \
+ssh denkon5sd02@<Pi5 の Tailscale IP> \
   'JS=/srv/site/assets/index-BZOyV42N.js; \
    docker exec docker-web-1 sh -c "grep -o \"rotate(90)\" $JS | head -1"'
 # 実績: rotate(90)
@@ -789,7 +789,7 @@ ssh denkon5sd02@100.106.158.2 \
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-vertical-chart-axis infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -804,13 +804,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
   "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
 # 実績: HTTP 200（約 0.22s）
 
-ssh denkon5sd02@100.106.158.2 \
+ssh denkon5sd02@<Pi5 の Tailscale IP> \
   'docker exec docker-web-1 sh -c "grep -o \"rotate(-90)\" /srv/site/assets/index-DwCtJ7W_.js | head -1"'
 # 実績: rotate(-90)
 ```
@@ -863,7 +863,7 @@ ssh denkon5sd02@100.106.158.2 \
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-resource-display-lines infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -878,7 +878,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
   "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
@@ -888,7 +888,7 @@ curl -sk "${BASE}/api/kiosk/production-schedule/resources" -H "x-client-key: ${K
   | python3 -c "import sys,json; d=json.load(sys.stdin); print('587:', d.get('resourceNameMap',{}).get('587'))"
 # 実績例: ['587\u3000GHL-B520T']
 
-ssh denkon5sd02@100.106.158.2 \
+ssh denkon5sd02@<Pi5 の Tailscale IP> \
   'JS=$(docker exec docker-web-1 sh -c "ls -t /srv/site/assets/index-*.js | head -1"); \
    docker exec docker-web-1 sh -c "grep -o resourceNameMap $JS | head -1"'
 # 実績: resourceNameMap
@@ -938,7 +938,7 @@ ssh denkon5sd02@100.106.158.2 \
 | Web バンドル | `index-DvjDK_-v.js`（`1.45fr` · `超過（必要分）` · `table-fixed`） |
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/kiosk-load-balancing-full-width-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -996,7 +996,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/kiosk-load-balancing-font-layout-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -1011,13 +1011,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 curl -sk -o /dev/null -w "HTTP %{http_code}\n" \
   "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
 # 実績: HTTP 200（約 0.35s）
 
-ssh denkon5sd02@100.106.158.2 \
+ssh denkon5sd02@<Pi5 の Tailscale IP> \
   'JS=$(docker exec docker-web-1 sh -c "ls /srv/site/assets/index-*.js | head -1"); \
    docker exec docker-web-1 grep -o "workspaceRow\|table-fixed\|試算後必要" "$JS" | sort -u'
 # 実績: workspaceRow, table-fixed, 試算後必要（minify 後も識別可）
@@ -1068,7 +1068,7 @@ ssh denkon5sd02@100.106.158.2 \
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-ui-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
@@ -1079,11 +1079,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後約 **29s**）
 - Pi5 Git: **`1698aa61`**
 
-### API / Web スモーク（Pi5 · Tailscale `100.106.158.2`）
+### API / Web スモーク（Pi5 · Tailscale `<Pi5 の Tailscale IP>`）
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
 ```
@@ -1153,7 +1153,7 @@ Mac device-scope v2: **`targetDeviceScopeKey` 必須**（未指定 400）。
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-machine-monthly-view infrastructure/ansible/inventory.yml --limit <host> --detach --follow
 ```
 
@@ -1164,11 +1164,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5+Pi4 デプロイ後・約 **28s**）
 - **注意**: 本スクリプトは **`machine-monthly-load` を直接叩かない**（負荷調整専用 curl は手動スモーク推奨）
 
-### 手動スモーク（Pi5 · Tailscale `100.106.158.2`）
+### 手動スモーク（Pi5 · Tailscale `<Pi5 の Tailscale IP>`）
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 
 # 俯瞰（回帰）
 curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
@@ -1241,11 +1241,11 @@ curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/machine-monthly-l
 
 - `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）
 
-### 手動スモーク（Pi5 · Tailscale `100.106.158.2`）
+### 手動スモーク（Pi5 · Tailscale `<Pi5 の Tailscale IP>`）
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 
 curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
   -H "x-client-key: ${KEY}"
@@ -1282,7 +1282,7 @@ curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/start-date-leveli
 **標準コマンド**（Pi4 展開時は `<host>` を 1 台ずつ）:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-aggregation-fix infrastructure/ansible/inventory.yml --limit <host> --detach --follow
 ```
 
@@ -1297,11 +1297,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **115s**）
 - Pi5 Git: **`cd42ebfe`** · `feat/kiosk-load-balancing-ui-p0p1`
 
-### 手動スモーク（Pi5 · Tailscale `100.106.158.2`）
+### 手動スモーク（Pi5 · Tailscale `<Pi5 の Tailscale IP>`）
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 MONTH="2026-05"
 
 # 超過資源 CD を overview から取得して OVER_JSON に渡す
@@ -1349,7 +1349,7 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-load-balancing-auto-plan-reset-fix infrastructure/ansible/inventory.yml --limit <host> --detach --follow
 ```
 
@@ -1360,11 +1360,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後約 **57s**·Pi4 群後約 **53s**）
 - Pi5 Git: **`463aeabb`**
 
-### API スモーク（Pi5 · Tailscale `100.106.158.2`）
+### API スモーク（Pi5 · Tailscale `<Pi5 の Tailscale IP>`）
 
 ```bash
 KEY="client-key-raspberrypi4-kiosk1"
-BASE="https://100.106.158.2"
+BASE="https://<Pi5 の Tailscale IP>"
 MONTH="2026-05"
 # overview から overMinutes>0 の資源 CD を overResourceCds に渡す
 curl -sk -X POST "${BASE}/api/kiosk/production-schedule/load-balancing/outsourcing-plan" \

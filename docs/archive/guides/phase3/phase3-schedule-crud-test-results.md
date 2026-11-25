@@ -5,7 +5,7 @@
 ## テスト環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **IPアドレス**: `100.106.158.2`（Tailscale経由）
+- **IPアドレス**: `<Pi5 の Tailscale IP>`（Tailscale経由）
 - **ブランチ**: `feature/dropbox-csv-import-phase1`
 - **テスト方法**: 設定ファイル（`config/backup.json`）を直接編集してCRUD操作をテスト
 

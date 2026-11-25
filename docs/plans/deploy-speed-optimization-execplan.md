@@ -180,7 +180,7 @@ Phase A3 composes the existing idempotent `rollback-manifest.py` and `terminal-r
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002` on branch `chore/deploy-speed-telemetry`.
+Work from `~/RaspberryPiSystem_002` on branch `chore/deploy-speed-telemetry`.
 
 Run the focused tests after every code edit:
 

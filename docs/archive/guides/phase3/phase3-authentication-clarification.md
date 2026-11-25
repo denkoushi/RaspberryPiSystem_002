@@ -11,7 +11,7 @@ Phase 3の実機検証では、**2種類の異なるトークン**が関係し�
 **用途**: APIリクエストの認証（ユーザーがログインしたことを証明）
 
 **取得方法**:
-- 管理画面（`https://100.106.158.2/admin`）にログイン
+- 管理画面（`https://<Pi5 の Tailscale IP>/admin`）にログイン
 - `POST /api/auth/login`でユーザー名とパスワードを送信
 - レスポンスで`accessToken`と`refreshToken`を取得
 

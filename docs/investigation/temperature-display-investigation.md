@@ -85,8 +85,8 @@ const statusQuery = useClientStatuses();
 
 | clientId | hostname | ipAddress | temperature | lastSeen |
 |----------|----------|-----------|-------------|----------|
-| `raspberrypi3-signage1` | `raspberrypi` | `192.168.128.152` | **37.55°C** | 2026-01-03 10:14:03 |
-| `raspberrypi4-kiosk1` | `raspberrypi` | `192.168.128.102` | **32.13°C** | 2026-01-03 10:13:25 |
+| `raspberrypi3-signage1` | `raspberrypi` | `<raspberrypi3 の LAN IP>` | **37.55°C** | 2026-01-03 10:14:03 |
+| `raspberrypi4-kiosk1` | `raspberrypi` | `<IP アドレス>` | **32.13°C** | 2026-01-03 10:13:25 |
 
 **確認**: Pi3/Pi4それぞれの温度がDBに記録されている（status-agentが正常動作）
 
@@ -118,10 +118,10 @@ const statusQuery = useClientStatuses();
 
 **現状の問題**:
 - `group_vars/all.yml`の`local_network.*_ip`が実測値とズレている
-  - 設定値: `raspberrypi3_ip: "192.168.128.152"`
-  - 実測値（status-agent送信）: `192.168.128.152`（一致）
-  - 設定値: `raspberrypi4_ip: "192.168.10.224"`
-  - 実測値（status-agent送信）: `192.168.128.102`（**不一致**）
+  - 設定値: `raspberrypi3_ip: "<raspberrypi3 の LAN IP>"`
+  - 実測値（status-agent送信）: `<raspberrypi3 の LAN IP>`（一致）
+  - 設定値: `raspberrypi4_ip: "<raspberrypi4 の LAN IP>"`
+  - 実測値（status-agent送信）: `<IP アドレス>`（**不一致**）
 
 **根本原因**:
 - IPアドレスがハードコードされており、ネットワーク変更時に手動更新が必要

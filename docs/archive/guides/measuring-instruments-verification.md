@@ -240,9 +240,9 @@
   sudo systemctl restart kiosk-browser.service
   ```
 - 正常なフラグが入っていることを確認  
-  `--app=https://100.106.158.2/kiosk`  
+  `--app=https://<Pi5 の Tailscale IP>/kiosk`  
   `--user-data-dir=/home/tools03/.config/chromium-kiosk`  
-  `--unsafely-treat-insecure-origin-as-secure=https://100.106.158.2`  
+  `--unsafely-treat-insecure-origin-as-secure=https://<Pi5 の Tailscale IP>`  
   `--use-fake-ui-for-media-stream` / `--ignore-certificate-errors`
 
 **再発防止**:

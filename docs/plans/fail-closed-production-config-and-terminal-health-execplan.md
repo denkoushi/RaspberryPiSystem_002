@@ -319,7 +319,7 @@ intentional commit to one Draft PR. Do not merge or deploy.
 
 Work from:
 
-    cd /Users/tsudatakashi/RaspberryPiSystem_002
+    cd ~/RaspberryPiSystem_002
 
 The branch was created with:
 

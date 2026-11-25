@@ -108,7 +108,7 @@ Show that a new source needs only its catalog entry and source label. Add one sm
 
 ## Concrete Steps
 
-Measurements used above can be repeated. From the Mac, with the owner's tunnel open (`ssh -N -L 38110:127.0.0.1:38110 ubudgxkoushi@100.118.82.72`):
+Measurements used above can be repeated. From the Mac, with the owner's tunnel open (`ssh -N -L 38110:127.0.0.1:38110 ubudgxkoushi@<DGX Spark の Tailscale IP>`):
 
     curl -s -o /dev/null -w "%{time_total}\n" -H 'content-type: application/json' \
       -d '{"model":"Qwen/Qwen3-Embedding-0.6B","input":["塗装不良"]}' http://127.0.0.1:38110/v1/embeddings

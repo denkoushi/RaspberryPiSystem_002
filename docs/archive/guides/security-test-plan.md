@@ -29,7 +29,7 @@
    - [ ] `infrastructure/ansible/templates/nfc-agent.env.j2`で変数が正しく参照されている
    - [ ] `infrastructure/ansible/templates/status-agent.conf.j2`で変数が正しく参照されている
    - [ ] `infrastructure/ansible/templates/docker.env.j2`で変数が正しく参照されている
-   - [ ] 古いIPアドレス（`192.168.128.131`など）のデフォルト値が削除されている
+   - [ ] 古いIPアドレス（`<Pi5 の LAN IP（自宅）>`など）のデフォルト値が削除されている
 
 4. **スクリプトの変数参照確認**
    - [ ] `scripts/register-clients.sh`で変数が正しく参照されている
@@ -77,7 +77,7 @@ ansible-playbook -i inventory.yml playbooks/ping.yml
 ansible-playbook -i inventory.yml playbooks/ping.yml
 
 # 7. 運用モード自動検出APIのテスト
-curl http://192.168.10.230:8080/api/system/network-mode
+curl http://<Pi5 の LAN IP>:8080/api/system/network-mode
 # 期待: { mode: "local", status: "local_network_only" } または { mode: "maintenance", status: "internet_connected" }
 
 # 8. 管理画面での運用モード表示テスト
@@ -109,7 +109,7 @@ curl http://192.168.10.230:8080/api/system/network-mode
 
 ```bash
 # 1. Tailscaleクライアントのインストール確認
-ssh denkon5sd02@192.168.10.230 "tailscale version"
+ssh denkon5sd02@<Pi5 の LAN IP> "tailscale version"
 
 # 2. Tailscale接続確認（通常運用）
 tailscale status
@@ -142,7 +142,7 @@ ssh raspi5-tailscale "cd /opt/RaspberryPiSystem_002 && git pull"
 
 ```bash
 # 1. バックアップ暗号化の確認
-ssh denkon5sd02@192.168.10.230 "cd /opt/RaspberryPiSystem_002 && ./scripts/backup.sh"
+ssh denkon5sd02@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && ./scripts/backup.sh"
 file /path/to/backup/backup-*.enc
 
 # 2. オフライン保存の確認
@@ -175,17 +175,17 @@ psql -U postgres -d borrow_return < backup.sql
 
 ```bash
 # 1. ファイアウォール設定の確認
-ssh denkon5sd02@192.168.10.230 "sudo ufw status"
+ssh denkon5sd02@<Pi5 の LAN IP> "sudo ufw status"
 
 # 2. HTTPS強制の確認
-curl -I http://192.168.10.230
+curl -I http://<Pi5 の LAN IP>
 # 期待: HTTP 301または302でHTTPSにリダイレクト
 
-curl -I https://192.168.10.230
+curl -I https://<Pi5 の LAN IP>
 # 期待: HTTP 200
 
 # 3. fail2banの動作確認
-ssh denkon5sd02@192.168.10.230 "sudo fail2ban-client status"
+ssh denkon5sd02@<Pi5 の LAN IP> "sudo fail2ban-client status"
 # ブルートフォース攻撃をシミュレートして、IPがブロックされることを確認
 ```
 
@@ -214,15 +214,15 @@ ssh denkon5sd02@192.168.10.230 "sudo fail2ban-client status"
 
 ```bash
 # 1. ClamAVの動作確認
-ssh denkon5sd02@192.168.10.230 "sudo clamscan --version"
+ssh denkon5sd02@<Pi5 の LAN IP> "sudo clamscan --version"
 sudo clamscan -r /opt/RaspberryPiSystem_002
 
 # 2. Trivyの動作確認
-ssh denkon5sd02@192.168.10.230 "trivy --version"
+ssh denkon5sd02@<Pi5 の LAN IP> "trivy --version"
 trivy image postgres:15-alpine
 
 # 3. rkhunterの動作確認
-ssh denkon5sd02@192.168.10.230 "sudo rkhunter --versioncheck"
+ssh denkon5sd02@<Pi5 の LAN IP> "sudo rkhunter --versioncheck"
 sudo rkhunter --check
 ```
 

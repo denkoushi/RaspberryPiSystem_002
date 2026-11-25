@@ -250,7 +250,7 @@ cannot regress.
 ## Concrete Steps
 
 PR 2 commands run in
-`/Users/tsudatakashi/RaspberryPiSystem_002-deploy-standardization-cutover`.
+`~/RaspberryPiSystem_002-deploy-standardization-cutover`.
 Do not run `scripts/update-all-clients.sh`, production preflight, SSH, cleanup,
 or rollback commands.
 

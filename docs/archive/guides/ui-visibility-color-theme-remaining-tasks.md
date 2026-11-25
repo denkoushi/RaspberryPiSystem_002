@@ -166,7 +166,7 @@
 
 2. **実機検証・視認性テスト**: 実際の工場環境での視認性確認
    - 実機検証手順書: [ui-visibility-color-theme-real-device-verification.md](./ui-visibility-color-theme-real-device-verification.md)
-   - デプロイ手順: `ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ./scripts/server/deploy.sh feature/improve-visibility-color-theme"`
+   - デプロイ手順: `ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ./scripts/server/deploy.sh feature/improve-visibility-color-theme"`
 3. **コントラスト比の検証**: ブラウザツールを使用した実測値の確認
 
 ### 実施推奨（優先度: 中）

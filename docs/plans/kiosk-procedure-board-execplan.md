@@ -23,7 +23,7 @@
 
 ## Surprises & Discoveries
 
-Observation: モックは本物のAIや永続化を持たない。`M` の `p` / `o` が正解ページと順序で、`topicMap` / `aiTarget` がそれを使う。`analyze` の待ちは700ms固定である。Evidence: `/private/tmp/claude-501/-Users-tsudatakashi-RaspberryPiSystem-002/9032a6ba-20c9-45a7-8e52-9abcca61100c/scratchpad/kentei-mock.html` の上記関数。実装ではこの正解情報を持たず、人が置いた内容と素材を推論へ渡す。数秒〜数分の待ちを扱う。
+Observation: モックは本物のAIや永続化を持たない。`M` の `p` / `o` が正解ページと順序で、`topicMap` / `aiTarget` がそれを使う。`analyze` の待ちは700ms固定である。Evidence: `/private/tmp/claude-501/-Users-<Mac のユーザー名>-RaspberryPiSystem-002/9032a6ba-20c9-45a7-8e52-9abcca61100c/scratchpad/kentei-mock.html` の上記関数。実装ではこの正解情報を持たず、人が置いた内容と素材を推論へ渡す。数秒〜数分の待ちを扱う。
 
 Observation: 試験計画の旧案は音声・動画も素材としているが、現在の受付はメモと `image` / `pdf` だけである。Evidence: 外部入力 `trial-plan.md` の「作るもの」と `apps/api/src/services/knowledge/knowledge-intake.service.ts` の `intakeRequestSchema.files.kind`。合意済みの新判断を優先して音声・動画を除外する。既存投稿は社員タグを要求するが、盤面の操作に社員タグは要求しない。
 
@@ -83,7 +83,7 @@ Decision: 素材集合の変化も盤面versionを進め、同じlayoutで再推
 
 ## Context and Orientation
 
-作業ルートは `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--kiosk-procedure-board`。APIはFastify、DBはPostgreSQLとPrisma、画面はReactとReact Query、検証はVitestである。versionによる楽観ロックとは、読み取ったversionと保存先versionが一致する場合だけ更新し、他の操作が先に保存されていたら409を返す方式である。workerはHTTP応答とは別にDBに残った仕事を取り出して処理するもの、leaseは同じ仕事を同時実行しないための期限付き処理権である。
+作業ルートは `~/RaspberryPiSystem_002-worktrees/feat--kiosk-procedure-board`。APIはFastify、DBはPostgreSQLとPrisma、画面はReactとReact Query、検証はVitestである。versionによる楽観ロックとは、読み取ったversionと保存先versionが一致する場合だけ更新し、他の操作が先に保存されていたら409を返す方式である。workerはHTTP応答とは別にDBに残った仕事を取り出して処理するもの、leaseは同じ仕事を同時実行しないための期限付き処理権である。
 
 `apps/api/src/services/knowledge/knowledge-intake.service.ts` が投稿を受け付け、`apps/api/src/services/knowledge/pdf-knowledge-importer.ts` がPDFをページへ分け、`apps/api/src/services/knowledge/knowledge-source.ts` が素材の元文章・画像・PDFページ情報を検証する。`apps/api/src/services/knowledge/prisma-procedure-material.repository.ts` の `materialsOf` はassigned素材を古い順で取得する。盤面は `procedureId` が一致し `state=assigned` の素材だけを参照する。投稿直後で未割当の素材は、既存仕分けで案件が決まってから盤面へ現れる。既存受付・仕分けの仕様は変えない。
 
@@ -95,7 +95,7 @@ Decision: 素材集合の変化も盤面versionを進め、同じlayoutで再推
 
 キオスクルートは `apps/web/src/App.tsx` の `KioskLayout` 配下に加える。入口は `apps/web/src/pages/kiosk/KioskPortalPage.tsx` に端末条件付きの「手順づくり」カードを加え、既存タブ順序の共通契約を拡張しない。ドラッグの前例は `apps/web/src/features/assembly/AssemblyProcedureMarkerLayer.tsx` で、pointer capture、requestAnimationFrame、pointercancelによる取消を参照する。組立側のファイルそのものは変更しない。
 
-承認済み見本は `/private/tmp/claude-501/-Users-tsudatakashi-RaspberryPiSystem-002/9032a6ba-20c9-45a7-8e52-9abcca61100c/scratchpad/kentei-mock.html`、試験案は同じディレクトリの `trial-plan.md`。これらは一時ファイルなので、次節以降へ必要な操作・試験条件を埋め込んだ。実装者が再度アクセスできなくても本計画だけで進められる。
+承認済み見本は `/private/tmp/claude-501/-Users-<Mac のユーザー名>-RaspberryPiSystem-002/9032a6ba-20c9-45a7-8e52-9abcca61100c/scratchpad/kentei-mock.html`、試験案は同じディレクトリの `trial-plan.md`。これらは一時ファイルなので、次節以降へ必要な操作・試験条件を埋め込んだ。実装者が再度アクセスできなくても本計画だけで進められる。
 
 ## Plan of Work
 

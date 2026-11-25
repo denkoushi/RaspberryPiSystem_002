@@ -191,7 +191,7 @@ API。`hermes-search-trial.service.ts` に、ソース id → 読み出し関数
 
 ## Concrete Steps
 
-作業ディレクトリは `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-cross-source-foundation`。
+作業ディレクトリは `~/RaspberryPiSystem_002-worktrees/feat--hermes-cross-source-foundation`。
 
 検索 worker のテスト:
 

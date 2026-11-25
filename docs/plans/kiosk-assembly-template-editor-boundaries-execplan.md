@@ -80,7 +80,7 @@ First add characterization around save payloads, failure ordering, authenticatio
 
 ## Concrete Steps
 
-All commands run from `/Users/tsudatakashi/RaspberryPiSystem_002` with `PATH=/opt/homebrew/opt/node@20/bin:$PATH`. After each cohesive extraction run the focused page and new module tests. At milestones run Web lint and build. The final command is `scripts/test/validate-assembly-template-guided-create.sh`, followed by docs audit and `git diff --check`. Inspect Docker resources before and after the validator and remove only uniquely labelled disposable resources owned by it.
+All commands run from `~/RaspberryPiSystem_002` with `PATH=/opt/homebrew/opt/node@20/bin:$PATH`. After each cohesive extraction run the focused page and new module tests. At milestones run Web lint and build. The final command is `scripts/test/validate-assembly-template-guided-create.sh`, followed by docs audit and `git diff --check`. Inspect Docker resources before and after the validator and remove only uniquely labelled disposable resources owned by it.
 
 ## Validation and Acceptance
 

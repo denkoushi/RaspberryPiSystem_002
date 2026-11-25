@@ -51,7 +51,7 @@ cd /Users/<user>/RaspberryPiSystem_002
 ```
 
 **エラーが出た場合:**
-- APIサーバーが起動しているか確認: `curl http://192.168.128.131:8080/api/system/health`
+- APIサーバーが起動しているか確認: `curl http://<Pi5 の LAN IP（自宅）>:8080/api/system/health`
 - ログイン情報が正しいか確認（デフォルト: `admin` / `<password>`）
 
 ---
@@ -65,7 +65,7 @@ cd /Users/<user>/RaspberryPiSystem_002
 cd /Users/<user>/RaspberryPiSystem_002
 
 # 環境変数を設定（Raspberry Pi 5へのSSH接続情報）
-export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の LAN IP（自宅）>"
 
 # 一括更新スクリプトを実行（status-agentの設定も含まれる）
 # inventory指定が必須（誤デプロイ防止）
@@ -81,8 +81,8 @@ export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
 - 各クライアントへの接続成功
 
 **エラーが出た場合:**
-- SSH接続ができるか確認: `ssh denkon5sd02@192.168.128.131`
-- Ansibleがインストールされているか確認: `ssh denkon5sd02@192.168.128.131 "ansible --version"`
+- SSH接続ができるか確認: `ssh denkon5sd02@<Pi5 の LAN IP（自宅）>`
+- Ansibleがインストールされているか確認: `ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "ansible --version"`
 - インベントリファイルの設定を確認: `cat infrastructure/ansible/inventory.yml`
 
 ---
@@ -95,7 +95,7 @@ export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
 
 ```bash
 # SSH接続（Macから）
-ssh tools03@192.168.128.102
+ssh tools03@<IP アドレス>
 
 # status-agentの設定ファイルを確認
 cat /etc/raspi-status-agent.conf
@@ -114,7 +114,7 @@ journalctl -u status-agent.service -n 20
 
 ```bash
 # SSH接続（Macから）
-ssh signageras3@192.168.128.152
+ssh signageras3@<raspberrypi3 の LAN IP>
 
 # status-agentの設定ファイルを確認
 cat /etc/raspi-status-agent.conf
@@ -141,7 +141,7 @@ journalctl -u status-agent.service -n 20
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients
+https://<Pi5 の LAN IP（自宅）>/admin/clients
 ```
 
 **確認事項:**
@@ -151,7 +151,7 @@ https://192.168.128.131/admin/clients
 
 **表示されない場合:**
 - status-agentが正常に動作しているか確認（Step 3を参照）
-- APIログを確認: `ssh denkon5sd02@192.168.128.131 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep 'clients/status'"`
+- APIログを確認: `ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep 'clients/status'"`
 
 ---
 
@@ -162,12 +162,12 @@ https://192.168.128.131/admin/clients
 **確認事項:**
 1. APIサーバーが起動しているか
    ```bash
-   curl http://192.168.128.131:8080/api/system/health
+   curl http://<Pi5 の LAN IP（自宅）>:8080/api/system/health
    ```
 
 2. ログイン情報が正しいか
    ```bash
-   curl -X POST http://192.168.128.131:8080/api/auth/login \
+   curl -X POST http://<Pi5 の LAN IP（自宅）>:8080/api/auth/login \
      -H "Content-Type: application/json" \
      -d '{"username":"admin","password":"<password>"}'
    ```
@@ -177,12 +177,12 @@ https://192.168.128.131/admin/clients
 **確認事項:**
 1. SSH接続ができるか
    ```bash
-   ssh denkon5sd02@192.168.128.131
+   ssh denkon5sd02@<Pi5 の LAN IP（自宅）>
    ```
 
 2. Ansibleがインストールされているか
    ```bash
-   ssh denkon5sd02@192.168.128.131 "ansible --version"
+   ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "ansible --version"
    ```
 
 3. インベントリファイルの設定を確認
@@ -214,17 +214,17 @@ https://192.168.128.131/admin/clients
 1. status-agentが正常に動作しているか（Step 3を参照）
 2. APIログを確認
    ```bash
-   ssh denkon5sd02@192.168.128.131 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep 'clients/status'"
+   ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep 'clients/status'"
    ```
 
 3. クライアントデバイスが登録されているか
    ```bash
    # Macから実行
-   TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+   TOKEN=$(curl -s -X POST http://<Pi5 の LAN IP（自宅）>:8080/api/auth/login \
      -H "Content-Type: application/json" \
      -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
    
-   curl -X GET http://192.168.128.131:8080/api/clients/status \
+   curl -X GET http://<Pi5 の LAN IP（自宅）>:8080/api/clients/status \
      -H "Authorization: Bearer $TOKEN" | jq '.'
    ```
 

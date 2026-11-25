@@ -71,7 +71,7 @@ Milestone 3 adds `apps/api/src/services/assembly/procedure-term-learning.service
 
 ## Concrete Steps
 
-Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--procedure-tidy-learning-loop`. Build shared packages once with `pnpm --filter "@raspi-system/*" --filter "!@raspi-system/api" --filter "!@raspi-system/web" build`. In `apps/api` run `pnpm exec prisma generate` after editing the schema, then `pnpm exec tsc --noEmit -p tsconfig.build.json`, `pnpm exec eslint <changed files>` and `pnpm exec vitest run <touched tests>`.
+Work in `~/RaspberryPiSystem_002-worktrees/feat--procedure-tidy-learning-loop`. Build shared packages once with `pnpm --filter "@raspi-system/*" --filter "!@raspi-system/api" --filter "!@raspi-system/web" build`. In `apps/api` run `pnpm exec prisma generate` after editing the schema, then `pnpm exec tsc --noEmit -p tsconfig.build.json`, `pnpm exec eslint <changed files>` and `pnpm exec vitest run <touched tests>`.
 
 ## Validation and Acceptance
 

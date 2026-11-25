@@ -5,7 +5,7 @@
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **IPアドレス**: `100.106.158.2`（Tailscale経由）
+- **IPアドレス**: `<Pi5 の Tailscale IP>`（Tailscale経由）
 - **ブランチ**: `feature/dropbox-csv-import-phase1`
 - **最新コミット**: `f57605d feat: Phase 3管理画面UI実装`
 

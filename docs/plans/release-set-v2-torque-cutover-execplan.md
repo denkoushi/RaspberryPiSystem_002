@@ -112,7 +112,7 @@ Finally, retain the existing quiesce and aggregate finalize behavior. Pi5 prepar
 
 ## Concrete Steps
 
-Work only in `/Users/tsudatakashi/RaspberryPiSystem_002-torque-wrench-global-ownership-deploy` on `feat/release-set-v2-torque-cutover`.
+Work only in `~/RaspberryPiSystem_002-torque-wrench-global-ownership-deploy` on `feat/release-set-v2-torque-cutover`.
 
 Inspect each milestone with:
 

@@ -182,7 +182,7 @@ evidence for the coordinator; the executor does not decide rollback itself.
 
 Work from the repository root:
 
-    cd /Users/tsudatakashi/RaspberryPiSystem_002
+    cd ~/RaspberryPiSystem_002
 
 Run the focused contracts:
 

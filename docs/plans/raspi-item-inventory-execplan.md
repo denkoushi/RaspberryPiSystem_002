@@ -63,7 +63,7 @@ The accepted manifest contract is schema version 1:
 
 - [x] Audit base repository, rules, current worktree state, and existing tool/Gmail/NFC/photo patterns (2026-09-16 JST).
 - [x] Create isolated feature worktree `RaspberryPiSystem_002-worktrees/feat--raspi-item-inventory` from base `e48ef1e36bc1926508f4e9a36ee361ec8d62a4e7` (2026-09-16 JST).
-- [x] Confirm the concrete manifest contract from `/Users/tsudatakashi/Downloads/itemlistraspiphotoid2/2_manifest.json` (2026-09-16 JST).
+- [x] Confirm the concrete manifest contract from `~/Downloads/itemlistraspiphotoid2/2_manifest.json` (2026-09-16 JST).
 - [x] Add Prisma schema and migration.
 - [x] Implement manifest resolver and ingestion service/tests.
 - [x] Implement inventory transaction service/API.

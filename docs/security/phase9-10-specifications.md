@@ -42,8 +42,8 @@ web:
 - web サービスの `ADMIN_ALLOW_NETS` は Blue/Green では参照されない（旧構成との共通契約として必須のまま残している）。
 
 **通常工場で明示する許可ネットワーク**:
-- `192.168.10.0/24`: ローカルネットワーク（オフィス）
-- `192.168.128.0/24`: 自宅ネットワーク（VNC用）
+- `<社内 LAN のアドレス帯>`: ローカルネットワーク（オフィス）
+- `<社内 LAN のアドレス帯>`: 自宅ネットワーク（VNC用）
 - `100.64.0.0/10`: Tailscaleネットワーク（通常運用）
 - `127.0.0.1/32`: ローカルホスト
 
@@ -65,7 +65,7 @@ curl -kI https://<pi5>/admin
 ```
 
 **実機テスト結果（2025-12-14）**:
-- ✅ 許可IP（Tailscale経由）から `curl -kI https://100.106.158.2/admin` が200 OKを確認
+- ✅ 許可IP（Tailscale経由）から `curl -kI https://<Pi5 の Tailscale IP>/admin` が200 OKを確認
 - ✅ `ADMIN_ALLOW_NETS`環境変数が正しく設定されていることを確認
 
 **関連ドキュメント**:
@@ -197,7 +197,7 @@ header {
 
 **テスト方法**:
 ```bash
-export TARGET_HOST="100.106.158.2"
+export TARGET_HOST="<Pi5 の Tailscale IP>"
 bash scripts/test/check-caddy-https-headers.sh
 ```
 

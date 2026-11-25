@@ -24,7 +24,7 @@ update-frequency: medium
 │  (開発者PC) │
 └──────┬──────┘
        │ SSH接続
-       │ (denkon5sd02@192.168.10.230)
+       │ (denkon5sd02@<Pi5 の LAN IP>)
        ▼
 ┌─────────────────┐
 │  Raspberry Pi 5 │
@@ -101,7 +101,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit 
 **Pi5に接続して実行**:
 ```bash
 # Pi5にSSH接続
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 
 # Pi5上で実行: Pi4に公開鍵を追加
 ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@<pi4_ip>
@@ -139,7 +139,7 @@ exit
 **Pi5から接続テスト**:
 ```bash
 # Pi5に接続
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 
 # Pi5上で実行: Pi4への接続テスト
 ssh -o StrictHostKeyChecking=no tools03@<pi4_ip> "echo 'Pi4接続成功' && hostname"
@@ -151,7 +151,7 @@ ssh -o StrictHostKeyChecking=no signageras3@<pi3_ip> "echo 'Pi3接続成功' && 
 **Ansible接続テスト**:
 ```bash
 # Macのターミナルで実行
-ssh denkon5sd02@192.168.10.230 "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
+ssh denkon5sd02@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
 ```
 
 ## よくある質問
@@ -192,10 +192,10 @@ ssh denkon5sd02@192.168.10.230 "cd /opt/RaspberryPiSystem_002 && ansible all -i 
 **解決方法**:
 ```bash
 # Pi5から接続テスト（詳細モード）
-ssh -v tools03@192.168.10.223
+ssh -v tools03@<raspberrypi4 の実際の LAN IP>
 
 # Pi4側でSSH設定を確認
-ssh tools03@192.168.10.223
+ssh tools03@<raspberrypi4 の実際の LAN IP>
 ls -la ~/.ssh/
 cat ~/.ssh/authorized_keys
 ```
@@ -210,7 +210,7 @@ cat ~/.ssh/authorized_keys
 **解決方法**:
 ```bash
 # Pi5からAnsible接続テスト
-ssh denkon5sd02@192.168.10.230
+ssh denkon5sd02@<Pi5 の LAN IP>
 cd /opt/RaspberryPiSystem_002
 ansible all -i infrastructure/ansible/inventory.yml -m ping -vvv
 ```
@@ -239,8 +239,8 @@ Ansible Playbookで`hosts: "{{ client_host }}"`のように直接ホストを指
    ```
 
 4. **最終的なIPアドレスの解決**:
-   - `network_mode: "tailscale"`の場合: `tailscale_network.raspberrypi4_ip`（例: `100.74.144.79`）
-   - `network_mode: "local"`の場合: `local_network.raspberrypi4_ip`（例: `192.168.10.224`）
+   - `network_mode: "tailscale"`の場合: `tailscale_network.raspberrypi4_ip`（例: `<raspberrypi4 の Tailscale IP>`）
+   - `network_mode: "local"`の場合: `local_network.raspberrypi4_ip`（例: `<raspberrypi4 の LAN IP>`）
 
 ### `hosts: localhost`の問題
 

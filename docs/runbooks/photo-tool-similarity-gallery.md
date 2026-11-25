@@ -76,7 +76,7 @@ scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/backfill-pho
 
 ## 3.1 実機検証メモ（2026-03-29）
 
-- **デプロイ**: 埋め込み・バックフィル・server 検証は **Pi5 API が正本**のため、[deployment.md](../guides/deployment.md) に従い **`--limit raspberrypi5`** のみ（Pi4 複数台・Pi3 は今回の機能反映に必須ではない）。`update-all-clients.sh` に **`RASPI_SERVER_HOST`**（例: `denkon5sd02@100.106.158.2`）が必要。
+- **デプロイ**: 埋め込み・バックフィル・server 検証は **Pi5 API が正本**のため、[deployment.md](../guides/deployment.md) に従い **`--limit raspberrypi5`** のみ（Pi4 複数台・Pi3 は今回の機能反映に必須ではない）。`update-all-clients.sh` に **`RASPI_SERVER_HOST`**（例: `denkon5sd02@<Pi5 の Tailscale IP>`）が必要。
 - **回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（Tailscale 到達時）。
 - **Ubuntu 埋め込み疎通**: LocalLLM ノードで nginx `/healthz` が `ok`、`/embed` が **`status=200 dim=512 modelId=clip-ViT-B-32`** を返すことを確認。
 - **Pi5 反映**: `infrastructure/docker/.env` に `PHOTO_TOOL_EMBEDDING_ENABLED=True` と `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=True` が出力され、API コンテナ再作成まで完了。

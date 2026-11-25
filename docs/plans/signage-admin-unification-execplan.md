@@ -222,7 +222,7 @@ CSV 表の設定は `useCsvDashboardEditor.ts` と `csvDashboardFormModel.ts` �
 
 ## Concrete Steps
 
-作業ディレクトリはすべて `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--signage-admin-unification` とする。
+作業ディレクトリはすべて `~/RaspberryPiSystem_002-worktrees/feat--signage-admin-unification` とする。
 
 依存を入れる。
 

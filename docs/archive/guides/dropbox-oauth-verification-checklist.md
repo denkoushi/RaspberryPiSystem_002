@@ -5,7 +5,7 @@
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **IPアドレス**: `100.106.158.2`（Tailscale経由）
+- **IPアドレス**: `<Pi5 の Tailscale IP>`（Tailscale経由）
 
 ## 検証項目
 
@@ -16,14 +16,14 @@
 - [ ] Dropbox App Consoleにアクセス（https://www.dropbox.com/developers/apps）
 - [ ] アプリを選択（または新規作成）
 - [ ] 「Settings」→「OAuth 2」で以下を確認：
-  - [ ] 「Redirect URIs」に `http://100.106.158.2:8080/api/backup/oauth/callback` が追加されている
+  - [ ] 「Redirect URIs」に `http://<Pi5 の Tailscale IP>:8080/api/backup/oauth/callback` が追加されている
   - [ ] 「App key」と「App secret」をメモ
 
 #### 1.2 環境変数の設定
 
 - [ ] Pi5にSSH接続
   ```bash
-  ssh denkon5sd02@100.106.158.2
+  ssh denkon5sd02@<Pi5 の Tailscale IP>
   ```
 - [ ] `.env`ファイルを編集
   ```bash
@@ -221,7 +221,7 @@
 
 - **検証日時**: 2025-12-15 12:01 JST
 - **検証者**: AI Assistant
-- **検証環境**: Raspberry Pi 5 (100.106.158.2)
+- **検証環境**: Raspberry Pi 5 (<Pi5 の Tailscale IP>)
 - **検証結果**: 
   - [x] Phase 1: OAuth 2.0フローでのリフレッシュトークン取得 ✅ **完了**
   - [x] Phase 2: リフレッシュトークンによる自動アクセストークン更新 ✅ **完了**

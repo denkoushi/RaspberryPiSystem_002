@@ -5,7 +5,7 @@
 ## テスト環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-- **IPアドレス**: `100.106.158.2`（Tailscale経由）
+- **IPアドレス**: `<Pi5 の Tailscale IP>`（Tailscale経由）
 - **ブランチ**: `feature/dropbox-csv-import-phase1`
 - **テスト方法**: API経由でスケジュールを手動実行
 

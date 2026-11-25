@@ -25,7 +25,7 @@ When a Pi4 SD card fails, the operator buys a replacement SD card, installs Rasp
 - Observation: current `plan` rejects a correct fresh Pi4 whenever its DHCP address differs from the inventory-declared recovery address.
   Evidence: `LanRecoveryNetworkProvider.validate_bootstrap` requires equality with `recovery_network.target_endpoint`, and `recover-pi4.yml` asserts `ansible_host == pi4_recovery_lan_endpoint`.
 - Observation: the inventory addresses are not reliable statements of the currently assigned address.
-  Evidence: on 2026-08-01, `raspberrypi4` was declared as `192.168.10.224` but healthy at `192.168.10.223`; Sessaku was declared as `192.168.128.187` but healthy at `192.168.10.104`. ICMP, SSH, Ansible, and Pi4-to-Pi5 LAN checks passed at the observed addresses.
+  Evidence: on 2026-08-01, `raspberrypi4` was declared as `<raspberrypi4 の LAN IP>` but healthy at `<raspberrypi4 の実際の LAN IP>`; Sessaku was declared as `<raspi4-sessaku-01 の LAN IP>` but healthy at `<raspi4-sessaku-01 の実際の LAN IP>`. ICMP, SSH, Ansible, and Pi4-to-Pi5 LAN checks passed at the observed addresses.
 - Observation: current runtime metadata preserves only the first inventory endpoint, so a later recovery can confuse the first endpoint with the immediately previous active endpoint.
   Evidence: `resolve_target` promotes `metadata.original_ansible_host` to the comparison endpoint whenever a runtime override exists.
 - Observation: the recovery path presently disables effective SSH host-key checking.
@@ -88,7 +88,7 @@ Update unit fakes and tests for dynamic addresses, identity probing, plan immuta
 
 ## Concrete Steps
 
-Work from `/Users/tsudatakashi/RaspberryPiSystem_002` on `feat/pi4-sd-recovery-dynamic-bootstrap`. Use `apply_patch` for tracked edits. During implementation run:
+Work from `~/RaspberryPiSystem_002` on `feat/pi4-sd-recovery-dynamic-bootstrap`. Use `apply_patch` for tracked edits. During implementation run:
 
     python3 -m unittest scripts/deploy/tests/test_recover_pi4.py -v
     ANSIBLE_CONFIG=infrastructure/ansible/ansible.cfg ANSIBLE_ROLES_PATH=infrastructure/ansible/roles ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/resolve-pi4-recovery-contract.yml --syntax-check
@@ -141,10 +141,10 @@ Production evidence from the base implementation:
     Pi5 release run: 20260801-104535-399f1b
     Pi5 deployed SHA: 426d959fea9f88ed0a95c32d492a7deabf030dc4
     five read-only plans: passed under the old fixed-address contract
-    Robodrill current LAN: 192.168.10.236, declared address matched
-    FJV current LAN:       192.168.10.12, declared address matched
-    raspberrypi4 current:  192.168.10.223, declared 192.168.10.224 was stale
-    Sessaku current:       192.168.10.104, declared 192.168.128.187 was stale
+    Robodrill current LAN: <raspi4-robodrill01 の LAN IP>, declared address matched
+    FJV current LAN:       <raspi4-fjv60-80 の LAN IP>, declared address matched
+    raspberrypi4 current:  <raspberrypi4 の実際の LAN IP>, declared <raspberrypi4 の LAN IP> was stale
+    Sessaku current:       <raspi4-sessaku-01 の実際の LAN IP>, declared <raspi4-sessaku-01 の LAN IP> was stale
     Stone: home during factory checks; live factory-LAN proof pending
 
 Local validation evidence on 2026-08-01 JST:

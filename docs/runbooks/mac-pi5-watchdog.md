@@ -19,7 +19,7 @@ bash scripts/mac/pi5-watchdog/install.sh
 `~/Library/LaunchAgents/com.raspi.pi5-watchdog.plist` を登録する。再実行は登録を入れ直す。
 ログイン時と300秒ごとに健康確認する。macOS の通知設定・集中モードも確認する。
 
-既定の確認先は `https://100.106.158.2/api/system/health`。
+既定の確認先は `https://<Pi5 の Tailscale IP>/api/system/health`。
 変更時は登録済み plist の `EnvironmentVariables` に次を設定し、bootout/bootstrap で読み直す。
 `install.sh` の再実行は plist の手編集を上書きする。
 

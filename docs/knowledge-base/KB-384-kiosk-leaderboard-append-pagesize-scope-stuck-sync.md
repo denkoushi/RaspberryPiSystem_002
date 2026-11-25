@@ -97,7 +97,7 @@ Post-fix:
 **Production deploy (banner hide · Pi5 + Pi4×4 sequential)**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 for host in raspberrypi5 raspberrypi4 raspi4-robodrill01 raspi4-fjv60-80 raspi4-kensaku-stonebase01; do
   ./scripts/update-all-clients.sh fix/hide-leaderboard-process-change-residual-banner \
     infrastructure/ansible/inventory.yml --limit "$host" --detach --follow
@@ -174,7 +174,7 @@ pnpm --filter @raspi-system/web test -- leaderboardBoardDisplayPolicy leaderboar
 **Pi5** (`main` after merge — first verification deploy used feature branch):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/kiosk-leaderboard-process-residual-filter \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
