@@ -219,6 +219,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     {pieceLinks && <PlanningBoardPieceLinks panes={piecePanes} container={container} />}
     <PlanningBoardTwoMachineChainLinks container={container} panes={panes} bars={chainBars} view={effectiveView} />
     {seibanColors && <PlanningBoardSeibanShelf interactionRef={shelfHandle} writePending={props.resourceOrderPending} onDragPreview={setDragPreview} onSelectionPreview={setShelfSelection} selectionDrop={selectionPreview?.drop ?? null} onPlaced={revealPlaced} getDrop={getShelfDrop} resources={resources} actions={shelfActions}
+      category={props.category} onArrivalChange={props.onArrivalChange} onFirstProcessArrivalChange={props.onFirstProcessArrivalChange}
       disabled={props.layout.mode !== 'forward' || props.disabled || props.dragDisabled || props.pieceDisabled || props.pinMode} columns={shelfColumns} highlightedItemId={[...props.selectedItemIds].at(-1) ?? null} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
       onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={focusSeiban} />}
   </div></TwoMachineChainContext.Provider>;

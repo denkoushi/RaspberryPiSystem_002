@@ -1,3 +1,4 @@
+import { deletePieceBoardRecords } from './piece-board-records.js';
 import { readSameModelResourceGroups, sameModelResourceCds, representativeResourceCd } from '../same-model-resource-resolver.js';
 import { randomUUID } from 'node:crypto';
 import type { SessakuPieceOpsConfigureRequest, SessakuPieceOpsClearRequest, SessakuPiecesMutationResponse } from '@raspi-system/shared-types';
@@ -89,10 +90,10 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
           await tx.productionScheduleSessakuPieceOpSplit.deleteMany({ where: {
             OR: obsoleteCompletedSplits.map(({ pieceId, fromOpNo }) => ({ pieceId, fromOpNo }))
           } });
-          await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: {
+          await deletePieceBoardRecords(tx, {
             csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
             itemKey: { in: obsoleteCompletedSplits.map(({ pieceId, fromOpNo }) => `pieceops:${pieceId}:${fromOpNo}`) }
-          } });
+          });
         }
       }
       const firstPiece = [...c.set.pieces].sort((a, b) => a.position - b.position)[0];
@@ -152,9 +153,9 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
     if (definition) await saveGrindingPlanningBoardResourcePartMinutes(tx, definition, c.definitionKeys);
     // Completed bars/hidden sites may be outside the unfinished lane writer.
     const obsolete = removed.filter((id) => id.startsWith('pieceops:') && (!configure || !opNos.slice(1).some((opNo) => id.endsWith(`:${opNo}`))));
-    if (obsolete.length) await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: {
+    if (obsolete.length) await deletePieceBoardRecords(tx, {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: obsolete }
-    } });
+    });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 } } });
     await rememberPieceHistory(tx, c.key);
     await flushSiteItems(tx, before, params.audit);

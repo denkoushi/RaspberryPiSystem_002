@@ -15,6 +15,7 @@ import { SHELF_COLUMN_STRIDE, usePlanningBoardShelfWindow } from './usePlanningB
 
 import type { ForwardDragPreview } from './PlanningBoardForwardGanttRow';
 import type { GanttBar } from './planningBoardGanttLayout';
+import type { PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { SeibanShelfColumn } from './planningBoardSeibanShelfData';
 import type { ShelfDropResolver, SeibanShelfHandle, ShelfPlacementActions, ShelfSelection } from './usePlanningBoardShelfInteraction';
 import type { PointerEvent, RefObject } from 'react';
@@ -27,7 +28,7 @@ const CHEVRON_PATHS = { up: 'm6 15 6-6 6 6', down: 'm6 9 6 6 6-6', left: 'm15 6-
 const Chevron = ({ direction }: { direction: keyof typeof CHEVRON_PATHS }) => <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
   strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={CHEVRON_PATHS[direction]} /></svg>;
 
-type Props = {
+type Props = Pick<PlanningBoardGanttProps, 'category' | 'onArrivalChange' | 'onFirstProcessArrivalChange'> & {
   columns: readonly SeibanShelfColumn[];
   interactionRef?: RefObject<SeibanShelfHandle | null>;
   getDrop?: ShelfDropResolver;
@@ -49,19 +50,25 @@ type Props = {
 };
 
 export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(function PlanningBoardSeibanShelf({
-  columns, seibanColors, focusedSeiban, highlightedItemId, onFocusedSeibanChange, onFocusSeiban, interactionRef, getDrop, resources, actions, disabled = false, writePending = false, onDragPreview, onSelectionPreview, selectionDrop = null, onPlaced
+  category, onArrivalChange, onFirstProcessArrivalChange, columns, seibanColors, focusedSeiban, highlightedItemId, onFocusedSeibanChange, onFocusSeiban, interactionRef, getDrop, resources, actions, disabled = false, writePending = false, onDragPreview, onSelectionPreview, selectionDrop = null, onPlaced
 }, ref) {
   const { open, changeOpen } = usePersistedPlanningBoardShelf();
   const [remaining, setRemaining] = useState(false);
   const [searchMode, setSearchMode] = useState<(typeof SEARCH_MODES)[number]>('製番');
   const [searchValue, setSearchValue] = useState('');
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [savingArrival, setSavingArrival] = useState(false);
+  const canRecordArrival = category === 'grinding' && Boolean(onArrivalChange);
+  const canRecordFirstProcessArrival = category === 'grinding' && Boolean(onFirstProcessArrivalChange);
   const { gate, frozen } = usePlanningBoardOffline();
   const bars = useMemo(() => new Map(columns.flatMap(column => column.parts.flatMap(part => part.units.flat().map(tile => {
+    const canRecord = !tile.item.standardHoursMissing && (tile.item.isFirstProcess ? canRecordFirstProcessArrival : canRecordArrival);
+    // Shelf drops use the arrived bar's placement rules when the shelf can record arrival first.
+    const arrivalPending = !canRecord && (tile.arrivalPending || (category === 'grinding' && !tile.placed));
     const bar: GanttBar = { item: tile.item, resource: tile.resource ?? '未設定', partKey: part.key,
-      arrivalPending: tile.arrivalPending, due: column.due, start: null, end: null, unknown: true, tone: tile.late ? 'late' : 'planned', overlaps: [], flagged: false };
+      arrivalPending, due: column.due, start: null, end: null, unknown: true, tone: tile.late ? 'late' : 'planned', overlaps: [], flagged: false };
     return [tile.item.itemId, bar] as const;
-  })))), [columns]);
+  })))), [columns, category, canRecordArrival, canRecordFirstProcessArrival]);
   const signature = (bar: GanttBar) => JSON.stringify([bar.item.itemRevision, bar.item.version]);
   const activeSelected = useMemo(() => new Set([...selected].filter(id => bars.has(id))), [selected, bars]);
   const previousSelection = useRef<ReadonlyMap<string, ReadonlySet<string>>>(new Map());
@@ -118,6 +125,7 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
     const batch = pending.current;
     if (!batch || !actions) return;
     if (disabled || frozen) { cancelPlacement(); return; }
+    if (savingArrival) return;
     if (writePending) { batch.sawPending = true; return; }
     if (batch.waiting) {
       const updated = bars.get(batch.waiting.id);
@@ -164,14 +172,32 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
   };
   useEffect(() => { advance(); });
   const place = (ids: readonly string[], drop: ReturnType<ShelfDropResolver>) => {
-    if (!drop || disabled || frozen || writePending || pending.current || !actions) return false;
+    if (!drop || disabled || frozen || writePending || savingArrival || pending.current || !actions) return false;
     const moving = new Set(ids);
     const ordered = [...bars.keys()].filter(id => moving.has(id));
     if (!ordered.length) return false;
     // Inserting repeatedly after one anchor requires reverse dispatch to retain shelf order.
     if (drop.bar && drop.placement === 'after') ordered.reverse();
-    pending.current = { ids: ordered, resource: drop.resource, targetId: drop.bar?.item.itemId ?? null, placement: drop.placement };
-    advance();
+    const batch: Placement = { ids: ordered, resource: drop.resource, targetId: drop.bar?.item.itemId ?? null, placement: drop.placement };
+    const arrivals = category === 'grinding' ? ordered.flatMap(id => {
+      const item = bars.get(id)!.item;
+      return item.kind !== 'test' && item.arrived === false ? [item] : [];
+    }) : [];
+    pending.current = batch;
+    if (arrivals.length) {
+      setSavingArrival(true);
+      void (async () => {
+        try {
+          for (const item of arrivals) {
+            if (pending.current !== batch) return;
+            const saved = item.isFirstProcess ? await onFirstProcessArrivalChange?.(item, 'arrived') : await onArrivalChange?.(item, true);
+            if (!saved) { if (pending.current === batch) cancelPlacement(); return; }
+          }
+        } catch {
+          if (pending.current === batch) cancelPlacement();
+        } finally { setSavingArrival(false); }
+      })();
+    } else advance();
     return true;
   };
   const allowedFor = useCallback((ids: readonly string[]) => new Set(resources?.filter(resource => ids.every(id => {
@@ -193,10 +219,11 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
     return source ? place(ids, getDrop(x, y, source, allowedFor(ids), new Set(ids))) : false;
   } }));
   const lastSelectedSeiban = useMemo(() => [...visibleColumns].reverse().find(column => selectedBySeiban.has(column.seiban))?.seiban ?? null, [visibleColumns, selectedBySeiban]);
-  const canPlaceSelected = Boolean(open && actions && selectionDrop && !disabled && !frozen && !writePending && activeSelected.size > 0 && [...activeSelected].some(id => {
+  const canPlaceSelected = Boolean(open && actions && selectionDrop && !disabled && !frozen && !writePending && !savingArrival && activeSelected.size > 0 && [...activeSelected].some(id => {
     const bar = bars.get(id)!;
-    return bar.item.kind !== 'test' && !bar.item.isCompleted && !atDestination(bar, { ids: [], resource: selectionDrop!.resource,
-      targetId: selectionDrop!.bar?.item.itemId ?? null, placement: selectionDrop!.placement });
+    return bar.item.kind !== 'test' && !bar.item.isCompleted && !bar.arrivalPending &&
+      ((category === 'grinding' && bar.item.arrived === false) || !atDestination(bar, { ids: [], resource: selectionDrop!.resource,
+        targetId: selectionDrop!.bar?.item.itemId ?? null, placement: selectionDrop!.placement }));
   }));
   const drag = useRef<{ pointerId: number; x: number; y: number; ids: string[]; source: GanttBar; allowed: ReadonlySet<string>; moving: ReadonlySet<string>; active: boolean; element: HTMLButtonElement } | null>(null);
   const suppressClick = useRef(false);

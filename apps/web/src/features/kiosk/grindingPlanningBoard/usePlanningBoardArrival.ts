@@ -44,33 +44,35 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
     });
   }, [data]);
   const changeFirstProcessArrival = async (item: GrindingPlanningBoardItem, state: GrindingPlanningBoardFirstProcessState) => {
-    if (!gate.attempt()) return;
+    if (!gate.attempt()) return false;
     const generation = gate.generation();
-    if (item.standardHoursMissing || pending.current || !siteKey) return;
+    if (item.standardHoursMissing || pending.current || !siteKey) return false;
     pending.current = true;
     try {
       const result = await gate.run(() => firstProcessMutation.mutateAsync({ itemId: item.itemId, itemRevision: item.itemRevision,
         overrideVersion: item.version, state }));
-      if (generation !== gate.generation()) return;
+      if (generation !== gate.generation()) return false;
       setFirstProcessOverlay((previous) => {
         const next = new Map(previous);
         next.set(item.itemId, { siteKey, state: result.firstProcessState });
         return next;
       });
       if (enabled) void Promise.all([refreshRead('board'), refreshRead('load')]).catch(() => undefined);
+      return true;
     } catch {
       // The popover displays the mutation error next to the arrival controls.
+      return false;
     } finally { pending.current = false; }
   };
   const changeArrival = async (item: GrindingPlanningBoardItem, recorded: boolean) => {
-    if (!gate.attempt()) return;
+    if (!gate.attempt()) return false;
     const generation = gate.generation();
-    if (item.standardHoursMissing || pending.current || !siteKey) return;
+    if (item.standardHoursMissing || pending.current || !siteKey) return false;
     pending.current = true;
     try {
       const result = await gate.run(() => mutation.mutateAsync({ itemId: item.itemId, itemRevision: item.itemRevision,
         overrideVersion: item.version, recorded }));
-      if (generation !== gate.generation()) return;
+      if (generation !== gate.generation()) return false;
       setOverlay((previous) => {
         const next = new Map(previous);
         if (result.manualArrivalDate) next.set(item.itemId, { siteKey, date: result.manualArrivalDate });
@@ -78,8 +80,10 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
         return next;
       });
       if (enabled) void Promise.all([refreshRead('board'), refreshRead('load')]).catch(() => undefined);
+      return true;
     } catch {
       // The popover displays the mutation error next to the arrival controls.
+      return false;
     } finally { pending.current = false; }
   };
   return { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, changeFirstProcessArrival,
