@@ -1,332 +1,126 @@
-# Raspberry Pi NFC 工場持出返却システム
+# 工場業務システム（RaspberryPiSystem_002）
 
-本リポジトリは Raspberry Pi 5 サーバー + Raspberry Pi 4 クライアントで構成される持出返却システムのモノレポです。
+工場の現場業務を支える社内システムです。Raspberry Pi 5 のサーバーと、現場に置いた Raspberry Pi 4 のキオスク端末（NFC リーダー付き）で構成されます。当初は工具の持出返却を記録するシステムでしたが、現在は生産日程と負荷調整、組立の要領書とチェックシート、計測機器、トルクレンチ、サイネージ、チャットによる操作案内などへ広がっています。
 
-## 関連リポジトリと責任分界
+本リポジトリには、サーバーの API と Web 画面、端末側のエージェント、端末への一括反映の仕組み（Ansible）、運用文書がまとまっています。
 
-DGX SparkのLease・排他調停、Private Pi 5の管理ダッシュボード、温度・履歴監視は
-[`denkoushi/DGXSparkControlPlane`](https://github.com/denkoushi/DGXSparkControlPlane)
-（ローカル: `~/DGXSparkControlPlane`）が正本です。本リポジトリは業務キオスク、
-業務管理画面、業務Pi 5／Pi 4、および業務側DGX API利用を担当します。
+## 主な機能
 
-通常は片方のリポジトリだけを変更します。DGXの互換API、モデルprofile、認証、workload識別子、
-Hermes／StackChanのDGX起動方式を変える場合だけ、両方を確認して別々のPRで連携します。詳細は
-[リポジトリ責任分界の正本](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md)
-を参照してください。
+現場の端末（キオスク）で使う機能です。画面ごとの操作説明は `docs/kiosk-operation-guide/` にあります。
 
-## ドキュメント
+- 持出返却: 工具・計測機器・吊具の持出と返却を NFC カードで記録します。持出時の写真記録にも対応しています。
+- 生産日程: 納期の管理、順位の入力、負荷調整、進捗の一覧を扱います。
+- 自主検査と部品測定: 検査図面の登録、測定値の記録、記録の承認、手順書（要領書）の表示と編集を行います。
+- 組立: 要領書、チェックシート、作業セッション、記録の承認、トレーサビリティ、教育用の画面があります。
+- トルクレンチ: 専用エージェントでレンチと接続し、締付けの記録を取り込みます。
+- 配膳（棚在庫）と購買: 品目在庫、配膳の確認履歴、購買注文の照会を扱います。
+- モバイル: スマートフォンでの置き場登録、パレット可視化、スキャン作業に対応します。
+- 手順掲示板と機械信号: 工程の手順掲示板と、設備の稼働信号の表示があります。
+- サイネージ: 工場内の表示端末へ、工具の状況や生産日程をスライドで表示します。
+- チャット案内: 画面右下の丸いボタンから、操作の質問や問い合わせを送れます。
+- 呼び出しと音声: 現場からの呼び出しと、音声入力・通話の機能があります。
 
-- **[docs/INDEX.md](./docs/INDEX.md)**: 📋 **全ドキュメントの索引**（目的別・対象者別・カテゴリ別）
-- **[docs/AI_START_HERE.md](./docs/AI_START_HERE.md)**: AI向けの最小開始入口
-- **[EXEC_PLAN.md](./EXEC_PLAN.md)**: legacy historical log（現在の詳細正本として使わない）
-- **[アーキテクチャ概要](./docs/architecture/overview.md)**: システム全体のアーキテクチャ
-- **[開発ガイド](./docs/guides/development.md)**: 開発環境セットアップ・開発ワークフロー
-- **[Codex/Cursor agmsg連携ガイド](./docs/guides/agmsg-codex-cursor-collaboration.md)**: Codex主導・Cursor実行役のAI協調運用
-- **[トラブルシューティングナレッジベース](./docs/knowledge-base/troubleshooting-knowledge.md)**: 問題の解決方法とナレッジベース
-- **[システム要件定義](./docs/requirements/system-requirements.md)**: 機能要件・非機能要件・検証項目・次のタスク
-- **[Validation 7検証ガイド](./docs/guides/validation-7-usb-import.md)**: USB一括登録の実機検証手順
-- **[モジュールドキュメント](./docs/modules/)**: 機能別の詳細仕様
-  - [工具管理モジュール](./docs/modules/tools/README.md)
-  - [ドキュメントビューワー](./docs/modules/documents/)（将来実装予定）
-  - [物流管理モジュール](./docs/modules/logistics/)（将来実装予定）
-- **[アーキテクチャ決定記録](./docs/decisions/)**: 重要な設計決定の記録
+管理画面（`/admin`）では、従業員・品目・端末のマスタ、CSV 取込、バックアップ、監視カメラ、各種設定を扱います。
 
-## ⚠️ 重要: CI必須化とブランチ保護設定
+## システム構成
 
-**CIテストが失敗してもマージが進んでしまう問題を防ぐため、必ずブランチ保護ルールを設定してください。**
+```
+  管理者・現場の端末
+        |  HTTPS
+        v
+  Raspberry Pi 5（サーバー、Docker Compose で稼働）
+    Caddy -> Web（React + Vite）
+          -> API（Fastify + Prisma）-> PostgreSQL
+        ^
+        |  API 呼び出し
+  Raspberry Pi 4 キオスク ... Chromium の画面 + 各種エージェント
+  Raspberry Pi 3 サイネージ ... 表示専用
+```
 
-- **[ブランチ保護ルール設定手順](./.github/BRANCH_PROTECTION_SETUP.md)**: GitHubでの設定手順（必須）
-- **[CI必須化とブランチ保護設定ガイド](./docs/guides/ci-branch-protection.md)**: 詳細な説明とトラブルシューティング
+- サーバー: Raspberry Pi 5 を1台。Docker Compose で API、Web、PostgreSQL、Caddy を動かします（定義は `infrastructure/docker/`）。
+- 端末: Raspberry Pi 4 のキオスク 8 台、Raspberry Pi 3 のサイネージ 1 台（`infrastructure/ansible/inventory.yml` の定義による）。端末側には NFC、バーコード、トルクレンチ、状態送信などのエージェントがあり、`clients/` にあります。
+- 反映方式: Ansible による一括更新です。`scripts/update-all-clients.sh` がサーバーと端末を順に更新します。
+- 外部連携: Gmail、Dropbox、Slack などと連携します（[外部連携台帳](./docs/guides/external-integration-ledger.md)）。
+- DGX Spark（ローカル LLM の実行基盤）の排他調停、個人用 Pi 5 の管理画面、温度・履歴の監視は、別リポジトリ [`denkoushi/DGXSparkControlPlane`](https://github.com/denkoushi/DGXSparkControlPlane) の担当です。本リポジトリは業務キオスク、業務管理画面、業務 Pi 5 と Pi 4、および業務側からの DGX API 利用を担当します。通常は片方のリポジトリだけを変更し、DGX の互換 API や認証方式を変えるときだけ、両方を確認して別々の PR で進めます。詳細は [責任分界の正本](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md) を参照してください。
 
-複雑な実装作業は `.agent/PLANS.md` の運用ルールに従い、個別Planを `docs/plans/` に置いて進めます。現在仕様・障害・手順・設計判断は、該当する KB / Runbook / ADR / Plan を正本として参照してください。
+## ディレクトリ構成
 
-## ディレクトリ概要
+- `apps/api`: サーバー API（Fastify + Prisma）
+- `apps/web`: キオスクと管理画面の Web UI（React + Vite）
+- `apps/android-haizen-shell`: 配膳用 Android アプリの外枠
+- `clients/`: 端末側エージェント（NFC、バーコード、トルクレンチ、配膳、状態送信、監視カメラなど）
+- `packages/`: API と Web で共有するライブラリ
+- `services/`: 補助サービス
+- `infrastructure/`: Docker 定義（`docker/`）、Ansible（`ansible/`）、端末イメージ（`image/`）
+- `scripts/`: 反映、バックアップ、検査、運用用のスクリプト
+- `e2e/`: Playwright による E2E テスト
+- `docs/`: 運用文書、設計判断、ナレッジベース
+- `security/`: 依存関係の例外とシークレット検査の基準
 
-- `apps/api`: Fastify + Prisma を用いたサーバー API
-- `apps/web`: React + Vite の Web UI（キオスク／管理画面）
-- `clients/nfc-agent`: Sony RC-S300/S1 と連携する Python NFC ブリッジ
-- `infrastructure/docker`: Dockerfile と Compose マニフェスト
-- `scripts/`: サーバー・クライアントのセットアップスクリプト
+## 文書の案内
 
-## 開発環境と作業フロー
+担当者は次の順に読むと全体をつかめます。全文書の索引は [docs/INDEX.md](./docs/INDEX.md) です。
 
-### 開発環境の構成
+1. [アーキテクチャ概要](./docs/architecture/overview.md): システム全体の構成
+2. [開発ガイド](./docs/guides/development.md): 開発環境と開発の流れ
+3. [デプロイメントガイド](./docs/guides/deployment.md) と [クイックスタート](./docs/guides/quick-start-deployment.md): 本番への反映手順
+4. [デプロイ状態の復旧手順](./docs/runbooks/deploy-status-recovery.md): 反映が途中で止まったときの復旧
+5. [運用マニュアル](./docs/guides/operation-manual.md) と [Runbook 一覧](./docs/runbooks/): 日常運用と障害対応
+6. [ナレッジベース](./docs/knowledge-base/index.md): 過去の障害と対処の記録
+7. [設計判断の記録（ADR）](./docs/decisions/): 重要な設計判断とその理由
+8. [キオスク操作ガイド](./docs/kiosk-operation-guide/): 現場向けの画面ごとの操作説明
+9. [モジュール文書](./docs/modules/): 工具管理、計測機器、サイネージなどの機能別仕様
+10. [システム要件定義](./docs/requirements/system-requirements.md): 機能要件と非機能要件
 
-本プロジェクトは以下の環境で開発・運用されます：
+端末の新規導入は [client-initial-setup.md](./docs/guides/client-initial-setup.md) を参照してください。古い手作業の構築手順は [manual-setup-legacy.md](./docs/guides/manual-setup-legacy.md) に残しています。
 
-- **開発環境（Mac）**: IDE（Cursor/VSCodeなど）でコード編集・Git管理
-  - ローカルリポジトリ: `~/RaspberryPiSystem_002`（Mac上）
-  - AIアシスタントは Mac のローカルリポジトリを参照してコード編集を行う
-  - コミット・プッシュは Mac 上で実行（基本は手動、必要に応じてAIが自動実行）
+## 開発の始め方
 
-- **実行環境（Raspberry Pi）**: 実際のシステムが稼働する環境
-  - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
-  - **Raspberry Pi 4**: クライアント（キオスク + NFCリーダー）
-  - Mac から RealVNC Viewer でラズパイにリモート接続して操作
+1. Node.js 24 以上（推奨: 24.x）をインストールし、リポジトリのルートで `npm install -g "$(node -p "require('./package.json').packageManager")"` を実行します。
+2. Python 3.11 と Poetry をインストールします。
+3. ルートで `pnpm install` を実行して依存を取得します。
+4. `poetry install -C clients/nfc-agent` で NFC エージェントの依存を入れます。
+5. 必要な `.env` を `.env.example` からコピーします。
 
-### 作業フロー
-
-1. **コード編集**: Mac の IDE（Cursor/VSCodeなど）で AI アシスタントと共にコードを編集
-2. **変更の確認**: Mac のソース管理ペインで変更を確認
-3. **コミット・プッシュ**: Mac 上で Git 操作（基本は手動、必要に応じてAIが自動実行）
-4. **ラズパイへの反映**: RealVNC Viewer でラズパイに接続し、以下を実行
-   - `git pull` で最新コードを取得
-   - AI が提示したコマンドをラズパイのターミナルにコピペして実行
-   - 設定ファイル（`.env` など）の編集
-   - Docker Compose の再起動やマイグレーション実行
-
-Codexを指示役、Cursorを実行役としてAI協調する場合は、[Codex/Cursor agmsg連携ガイド](./docs/guides/agmsg-codex-cursor-collaboration.md) に従います。
-
-### 重要な前提条件
-
-- **AIアシスタントは直接ラズパイを操作できない**: すべてのコマンドや手順は、RealVNC経由でラズパイにコピペできる形式で提示される
-- **コマンドはラズパイ上で実行する前提**: ファイルパスや環境変数はラズパイ上のパスを明記（例: `/opt/RaspberryPiSystem_002`）
-- **環境の違いを考慮**: Mac（開発）とラズパイ（実行）の環境差（ARM64、Docker、`pyscard`など）を考慮した手順を提示
-- **ドキュメント更新**: 詳細な進捗・仕様・障害・手順・設計判断は、該当する KB / Runbook / ADR / Plan に記録する。`EXEC_PLAN.md` は legacy historical log として扱い、新規の詳細追記先にしない。
-
-## 開発準備
-
-1. Node.js 24 以上（推奨: 24.x）をインストールし、リポジトリのルートで `npm install -g "$(node -p "require('./package.json').packageManager")"` を実行
-2. Python 3.11 + Poetry をインストール
-3. ルートで `pnpm install` を実行してワークスペース依存を取得
-4. `poetry install -C clients/nfc-agent` で NFC エージェント依存をセットアップ
-5. 必要な `.env` ファイルを `.env.example` からコピー
-
-## API 開発メモ
+API の開発:
 
 - Prisma マイグレーション: `cd apps/api && DATABASE_URL="postgresql://postgres:postgres@localhost:5432/borrow_return" pnpm prisma migrate dev`
-- シードデータ投入: `cd apps/api && DATABASE_URL="..." pnpm prisma db seed`
+- シード投入: `cd apps/api && DATABASE_URL="..." pnpm prisma db seed`
 - サーバー起動: `cd apps/api && pnpm dev`
 - テスト: `cd apps/api && pnpm test`
+- エラーレスポンスの `requestId` でログを検索できます。詳細は [開発ガイド](./docs/guides/development.md) と [エラーハンドリングガイド](./docs/guides/error-handling.md) を参照してください。
 
-### 🐛 デバッグ時のヒント
+Web の開発:
 
-**エラーが発生したら**: エラーレスポンスの`requestId`を使ってログを検索できます。
+- 開発サーバー: `cd apps/web && pnpm dev`（既定: http://localhost:4173）
+- Lint、テスト、ビルド: `cd apps/web && pnpm lint && pnpm test && pnpm build`
+- リポジトリ全体の lint: `pnpm lint --max-warnings=0`（自動修正は `pnpm lint --fix`）
+- キオスク端末は `.env` の `VITE_AGENT_WS_URL`（既定: `ws://localhost:7071/stream`）でローカルの NFC エージェントに接続します。
+- マスタの一括登録は管理画面の「一括登録」ページから `employees.csv` と `items.csv` を選んで行います（[CSV 取込・出力仕様](./docs/guides/csv-import-export.md)）。
 
-```bash
-# requestIdでログを検索
-docker compose logs api | grep "req-xxx"
+E2E テスト:
 
-# エラーコードで検索（構造化ログ）
-docker compose logs api | jq 'select(.errorCode == "VALIDATION_ERROR")'
-```
+1. PostgreSQL を起動します: `pnpm test:postgres:start`
+2. API を起動します: `cd apps/api && pnpm dev`
+3. Web を起動します: `cd apps/web && pnpm dev`
+4. テストを実行します: `pnpm test:e2e`（UI モードは `pnpm test:e2e:ui`、ブラウザ表示ありは `pnpm test:e2e:headed`）
 
-詳細は [開発ガイド](./docs/guides/development.md#デバッグ時のクイックリファレンス) と [エラーハンドリングガイド](./docs/guides/error-handling.md) を参照。
+個別のエラー（Prisma、Docker ビルド、画面の 404 など）の対処は [トラブルシューティング](./docs/knowledge-base/troubleshooting-knowledge.md) とナレッジベースにあります。
 
-## Web アプリ開発メモ
+## 本番反映
 
-- 開発サーバー: `cd apps/web && pnpm dev` (デフォルト: http://localhost:4173)
-- Lint/Test/Build: `cd apps/web && pnpm lint && pnpm test && pnpm build`
-- リポジトリ全体のlint: `pnpm lint --max-warnings=0`（自動修正は`pnpm lint --fix`）
-- キオスク端末は `.env` の `VITE_AGENT_WS_URL`（既定: `ws://localhost:7071/stream`）でローカル NFC エージェントに接続する
-- USB メモリからのマスタ一括登録は管理画面「一括登録」ページから `employees.csv` / `items.csv` を選択して実行する（詳細は [CSVインポート・エクスポート仕様](./docs/guides/csv-import-export.md) を参照）
+標準はローリング更新です。
 
-## E2Eテスト
+1. 対象のブランチと、そのブランチの CI 成功を確認します。
+2. `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan` で、対象と順序を確認します。
+3. `--limit <パターン>`（全台のときは `--full-fleet`）を付けて実行します。
+4. 実行後に、状態とヘルスチェックを確認します。
 
-### 前提条件
+手順、端末ごとの制約、失敗時の復旧は [デプロイメントガイド](./docs/guides/deployment.md) と [復旧手順](./docs/runbooks/deploy-status-recovery.md) が正本です。実行中のプロセスの強制終了や、ロックや実行記録の手編集で標準手順を迂回しないでください。
 
-E2Eテストを実行する前に、以下を起動する必要があります：
+## 開発の進め方
 
-1. PostgreSQLコンテナ: `pnpm test:postgres:start`
-2. APIサーバー: `cd apps/api && pnpm dev`
-3. Webサーバー: `cd apps/web && pnpm dev`
-
-### 実行方法
-
-```bash
-# E2Eテストを実行
-pnpm test:e2e
-
-# UIモードで実行（推奨）
-pnpm test:e2e:ui
-
-# ヘッドモードで実行（ブラウザを表示）
-pnpm test:e2e:headed
-```
-
-### テスト内容
-
-- 認証フロー（ログイン、ログアウト）
-- キオスク画面の表示
-- 管理画面のナビゲーション
-
-## Raspberry Pi 5 サーバーセットアップ
-
-### 必要なソフトウェア
-
-- Raspberry Pi OS (64bit) or Debian Bookworm 相当
-- `git`, `curl`, `build-essential`
-- Docker Engine + Docker Compose v2  
-  ```bash
-  curl -fsSL https://get.docker.com | sh
-  sudo usermod -aG docker $USER
-  ```
-- Node.js 24 系（推奨: `nvm`）
-  - ⚠️ NodeSource（`deb.nodesource.com`）はOS側のGPG/署名ポリシー変更で `apt update` が失敗し、デプロイが中断する場合があります（例: 2026-02-01以降のSHA1拒否。詳細はKB-220）。
-  - `curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -` を使う場合は、`/etc/apt/sources.list.d/nodesource.list` が残り続ける点に注意してください。
-- pnpm（リポジトリのルートで `npm install -g "$(node -p "require('./package.json').packageManager")"`）
-- Python 3.11 + Poetry（クライアント開発や手元検証用）
-
-### インストール手順
-
-1. 上記ソフトウェアをインストールし、Pi を再起動後に `docker run hello-world` で動作確認
-2. リポジトリをクローン  
-   ```bash
-   git clone https://github.com/denkoushi/RaspberryPiSystem_002.git /opt/RaspberryPiSystem_002
-   cd /opt/RaspberryPiSystem_002
-   ```
-3. 環境変数を設定  
-   - `apps/api/.env.example` を `apps/api/.env` にコピーし、`DATABASE_URL`（例: `postgresql://postgres:postgres@db:5432/borrow_return`）と JWT シークレット、初期管理者情報を入力
-   - 必要に応じて `apps/web/.env` や `clients/nfc-agent/.env` も `.env.example` から作成
-4. デプロイ  
-   ```bash
-   scripts/server/deploy.sh
-   ```
-   - 内部で `docker compose -f infrastructure/docker/docker-compose.server.yml build --pull` → `up -d` を実行
-5. 動作確認  
-   ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml ps
-   curl http://localhost:8080/health
-   ```
-   `{"status":"ok"}` が返れば API・DB・Web すべてが稼働中
-
-## トラブルシューティング
-
-詳細なトラブルシューティングガイドは [トラブルシューティングナレッジベース](./docs/knowledge-base/troubleshooting-knowledge.md) を参照してください。
-
-主な問題と解決方法：
-
-### Prisma が `libssl.so.1.1` を要求して落ちる
-
-- **症状**: `PrismaClientInitializationError: libssl.so.1.1: cannot open shared object file`
-- **原因**: Alpine ベースの Node.js イメージでビルドした際に OpenSSL 1.1 ライブラリが存在しない
-- **解決策**:
-  1. `infrastructure/docker/Dockerfile.api` のベースを `node:24-bookworm-slim`（Debian/glibc）に固定
-  2. build / runtime 両方のステージで `apt-get install -y openssl` を実行
-  3. Prisma の `binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]` を維持し、`pnpm prisma generate` を忘れない
-  4. 変更後は `docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache api` を実行し、古いレイヤーを使い回さない
-
-### Docker ビルドキャッシュ破損
-
-- **症状**: `parent snapshot ... does not exist` など export 段階で失敗
-- **対処**:
-  ```bash
-  docker builder prune --all --force
-  docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache api
-  ```
-  必要であれば `docker system prune --volumes` も併用
-
-### Web UI の直接URLアクセスで404エラー
-
-- **症状**: `/admin/employees` などに直接アクセスすると HTTP 404
-- **原因**: SPAのクライアントサイドルーティングがサーバー側で処理されていない
-- **解決策**:
-  1. `infrastructure/docker/Caddyfile` に SPA フォールバック設定を追加:
-     ```caddyfile
-     @spa {
-       not file
-     }
-     rewrite @spa /index.html
-     ```
-  2. `infrastructure/docker/Dockerfile.web` の CMD を修正:
-     ```dockerfile
-     CMD ["caddy", "run", "--config", "/srv/Caddyfile"]
-     ```
-  3. `docker-compose.server.yml` のポート設定を確認（Caddy は内部で 80 番ポートを使用）:
-     ```yaml
-     ports:
-       - "4173:80"
-     ```
-  4. 再ビルド:
-  ```bash
-  docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build web
-  ```
-
-### Web UI ビルドで XState assign が原因の TypeScript エラー
-
-- **症状**: `pnpm run build` / `docker compose ... build web` で `event is possibly 'undefined'` や `property 'type' does not exist on type 'never'` が発生し、`apps/web/src/features/kiosk/borrowMachine.ts` の `assign` 行で停止
-- **原因**: XState v5 の `assign` を従来の `(ctx, event)` 2 引数シグネチャのまま使っており、型推論が `event` を `never` と推定してしまう
-- **解決策**:
-  1. `assign(({ event }) => ({ ... }))` の形で context・event をオブジェクト引数から取り出す
-  2. `event?.type === 'ITEM_SCANNED'` のように `event` の存在をチェックしてから UID を参照
-  3. 余計な型注釈（`BorrowContext`, `BorrowEvent` の明示）を外して XState に推論させる
-  4. 修正後に `cd apps/web && pnpm lint && pnpm build`、続けて `docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build web`
-
-### 重要な注意点
-
-- サーバー用 Dockerfile では Alpine を使用しない（OpenSSL の互換パッケージが公式から消えたため）
-- ランタイムステージでも `pnpm install --prod` と `pnpm prisma generate` を実行し、ワークスペース依存を正しく解決する
-- ベースイメージ変更後は常に `--no-cache` ビルド → `curl http://localhost:8080/health` で確認
-- Pi5 を電源オフすると Docker コンテナが停止したままになるため、再起動後は `docker compose -f infrastructure/docker/docker-compose.server.yml up -d` を実行するか、`docker-compose.server.yml` に `restart: always` を設定して自動復帰させる
-
-## クライアント (Raspberry Pi 4) セットアップ
-
-### 想定環境
-- Debian GNU/Linux 13 (trixie) / Raspberry Pi OS 64bit
-- ユーザー例: `tools03`
-- NFC リーダー: Sony RC-S380 / RC-S300（`lsusb` で `054c:0dc8`）
-
-### 手順
-1. システム更新  
-   ```bash
-   sudo apt update && sudo apt upgrade -y
-   ```
-2. 必要パッケージ  
-   ```bash
-   sudo apt install -y git curl pcscd libpcsclite-dev python3-pyscard pcsc-tools chromium
-   sudo systemctl enable --now pcscd
-   ```
-3. リーダー確認  
-   ```bash
-   lsusb | grep -i sony
-   pcsc_scan  # 認識したら Ctrl+C
-   ```
-4. Docker インストール  
-   ```bash
-   curl -fsSL https://get.docker.com | sudo sh
-   sudo usermod -aG docker $USER
-   newgrp docker
-   docker --version && docker compose version
-   ```
-5. Poetry  
-   ```bash
-   curl -sSL https://install.python-poetry.org | python3 -
-   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-   source ~/.bashrc
-   poetry --version
-   ```
-6. リポジトリ配置  
-   ```bash
-   sudo mkdir -p /opt/RaspberryPiSystem_002
-   sudo chown $USER:$USER /opt/RaspberryPiSystem_002
-   git clone https://github.com/denkoushi/RaspberryPiSystem_002.git /opt/RaspberryPiSystem_002
-   ```
-7. NFC エージェント依存  
-   ```bash
-   cd /opt/RaspberryPiSystem_002/clients/nfc-agent
-   poetry install
-   cp .env.example .env
-   mkdir -p ~/.local/share/nfc-agent
-   ```
-   `.env` 例:  
-   ```
-   API_BASE_URL=http://<Pi5 の LAN IP>:8080
-   CLIENT_ID=pi4-tools03
-   AGENT_MODE=production
-   QUEUE_DB_PATH=/home/<user>/.local/share/nfc-agent/queue.db
-   ```
-8. 起動 & 確認  
-   ```bash
-   poetry run python -m nfc_agent
-   curl http://localhost:7071/api/agent/status
-   ```
-   `readerConnected: true` で `message: "監視中"` なら成功。カードをかざすと `lastEvent` に UID が追加される。
-
-※ Chromium は Debian 13 以降 `chromium-browser` パッケージが無いため `chromium` を使用。
-
-## 今後の拡張
-
-- `ImportJob` テーブルと `/api/imports/*` エンドポイントを共通ジョブ管理基盤として用意しており、PDF/Excel ビューワーや将来の物流管理モジュールが同じ仕組みでジョブ履歴やファイル投入を扱える
-- 新機能を追加する際は `apps/api/src/routes`・`apps/web/src/pages` で独立したモジュールを増やし、Docker Compose でサービスを疎結合に保つ
-
-各マイルストーンの詳細な実行手順と検証方法は ExecPlan を確認してください。
+- 変更は専用のブランチから Pull Request で行い、CI の全チェックの合格を必須とします。
+- main ブランチは保護しています。設定手順は [CI 必須化とブランチ保護設定ガイド](./docs/guides/ci-branch-protection.md) と [ブランチ保護ルール設定手順](./.github/BRANCH_PROTECTION_SETUP.md) を参照してください。
+- 重要な変更や障害対応は、ナレッジベース、ADR、Runbook、Plan のいずれかに記録します。
+- AI エージェントを使う作業の規約は [AGENTS.md](./AGENTS.md) にあります。

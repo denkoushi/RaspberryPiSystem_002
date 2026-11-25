@@ -48,6 +48,7 @@ import {
   getShelfLayoutZone,
   listShelfLayoutSummary
 } from '../../services/mobile-placement/shelf-layout-read.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const snapFseibanTokensBodySchema = z.object({
   tokens: z.array(z.string().min(1).max(32)).min(1).max(50),
@@ -170,47 +171,47 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * 登録済み棚番候補（`MobilePlacementShelf` + 構造化メタ）
    */
-  app.get('/mobile-placement/registered-shelves', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/registered-shelves', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const shelves = await listRegisteredShelvesFromShelfMaster();
     return { shelves };
   });
 
-  app.get('/mobile-placement/client-capabilities', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/client-capabilities', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const identity = resolveCredentialIdentity(clientDevice);
     return getClientCapabilities(identity.clientDeviceId);
   });
 
-  app.get('/mobile-placement/shelf-machines', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/shelf-machines', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const [machines, landmarks] = await Promise.all([requireShelfMachines(), listShelfLandmarks()]);
     return { machines, landmarks };
   });
 
-  app.post('/mobile-placement/shelf-landmarks', { config: { rateLimit: false } }, async (request) => {
+  app.post('/mobile-placement/shelf-landmarks', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const { name } = z.object({ name: z.string() }).parse(request.body);
     return addShelfLandmark(name, resolveCredentialIdentity(clientDevice).clientDeviceId);
   });
 
-  app.delete('/mobile-placement/shelf-landmarks/:name', { config: { rateLimit: false } }, async (request) => {
+  app.delete('/mobile-placement/shelf-landmarks/:name', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const { name } = z.object({ name: z.string().min(1) }).parse(request.params);
     return deleteShelfLandmark(name);
   });
 
-  app.get('/mobile-placement/machine-masters', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/machine-masters', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listMachineMastersForShelfLayout();
   });
 
-  app.get('/mobile-placement/shelf-layout', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/shelf-layout', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listShelfLayoutSummary();
   });
 
-  app.get('/mobile-placement/shelf-layout/zones/:macroZoneId', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/shelf-layout/zones/:macroZoneId', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const params = shelfLayoutZoneParamsSchema.parse(request.params);
     return getShelfLayoutZone(params.macroZoneId);
@@ -219,7 +220,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * Zero2W 棚番エッジ: 端末に紐づく棚番プリセットの取得
    */
-  app.get('/mobile-placement/haizen-preset-shelf', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/haizen-preset-shelf', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const identity = resolveCredentialIdentity(clientDevice);
     return getHaizenPresetShelf(identity.clientDeviceId);
@@ -228,7 +229,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * Zero2W 棚番エッジ: 棚番プリセットの更新（構造化棚形式）
    */
-  app.patch('/mobile-placement/haizen-preset-shelf', { config: { rateLimit: false } }, async (request) => {
+  app.patch('/mobile-placement/haizen-preset-shelf', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = haizenPresetShelfBodySchema.parse(request.body);
     const identity = resolveCredentialIdentity(clientDevice);
@@ -241,7 +242,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * Zero2W 棚番エッジ: 製造orderスキャン受付（履歴 + 現在値 upsert）
    */
-  app.post('/mobile-placement/haizen-scans', { config: { rateLimit: false } }, async (request) => {
+  app.post('/mobile-placement/haizen-scans', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = haizenScanBodySchema.parse(request.body);
     const identity = resolveCredentialIdentity(clientDevice);
@@ -262,12 +263,12 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   });
 
   /** キオスク: Android配膳の枝ごとの現在棚と機種名。 */
-  app.get('/mobile-placement/haizen-overview', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/haizen-overview', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listHaizenOverview();
   });
 
-  app.get('/mobile-placement/haizen-overview/unplaced-parts', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/haizen-overview/unplaced-parts', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listHaizenUnplacedParts();
   });
@@ -275,7 +276,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * 配膳スマホ等: 棚番配膳の現在値一覧（棚でフィルタ可）
    */
-  app.get('/mobile-placement/haizen-current', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/haizen-current', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const q = haizenCurrentQuerySchema.parse(request.query);
     return listHaizenCurrentPlacements({
@@ -287,7 +288,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * Android キオスク: Zero2W 候補端末一覧
    */
-  app.get('/mobile-placement/haizen-target-devices', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/haizen-target-devices', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listHaizenAssignableDevices();
   });
@@ -297,7 +298,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
    */
   app.put(
     '/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       await requireClientDevice(request.headers['x-client-key']);
       const body = haizenPresetShelfBodySchema.parse(request.body);
@@ -312,7 +313,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * 棚マスタへ棚番を新規登録（配膳トップの `+`）。`西-北-01` 形式のみ。
    */
-  app.post('/mobile-placement/shelves', { config: { rateLimit: false } }, async (request) => {
+  app.post('/mobile-placement/shelves', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = registerMobilePlacementShelfBodySchema.parse(request.body);
     const identity = resolveCredentialIdentity(clientDevice);
@@ -324,7 +325,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     return { shelf: result.shelf };
   });
 
-  app.put('/mobile-placement/shelves/:shelfCodeRaw/photo', { bodyLimit: 1_500_000, config: { rateLimit: false } }, async (request) => {
+  app.put('/mobile-placement/shelves/:shelfCodeRaw/photo', { bodyLimit: 1_500_000, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
     const body = z.object({
@@ -334,20 +335,20 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     return putShelfPhoto(shelfCodeRaw, body, resolveCredentialIdentity(clientDevice).clientDeviceId);
   });
 
-  app.get('/mobile-placement/shelves/:shelfCodeRaw/photo', { config: { rateLimit: false } }, async (request, reply) => {
+  app.get('/mobile-placement/shelves/:shelfCodeRaw/photo', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request, reply) => {
     await requireClientDevice(request.headers['x-client-key']);
     const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
     const photo = await getShelfPhoto(shelfCodeRaw);
     return reply.type(photo.contentType).header('Cache-Control', 'private, max-age=31536000, immutable').send(Buffer.from(photo.bytes));
   });
 
-  app.delete('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: false } }, async (request) => {
+  app.delete('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
     return deleteMobilePlacementShelf(shelfCodeRaw);
   });
 
-  app.patch('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: false } }, async (request) => {
+  app.patch('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
     const { displayLabel } = z.object({ displayLabel: z.string().trim().max(60).nullable() }).parse(request.body);
@@ -357,7 +358,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * 部品名検索（現在棚優先・生産スケジュール補助・同義語辞書）
    */
-  app.get('/mobile-placement/part-search/suggest', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/part-search/suggest', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const q = partSearchSuggestQuerySchema.parse(request.query);
     return suggestPartPlacementSearch({ q: q.q, machineName: q.machineName });
@@ -366,7 +367,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /**
    * 製造orderに紐づく分配枝の現在棚一覧（`OrderPlacementBranchState`）
    */
-  app.get('/mobile-placement/order-placement-branches', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/order-placement-branches', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const q = orderPlacementBranchesQuerySchema.parse(request.query);
     const branches = await listOrderPlacementBranches(q.manufacturingOrder);
@@ -382,7 +383,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     };
   });
 
-  app.get('/mobile-placement/resolve-item', { config: { rateLimit: false } }, async (request) => {
+  app.get('/mobile-placement/resolve-item', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const q = request.query as { barcode?: string };
     const barcode = typeof q.barcode === 'string' ? q.barcode : '';
@@ -390,7 +391,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     return result;
   });
 
-  app.post('/mobile-placement/verify-slip-match', { config: { rateLimit: false } }, async (request) => {
+  app.post('/mobile-placement/verify-slip-match', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const body = verifySlipMatchBodySchema.parse(request.body);
     const result = await verifySlipMatch({
@@ -403,7 +404,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     return result;
   });
 
-  app.post('/mobile-placement/snap-fseiban-tokens', { config: { rateLimit: false } }, async (request) => {
+  app.post('/mobile-placement/snap-fseiban-tokens', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const body = snapFseibanTokensBodySchema.parse(request.body);
     const ocrText = body.text ?? '';
@@ -436,7 +437,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     return registerEdgeScan({ ...body, clientDeviceId: identity.clientDeviceId });
   });
 
-  app.post('/mobile-placement/register-order-placement', { config: { rateLimit: false } }, async (request) => {
+  app.post('/mobile-placement/register-order-placement', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = registerOrderPlacementBodySchema.parse(request.body);
     const identity = resolveCredentialIdentity(clientDevice);
@@ -472,7 +473,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
 
   app.delete(
     '/mobile-placement/order-placement-branches/:id',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       await requireClientDevice(request.headers['x-client-key']);
       const params = request.params as { id?: string };
@@ -488,7 +489,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
 
   app.delete(
     '/mobile-placement/haizen-current/:id',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       await requireClientDevice(request.headers['x-client-key']);
       const params = request.params as { id?: string };
@@ -501,7 +502,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   /** 既存分配枝の棚更新（移動） */
   app.patch(
     '/mobile-placement/order-placement-branches/:id/move',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
       const params = request.params as { id?: string };
@@ -537,7 +538,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     }
   );
 
-  app.post('/mobile-placement/register', { config: { rateLimit: false } }, async (request) => {
+  app.post('/mobile-placement/register', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = registerBodySchema.parse(request.body);
     const identity = resolveCredentialIdentity(clientDevice);

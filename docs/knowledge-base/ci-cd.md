@@ -354,7 +354,7 @@ update-frequency: high
 
 ### [KB-009] E2Eテストのログイン成功後のリダイレクトがCI環境で失敗する
 
-**EXEC_PLAN.md参照**: Progress (行47), CI_TESTING_BEST_PRACTICES.md
+**EXEC_PLAN.md参照**: Progress (行47), docs/archive/root-legacy/CI_TESTING_BEST_PRACTICES.md
 
 **事象**: 
 - E2Eテストのログイン成功後のリダイレクトがCI環境で失敗する

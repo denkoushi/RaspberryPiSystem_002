@@ -7,6 +7,7 @@ import {
   type ScawStFutekigoReadItem
 } from '../../services/scaw-stfutekigo/scaw-stfutekigo-read.service.js';
 import { normalizeWorkInstructionPartNumber } from '../../services/work-instructions/domain/normalization.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const querySchema = z.object({
   partNumber: z.string().trim().min(1).max(200)
@@ -47,7 +48,7 @@ export async function registerSelfInspectionNonconformityRoutes(
 
   app.get(
     '/kiosk/self-inspection/nonconformities',
-    { preHandler: [canRead], config: { rateLimit: false } },
+    { preHandler: [canRead], config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const query = querySchema.parse(request.query ?? {});
       const partNumber = normalizeWorkInstructionPartNumber(query.partNumber);

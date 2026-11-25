@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { LoanReportService } from '../../services/reports/loan-report/loan-report.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const loanReportCategorySchema = z.enum(['measuring', 'rigging', 'tools']);
 
@@ -87,7 +88,7 @@ export function registerLoanReportRoutes(app: FastifyInstance): void {
 
   app.get(
     '/reports/loan-report/preview',
-    { preHandler: [canPreview], config: { rateLimit: false } },
+    { preHandler: [canPreview], config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const q = loanReportPreviewQuerySchema.parse(request.query);
       const { periodFrom, periodTo } = resolveLoanReportPeriod({
@@ -112,7 +113,7 @@ export function registerLoanReportRoutes(app: FastifyInstance): void {
 
   app.post(
     '/reports/loan-report/gmail-draft',
-    { preHandler: [canDraft], config: { rateLimit: false } },
+    { preHandler: [canDraft], config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const body = loanReportGmailDraftBodySchema.parse(request.body);
       const { periodFrom, periodTo } = resolveLoanReportPeriod({
@@ -139,7 +140,7 @@ export function registerLoanReportRoutes(app: FastifyInstance): void {
 
   app.post(
     '/reports/loan-report/gmail-send',
-    { preHandler: [canSendGmail], config: { rateLimit: false } },
+    { preHandler: [canSendGmail], config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const body = loanReportGmailSendBodySchema.parse(request.body);
       const { periodFrom, periodTo } = resolveLoanReportPeriod({

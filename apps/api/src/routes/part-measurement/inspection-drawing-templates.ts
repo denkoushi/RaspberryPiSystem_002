@@ -42,6 +42,7 @@ import {
   type PartMeasurementRouteDeps
 } from './shared.js';
 import { listInspectionDrawingFhincdCandidates } from '../../services/part-measurement/inspection-drawing-fhincd-candidates.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
@@ -249,7 +250,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
 
     app.post(
       '/part-measurement/inspection-drawing/evaluation-templates',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         if (request.isMultipart()) {
           let fileBuffer: Buffer | null = null;

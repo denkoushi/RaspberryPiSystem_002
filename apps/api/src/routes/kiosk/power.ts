@@ -4,6 +4,7 @@ import path from 'path';
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 const powerActionSchema = z.object({
   action: z.enum(['reboot', 'poweroff'])
 });
@@ -21,7 +22,7 @@ export async function registerKioskPowerRoute(
   app: FastifyInstance,
   deps: PowerRouteDeps
 ): Promise<void> {
-  app.post('/kiosk/power', { config: { rateLimit: false } }, async (request) => {
+  app.post('/kiosk/power', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const rawHeader = request.headers['x-client-key'];
     const { clientKey, clientDevice } = await deps.requireClientDevice(rawHeader);
     const allowed = await deps.checkPowerRateLimit(clientKey, request.ip);

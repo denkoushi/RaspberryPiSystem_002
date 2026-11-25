@@ -33,6 +33,7 @@ import {
   tryGetClientDeviceId,
   type PartMeasurementRouteDeps
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 export const listDraftSheetsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(30),
@@ -65,7 +66,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/resolve-ticket',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const body = resolveTicketBodySchema.parse(request.body);
         let deviceScopeKey: string | undefined;
@@ -117,7 +118,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/sheets',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const body = createSheetBodySchema.parse(request.body);
         if (body.scheduleRowId) {
@@ -150,7 +151,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/sheets/find-or-open',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const body = findOrOpenSheetBodySchema.parse(request.body);
         if (body.scheduleRowId && body.fseiban) {
@@ -194,7 +195,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.get(
       '/part-measurement/sheets/drafts',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const q = listDraftSheetsQuerySchema.parse(request.query);
         const { sheets, nextCursor } = await sheetService.listDrafts({ limit: q.limit, cursor: q.cursor });
@@ -204,7 +205,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.get(
       '/part-measurement/sheets/finalized',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const q = listFinalizedSheetsQuerySchema.parse(request.query);
         const processGroup =
@@ -228,7 +229,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.get(
       '/part-measurement/sheets/:id',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const sheet = await sheetService.getById(params.id);
@@ -238,7 +239,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.patch(
       '/part-measurement/sheets/:id',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = patchSheetBodySchema.parse(request.body);
@@ -252,7 +253,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/inspection-drawing/evaluation-sheets',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const body = createEvaluationSheetBodySchema.parse(request.body);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
@@ -266,7 +267,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.patch(
       '/part-measurement/inspection-drawing/evaluation-sheets/:id',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const parsed = patchInspectionDrawingEvaluationSheetBodySchema.parse(request.body);
@@ -281,7 +282,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/sheets/:id/transfer-edit-lock',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = transferSheetEditLockBodySchema.parse(request.body ?? {});
@@ -295,7 +296,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/sheets/:id/finalize',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
@@ -308,7 +309,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/inspection-drawing/evaluation-sheets/:id/finalize',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
@@ -321,7 +322,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/sheets/:id/cancel',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = cancelSheetBodySchema.parse(request.body);
@@ -335,7 +336,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.post(
       '/part-measurement/sheets/:id/invalidate',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = cancelSheetBodySchema.parse(request.body);
@@ -349,7 +350,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
 
     app.get(
       '/part-measurement/sheets/:id/export.csv',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request, reply) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const sheet = await sheetService.getById(params.id);

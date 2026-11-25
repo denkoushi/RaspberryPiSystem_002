@@ -1,6 +1,7 @@
 import { isAxiosError } from 'axios';
 
 import { registerOrderPlacement } from '../../../../api/client';
+import { isRetryableHttpError } from '../../../../lib/retryable-http-error';
 import { MOBILE_REQUEST_TIMEOUT_MS, mobileRequest } from '../../connectivity';
 import { canSyncNow } from '../../sync/networkGate';
 import { requestSync } from '../../sync/syncScheduler';
@@ -45,7 +46,7 @@ function createRunner(store: HaizenOfflineQueueStore) {
       }, MOBILE_REQUEST_TIMEOUT_MS));
     } catch (error) {
       const httpResponse = isAxiosError(error) ? error.response : undefined;
-      if (httpResponse && httpResponse.status >= 400 && httpResponse.status < 500 && httpResponse.status !== 408 && httpResponse.status !== 429) {
+      if (httpResponse && httpResponse.status >= 400 && httpResponse.status < 500 && !isRetryableHttpError(error)) {
         await store.put({ ...record, status: 'needs_check', message: typeof httpResponse.data?.message === 'string'
           ? httpResponse.data.message : '登録内容を確認してください' });
         return { status: 'needs_check' };

@@ -4,9 +4,10 @@ import { redactHeadersForLog } from '../../../lib/log-headers.js';
 import { LoanService } from '../../../services/tools/loan.service.js';
 import { requireLoanClientOrJwt } from './require-loan-auth.js';
 import { cancelSchema } from './schemas.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 export function registerLoanCancelRoute(app: FastifyInstance, loanService: LoanService): void {
-  app.post('/cancel', { config: { rateLimit: false } }, async (request, reply) => {
+  app.post('/cancel', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request, reply) => {
     // 機密情報保護: 認証ヘッダーをログから除外
     const sanitizedHeaders = redactHeadersForLog(request.headers);
     app.log.info({ body: request.body, headers: sanitizedHeaders }, 'Loan cancel request received');

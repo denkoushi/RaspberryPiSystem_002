@@ -38,6 +38,7 @@ import {
   readMultipartFile,
   type PartMeasurementRouteDeps
 } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 export const listVisualTemplatesQuerySchema = z.object({
   includeInactive: optionalQueryTrueOnlyBooleanSchema,
@@ -82,7 +83,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.get(
       '/part-measurement/visual-templates',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const q = listVisualTemplatesQuerySchema.parse(request.query);
         const list = await visualTemplateService.list({
@@ -98,7 +99,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.get(
       '/part-measurement/visual-templates/:id',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const q = z
@@ -118,7 +119,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.get(
       '/part-measurement/visual-templates/:id/ocr',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const status = await drawingOcrService.getCurrentStatus(params.id);
@@ -135,7 +136,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.post(
       '/part-measurement/visual-templates/:id/ocr/candidates',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = drawingOcrCandidateBodySchema.parse(request.body);
@@ -182,7 +183,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.get(
       '/part-measurement/visual-templates/:id/placement-proposals',
-      { preHandler: allowView, config: { rateLimit: false } },
+      { preHandler: allowView, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const { id } = z.object({ id: z.string().guid() }).parse(request.params);
         const { processGroup } = drawingPlacementProposalsQuerySchema.parse(request.query);
@@ -196,7 +197,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.post(
       '/part-measurement/visual-templates/:id/placement-proposals/decisions',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const { id } = z.object({ id: z.string().guid() }).parse(request.params);
         const { processGroup, ...body } = drawingPlacementDecisionsBodySchema.parse(request.body);
@@ -209,7 +210,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.post(
       '/part-measurement/visual-templates/:id/ocr/retry',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const status = await drawingOcrService.retryVisualTemplate(params.id);
@@ -220,7 +221,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.post(
       '/part-measurement/visual-templates',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         if (!request.isMultipart()) {
           throw new ApiError(
@@ -284,7 +285,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.patch(
       '/part-measurement/visual-templates/:id',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = updateVisualTemplateNameBodySchema.parse(request.body);
@@ -302,7 +303,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
 
     app.delete(
       '/part-measurement/visual-templates/:id',
-      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      { preHandler: allowWriteKiosk, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
       async (request, reply) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
         const cleanupToken = request.headers['x-visual-cleanup-token'];

@@ -10,6 +10,7 @@ import {
 import { MAX_MACHINE_PALLET_COUNT } from '../../services/pallet-visualization/pallet-count-bounds.js';
 import { queryPalletVisualizationBoard } from '../../services/pallet-visualization/pallet-visualization-query.service.js';
 import { PalletMachineIllustrationStorage } from '../../lib/pallet-machine-illustration-storage.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const machineCdParamsSchema = z.object({
   machineCd: z.string().min(1),
@@ -18,13 +19,13 @@ const machineCdParamsSchema = z.object({
 export async function registerToolsPalletVisualizationRoutes(app: FastifyInstance): Promise<void> {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
 
-  app.get('/pallet-visualization/board', { preHandler: canManage, config: { rateLimit: false } }, async () => {
+  app.get('/pallet-visualization/board', { preHandler: canManage, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async () => {
     return queryPalletVisualizationBoard();
   });
 
   app.post(
     '/pallet-visualization/machines/:machineCd/illustration',
-    { preHandler: canManage, config: { rateLimit: false } },
+    { preHandler: canManage, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const params = machineCdParamsSchema.parse(request.params);
       const data = await request.file();
@@ -52,7 +53,7 @@ export async function registerToolsPalletVisualizationRoutes(app: FastifyInstanc
 
   app.delete(
     '/pallet-visualization/machines/:machineCd/illustration',
-    { preHandler: canManage, config: { rateLimit: false } },
+    { preHandler: canManage, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request, reply) => {
       const params = machineCdParamsSchema.parse(request.params);
       await commandDeletePalletIllustration({ machineCd: params.machineCd });
@@ -66,7 +67,7 @@ export async function registerToolsPalletVisualizationRoutes(app: FastifyInstanc
 
   app.patch(
     '/pallet-visualization/machines/:machineCd/pallet-count',
-    { preHandler: canManage, config: { rateLimit: false } },
+    { preHandler: canManage, config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const params = machineCdParamsSchema.parse(request.params);
       const body = patchPalletCountBodySchema.parse(request.body);

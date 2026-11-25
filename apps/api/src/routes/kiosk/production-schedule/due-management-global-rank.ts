@@ -30,6 +30,7 @@ import {
   type KioskRouteDeps
 } from './shared.js';
 import { shouldRequireTargetLocationForActor } from '../shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const requireTargetLocationIfNeeded = (params: {
   actor: { canProxyOtherDevices: boolean };
@@ -53,7 +54,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
@@ -89,7 +90,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     };
   });
 
-  app.put('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice, clientKey } = await deps.requireClientDevice(request.headers['x-client-key']);
     await requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
@@ -161,7 +162,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
 
   app.get(
     '/kiosk/production-schedule/due-management/global-rank/proposal',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
@@ -188,7 +189,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
 
   app.put(
     '/kiosk/production-schedule/due-management/global-rank/auto-generate',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice, clientKey } = await deps.requireClientDevice(request.headers['x-client-key']);
       await requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
@@ -214,7 +215,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
 
   app.get(
     '/kiosk/production-schedule/due-management/global-rank/learning-report',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
@@ -242,7 +243,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
 
   app.get(
     '/kiosk/production-schedule/due-management/global-rank/explanation/:fseiban',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);

@@ -13,14 +13,14 @@ import { registerToolsPalletVisualizationRoutes } from './pallet-visualization.j
  * パス: /api/tools/*
  * 
  * サブルーター内でレート制限プラグインを登録することで、
- * ルートの`config: { rateLimit: false }`が正しく認識されるようにします。
+ * ルートの`config: { rateLimit: ... }`が正しく認識されるようにします。
  */
 export async function registerToolsRoutes(app: FastifyInstance): Promise<void> {
   await app.register(
     async (subApp) => {
       // 注意: レート制限プラグインは`routes/index.ts`で既に登録されているため、
       // ここでは登録しない（重複登録を避けるため）
-      // ルートの`config: { rateLimit: false }`は親のサブルーターで登録されたプラグインで認識される
+      // ルートの`config: { rateLimit: ... }`は親のサブルーターで登録されたプラグインで認識される
 
       await registerEmployeeRoutes(subApp);
       await registerItemRoutes(subApp);

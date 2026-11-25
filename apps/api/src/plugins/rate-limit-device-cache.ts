@@ -1,3 +1,7 @@
+// Looks up a registered terminal by its key. Loaded on first use so importing this module does not open a DB pool.
+export const createClientDeviceIdLookup = () => async (apiKey: string): Promise<{ id: string } | null> =>
+  (await import('../lib/prisma.js')).prisma.clientDevice.findUnique({ where: { apiKey }, select: { id: true } });
+
 type DeviceCacheOptions = {
   lookup: (apiKey: string) => Promise<{ id: string } | null>;
   now?: () => number;

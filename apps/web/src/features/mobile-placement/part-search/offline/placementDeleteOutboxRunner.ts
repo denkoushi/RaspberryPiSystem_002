@@ -1,6 +1,7 @@
 import { isAxiosError } from 'axios';
 
 import { deleteOrderPlacementBranch } from '../../../../api/domains/mobile-placement';
+import { isRetryableHttpError } from '../../../../lib/retryable-http-error';
 import { mobileRequest } from '../../connectivity';
 import { mobileLocalDataStore } from '../../local-data/mobileLocalDataStore';
 import { canSyncNow } from '../../sync/networkGate';
@@ -45,7 +46,7 @@ export function createPlacementDeleteOutboxRunner(
             continue;
           }
           if (status !== 404) {
-            if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+            if (status && status >= 400 && status < 500 && !isRetryableHttpError(error)) {
               await local.restorePlacement(record.row);
               await queue.put({ ...record, status: 'needs_check' });
               continue;

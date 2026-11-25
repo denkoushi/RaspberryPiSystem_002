@@ -13,6 +13,7 @@ import {
   resolveSignagePreviewTargetInput,
   setSignagePreviewTarget
 } from '../../services/kiosk/kiosk-signage-preview.service.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 const selectionBodySchema = z.union([
   z.object({ signagePreviewTargetDeviceId: z.string().guid().nullable() }).strict(),
@@ -32,7 +33,7 @@ export async function registerKioskSignagePreviewRoutes(
   deps: SignagePreviewRouteDeps
 ): Promise<void> {
   const renderer = new SignageRenderer(new SignageService());
-  app.get('/kiosk/signage-preview/options', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/signage-preview/options', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const rawHeader = request.headers['x-client-key'];
     const { clientDevice } = await deps.requireClientDevice(rawHeader);
 
@@ -48,7 +49,7 @@ export async function registerKioskSignagePreviewRoutes(
     };
   });
 
-  app.put('/kiosk/signage-preview/selection', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/signage-preview/selection', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const rawHeader = request.headers['x-client-key'];
     const { clientDevice } = await deps.requireClientDevice(rawHeader);
 

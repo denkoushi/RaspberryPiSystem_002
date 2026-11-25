@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
 import type { SignageContentResponse, SignageService } from '../../services/signage/index.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
 
 function resolveClientKeyFromRequest(request: FastifyRequest): string | null {
   const headerKey = request.headers['x-client-key'];
@@ -22,7 +23,7 @@ export function withoutEmployeeDetails(content: SignageContentResponse): Signage
 
 export function registerContentRoute(app: FastifyInstance, signageService: SignageService): void {
   // GET /api/signage/content - 現在時刻に基づいて表示すべきコンテンツを取得（サイネージ用）
-  app.get('/content', { config: { rateLimit: false } }, async (request: FastifyRequest) => {
+  app.get('/content', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request: FastifyRequest) => {
     const requestedKey = resolveClientKeyFromRequest(request);
     const device = requestedKey ? await findClientDeviceByApiKey(requestedKey) : null;
     const content = await signageService.getContent({ clientKey: device ? requestedKey : null });

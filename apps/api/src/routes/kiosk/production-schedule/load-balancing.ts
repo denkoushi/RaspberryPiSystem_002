@@ -11,6 +11,7 @@ import {
 } from '../../../services/production-schedule/load-balancing/load-balancing-workspace.service.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 import { productionScheduleQuerySchema, toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
+import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const workspaceQuerySchema = z.object({
   dueSource: productionScheduleQuerySchema.shape.dueSource,
@@ -49,7 +50,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/production-schedule/load-balancing/workspace', { config: { rateLimit: false } }, async (request, reply) => {
+  app.get('/kiosk/production-schedule/load-balancing/workspace', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
@@ -76,7 +77,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
     }
   });
 
-  app.get('/kiosk/production-schedule/load-balancing/workspace/day', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/load-balancing/workspace/day', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
@@ -104,7 +105,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
   });
 
   for (const method of ['GET', 'PUT'] as const) {
-    app.route({ method, url: '/kiosk/production-schedule/load-balancing/outsource-settings', config: { rateLimit: false }, handler: async (request) => {
+    app.route({ method, url: '/kiosk/production-schedule/load-balancing/outsource-settings', config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT }, handler: async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const context = deps.resolveLocationScopeContext(clientDevice);
       const scope = z.object({ targetDeviceScopeKey: z.string().min(1).max(200).optional() }).parse(
@@ -120,7 +121,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
     } });
   }
 
-  app.put('/kiosk/production-schedule/load-balancing/capacity-base', { config: { rateLimit: false } }, async (request) => {
+  app.put('/kiosk/production-schedule/load-balancing/capacity-base', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
