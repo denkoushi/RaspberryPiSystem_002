@@ -5,12 +5,19 @@ After=network-online.target
 
 [Service]
 Type=simple
+User=raspi-haizen
+Group=raspi-haizen
+SupplementaryGroups=input
 Restart=on-failure
 RestartSec=5
 Environment=PYTHONPATH=/opt/RaspberryPiSystem_002/clients/haizen-agent
 WorkingDirectory=/opt/RaspberryPiSystem_002/clients/haizen-agent
 ExecStart=/usr/bin/python3 -m haizen_agent
 Nice=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
 
 [Install]
 WantedBy=multi-user.target
