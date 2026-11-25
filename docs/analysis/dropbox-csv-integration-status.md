@@ -939,7 +939,7 @@
 - テストの独立性を保つ（各テストが独立して実行可能）
 - 環境変数の適切な設定
 
-**参考**: `CI_TESTING_BEST_PRACTICES.md`を参照
+**参考**: `docs/archive/root-legacy/CI_TESTING_BEST_PRACTICES.md`を参照
 
 #### 3. CIテストの監視
 
@@ -1139,5 +1139,5 @@
 - `docs/architecture/backup-modularity-assessment.md`: バックアップ機能のモジュール化評価
 - `docs/security/sharepoint-dropbox-integration-assessment.md`: SharePoint→Dropbox→Pi5統合のセキュリティ評価
 - `docs/security/sharepoint-dropbox-multi-purpose-assessment.md`: 多目的用途の評価
-- `CI_TESTING_BEST_PRACTICES.md`: CI環境でのテスト安定化のベストプラクティス
+- `docs/archive/root-legacy/CI_TESTING_BEST_PRACTICES.md`: CI環境でのテスト安定化のベストプラクティス
 - `.github/workflows/ci.yml`: CIパイプライン設定

@@ -1740,7 +1740,7 @@ const textX = x + textAreaX;
 
 **関連ファイル**:
 - `apps/api/src/services/visualization/renderers/progress-list/progress-list-renderer.ts`: SVGレンダラーの修正
-- `production-schedule-progress-preview.html`: HTMLプレビューファイルの更新
+- `docs/archive/root-legacy/production-schedule-progress-preview.html`: HTMLプレビューファイルの更新
 
 **関連KB**:
 - [KB-193](./signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮): CSVダッシュボードの列幅計算改善
