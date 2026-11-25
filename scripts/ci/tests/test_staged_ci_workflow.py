@@ -4,12 +4,13 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import tempfile
 import textwrap
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 
 from scripts.deploy import release_artifact_contract as release_contract
-from scripts.deploy import torque_component_adoption as adoption_contract
 
 ROOT = Path(__file__).resolve().parents[3]
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -487,10 +488,14 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("docker image tag", adoption)
 
         self.assertIn("git diff --exit-code", compatibility)
-        self.assertIn("39a2a0d386d36b6fce36a6da6508aa0dc3b1b83c", compatibility)
         source_proof = compatibility.split(
             "Prove the adopted torque-agent source closure is unchanged", 1
         )[1].split("Setup pnpm workspace", 1)[0]
+        self.assertIn(
+            "BASELINE_SHA: ${{ steps.adoption.outputs.source_sha }}",
+            source_proof,
+        )
+        self.assertIn('git diff --exit-code \\\n            "$BASELINE_SHA" \\', source_proof)
         self.assertIn("clients/torque-agent", source_proof)
         self.assertIn("infrastructure/docker/Dockerfile.torque-agent", source_proof)
         self.assertNotIn("apps/api/src/routes/torque-training", source_proof)
@@ -623,31 +628,96 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("SOURCE_CLOSURE_UNCHANGED", required)
 
     def test_torque_workflow_identity_matches_adoption_contract_constants(self) -> None:
-        resolved = TORQUE_RELEASE.replace(
+        expected = {
+            key: str(value)
+            for key, value in asdict(release_contract.TORQUE_ADOPTION).items()
+        }
+        for job_name in ("torque-release-compatibility", "torque-component-adoption"):
+            with self.subTest(job=job_name):
+                job = job_block(TORQUE_RELEASE, job_name)
+                steps = re.split(r"(?=^      - name: )", job, flags=re.MULTILINE)[1:]
+                checkout = next(
+                    i for i, step in enumerate(steps) if "uses: actions/checkout@" in step
+                )
+                adoption = [
+                    i for i, step in enumerate(steps) if "\n        id: adoption\n" in step
+                ]
+                self.assertEqual(adoption, [checkout + 1])
+                command = re.search(r"^        run: (.+)$", steps[adoption[0]], re.MULTILINE)
+                self.assertIsNotNone(command)
+                self.assertEqual(
+                    command.group(1),
+                    'python3 scripts/deploy/release_artifact_contract.py '
+                    'torque-adoption-outputs >> "$GITHUB_OUTPUT"',
+                )
+
+                with tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "github-output"
+                    subprocess.run(
+                        ["bash", "-e", "-c", command.group(1)],
+                        cwd=ROOT,
+                        env={**os.environ, "GITHUB_OUTPUT": str(output)},
+                        check=True,
+                    )
+                    lines = output.read_text(encoding="utf-8").splitlines()
+                self.assertCountEqual(
+                    lines, [f"{key}={value}" for key, value in expected.items()]
+                )
+                output_keys = {line.split("=", 1)[0] for line in lines}
+                used_keys = set(re.findall(r"steps\.adoption\.outputs\.([\w-]+)", job))
+                self.assertTrue(used_keys)
+                self.assertLessEqual(used_keys, output_keys)
+
+        compatibility = job_block(TORQUE_RELEASE, "torque-release-compatibility")
+        evidence = compatibility.split(
+            "Seal the passed combination rehearsal evidence", 1
+        )[1].split("Cleanup isolated compatibility PostgreSQL", 1)[0]
+        self.assertIn("BASELINE_SHA: ${{ steps.adoption.outputs.source_sha }}", evidence)
+
+        adoption_job = job_block(TORQUE_RELEASE, "torque-component-adoption")
+        identity, signing = adoption_job.split(
+            "Create the non-provenance component adoption predicate", 1
+        )[1].split("Sign adoption of the existing immutable torque-agent digest", 1)
+        attest, verify = signing.split("Verify the published component adoption signature", 1)
+        self.assertIn("\n        id: identity\n", identity)
+        identity_env, identity_run = identity.split("\n        run: |\n", 1)
+        for key in expected:
+            env_key = key.upper()
+            with self.subTest(output=key):
+                expression = "${{ steps.adoption.outputs." + key + " }}"
+                self.assertIn(f"          {env_key}: {expression}", identity_env.splitlines())
+                self.assertIn(f'echo "{key}=${env_key}"', identity_run)
+
+        repository = "ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent"
+        adopted_digest = "${{ steps.adoption.outputs.index_digest }}"
+        identity_digest = "${{ steps.identity.outputs.index_digest }}"
+        reference = f"{repository}@{adopted_digest}"
+        references = re.findall(
+            r"^          (TORQUE_REFERENCE|image-ref): (.+)$", adoption_job, re.MULTILINE
+        )
+        self.assertCountEqual(
+            references,
+            [("TORQUE_REFERENCE", reference), ("image-ref", reference), ("image-ref", reference)],
+        )
+        self.assertIn(f"subject-name: {repository}\n", attest)
+        self.assertIn(f"subject-digest: {identity_digest}\n", attest)
+        self.assertIn(f"EXACT_REFERENCE: {repository}@{identity_digest}\n", verify)
+
+        resolved = identity.replace(
             "ghcr.io/${{ steps.ghcr.outputs.owner }}/", release_contract.GHCR_NAMESPACE + "/"
         ).replace("${{ github.repository }}", release_contract.SOURCE_REPOSITORY)
-        expected_lines = (
-            f"            {release_contract.TORQUE_ADOPTED_SOURCE_SHA} \\",
-            f"          BASELINE_SHA: {release_contract.TORQUE_ADOPTED_SOURCE_SHA}",
+        for line in (
             f"            echo 'repository={release_contract.TORQUE_AGENT_REPOSITORY}'",
-            f"            echo 'index_digest={adoption_contract.INDEX_DIGEST}'",
-            f"            echo 'source_sha={release_contract.TORQUE_ADOPTED_SOURCE_SHA}'",
-            f"            echo 'arm64_digest={adoption_contract.ARM64_DIGEST}'",
-            f"            echo 'armv7_digest={adoption_contract.ARMV7_DIGEST}'",
             f"            echo 'predicate_type={release_contract.TORQUE_ADOPTION_PREDICATE_TYPE}'",
-            f"            echo 'origin_workflow={release_contract.TORQUE_ORIGINAL_WORKFLOW}'",
-            f"            echo 'origin_run_id={release_contract.TORQUE_ORIGINAL_RUN_ID}'",
-            f"            echo 'origin_job_id={release_contract.TORQUE_ORIGINAL_JOB_ID}'",
-        )
-        for line in expected_lines:
-            with self.subTest(line=line):
-                self.assertIn(line, resolved)
-        fixed_references = re.findall(
-            r"(?:TORQUE_REFERENCE|image-ref): (ghcr\.io/[^\s]+@" + adoption_contract.INDEX_DIGEST + ")",
-            TORQUE_RELEASE,
-        )
-        self.assertEqual(len(fixed_references), 3)
-        self.assertEqual(len(set(fixed_references)), 1)
+        ):
+            self.assertIn(line, resolved)
+        self.assertNotRegex(TORQUE_RELEASE, r"sha256:[0-9a-f]{64}")
+        for key, value in expected.items():
+            if key == "origin_workflow":
+                # The workflow path is shared with the normal v1 release set.
+                continue
+            with self.subTest(literal=key):
+                self.assertNotIn(value, TORQUE_RELEASE)
 
     def test_torque_v2_cannot_block_normal_release_or_required_pr_checks(self) -> None:
         required = job_block(CI, "ci-required")

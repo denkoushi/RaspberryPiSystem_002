@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 GITHUB_OWNER = "denkoushi"
@@ -48,10 +48,32 @@ TORQUE_AGENT_REPOSITORY = f"{GHCR_NAMESPACE}/raspisys-torque-agent"
 RELEASE_SET_REPOSITORY = f"{GHCR_NAMESPACE}/raspisys-release-set"
 TORQUE_PROTOCOL_NAME = "torque-ownership"
 TORQUE_PROTOCOL_VERSION = 1
-TORQUE_ADOPTED_SOURCE_SHA = "39a2a0d386d36b6fce36a6da6508aa0dc3b1b83c"
-TORQUE_ORIGINAL_WORKFLOW = ".github/workflows/ci.yml"
-TORQUE_ORIGINAL_RUN_ID = 45552197863
-TORQUE_ORIGINAL_JOB_ID = 138997961571
+
+
+@dataclass(frozen=True)
+class TorqueAdoption:
+    source_sha: str
+    index_digest: str
+    arm64_digest: str
+    armv7_digest: str
+    origin_workflow: str
+    origin_run_id: int
+    origin_job_id: int
+
+
+TORQUE_ADOPTION = TorqueAdoption(
+    source_sha="39a2a0d386d36b6fce36a6da6508aa0dc3b1b83c",
+    index_digest="sha256:3c384e891f6830be430993807a756301e3954a3719c2737a8b646825cc6c1e61",
+    arm64_digest="sha256:716dfaadfcdec9f17aa1c30e2d42f4b6cf22f5d67aff3c29d9a8718cab591610",
+    armv7_digest="sha256:a89da321146556da86f4072dae18a819576dba9365d501db45da521878cf4906",
+    origin_workflow=".github/workflows/ci.yml",
+    origin_run_id=45552197863,
+    origin_job_id=138997961571,
+)
+TORQUE_ADOPTED_SOURCE_SHA = TORQUE_ADOPTION.source_sha
+TORQUE_ORIGINAL_WORKFLOW = TORQUE_ADOPTION.origin_workflow
+TORQUE_ORIGINAL_RUN_ID = TORQUE_ADOPTION.origin_run_id
+TORQUE_ORIGINAL_JOB_ID = TORQUE_ADOPTION.origin_job_id
 TORQUE_ADOPTION_PREDICATE_TYPE = (
     f"{SOURCE_REPOSITORY_URL}/"
     "attestations/torque-agent-component-adoption/v1"
@@ -343,6 +365,25 @@ def _image(value: object, label: str) -> ImageArtifact:
 
 def _positive_int(value: object) -> bool:
     return type(value) is int and value > 0
+
+
+def _write_torque_adoption_outputs() -> None:
+    outputs = asdict(TORQUE_ADOPTION)
+    for key, pattern in (
+        ("source_sha", FULL_SHA_RE),
+        ("index_digest", SHA256_RE),
+        ("arm64_digest", SHA256_RE),
+        ("armv7_digest", SHA256_RE),
+        ("origin_workflow", WORKFLOW_RE),
+    ):
+        value = outputs[key]
+        if not isinstance(value, str) or pattern.fullmatch(value) is None:
+            raise ReleaseArtifactError(f"torque adoption {key} is malformed")
+    for key in ("origin_run_id", "origin_job_id"):
+        if not _positive_int(outputs[key]):
+            raise ReleaseArtifactError(f"torque adoption {key} is malformed")
+    for key, value in outputs.items():
+        print(f"{key}={value}")
 
 
 def _agent_services(
@@ -823,11 +864,15 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     reuse = subparsers.add_parser("verify-torque-reuse")
     reuse.add_argument("--existing", required=True)
     reuse.add_argument("--candidate", required=True)
+    subparsers.add_parser("torque-adoption-outputs")
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
+    if args.command == "torque-adoption-outputs":
+        _write_torque_adoption_outputs()
+        return 0
     if args.command == "create":
         torque_values = (
             args.torque_repository,

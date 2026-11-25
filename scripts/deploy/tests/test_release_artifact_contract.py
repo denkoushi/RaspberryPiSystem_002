@@ -7,10 +7,13 @@ import io
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from dataclasses import asdict, replace
 from pathlib import Path
+from unittest.mock import patch
 
+from scripts.deploy import release_artifact_contract
 from scripts.deploy.release_artifact_contract import (
-    TORQUE_ADOPTED_SOURCE_SHA,
+    TORQUE_ADOPTION,
     TORQUE_ADOPTION_PREDICATE_TYPE,
     TORQUE_PROTOCOL_SOURCE_CLOSURE,
     TORQUE_REHEARSAL_CONTRACTS,
@@ -63,31 +66,31 @@ def valid_release_set_v2() -> dict[str, object]:
     api = images["api"]
     web = images["web"]
     assert isinstance(api, dict) and isinstance(web, dict)
-    torque_digest = "sha256:" + "3" * 64
+    torque_digest = TORQUE_ADOPTION.index_digest
     document["components"] = {
         "torqueAgent": {
             "repository": f"{GHCR_NAMESPACE}/raspisys-torque-agent",
             "indexDigest": torque_digest,
-            "sourceSha": TORQUE_ADOPTED_SOURCE_SHA,
+            "sourceSha": TORQUE_ADOPTION.source_sha,
             "platforms": [
                 {
                     "os": "linux",
                     "architecture": "arm64",
-                    "digest": "sha256:" + "4" * 64,
+                    "digest": TORQUE_ADOPTION.arm64_digest,
                 },
                 {
                     "os": "linux",
                     "architecture": "arm",
                     "variant": "v7",
-                    "digest": "sha256:" + "5" * 64,
+                    "digest": TORQUE_ADOPTION.armv7_digest,
                 },
             ],
             "adoption": {
                 "predicateType": TORQUE_ADOPTION_PREDICATE_TYPE,
                 "originalWorkflow": {
-                    "path": WORKFLOW,
-                    "runId": 45552197863,
-                    "jobId": 138997961571,
+                    "path": TORQUE_ADOPTION.origin_workflow,
+                    "runId": TORQUE_ADOPTION.origin_run_id,
+                    "jobId": TORQUE_ADOPTION.origin_job_id,
                 },
             },
         }
@@ -113,7 +116,7 @@ def valid_release_set_v2() -> dict[str, object]:
                 "torqueAgent": torque_digest,
             },
             "sourceClosure": {
-                "baselineSha": TORQUE_ADOPTED_SOURCE_SHA,
+                "baselineSha": TORQUE_ADOPTION.source_sha,
                 "releaseSha": SHA,
                 "paths": list(TORQUE_PROTOCOL_SOURCE_CLOSURE),
                 "unchanged": True,
@@ -135,6 +138,52 @@ def valid_release_set_v2() -> dict[str, object]:
 
 
 class ReleaseArtifactContractTests(unittest.TestCase):
+    def test_torque_adoption_outputs_cli_writes_all_fields(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(main(["torque-adoption-outputs"]), 0)
+        lines = output.getvalue().splitlines(keepends=True)
+        keys = {
+            "source_sha",
+            "index_digest",
+            "arm64_digest",
+            "armv7_digest",
+            "origin_workflow",
+            "origin_run_id",
+            "origin_job_id",
+        }
+        self.assertEqual(len(lines), len(keys))
+        for line in lines:
+            self.assertRegex(line, r"^[a-z0-9_]+=[^=\r\n]+\n\Z")
+        values = dict(line.rstrip("\n").split("=", 1) for line in lines)
+        self.assertEqual(set(values), keys)
+        self.assertEqual(
+            values, {key: str(value) for key, value in asdict(TORQUE_ADOPTION).items()}
+        )
+
+    def test_torque_adoption_outputs_cli_rejects_malformed_fields(self) -> None:
+        for key, value in (
+            ("source_sha", TORQUE_ADOPTION.source_sha + "\n"),
+            ("index_digest", "sha256:bad"),
+            ("arm64_digest", "invalid"),
+            ("armv7_digest", None),
+            ("origin_workflow", "ci.yml"),
+            ("origin_run_id", 0),
+            ("origin_job_id", -1),
+            ("origin_job_id", True),
+            ("origin_job_id", str(TORQUE_ADOPTION.origin_job_id)),
+        ):
+            with self.subTest(key=key, value=value):
+                adoption = replace(TORQUE_ADOPTION, **{key: value})
+                output = io.StringIO()
+                with (
+                    patch.object(release_artifact_contract, "TORQUE_ADOPTION", adoption),
+                    redirect_stdout(output),
+                    self.assertRaisesRegex(ReleaseArtifactError, key),
+                ):
+                    main(["torque-adoption-outputs"])
+                self.assertEqual(output.getvalue(), "")
+
     def test_round_trip_and_exact_policy(self) -> None:
         release_set = parse_release_set(json.dumps(valid_release_set()))
         validate_release_set(
@@ -324,21 +373,21 @@ class ReleaseArtifactContractTests(unittest.TestCase):
             "--torque-repository",
             f"{GHCR_NAMESPACE}/raspisys-torque-agent",
             "--torque-index-digest",
-            "sha256:" + "3" * 64,
+            TORQUE_ADOPTION.index_digest,
             "--torque-source-sha",
-            TORQUE_ADOPTED_SOURCE_SHA,
+            TORQUE_ADOPTION.source_sha,
             "--torque-arm64-digest",
-            "sha256:" + "4" * 64,
+            TORQUE_ADOPTION.arm64_digest,
             "--torque-armv7-digest",
-            "sha256:" + "5" * 64,
+            TORQUE_ADOPTION.armv7_digest,
             "--torque-adoption-predicate-type",
             TORQUE_ADOPTION_PREDICATE_TYPE,
             "--torque-origin-workflow",
-            WORKFLOW,
+            TORQUE_ADOPTION.origin_workflow,
             "--torque-origin-run-id",
-            "45552197863",
+            str(TORQUE_ADOPTION.origin_run_id),
             "--torque-origin-job-id",
-            "138997961571",
+            str(TORQUE_ADOPTION.origin_job_id),
             "--torque-rehearsal-job",
             "torque-release-compatibility",
             "--torque-rehearsal-evidence-digest",
