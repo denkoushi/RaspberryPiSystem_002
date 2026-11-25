@@ -2,7 +2,7 @@ import rateLimit from '@fastify/rate-limit';
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { normalizeClientKey } from '../lib/client-key.js';
-import { createRateLimitDeviceCache } from './rate-limit-device-cache.js';
+import { createClientDeviceIdLookup, createRateLimitDeviceCache } from './rate-limit-device-cache.js';
 
 /**
  * レート制限プラグイン
@@ -55,8 +55,7 @@ export const createRateLimitKeyGenerator = (
 
 export const registerRateLimit = fp(async (app: FastifyInstance) => {
   const lookupDevice = createRateLimitDeviceCache({
-    // Loaded on first use so importing this plugin does not open a DB pool.
-    lookup: async (apiKey) => (await import('../lib/prisma.js')).prisma.clientDevice.findUnique({ where: { apiKey }, select: { id: true } })
+    lookup: createClientDeviceIdLookup()
   });
 
   await app.register(rateLimit, {

@@ -1,5 +1,5 @@
 import type { RateLimitOptions } from '@fastify/rate-limit';
-import { createRateLimitDeviceCache } from '../plugins/rate-limit-device-cache.js';
+import { createClientDeviceIdLookup, createRateLimitDeviceCache } from '../plugins/rate-limit-device-cache.js';
 import { createRateLimitKeyGenerator } from '../plugins/rate-limit.js';
 
 /**
@@ -16,8 +16,7 @@ import { createRateLimitKeyGenerator } from '../plugins/rate-limit.js';
 export const TERMINAL_ROUTE_MAX_PER_MINUTE = 600;
 
 const lookupDevice = createRateLimitDeviceCache({
-  // Loaded on first use so importing this module does not open a DB pool.
-  lookup: async (apiKey) => (await import('./prisma.js')).prisma.clientDevice.findUnique({ where: { apiKey }, select: { id: true } })
+  lookup: createClientDeviceIdLookup()
 });
 
 export const TERMINAL_ROUTE_RATE_LIMIT: RateLimitOptions = Object.freeze({
