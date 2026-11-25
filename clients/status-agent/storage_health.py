@@ -374,7 +374,24 @@ def read_kernel_log(
     return "", "journalctl/dmesg"
 
 
-def read_throttled(runner: CommandRunner = run_command, timeout: float = COMMAND_TIMEOUT_SECONDS) -> Optional[str]:
+FIRMWARE_THROTTLED_PATHS = (
+    Path("/sys/devices/platform/soc/soc:firmware/get_throttled"),
+    Path("/sys/devices/platform/soc:firmware/get_throttled"),
+)
+
+
+def read_throttled(
+    runner: CommandRunner = run_command,
+    timeout: float = COMMAND_TIMEOUT_SECONDS,
+    firmware_paths: Sequence[Path] = FIRMWARE_THROTTLED_PATHS,
+) -> Optional[str]:
+    for path in firmware_paths:
+        try:
+            value = path.read_text(encoding="ascii").strip()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if re.fullmatch(r"[0-9a-fA-F]+", value):
+            return f"throttled=0x{value}"
     result = runner(["vcgencmd", "get_throttled"], timeout)
     if result.returncode != 0:
         return None
