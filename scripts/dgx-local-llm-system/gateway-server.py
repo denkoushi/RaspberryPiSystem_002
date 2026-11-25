@@ -851,6 +851,15 @@ def read_proc_pid_status(pid: int) -> str:
     return Path(f"/proc/{pid}/status").read_text(encoding="utf-8", errors="replace")
 
 
+def read_proc_meminfo_shmem_kib() -> int | None:
+    try:
+        text = Path("/proc/meminfo").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    match = re.search(r"^Shmem:[ \t]+([0-9]+)[ \t]+kB[ \t]*$", text, re.MULTILINE)
+    return int(match.group(1)) if match else None
+
+
 def collect_compute_app_processes() -> tuple[float, list[dict[str, object]], float | None]:
     proc = subprocess.run(
         [
@@ -884,7 +893,9 @@ def collect_compute_app_processes() -> tuple[float, list[dict[str, object]], flo
         return total_mib, [], None
 
     total_mib = 0.0
-    total_host_gib: float | None = None
+    total_anon_kib = 0
+    total_shmem_kib = 0
+    host_memory_complete = True
     processes: list[dict[str, object]] = []
     for line in (proc.stdout or "").splitlines():
         parts = [part.strip() for part in line.split(",")]
@@ -898,6 +909,7 @@ def collect_compute_app_processes() -> tuple[float, list[dict[str, object]], flo
             "processName": parts[1],
             "usedMemoryGiB": round(used_mib / 1024.0, 3),
         }
+        host_read = False
         try:
             pid = int(parts[0])
         except ValueError:
@@ -913,10 +925,21 @@ def collect_compute_app_processes() -> tuple[float, list[dict[str, object]], flo
                     r"^(RssAnon|RssShmem):[ \t]+([0-9]+)[ \t]+kB[ \t]*$", status, re.MULTILINE,
                 ))
                 if "RssAnon" in rss_kib and "RssShmem" in rss_kib:
-                    host_gib = round((int(rss_kib["RssAnon"]) + int(rss_kib["RssShmem"])) / 1024**2, 3)
-                    process["hostMemoryGiB"] = host_gib
-                    total_host_gib = (total_host_gib or 0.0) + host_gib
+                    anon_kib = int(rss_kib["RssAnon"])
+                    shmem_kib = int(rss_kib["RssShmem"])
+                    process["hostMemoryGiB"] = round((anon_kib + shmem_kib) / 1024**2, 3)
+                    total_anon_kib += anon_kib
+                    total_shmem_kib += shmem_kib
+                    host_read = True
+        host_memory_complete = host_memory_complete and host_read
         processes.append(process)
+    total_host_gib: float | None = None
+    if processes and host_memory_complete:
+        # Workers sharing one shm segment each report it in RssShmem; never count more than the system holds.
+        system_shmem_kib = read_proc_meminfo_shmem_kib()
+        if system_shmem_kib is not None:
+            total_shmem_kib = min(total_shmem_kib, system_shmem_kib)
+        total_host_gib = round((total_anon_kib + total_shmem_kib) / 1024**2, 3)
     return total_mib, processes[:12], total_host_gib
 
 

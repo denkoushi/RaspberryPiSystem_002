@@ -263,7 +263,8 @@ class GatewayServerTests(unittest.TestCase):
                 Mock(returncode=0, stdout=gpu_row),
                 Mock(returncode=0, stdout=""),
                 Mock(returncode=0, stdout=compute_apps),
-            ]), patch.object(module, "read_proc_pid_status", return_value=status) as read_status:
+            ]), patch.object(module, "read_proc_pid_status", return_value=status) as read_status, \
+                    patch.object(module, "read_proc_meminfo_shmem_kib", return_value=None):
                 ok, payload = module.collect_gpu_metrics()
 
                 self.assertTrue(ok)
@@ -271,9 +272,42 @@ class GatewayServerTests(unittest.TestCase):
                 self.assertEqual(payload["gpuProcessCount"], 12)
                 self.assertEqual(len(payload["gpuProcesses"]), 12)
                 self.assertEqual(payload["gpuProcesses"][0]["hostMemoryGiB"], 3.338)
-                self.assertEqual(payload["gpuProcessHostMemoryGiB"], 43.394)
+                self.assertEqual(payload["gpuProcessHostMemoryGiB"], 43.392)
                 self.assertEqual(payload["gpuProcessMemoryUsedGiB"], 13)
                 self.assertEqual(read_status.call_count, 13)
+
+    def test_collect_gpu_metrics_caps_shared_memory_at_system_shmem(self):
+        module = load_module()
+        compute_apps = "1234, VLLM::Worker_TP0, 2048\n1235, VLLM::Worker_TP1, 2048\n"
+        status = "RssAnon:\t1048576 kB\nRssShmem:\t4194304 kB\n"
+        with patch.object(module.subprocess, "run", side_effect=[
+            Mock(returncode=0, stdout="44, 32768, 131072"),
+            Mock(returncode=0, stdout=""),
+            Mock(returncode=0, stdout=compute_apps),
+        ]), patch.object(module, "read_proc_pid_status", return_value=status), \
+                patch.object(module, "read_proc_meminfo_shmem_kib", return_value=4194304):
+            ok, payload = module.collect_gpu_metrics()
+
+        self.assertTrue(ok)
+        self.assertEqual(payload["gpuProcesses"][0]["hostMemoryGiB"], 5)
+        # 2 GiB anon + shared 4 GiB counted once, not 8 GiB.
+        self.assertEqual(payload["gpuProcessHostMemoryGiB"], 6)
+
+    def test_collect_gpu_metrics_omits_host_total_when_one_process_is_unreadable(self):
+        module = load_module()
+        compute_apps = "1234, python, 2048\n1235, python, 1024\n"
+        with patch.object(module.subprocess, "run", side_effect=[
+            Mock(returncode=0, stdout="44, 32768, 131072"),
+            Mock(returncode=0, stdout=""),
+            Mock(returncode=0, stdout=compute_apps),
+        ]), patch.object(module, "read_proc_pid_status", side_effect=[
+            "RssAnon:\t1048576 kB\nRssShmem:\t0 kB\n", PermissionError(),
+        ]), patch.object(module, "read_proc_meminfo_shmem_kib", return_value=None):
+            ok, payload = module.collect_gpu_metrics()
+
+        self.assertTrue(ok)
+        self.assertEqual(payload["gpuProcesses"][0]["hostMemoryGiB"], 1)
+        self.assertNotIn("gpuProcessHostMemoryGiB", payload)
 
     def test_collect_gpu_metrics_omits_host_memory_when_status_is_unavailable(self):
         module = load_module()
