@@ -185,7 +185,12 @@ async function cleanupFixture(fixture: { siteKey: string; rowIds: string[]; spli
   await db().csvDashboardRow.deleteMany({ where: { id: { in: fixture.rowIds } } });
 }
 
-function projectionInput(fixture: { rows: SummaryRow[]; splitIdsByParentRow: Map<string, string[]> }): {
+it('fails when the comparison fixture is missing the rows for its overrides', () => {
+  expect(() => projectionInput({ rows: [], splitIds: ['split'], splitIdsByParentRow: new Map() }))
+    .toThrow('Missing load-summary projection fixture row or split');
+});
+
+function projectionInput(fixture: { rows: SummaryRow[]; splitIds: string[]; splitIdsByParentRow: Map<string, string[]> }): {
   rows: GrindingPlanningBoardProjectionRow[];
   details: Map<string, GrindingPlanningBoardProjectionRowDetail>;
   overrides: Map<string, GrindingPlanningBoardProjectionOverride>;
@@ -213,13 +218,15 @@ function projectionInput(fixture: { rows: SummaryRow[]; splitIdsByParentRow: Map
   const movedSplitId = fixture.splitIds[0];
   const emptyOverrideRow = fixture.rows.find((row) => row.data.FSEIBAN?.endsWith('-E'));
   const quotedKeyRow = fixture.rows.find((row) => row.data.FSEIBAN?.includes("Q '"));
-  // Only rows present in this projection (a caller may pass a subset of the fixture) get an override.
-  const entries: Array<[string, GrindingPlanningBoardProjectionOverride]> = [];
-  if (movedParent) entries.push([buildGrindingPlanningBoardRowItemId(movedParent.data), { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }]);
-  if (movedSplitId) entries.push([`split:${movedSplitId}`, { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }]);
-  if (emptyOverrideRow) entries.push([buildGrindingPlanningBoardRowItemId(emptyOverrideRow.data), { overrideResourceCd: '', overrideDueDate: null, alternateRank: null, version: 1 }]);
-  if (quotedKeyRow) entries.push([buildGrindingPlanningBoardRowItemId(quotedKeyRow.data), { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }]);
-  const overrides = new Map<string, GrindingPlanningBoardProjectionOverride>(entries);
+  if (!movedParent || !movedSplitId || !emptyOverrideRow || !quotedKeyRow) {
+    throw new Error('Missing load-summary projection fixture row or split');
+  }
+  const overrides = new Map<string, GrindingPlanningBoardProjectionOverride>([
+    [buildGrindingPlanningBoardRowItemId(movedParent.data), { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }],
+    [`split:${movedSplitId}`, { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }],
+    [buildGrindingPlanningBoardRowItemId(emptyOverrideRow.data), { overrideResourceCd: '', overrideDueDate: null, alternateRank: null, version: 1 }],
+    [buildGrindingPlanningBoardRowItemId(quotedKeyRow.data), { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }],
+  ]);
   return { rows, details, overrides };
 }
 
@@ -445,7 +452,8 @@ describeIntegration('grinding planning board lightweight load summary integratio
       expect(aggregate.unknownRequiredMinutesCount).toBe(0);
       expect(aggregate.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({ requiredMinutes: 160, unfinishedItemCount: 3 }); // setup (30) counts once per lot: (2*10+30) + 3*10 + (5*10+30)
       const { getGrindingPlanningBoardResourceMinutes } = await import('../grinding-planning-board-resource-minutes.service.js');
-      const input = projectionInput({ ...fixture, rows });
+      const input = projectionInput(fixture);
+      input.rows = input.rows.filter((entry) => ids.includes(entry.id));
       for (const row of rows) input.overrides.set(buildGrindingPlanningBoardRowItemId(row.data), {
         overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1
       });

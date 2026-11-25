@@ -25,44 +25,22 @@ export function sessakuPieceParentItemId(key: SessakuPieceLogicalKey): string {
   // 研削ボードの行 ID と同じ関数で作る。
   return buildGrindingPlanningBoardRowItemId({ FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun, ProductNo: key.productNo });
 }
-/** 古い4要素の親 ID は productNo が null(どの注文か決まっていない)。 */
-export function parseSessakuPieceParentItemId(value: string): Omit<SessakuPieceLogicalKey, 'productNo'> & { productNo: string | null } {
+export function decodeSessakuPieceParentItemId(value: string): SessakuPieceLogicalKey {
   try {
     if (!value.startsWith('row:')) throw new Error();
     const parts: unknown = JSON.parse(Buffer.from(value.slice(4), 'base64url').toString());
     if (!Array.isArray(parts) || (parts.length !== 4 && parts.length !== 5) || !parts.every((p) => typeof p === 'string')) throw new Error();
-    // 仮製番は同じ4列に別々の注文が並び、親(分割セット)を1つの注文に結べないため、分割の対象にしてこなかった。
+    if (parts.length === 4) {
+      throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+    }
     if (parts[0].trim() === '********') throw new ApiError(409, '未採番製番は分割できません', undefined, 'UNSUPPORTED_PIECE_PARENT');
     if (!parts.slice(0, 4).every((p) => p.length > 0)) throw new Error();
-    const [fseiban, fhincd, fsigencd, fkojun] = parts as string[];
-    return { fseiban, fhincd, fsigencd, fkojun, productNo: parts.length === 5 ? parts[4] : null };
+    const [fseiban, fhincd, fsigencd, fkojun, productNo] = parts as string[];
+    return { fseiban, fhincd, fsigencd, fkojun, productNo };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
   }
-}
-/** 5要素の親 ID だけを読む。古い4要素は注文が決まらないので、DB で解決する resolveSessakuPieceParentKey を使う。 */
-export function decodeSessakuPieceParentItemId(value: string): SessakuPieceLogicalKey {
-  const parsed = parseSessakuPieceParentItemId(value);
-  if (parsed.productNo === null) throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
-  return { ...parsed, productNo: parsed.productNo };
-}
-/** 古い4要素の親 ID は、見える行(印の無い行)が1つだけのときその注文に解決し、2つ以上または0なら 409。 */
-export async function resolveSessakuPieceParentKey(client: SessakuPieceClient, value: string): Promise<SessakuPieceLogicalKey> {
-  const parsed = parseSessakuPieceParentItemId(value);
-  if (parsed.productNo !== null) return { ...parsed, productNo: parsed.productNo };
-  const rows = await client.$queryRaw<Array<{ productNo: string }>>(Prisma.sql`
-    SELECT COALESCE(r."rowData"->>'ProductNo', '') AS "productNo" FROM "CsvDashboardRow" r
-    WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND COALESCE(r."rowData"->>'FSEIBAN', '') = ${parsed.fseiban}
-      AND COALESCE(r."rowData"->>'FHINCD', '') = ${parsed.fhincd}
-      AND COALESCE(r."rowData"->>'FSIGENCD', '') = ${parsed.fsigencd}
-      AND COALESCE(r."rowData"->>'FKOJUN', '') = ${parsed.fkojun}
-      AND ${buildMaxProductNoWinnerCondition('r')}
-    LIMIT 2
-  `);
-  if (rows.length !== 1) throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
-  return { ...parsed, productNo: rows[0].productNo };
 }
 export function sessakuPieceSetWhere(key: SessakuPieceLogicalKey) {
   return { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: key.fseiban, fhincd: key.fhincd, fsigencd: key.fsigencd, fkojun: key.fkojun, productNo: key.productNo };
@@ -145,7 +123,7 @@ export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, it
   const resolved = new Map<string, SessakuPieceLogicalKey>();
   for (const id of itemIds) {
     const pieceId = sessakuPieceIdFromItemId(id);
-    const key = pieceId ? byId.get(pieceId) : await resolveSessakuPieceParentKey(client, id);
+    const key = pieceId ? byId.get(pieceId) : decodeSessakuPieceParentItemId(id);
     if (!key) throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'STALE_SESSAKU_PIECES');
     resolved.set(id, key);
   }

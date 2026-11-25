@@ -7,6 +7,12 @@
 -- TS function by verify-production-schedule-row-hash.ts. Abort before any update when
 -- the new identity is ambiguous or a value cannot be hashed identically.
 BEGIN;
+SET LOCAL lock_timeout = '30s';
+LOCK TABLE "CsvDashboardRow" IN SHARE ROW EXCLUSIVE MODE;
+-- Keep collision checks and the subsequent key updates on the same set of board records.
+LOCK TABLE "ProductionScheduleGrindingPlanningBoardOverride",
+  "ProductionScheduleGrindingPlanningBoardArrival",
+  "ProductionScheduleGrindingPlanningBoardFirstProcessArrival" IN SHARE ROW EXCLUSIVE MODE;
 
 CREATE TEMP TABLE production_schedule_rehash ON COMMIT DROP AS
 SELECT

@@ -21,6 +21,11 @@ const migrationSql = readFileSync(
 // The migration owns BEGIN/COMMIT. The tests run its body inside their own transaction and roll it back.
 const migrationBody = migrationSql.replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, '');
 
+const pieceMigrationBody = readFileSync(
+  new URL('../../../prisma/migrations/20261125120000_sessaku_piece_sets_by_product_no/migration.sql', import.meta.url),
+  'utf8'
+).replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, '');
+
 class Rollback extends Error {}
 
 type Tx = Prisma.TransactionClient;
@@ -70,6 +75,100 @@ describe('keep all manufacturing orders: rehash migration', () => {
   });
   afterAll(async () => {
     await prisma.$disconnect();
+  });
+
+  it('backfills piece sets and histories with the highest numeric order and leaves unmatched keys empty', async () => {
+    await inRolledBackTransaction(async (tx) => {
+      const otherDashboardId = 'test-other-piece-dashboard';
+      await tx.csvDashboard.create({ data: {
+        id: otherDashboardId, name: otherDashboardId, columnDefinitions: [], templateConfig: {},
+      } });
+      await createRow(tx, { ...normal, FHINCD: 'ONE', ProductNo: '7' }, 'piece-only');
+      await createRow(tx, { ...normal, FHINCD: 'MANY', ProductNo: '9' }, 'piece-lower', new Date('2026-11-22'));
+      await createRow(tx, { ...normal, FHINCD: 'MANY', ProductNo: '10' }, 'piece-higher', new Date('2026-11-21'));
+      await tx.csvDashboardRow.create({ data: {
+        csvDashboardId: otherDashboardId, rowData: { ...normal, FHINCD: 'OTHER', ProductNo: '99' }, occurredAt: new Date(),
+      } });
+
+      const fixtures = [
+        { csvDashboardId: dashboardId, fhincd: 'ONE', expected: '7' },
+        { csvDashboardId: dashboardId, fhincd: 'MANY', expected: '10' },
+        { csvDashboardId: dashboardId, fhincd: 'NONE', expected: '' },
+        { csvDashboardId: otherDashboardId, fhincd: 'OTHER', expected: '' },
+      ];
+      for (const { csvDashboardId, fhincd } of fixtures) {
+        const key = {
+          csvDashboardId, fseiban: normal.FSEIBAN, fhincd, fsigencd: normal.FSIGENCD, fkojun: normal.FKOJUN,
+        };
+        await tx.productionScheduleSessakuPieceSet.create({ data: { ...key, id: `backfill-set-${fhincd}`, productNo: '' } });
+        await tx.productionScheduleSessakuPieceHistory.create({ data: { ...key, id: `backfill-history-${fhincd}`, productNo: '' } });
+      }
+      // Restore the old schema inside this transaction, then run the real migration against the fixtures.
+      await tx.$executeRawUnsafe(`
+        ALTER TABLE "ProductionScheduleSessakuPieceSet" DROP COLUMN "productNo";
+        ALTER TABLE "ProductionScheduleSessakuPieceHistory" DROP COLUMN "productNo";
+        CREATE UNIQUE INDEX "PSSPieceSet_logical_key" ON "ProductionScheduleSessakuPieceSet" ("csvDashboardId", "fseiban", "fhincd", "fsigencd", "fkojun");
+        CREATE UNIQUE INDEX "PSSPieceHistory_logical_key" ON "ProductionScheduleSessakuPieceHistory" ("csvDashboardId", "fseiban", "fhincd", "fsigencd", "fkojun");
+      `);
+      await tx.$executeRawUnsafe(pieceMigrationBody);
+      for (const { fhincd, expected } of fixtures) {
+        expect(await tx.productionScheduleSessakuPieceSet.findUniqueOrThrow({ where: { id: `backfill-set-${fhincd}` } }))
+          .toMatchObject({ productNo: expected });
+        expect(await tx.productionScheduleSessakuPieceHistory.findUniqueOrThrow({ where: { id: `backfill-history-${fhincd}` } }))
+          .toMatchObject({ productNo: expected });
+      }
+    });
+  });
+
+  it('reports the migration abort conditions and piece-set matching counts without changing data', async () => {
+    await inRolledBackTransaction(async (tx) => {
+      await tx.productionScheduleSessakuPieceSet.deleteMany({ where: { csvDashboardId: dashboardId } });
+      const first = await createRow(tx, normal, 'diagnostics-first');
+      const duplicate = await createRow(tx, { ...normal, FHINCD: ' PART-A ' }, 'diagnostics-duplicate');
+      const missing = await createRow(tx, { ...normal, ProductNo: '' }, 'diagnostics-missing');
+      const wrongType = await createRow(tx, { ...normal, FKOJUN: 10 }, 'diagnostics-type');
+      const unsafe = await createRow(tx, { ...normal, FHINCD: 'ΑΣ' }, 'diagnostics-unsafe');
+      const multipleKey = { ...normal, FHINCD: 'MULTIPLE' };
+      await createRow(tx, multipleKey, 'diagnostics-piece-a');
+      const winner = await createRow(tx, { ...multipleKey, ProductNo: '0004146555' }, 'diagnostics-piece-b');
+      const legacy = rowKey([multipleKey.FSEIBAN, multipleKey.FHINCD, multipleKey.FSIGENCD, multipleKey.FKOJUN]);
+      const next = rowKey([multipleKey.FSEIBAN, multipleKey.FHINCD, multipleKey.FSIGENCD, multipleKey.FKOJUN, '0004146555']);
+      const scope = { csvDashboardId: dashboardId, siteKey: 'diagnostics' };
+      const createBoardRows = async (itemKey: string) => {
+        const override = await tx.productionScheduleGrindingPlanningBoardOverride.create({ data: { ...scope, itemKey } });
+        const arrival = await tx.productionScheduleGrindingPlanningBoardArrival.create({ data: { ...scope, itemKey, arrivalDate: new Date('2026-11-25') } });
+        const firstArrival = await tx.productionScheduleGrindingPlanningBoardFirstProcessArrival.create({ data: {
+          ...scope, itemKey, state: 'arrived', recordedAt: new Date('2026-11-25'),
+        } });
+        return [override.id, arrival.id, firstArrival.id];
+      };
+      const [override, arrival, firstArrival] = await createBoardRows(legacy);
+      await createBoardRows(next);
+      // Arrival uniqueness includes the date. A different date is not a collision.
+      await tx.productionScheduleGrindingPlanningBoardArrival.create({ data: {
+        ...scope, itemKey: legacy, arrivalDate: new Date('2026-11-26'),
+      } });
+      for (const fhincd of ['MULTIPLE', 'NONE']) {
+        await tx.productionScheduleSessakuPieceSet.create({ data: {
+          csvDashboardId: dashboardId, fseiban: normal.FSEIBAN, fhincd, fsigencd: normal.FSIGENCD,
+          fkojun: normal.FKOJUN, productNo: '',
+        } });
+      }
+
+      const result = await verifyProductionScheduleRowHash(tx);
+      expect(result.checks).toEqual({
+        missingKey: { count: 1, sampleIds: [missing.id] },
+        invalidKeyType: { count: 1, sampleIds: [wrongType.id] },
+        riskyCharacters: { count: 1, sampleIds: [unsafe.id] },
+        duplicateHash: { count: 3, sampleIds: [first.id, duplicate.id, wrongType.id].sort() },
+        overrideCollision: { count: 1, sampleIds: [override] },
+        arrivalCollision: { count: 1, sampleIds: [arrival] },
+        firstProcessArrivalCollision: { count: 1, sampleIds: [firstArrival] },
+      });
+      expect(result.sessakuPieceSets).toEqual({ multipleMatches: 1, noMatch: 1 });
+      expect(await tx.csvDashboardRow.findUnique({ where: { id: winner.id }, select: { dataHash: true } }))
+        .toEqual({ dataHash: 'diagnostics-piece-b' });
+    });
   });
 
   it('the migration embeds exactly the SQL expressions the verification script evaluates', () => {

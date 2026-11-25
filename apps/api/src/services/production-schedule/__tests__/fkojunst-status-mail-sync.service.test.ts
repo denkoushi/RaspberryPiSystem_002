@@ -13,6 +13,30 @@ vi.mock('../leaderboard/leaderboard-process-change-residual.materialization.js',
 }));
 import { ProductionScheduleFkojunstMailStatusSyncService } from '../fkojunst-status-mail-sync.service.js';
 describe('mail sync external completion publication', () => {
+  it('continues replacing mail statuses when the superseded refresh fails', async () => {
+    const result = { scanned: 1, normalized: 1, upserted: 0 };
+    pipeline.runFkojunstMailReplacementTransaction.mockResolvedValue({ ...result, externalCompletionSynced: true });
+    const assignments = { reconcileStaleAssignments: vi.fn() };
+    const refresh = vi.fn().mockRejectedValue(new Error('marking failed'));
+    const service = new ProductionScheduleFkojunstMailStatusSyncService(undefined, assignments as never, refresh);
+    await expect(service.syncFromStatusMailDashboard()).resolves.toEqual(result);
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(assignments.reconcileStaleAssignments).toHaveBeenCalledOnce();
+  });
+
+  it('clears the mail projection without refreshing superseded marks when there are no normalized rows', async () => {
+    pipeline.loadFkojunstMailSourceRows.mockResolvedValueOnce({
+      scanned: 1, normalizedRows: [], skippedInvalidStatus: 1, skippedUnparseableDate: 0, rowsRevision: '2',
+    });
+    const assignments = { reconcileStaleAssignments: vi.fn() };
+    const refresh = vi.fn().mockRejectedValue(new Error('should not refresh an empty source'));
+    const service = new ProductionScheduleFkojunstMailStatusSyncService(undefined, assignments as never, refresh);
+    await service.syncFromStatusMailDashboard();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(pipeline.runFkojunstMailClearTransaction).toHaveBeenCalledWith(expect.anything(), 1, 1, 0, '2');
+    expect(assignments.reconcileStaleAssignments).toHaveBeenCalledOnce();
+  });
+
   it.each([false, true])('does not repeat publication already completed inside the mail tx (pieces=%s)', async (pieces) => {
     const result = { scanned: 1, normalized: 1, matched: 0, unmatched: 0, skippedInvalidStatus: 0, skippedUnparseableDate: 0, upserted: 0, pruned: 0 };
     pipeline.runFkojunstMailReplacementTransaction.mockResolvedValue({ ...result, ...(pieces ? { externalCompletionSynced: true } : {}) });

@@ -64,10 +64,10 @@ describe('discoverSourceRows', () => {
       expect([...(await discoverSourceRows([a, b]))]).toEqual([[a, 'o-a'], [b, 'o-b']]);
     });
 
-    it('refuses a 4-element id when two orders share the key, but resolves it when only one does', async () => {
+    it('refuses a 4-element id even when only one order is visible', async () => {
       await expect(discoverSourceRows([legacyItemId('10')])).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
       mocks.winners.mockResolvedValue([{ id: 'only', rowData: twoOrders('0004146538') }]);
-      expect([...(await discoverSourceRows([legacyItemId('10')]))]).toEqual([[legacyItemId('10'), 'only']]);
+      await expect(discoverSourceRows([legacyItemId('10')])).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM' });
     });
   });
 });

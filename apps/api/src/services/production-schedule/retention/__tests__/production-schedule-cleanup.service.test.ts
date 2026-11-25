@@ -116,7 +116,7 @@ describe('production-schedule-cleanup.service', () => {
     expect(result.deletedCount).toBe(3);
     const sql = vi.mocked(prisma.$executeRaw).mock.calls[0]?.[0] as { sql: string };
     expect(sql.sql).toContain("BTRIM(COALESCE(\"r\".\"rowData\"->>'ProductNo', ''))");
-    expect(sql.sql).not.toContain('CASE WHEN');
+    expect(sql.sql).not.toContain("'********'");
   });
 
   it('keeps separate cleanup keys for unassigned orders', async () => {

@@ -158,7 +158,10 @@ export async function driveProductionScheduleRowCompletion(params: {
       }) : [];
       if (set?.pieces.length || set?.sourcePieceSetId || related.length) await acquireSessakuPieceBoardStateLocks(tx);
       await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
-      await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE`;
+      const [lockedRow] = await tx.$queryRaw<Array<{ supersededAt: Date | null }>>`
+        SELECT "id", "supersededAt" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE
+      `;
+      if (lockedRow?.supersededAt) throw new ApiError(409, '元行が更新されています', undefined, 'SOURCE_ITEM_MISSING');
       const tFindAssignmentStart = performance.now();
       currentAssignment = await tx.productionScheduleOrderAssignment.findUnique({
         where: {

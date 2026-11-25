@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../superseded-order-carry-over.js', () => ({
   carryOverSupersededOrderData: vi.fn().mockResolvedValue({ targets: 1 }),
+  lockSupersededOrderCarryOverPairs: vi.fn().mockResolvedValue([{ oldId: 'old' }]),
 }));
 
+import { lockSupersededOrderCarryOverPairs } from '../superseded-order-carry-over.js';
 import { buildFkojunstMailStatusKey } from '../fkojunst-mail-status-key.js';
 import {
   computeSupersededRowIds,
@@ -85,6 +87,56 @@ describe('computeSupersededRowIds', () => {
 });
 
 describe('refreshSupersededProductionScheduleRows', () => {
+  it('acquires the refresh lock before reading rows or mail inside the transaction', async () => {
+    const tx = { $queryRaw: vi.fn().mockResolvedValue([]), $executeRaw: vi.fn().mockResolvedValue(1) };
+    const client = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)),
+    };
+    await refreshSupersededProductionScheduleRows(client as never);
+    expect(client.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(String(tx.$executeRaw.mock.calls[0][0])).toContain("hashtext('production-schedule-superseded-refresh')");
+    expect(String(tx.$executeRaw.mock.calls[1][0])).toContain("hashtext('fkojunst-status-mail-critical')");
+    expect(tx.$executeRaw.mock.invocationCallOrder[1]).toBeLessThan(tx.$queryRaw.mock.invocationCallOrder[0]);
+  });
+
+  it.each([true, false])('uses sorted old and new piece locks when cutting data moves (%s)', async (hasPieceData) => {
+    const carryOver = await vi.importActual<typeof import('../superseded-order-carry-over.js')>('../superseded-order-carry-over.js');
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]).mockResolvedValueOnce([{
+        oldId: 'old', oldFseiban: 'S', oldFhincd: 'P', oldFsigencd: '200', oldFkojun: '10', oldProductNo: '9',
+        targetId: 'new', targetFseiban: 'S', targetFhincd: 'P', targetFsigencd: '200', targetFkojun: '10', targetProductNo: '10',
+        hasPieceData,
+      }]),
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    await carryOver.lockSupersededOrderCarryOverPairs(tx as never, ['old'], []);
+    const pieceLock = tx.$executeRaw.mock.calls.find(([query]) => String(query).includes('logical_locks'));
+    const boardLockIndex = tx.$executeRaw.mock.calls.findIndex(([query]) => String(query).includes('sessaku-piece-board-states'));
+    expect(boardLockIndex).toBe(hasPieceData ? 1 : 0);
+    if (hasPieceData) {
+      expect(pieceLock?.[1]).toEqual(['10', '9'].map((number) =>
+        expect.stringContaining(JSON.stringify(['S', 'P', '200', '10', number]))));
+    } else {
+      expect(pieceLock).toBeUndefined();
+    }
+  });
+
+  it.each([undefined, new Map()])('preserves existing marks when there are no mail statuses (%s)', async (statusByKey) => {
+    const queryRaw = vi.fn(async ({ sql }: { sql: string }) =>
+      sql.includes('AS "marked"') ? [{ ...row('old', '1'), marked: true }] : []);
+    const executeRaw = vi.fn().mockResolvedValue(1);
+    const result = await refreshSupersededProductionScheduleRows(
+      { $queryRaw: queryRaw, $executeRaw: executeRaw } as never, { statusByKey }
+    );
+    expect(result).toMatchObject({ marked: 0, cleared: 0, carriedOver: null });
+    expect(queryRaw.mock.calls.some(([query]) => query.sql.includes('UPDATE "CsvDashboardRow"'))).toBe(false);
+  });
+
+
   it('工程状態の元データ(メール)だけから印を付け直し、変わった行だけ更新する', async () => {
     const queryRaw = vi
       .fn()
@@ -109,6 +161,9 @@ describe('refreshSupersededProductionScheduleRows', () => {
 
     expect(result).toMatchObject({ marked: 1, cleared: 1, carriedOver: { targets: 1 } });
     expect(queryRaw).toHaveBeenCalledTimes(4);
+    expect(lockSupersededOrderCarryOverPairs).toHaveBeenCalledWith(expect.anything(), ['old'], ['stale']);
+    expect(vi.mocked(lockSupersededOrderCarryOverPairs).mock.invocationCallOrder.at(-1))
+      .toBeLessThan(queryRaw.mock.invocationCallOrder[2]);
   });
 
   it('渡された工程状態をそのまま使い、メールを読み直さない', async () => {

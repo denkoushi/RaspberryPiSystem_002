@@ -13,6 +13,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 
 import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
 import { buildFkojunstMailStatusKey } from './fkojunst-mail-status-key.js';
 import { fetchFkojunstStatusMailSourceRowsOrdered } from './fkojunst-status-mail-source-rows.reader.js';
 import {
@@ -20,7 +21,7 @@ import {
   dedupeFkojunstMailRowsByLatest,
 } from './fkojunst-status-mail-sync.pipeline.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
-import { carryOverSupersededOrderData, type CarryOverCounts } from './superseded-order-carry-over.js';
+import { carryOverSupersededOrderData, lockSupersededOrderCarryOverPairs, type CarryOverCounts } from './superseded-order-carry-over.js';
 
 export const SUPERSEDED_STATUS_CODE = 'X';
 const UPDATE_CHUNK_SIZE = 5000;
@@ -46,7 +47,7 @@ export type SupersededRefreshResult = {
 };
 
 type TxClient = Pick<PrismaClient, '$queryRaw' | '$executeRaw'>;
-type MarkerClient = TxClient & Partial<Pick<PrismaClient, '$transaction'>>;
+type MarkerClient = PrismaClient | Prisma.TransactionClient;
 
 const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 120_000 } as const;
 
@@ -133,53 +134,50 @@ async function updateInChunks(client: TxClient, ids: readonly string[], mode: 'm
   return changed;
 }
 
-/**
- * 印を付け直す。変わった行だけ更新する。
- * `statusByKey` を渡すと、メールの生データを読み直さずその状態を使う(工程状態の同期が読み込み済みのとき)。
- */
+/** 印と引き継ぎを同じトランザクションで更新する。 */
 export async function refreshSupersededProductionScheduleRows(
   client: MarkerClient,
   options?: { statusByKey?: StatusByTripleKey }
 ): Promise<SupersededRefreshResult> {
-  const rows = await client.$queryRaw<ScheduleRow[]>(Prisma.sql`
-    SELECT
-      "id",
-      COALESCE("rowData"->>'FSEIBAN', '') AS "fseiban",
-      COALESCE("rowData"->>'FHINCD', '') AS "fhincd",
-      COALESCE("rowData"->>'FSIGENCD', '') AS "fsigencd",
-      COALESCE("rowData"->>'FKOJUN', '') AS "fkojun",
-      BTRIM(COALESCE("rowData"->>'ProductNo', '')) AS "productNo",
-      ("supersededAt" IS NOT NULL) AS "marked"
-    FROM "CsvDashboardRow"
-    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-  `);
+  const refresh = async (tx: Prisma.TransactionClient): Promise<SupersededRefreshResult> => {
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext('production-schedule-superseded-refresh'),
+        hashtext(${PRODUCTION_SCHEDULE_DASHBOARD_ID})
+      )
+    `;
+    // Cut operations and mail ingestion use this lock before any piece or row locks.
+    await acquireFkojunstStatusMailCriticalTransactionLock(tx);
+    const rows = await tx.$queryRaw<ScheduleRow[]>(Prisma.sql`
+      SELECT
+        "id",
+        COALESCE("rowData"->>'FSEIBAN', '') AS "fseiban",
+        COALESCE("rowData"->>'FHINCD', '') AS "fhincd",
+        COALESCE("rowData"->>'FSIGENCD', '') AS "fsigencd",
+        COALESCE("rowData"->>'FKOJUN', '') AS "fkojun",
+        BTRIM(COALESCE("rowData"->>'ProductNo', '')) AS "productNo",
+        ("supersededAt" IS NOT NULL) AS "marked"
+      FROM "CsvDashboardRow"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    `);
 
-  const statusByKey = options?.statusByKey ?? (await loadLatestMailStatusByKey(client));
-  const shouldMark = computeSupersededRowIds(rows, statusByKey);
+    const statusByKey = options?.statusByKey ?? (await loadLatestMailStatusByKey(tx));
+    if (statusByKey.size === 0) {
+      return { total: rows.length, marked: 0, cleared: 0, supersededNow: rows.filter((row) => row.marked).length, carriedOver: null };
+    }
 
-  const toMark = rows.filter((row) => shouldMark.has(row.id) && !row.marked).map((row) => row.id);
-  const toClear = rows.filter((row) => !shouldMark.has(row.id) && row.marked).map((row) => row.id);
+    const shouldMark = computeSupersededRowIds(rows, statusByKey);
+    const toMark = rows.filter((row) => shouldMark.has(row.id) && !row.marked).map((row) => row.id);
+    const toClear = rows.filter((row) => !shouldMark.has(row.id) && row.marked).map((row) => row.id);
 
-  // 印の付け直しと引き継ぎは1つのトランザクション(途中で失敗したら両方戻る)。
-  // 印が外れた行(古い番号の復活)からは戻さない。
-  const apply = async (tx: TxClient) => {
-    const newlyMarked = await updateInChunks(tx, toMark, 'mark');
-    await updateInChunks(tx, toClear, 'clear');
-    const carriedOver = newlyMarked.length > 0 ? await carryOverSupersededOrderData(tx, newlyMarked) : null;
-    return { newlyMarked, carriedOver };
+    const pairs = await lockSupersededOrderCarryOverPairs(tx, toMark, toClear);
+    const newlyMarked = new Set(await updateInChunks(tx, toMark, 'mark'));
+    const cleared = await updateInChunks(tx, toClear, 'clear');
+    const carriedOver = newlyMarked.size > 0
+      ? await carryOverSupersededOrderData(tx, pairs.filter((pair) => newlyMarked.has(pair.oldId)))
+      : null;
+    return { total: rows.length, marked: newlyMarked.size, cleared: cleared.length, supersededNow: shouldMark.size, carriedOver };
   };
-  const { newlyMarked, carriedOver } =
-    toMark.length === 0 && toClear.length === 0
-      ? { newlyMarked: [] as string[], carriedOver: null }
-      : client.$transaction
-        ? await client.$transaction((tx) => apply(tx), TRANSACTION_OPTIONS)
-        : await apply(client);
 
-  return {
-    total: rows.length,
-    marked: newlyMarked.length,
-    cleared: toClear.length,
-    supersededNow: shouldMark.size,
-    carriedOver,
-  };
+  return '$transaction' in client ? client.$transaction(refresh, TRANSACTION_OPTIONS) : refresh(client);
 }

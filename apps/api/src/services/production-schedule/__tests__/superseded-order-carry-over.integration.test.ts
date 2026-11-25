@@ -4,6 +4,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { buildFkojunstMailStatusKey } from '../fkojunst-mail-status-key.js';
 import { buildGrindingPlanningBoardRowItemId } from '../grinding-planning-board-projection.js';
+import { lockSupersededOrderCarryOverPairs } from '../superseded-order-carry-over.js';
 import { refreshSupersededProductionScheduleRows } from '../superseded-order-marker.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -157,7 +158,7 @@ describe('refreshSupersededProductionScheduleRows carry-over (real PostgreSQL)',
   it('印が外れても(古い番号の復活)移したものは戻さない', async () => {
     await seedOldRowData('old', '0004000001', 'a');
     await refreshSupersededProductionScheduleRows(prisma, { statusByKey: xStatus('0004000001') });
-    const result = await refreshSupersededProductionScheduleRows(prisma, { statusByKey: new Map() });
+    const result = await refreshSupersededProductionScheduleRows(prisma, { statusByKey: new Map([[statusKey('0004000001'), 'P']]) });
     expect(result).toMatchObject({ marked: 0, cleared: 1, carriedOver: null });
     expect((await prisma.productionScheduleRowNote.findMany()).map((n) => n.csvDashboardRowId)).toEqual(['new']);
   });
@@ -167,9 +168,8 @@ describe('refreshSupersededProductionScheduleRows carry-over (real PostgreSQL)',
     // new / newer-old を別キーにして、old に引き継ぎ先が無い状態にする(定義上は起きないが守る)
     await prisma.csvDashboardRow.update({ where: { id: 'new' }, data: { supersededAt: new Date() } });
     await prisma.csvDashboardRow.update({ where: { id: 'newer-old' }, data: { supersededAt: new Date() } });
-    const { carryOverSupersededOrderData } = await import('../superseded-order-carry-over.js');
-    const counts = await carryOverSupersededOrderData(prisma, ['old']);
-    expect(counts.targets).toBe(0);
+    const pairs = await prisma.$transaction((tx) => lockSupersededOrderCarryOverPairs(tx, ['old'], []));
+    expect(pairs).toEqual([]);
     expect((await prisma.productionScheduleRowNote.findMany()).map((n) => n.csvDashboardRowId)).toEqual(['old']);
   });
 

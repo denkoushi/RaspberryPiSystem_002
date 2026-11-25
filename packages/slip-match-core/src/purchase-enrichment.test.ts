@@ -36,6 +36,13 @@ describe('independent purchase display data', () => {
     expect(pick([date('2026-05-02', '10', 1), date('2026-05-04', '10', 0), date('2026-05-03', '10', 0)])).toBe('2026-05-03');
     expect(pick([date('2026-05-04', '10', 1), date('2026-05-03', '10', 1), date('2026-05-01', '-1', 1)])).toBe('2026-05-01');
   });
+  it('keeps the -1 order fallback when it is the only incomplete process', () => {
+    const enrichment: PurchaseEnrichmentTuple[] = [
+      ['date', 'FS1', 'MD1', '', '2026-05-01', '10', 1],
+      ['date', 'FS1', 'MD1', '', '2026-05-02', '-1', 0],
+    ];
+    expect(enrichLocalPurchaseRows([row], enrichment)[0].plannedStartDate).toBe('2026-05-02');
+  });
   it('preserves raw FSEIBAN filtering, row order and duplicate purchase lines', () => {
     const enrichment: PurchaseEnrichmentTuple[] = [['date', ' FS1 ', 'MD1', '', '2026-10-01', '1', 0]];
     expect(enrichLocalPurchaseRows([row, row], enrichment)).toEqual([row, row]);

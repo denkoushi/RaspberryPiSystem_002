@@ -13,7 +13,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 
 import { logger } from '../../lib/logger.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
-import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './sessaku-pieces/piece-key.js';
 import { buildMaxProductNoWinnerSelectionOrderBySql } from './row-resolver/max-product-no-winner-spec.js';
 
 export type CarryOverClient = Pick<PrismaClient, '$queryRaw' | '$executeRaw'>;
@@ -37,6 +37,9 @@ export type CarryOverPair = {
   targetId: string;
   oldItemKey: string;
   targetItemKey: string;
+  oldPieceKey: SessakuPieceLogicalKey;
+  targetPieceKey: SessakuPieceLogicalKey;
+  hasPieceData: boolean;
 };
 
 const CHUNK_SIZE = 5000;
@@ -54,6 +57,7 @@ type PairRow = {
   targetFsigencd: string;
   targetFkojun: string;
   targetProductNo: string;
+  hasPieceData: boolean;
 };
 
 const chunked = <T>(items: readonly T[]): T[][] => {
@@ -63,9 +67,10 @@ const chunked = <T>(items: readonly T[]): T[][] => {
 };
 
 /** 古い行ごとの引き継ぎ先を決める。古い ProductNo が大きい順(ord の小さいほうを優先して移す)。 */
-export async function resolveCarryOverPairs(
+async function resolveCarryOverPairs(
   client: Pick<PrismaClient, '$queryRaw'>,
-  oldIds: readonly string[]
+  oldIds: readonly string[],
+  toClear: readonly string[]
 ): Promise<CarryOverPair[]> {
   if (oldIds.length === 0) return [];
   const orderBy = buildMaxProductNoWinnerSelectionOrderBySql('t');
@@ -82,13 +87,28 @@ export async function resolveCarryOverPairs(
       COALESCE(t."rowData"->>'FHINCD', '') AS "targetFhincd",
       COALESCE(t."rowData"->>'FSIGENCD', '') AS "targetFsigencd",
       COALESCE(t."rowData"->>'FKOJUN', '') AS "targetFkojun",
-      COALESCE(t."rowData"->>'ProductNo', '') AS "targetProductNo"
+      COALESCE(t."rowData"->>'ProductNo', '') AS "targetProductNo",
+      EXISTS (
+        SELECT 1 FROM (
+          SELECT "csvDashboardId", "fseiban", "fhincd", "fsigencd", "fkojun", "productNo"
+          FROM "ProductionScheduleSessakuPieceSet"
+          UNION ALL
+          SELECT "csvDashboardId", "fseiban", "fhincd", "fsigencd", "fkojun", "productNo"
+          FROM "ProductionScheduleSessakuPieceHistory"
+        ) AS piece_data
+        WHERE piece_data."csvDashboardId" = o."csvDashboardId"
+          AND piece_data."fseiban" = COALESCE(o."rowData"->>'FSEIBAN', '')
+          AND piece_data."fhincd" = COALESCE(o."rowData"->>'FHINCD', '')
+          AND piece_data."fsigencd" = COALESCE(o."rowData"->>'FSIGENCD', '')
+          AND piece_data."fkojun" = COALESCE(o."rowData"->>'FKOJUN', '')
+          AND piece_data."productNo" = COALESCE(o."rowData"->>'ProductNo', '')
+      ) AS "hasPieceData"
     FROM "CsvDashboardRow" o
     JOIN LATERAL (
       SELECT t.* FROM "CsvDashboardRow" t
       WHERE t."csvDashboardId" = o."csvDashboardId"
-        AND t."supersededAt" IS NULL
-        AND t."id" <> o."id"
+        AND (t."supersededAt" IS NULL OR t."id" = ANY(${[...toClear]}::text[]))
+        AND NOT (t."id" = ANY(${[...oldIds]}::text[]))
         AND COALESCE(t."rowData"->>'FSEIBAN', '') = COALESCE(o."rowData"->>'FSEIBAN', '')
         AND COALESCE(t."rowData"->>'FHINCD', '') = COALESCE(o."rowData"->>'FHINCD', '')
         AND COALESCE(t."rowData"->>'FSIGENCD', '') = COALESCE(o."rowData"->>'FSIGENCD', '')
@@ -100,16 +120,33 @@ export async function resolveCarryOverPairs(
       AND o."id" = ANY(${[...oldIds]}::text[])
     ORDER BY ${Prisma.raw(oldOrderBy)}
   `);
-  return rows.map((row) => ({
-    oldId: row.oldId,
-    targetId: row.targetId,
-    oldItemKey: buildGrindingPlanningBoardRowItemId({
-      FSEIBAN: row.oldFseiban, FHINCD: row.oldFhincd, FSIGENCD: row.oldFsigencd, FKOJUN: row.oldFkojun, ProductNo: row.oldProductNo,
-    }),
-    targetItemKey: buildGrindingPlanningBoardRowItemId({
-      FSEIBAN: row.targetFseiban, FHINCD: row.targetFhincd, FSIGENCD: row.targetFsigencd, FKOJUN: row.targetFkojun, ProductNo: row.targetProductNo,
-    }),
-  }));
+  return rows.map((row) => {
+    const oldPieceKey = {
+      fseiban: row.oldFseiban, fhincd: row.oldFhincd, fsigencd: row.oldFsigencd, fkojun: row.oldFkojun, productNo: row.oldProductNo,
+    };
+    const targetPieceKey = {
+      fseiban: row.targetFseiban, fhincd: row.targetFhincd, fsigencd: row.targetFsigencd, fkojun: row.targetFkojun, productNo: row.targetProductNo,
+    };
+    return {
+      oldId: row.oldId, targetId: row.targetId, oldPieceKey, targetPieceKey, hasPieceData: row.hasPieceData,
+      oldItemKey: sessakuPieceParentItemId(oldPieceKey), targetItemKey: sessakuPieceParentItemId(targetPieceKey),
+    };
+  });
+}
+
+/** Resolve against the visibility after this refresh, then lock before updating any schedule row. */
+export async function lockSupersededOrderCarryOverPairs(
+  tx: Prisma.TransactionClient,
+  toMark: readonly string[],
+  toClear: readonly string[]
+): Promise<CarryOverPair[]> {
+  const pairs = await resolveCarryOverPairs(tx, toMark, toClear);
+  // The caller holds the mail critical lock, which also excludes new piece-set creation.
+  const pieceKeys = pairs.filter((pair) => pair.hasPieceData)
+    .flatMap(({ oldPieceKey, targetPieceKey }) => [oldPieceKey, targetPieceKey]);
+  if (pieceKeys.length > 0) await acquireSessakuPieceLogicalLocks(tx, pieceKeys);
+  if (pairs.length > 0) await acquireSessakuPieceBoardStateLocks(tx);
+  return pairs;
 }
 
 const idPairs = (oldIds: readonly string[], targetIds: readonly string[]) =>
@@ -119,21 +156,18 @@ const keyPairs = (oldKeys: readonly string[], newKeys: readonly string[]) =>
   Prisma.sql`unnest(${[...oldKeys]}::text[], ${[...newKeys]}::text[]) WITH ORDINALITY AS m("old_key", "new_key", "ord")`;
 
 /**
- * 印を新しく付けた行(oldIds)から、引き継ぎ先へ移す。呼び出し側のトランザクションの中で呼ぶこと。
- * 同じ ids を2回渡しても、2回目は引き継ぎ先に既にあるので何も移らない。
+ * ロック済みの組について、印を新しく付けた行から引き継ぎ先へ移す。
+ * 同じ組を2回渡しても、2回目は引き継ぎ先に既にあるので何も移らない。
  */
 export async function carryOverSupersededOrderData(
   client: CarryOverClient,
-  oldIds: readonly string[]
+  pairs: readonly CarryOverPair[]
 ): Promise<CarryOverCounts> {
   const counts: CarryOverCounts = {
-    targets: 0, rowNotes: 0, orderAssignments: 0, globalRowRanks: 0, orderSplits: 0, progress: 0,
+    targets: pairs.length, rowNotes: 0, orderAssignments: 0, globalRowRanks: 0, orderSplits: 0, progress: 0,
     grindingOverrides: 0, grindingArrivals: 0, grindingFirstProcessArrivals: 0,
     sessakuPieceSets: 0, sessakuPieceHistories: 0,
   };
-  const pairs = await resolveCarryOverPairs(client, oldIds);
-  counts.targets = pairs.length;
-  if (pairs.length === 0) return counts;
 
   for (const chunk of chunked(pairs)) {
     const o = chunk.map((p) => p.oldId);

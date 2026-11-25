@@ -1,9 +1,9 @@
 -- Cutting piece sets (and their history markers) are keyed by the same five-element row
 -- identity as the schedule rows: FSEIBAN, FHINCD, FSIGENCD, FKOJUN and ProductNo.
 -- Existing sets take the ProductNo of the row that carried the four-column key before the
--- 20261125110000 rehash: the visible (not superseded) row with the highest numeric
--- ProductNo, then newest createdAt, then highest id (same pick as the board item key rewrite).
--- A set whose four-column key has no visible row keeps the empty ProductNo. No row has an
+-- 20261125110000 rehash: for each four-column key, use the highest numeric ProductNo,
+-- then newest createdAt, then highest id (same pick as the board item key rewrite).
+-- A set whose four-column key has no schedule row keeps the empty ProductNo. No row has an
 -- empty ProductNo, so such a set stays stored but attaches to no order.
 BEGIN;
 
@@ -17,6 +17,7 @@ FROM (
   FROM "ProductionScheduleSessakuPieceSet" AS set_row
   INNER JOIN "CsvDashboardRow" AS r
     ON r."csvDashboardId" = set_row."csvDashboardId"
+   AND r."csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
    AND r."supersededAt" IS NULL
    AND coalesce(r."rowData"->>'FSEIBAN', '') = set_row."fseiban"
    AND coalesce(r."rowData"->>'FHINCD', '') = set_row."fhincd"
@@ -35,6 +36,7 @@ FROM (
   FROM "ProductionScheduleSessakuPieceHistory" AS hist
   INNER JOIN "CsvDashboardRow" AS r
     ON r."csvDashboardId" = hist."csvDashboardId"
+   AND r."csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
    AND r."supersededAt" IS NULL
    AND coalesce(r."rowData"->>'FSEIBAN', '') = hist."fseiban"
    AND coalesce(r."rowData"->>'FHINCD', '') = hist."fhincd"

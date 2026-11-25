@@ -25,7 +25,7 @@ import { decodeRowItemId } from '../grinding-planning-board/shared.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireProductionScheduleParentRowLockInTransaction, acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
-import { sessakuPieceItemIds, sessakuPieceIdFromItemId, acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, parseSessakuPieceParentItemId, resolveSessakuPieceParentKey, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
+import { sessakuPieceItemIds, sessakuPieceIdFromItemId, acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
@@ -110,9 +110,8 @@ async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key:
   for (const itemId of inboundIds) {
     const encoded = decodeRowItemId(itemId);
     if (!encoded) continue;
-    // 古い4要素の ID は注文が決まらない。出所の行は write-source が同じ規則で解決する。
     const [fseiban, fhincd, fsigencd, fkojun, productNo] = JSON.parse(encoded) as string[];
-    inboundKeys.set(encoded, { fseiban, fhincd, fsigencd, fkojun, productNo: productNo ?? '' });
+    if (productNo !== undefined) inboundKeys.set(encoded, { fseiban, fhincd, fsigencd, fkojun, productNo }); // 4要素は読み飛ばす
   }
   const pieceIds = inboundIds.map(sessakuPieceIdFromItemId).filter((id): id is string => id !== null);
   if (pieceIds.length) {
@@ -304,8 +303,7 @@ async function operate(params: { lockOperationDefinition?: boolean; dueSource?: 
   definitionKeys: SessakuPieceLogicalKey[]; external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
 }) => Promise<void>): Promise<SessakuPiecesMutationResponse> {
   const batch = params.autoUnitSplit ? autoUnitSplitBatch.getStore() : undefined;
-  // 古い4要素の親 ID は、見える行が1つならその注文に、2つ以上なら 409 にする。以降は5要素の ID で扱う。
-  const key = await resolveSessakuPieceParentKey(prisma, params.parentItemId);
+  const key = decodeSessakuPieceParentItemId(params.parentItemId); // 古い4要素の ID は 409(画面が読み直す)
   params = { ...params, parentItemId: sessakuPieceParentItemId(key) };
   if (params.audit) Object.assign(params.audit, { parentItemId: params.parentItemId, fseiban: key.fseiban });
   if (!batch) await ensurePlanningBoardState(params.siteKey);
@@ -449,7 +447,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
   if (!params.audit) return runSessakuPieceOperation({ action: params.autoUnitSplit ? 'auto_unit_split_lot' : 'split', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
     requestedQuantities: params.quantities, parentItemId: params.parentItemId, pieceIds: params.targetPieceId ? [params.targetPieceId] : [], itemRevision: params.itemRevision }, (audit) => splitSessakuPieces({ ...params, audit }));
   params.audit.requestedQuantities = params.quantities;
-  try { params.audit.fseiban = parseSessakuPieceParentItemId(params.parentItemId).fseiban; } catch { /* Invalid IDs are rejected by operate when enabled. */ }
+  try { params.audit.fseiban = decodeSessakuPieceParentItemId(params.parentItemId).fseiban; } catch { /* Invalid IDs are rejected by operate when enabled. */ }
   if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true') throw new ApiError(403, '分割作成は無効です', undefined, 'SESSAKU_PIECES_CREATE_DISABLED');
   return operate({ ...params, discoverUnsplitLater: true }, async (tx, c) => {
     assertCuttingPieceSet(c.set);

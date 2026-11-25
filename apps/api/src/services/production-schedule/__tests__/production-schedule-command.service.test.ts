@@ -278,6 +278,14 @@ describe('production-schedule-command.service', () => {
     expect(result.debug).toMatchObject({ hadAssignment: true, findAssignmentMs: expect.any(Number) });
   });
 
+  it('rejects completion when the row is marked superseded by the time its row lock is acquired', async () => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: {} } as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ id: 'row', supersededAt: new Date() }]);
+    await expect(completeProductionScheduleRow({ rowId: 'row', locationKey: 'site' }))
+      .rejects.toMatchObject({ statusCode: 409, code: 'SOURCE_ITEM_MISSING' });
+    expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
+  });
+
   it('complete対象が存在しない場合は404を返す', async () => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue(null);
 

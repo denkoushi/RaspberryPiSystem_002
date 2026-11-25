@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
-import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId, sessakuPieceIdFromItemId, sessakuPieceItemIds, resolveSessakuPieceItemKeys, parseSessakuPieceParentItemId, resolveSessakuPieceParentKey, findSessakuPieceWinner } from '../piece-key.js';
+import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId, sessakuPieceIdFromItemId, sessakuPieceItemIds, resolveSessakuPieceItemKeys, findSessakuPieceWinner } from '../piece-key.js';
 describe('piece identity and scoped generation', () => {
   it.each([['P2003', 'PIECE_REFERENCED'], ['P2002', 'STALE_SESSAKU_PIECES'], ['P2034', 'STALE_SESSAKU_PIECES']])('maps %s to a piece conflict', (code, expected) => {
     const error = new Prisma.PrismaClientKnownRequestError('constraint', { code, clientVersion: 'test' });
@@ -162,25 +162,13 @@ describe('piece identity and scoped generation', () => {
     const legacy = `row:${Buffer.from(JSON.stringify(['S', 'P', '021', '10'])).toString('base64url')}`;
     it('gives each order number under one four-column key its own parent ID', () => {
       expect(sessakuPieceParentItemId(key)).not.toBe(sessakuPieceParentItemId({ ...key, productNo: '8' }));
-      expect(parseSessakuPieceParentItemId(sessakuPieceParentItemId(key))).toEqual(key);
       expect(decodeSessakuPieceParentItemId(sessakuPieceParentItemId(key))).toEqual(key);
     });
-    it('parses a legacy four-element ID without a product number and rejects it for the synchronous decoder', () => {
-      expect(parseSessakuPieceParentItemId(legacy)).toEqual({ fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '10', productNo: null });
-      expect(() => decodeSessakuPieceParentItemId(legacy)).toThrowError(expect.objectContaining({ statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM' }));
-    });
-    it('resolves a legacy ID only when exactly one visible row matches', async () => {
-      const one = { $queryRaw: vi.fn().mockResolvedValue([{ productNo: '7' }]) } as never;
-      expect(await resolveSessakuPieceParentKey(one, legacy)).toEqual(key);
-      for (const rows of [[{ productNo: '7' }, { productNo: '8' }], []]) {
-        const client = { $queryRaw: vi.fn().mockResolvedValue(rows) } as never;
-        await expect(resolveSessakuPieceParentKey(client, legacy)).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM' });
-      }
-    });
-    it('does not query for a five-element ID', async () => {
-      const client = { $queryRaw: vi.fn() } as never;
-      expect(await resolveSessakuPieceParentKey(client, sessakuPieceParentItemId(key))).toEqual(key);
-      expect((client as { $queryRaw: ReturnType<typeof vi.fn> }).$queryRaw).not.toHaveBeenCalled();
+    it.each(['S', '********'])('rejects a legacy four-element parent ID for %s', (seiban) => {
+      const oldId = seiban === 'S' ? legacy : `row:${Buffer.from(JSON.stringify([seiban, 'P', '021', '10'])).toString('base64url')}`;
+      expect(() => decodeSessakuPieceParentItemId(oldId)).toThrowError(expect.objectContaining({
+        statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM',
+      }));
     });
     it('matches the winner row on all five elements', async () => {
       const $queryRaw = vi.fn().mockResolvedValue([]);

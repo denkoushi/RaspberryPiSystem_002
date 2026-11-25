@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { loadActualHoursReadContext } from './actual-hours/actual-hours-read-context.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { buildMaxProductNoWinnerCondition } from './row-resolver/max-product-no-sql.js';
 import { normalizeFseibanList } from './fseiban-list.js';
 import { TuningParamsRepository } from './repositories/tuning-params.repository.js';
 import { analyzeCompletionHistorySignals } from './completion-history-analyzer.service.js';
@@ -136,6 +137,7 @@ export const loadActualHoursSignals = async (params: {
       "rowData"->>'FSIGENCD' AS "resourceCd"
     FROM "CsvDashboardRow"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
       AND "rowData"->>'FSEIBAN' IN (${candidateList})
       AND COALESCE("rowData"->>'FPROGRESS', '') <> '完了'
   `);
