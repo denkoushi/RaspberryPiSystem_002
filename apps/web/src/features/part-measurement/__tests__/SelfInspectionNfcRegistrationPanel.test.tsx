@@ -16,7 +16,6 @@ function makeRegistration(
     status: 'idle',
     message: null,
     isReady: false,
-    isLocked: false,
     nextActionLabel: '計測機器タグをスキャン',
     ...overrides
   };
