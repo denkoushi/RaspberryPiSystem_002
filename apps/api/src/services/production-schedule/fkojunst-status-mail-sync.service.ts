@@ -1,10 +1,8 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import {
-  buildFkojunstMailReplacementCreateInputs,
   dedupeFkojunstMailRowsByLatest,
   loadFkojunstMailSourceRows,
-  resolveFkojunstMailWinnerIdByKey,
   runFkojunstMailClearTransaction,
   runFkojunstMailReplacementTransaction,
 } from './fkojunst-status-mail-sync.pipeline.js';
@@ -64,15 +62,13 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
       logger.info(result, '[ProductionScheduleFkojunstMailStatusSyncService] FKOJUNST_Status mail sync cleared (no normalized rows)');
       logger.warn(
         { scanned },
-        '[ProductionScheduleFkojunstMailStatusSyncService] skip external completion sync (no normalized FKOJUNST_Status rows)'
+        '[ProductionScheduleFkojunstMailStatusSyncService] preserve strict-match completion (no normalized FKOJUNST_Status rows)'
       );
       await orderAssignmentReconciliationService.reconcileStaleAssignments();
       return result;
     }
 
     const dedupedRows = dedupeFkojunstMailRowsByLatest(normalizedRows);
-    const winnerIdByKey = await resolveFkojunstMailWinnerIdByKey(prisma, dedupedRows);
-    const { matched, unmatched, createInputs } = buildFkojunstMailReplacementCreateInputs(dedupedRows, winnerIdByKey);
     const processChangeResidualMaterialization =
       buildProcessChangeResidualStrongEvidenceFromDedupedRows(dedupedRows);
     const processChangeResidualEvidenceInputs = buildProcessChangeResidualEvidenceCreateInputs(
@@ -81,14 +77,10 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
 
     const { externalCompletionSynced, ...result } = await runFkojunstMailReplacementTransaction(prisma, {
       scanned,
-      normalized: dedupedRows.length,
-      matched,
-      unmatched,
+      dedupedRows,
       skippedInvalidStatus,
       skippedUnparseableDate,
-      createInputs,
       processChangeResidualEvidenceInputs,
-      missingStandardHoursMailRows: dedupedRows,
       sourceRowsRevision: rowsRevision,
     });
 
@@ -99,7 +91,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
           skippedUnparseableDate: result.skippedUnparseableDate,
           unmatched: result.unmatched,
         },
-        '[ProductionScheduleFkojunstMailStatusSyncService] FKOJUNST_Status mail rows skipped during sync'
+        '[ProductionScheduleFkojunstMailStatusSyncService] FKOJUNST_Status rows without a strict match or with invalid fields'
       );
     }
 

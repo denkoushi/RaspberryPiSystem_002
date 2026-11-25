@@ -58,7 +58,8 @@ async function readSchedule(order: string) {
   const rows = await prisma.csvDashboardRow.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, rowData: { path: ['ProductNo'], equals: order } },
     select: { rowData: true, fkojunstMailStatus: { select: { statusCode: true } },
-      fkojunstStatus: { select: { statusCode: true } }, productionScheduleProgress: { select: { isCompleted: true } } },
+      fkojunstStatus: { select: { statusCode: true } }, productionScheduleProgress: { select: { isCompleted: true } },
+      productionScheduleExternalCompletion: { select: { externallyCompletedFromFkojunstResourceSwap: true } } },
     orderBy: { id: 'asc' }, take: LIMIT
   });
   const names = await resourceNames(rows.map(row => field(row.rowData, 'FSIGENCD')));
@@ -67,7 +68,9 @@ async function readSchedule(order: string) {
     const orderNo = processOrder(row.rowData);
     if (!orderNo || steps.has(orderNo)) continue;
     const resourceCd = field(row.rowData, 'FSIGENCD');
-    const code = row.fkojunstMailStatus?.statusCode ?? row.fkojunstStatus?.statusCode
+    // 別の資源で完了した工程(ADR-20261125)は、自分の資源の状態より先に完了として出す。
+    const code = (row.productionScheduleExternalCompletion?.externallyCompletedFromFkojunstResourceSwap ? 'C' : undefined)
+      ?? row.fkojunstMailStatus?.statusCode ?? row.fkojunstStatus?.statusCode
       ?? (row.productionScheduleProgress?.isCompleted ? 'C' : undefined);
     steps.set(orderNo, { processOrder: orderNo, resourceName: names.get(resourceCd) || resourceCd, ...status(code) });
   }

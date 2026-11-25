@@ -8,7 +8,7 @@ export type ProductionScheduleCompletionFilter = 'all' | 'complete' | 'incomplet
  * キオスク完了表示の実効値。
  * - 手動: `ProductionScheduleProgress.isCompleted`
  * - CSV外部: `ProductionScheduleExternalCompletion.isExternallyCompleted`
- *   （旧「メールキー消失」と生産日程CSV消失完了は廃止。**FKOJUNST_Status の C/X** のみ同期済み）
+ *   （FKOJUNST_Status の厳密一致 C/X または付け替え先の C）
  *
  * 利用側で LEFT JOIN:
  * - "ProductionScheduleProgress" AS "p" ON …

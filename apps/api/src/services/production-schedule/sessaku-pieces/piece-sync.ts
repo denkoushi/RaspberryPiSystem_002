@@ -70,6 +70,7 @@ export async function publishSessakuPieceProgress(tx: Prisma.TransactionClient, 
       const data = { csvDashboardId: external.csvDashboardId, isExternallyCompleted: external.isExternallyCompleted,
         externallyCompletedFromFkojunstDisappeared: external.externallyCompletedFromFkojunstDisappeared,
         externallyCompletedFromFkojunstMailStatus: external.externallyCompletedFromFkojunstMailStatus,
+        externallyCompletedFromFkojunstResourceSwap: external.externallyCompletedFromFkojunstResourceSwap,
         externallyCompletedFromScheduleCsvDisappeared: external.externallyCompletedFromScheduleCsvDisappeared };
       await tx.productionScheduleExternalCompletion.upsert({ where: { csvDashboardRowId: winner.id }, create: { ...data, csvDashboardRowId: winner.id }, update: {} });
     }

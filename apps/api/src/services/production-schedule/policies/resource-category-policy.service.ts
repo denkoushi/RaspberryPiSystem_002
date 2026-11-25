@@ -70,7 +70,10 @@ export const resolveResourceCategorySiteResolution = (
   };
 };
 
-export async function getResourceCategoryPolicy(scope: ResourceCategoryPolicyScope): Promise<ResourceCategoryPolicy> {
+export async function getResourceCategoryPolicy(
+  scope: ResourceCategoryPolicyScope,
+  client: Pick<typeof prisma, 'productionScheduleResourceCategoryConfig'> = prisma
+): Promise<ResourceCategoryPolicy> {
   const siteResolution = resolveResourceCategorySiteResolution(scope);
   const siteKey = siteResolution.siteKey;
   if (siteResolution.source === 'default') {
@@ -83,7 +86,7 @@ export async function getResourceCategoryPolicy(scope: ResourceCategoryPolicySco
     );
   }
   const readConfig = (location: string) =>
-    prisma.productionScheduleResourceCategoryConfig.findUnique({
+    client.productionScheduleResourceCategoryConfig.findUnique({
       where: {
         csvDashboardId_location: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,

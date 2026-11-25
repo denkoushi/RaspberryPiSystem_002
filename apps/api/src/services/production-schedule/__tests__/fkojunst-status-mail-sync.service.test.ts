@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 const pipeline = vi.hoisted(() => ({
   loadFkojunstMailSourceRows: vi.fn().mockResolvedValue({ scanned: 1, normalizedRows: [{}], skippedInvalidStatus: 0, skippedUnparseableDate: 0, rowsRevision: '1' }),
   dedupeFkojunstMailRowsByLatest: vi.fn().mockReturnValue([{}]),
-  resolveFkojunstMailWinnerIdByKey: vi.fn().mockResolvedValue(new Map()),
-  buildFkojunstMailReplacementCreateInputs: vi.fn().mockReturnValue({ matched: 0, unmatched: 0, createInputs: [] }),
   runFkojunstMailReplacementTransaction: vi.fn(), runFkojunstMailClearTransaction: vi.fn()
 }));
 vi.mock('../fkojunst-status-mail-sync.pipeline.js', () => pipeline);
@@ -55,7 +53,7 @@ describe('mail sync external completion publication', () => {
       refreshSuperseded: vi.fn().mockResolvedValue(undefined),
     });
     expect(await service.syncFromStatusMailDashboard()).toEqual(result);
-    expect(pipeline.runFkojunstMailReplacementTransaction).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ missingStandardHoursMailRows: [{}] }));
+    expect(pipeline.runFkojunstMailReplacementTransaction).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ dedupedRows: [{}] }));
     expect(external.syncFromDedupedStatusMailRows).toHaveBeenCalledTimes(pieces ? 0 : 1);
     expect(assignments.reconcileStaleAssignments).toHaveBeenCalledTimes(pieces ? 1 : 0);
   });

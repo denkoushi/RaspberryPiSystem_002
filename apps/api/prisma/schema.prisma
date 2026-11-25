@@ -1857,6 +1857,7 @@ model ProductionScheduleFkojunstMailStatus {
   fsezono              String   @db.VarChar(32)
   statusCode           String   @db.VarChar(1)
   sourceUpdatedAt      DateTime
+  hasUnparseableDate   Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -1866,6 +1867,19 @@ model ProductionScheduleFkojunstMailStatus {
   @@unique([csvDashboardId, sourceCsvDashboardId, fkojun, fkoteicd, fsezono], map: "PSFkojunstMailStatus_unique_src_key")
   @@index([csvDashboardId], map: "PSFkojunstMailStatus_idx_dashboard")
   @@index([sourceCsvDashboardId], map: "PSFkojunstMailStatus_idx_source_dashboard")
+}
+
+/// FKOJUNST_Status の最新状態のうち、生産日程 winner に厳密一致しなかった資源。
+model ProductionScheduleFkojunstResourceSwapEvidence {
+  sourceCsvDashboardId String
+  productNo            String
+  fkojun               String
+  resourceCd           String
+  statusCode           String    @db.VarChar(1)
+  sourceUpdatedAt      DateTime?
+
+  @@id([sourceCsvDashboardId, productNo, fkojun, resourceCd], map: "PSFkojunstResourceSwapEvidence_pkey")
+  @@index([sourceCsvDashboardId, productNo, fkojun], map: "PSFkojunstResourceSwapEvidence_idx_process")
 }
 
 /// 順位ボード用: FKOJUNST_Status raw 全体から抽出した「強い工程変更残骸」疑い snapshot。
@@ -2269,8 +2283,7 @@ model ProductionScheduleProgress {
   @@index([csvDashboardId, isCompleted])
 }
 
-/// CSV 由来の外部完了（現行正本は FKOJUNST_Status C/X）を winner 単位で保持する。本体 rowData は変更しない。
-/// `isExternallyCompleted` は後方互換・検索用に同期する（2026-05-26 以降はメール status 完了のみ）。
+/// FKOJUNST_Status 由来の外部完了を winner 単位で保持する。本体 rowData は変更しない。
 model ProductionScheduleExternalCompletion {
   csvDashboardRowId                             String   @id
   csvDashboardId                                String
@@ -2279,6 +2292,8 @@ model ProductionScheduleExternalCompletion {
   externallyCompletedFromFkojunstDisappeared    Boolean  @default(false)
   /// FKOJUNST メール側 status が完了系（C/X）。S/R/O/P は未完了。
   externallyCompletedFromFkojunstMailStatus     Boolean  @default(false)
+  /// 同じ製造オーダ・工順の別資源の C による完了。
+  externallyCompletedFromFkojunstResourceSwap   Boolean  @default(false)
   /// 生産日程CSV取込の差分消失完了（2026-05-26 廃止、互換列として保持）。
   externallyCompletedFromScheduleCsvDisappeared Boolean  @default(false)
   createdAt                                     DateTime @default(now())

@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 
+import { isFkojunstResourceSwapComplete } from './completion/fkojunst-resource-swap-completion.policy.js';
 import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from './constants.js';
 import type { FkojunstMailNormalizedRow } from './fkojunst-mail-row.types.js';
 import {
@@ -35,10 +36,18 @@ export function buildProcessArrivalResourceSwapCompletedKeys(
     if (isExcluded(resourceCd)) continue;
     const group = byGroup.get(groupKey(process.productNo, process.processOrder));
     const own = group?.get(resourceCd);
-    if (own && (own.statusCode === 'S' || own.hasUnparseableDate)) continue;
+    const ownStatus = own && { statusCode: own.statusCode, sourceUpdatedAt: own.hasUnparseableDate ? null : own.sourceUpdatedAt };
     for (const other of group?.values() ?? []) {
-      if (other.fkoteicd === resourceCd || other.statusCode !== 'C' || other.hasUnparseableDate || isExcluded(other.fkoteicd)) continue;
-      if (own && other.sourceUpdatedAt.getTime() < own.sourceUpdatedAt.getTime()) continue;
+      if (other.fkoteicd === resourceCd) continue;
+      // 到着判定は候補ごとに評価する。件数による制約は保存する外部完了に適用する。
+      if (!isFkojunstResourceSwapComplete({
+        winnerCount: 1,
+        otherResourceCount: 1,
+        own: ownStatus,
+        other: { statusCode: other.statusCode, sourceUpdatedAt: other.hasUnparseableDate ? null : other.sourceUpdatedAt },
+        isOwnResourceExcluded: false,
+        isOtherResourceExcluded: isExcluded(other.fkoteicd),
+      })) continue;
       completed.add(buildProcessArrivalResourceSwapKey(process));
       break;
     }

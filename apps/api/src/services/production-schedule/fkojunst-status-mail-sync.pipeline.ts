@@ -15,7 +15,7 @@ import {
 } from './constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
 import { parseFkojunstStatusMailFupdteDt } from '../csv-dashboard/csv-dashboard-datetime-parse.js';
-import { findFkojunstMailWinnerIdsByMailTriples } from './fkojunst-mail-winner-by-triple.reader.js';
+import { buildFkojunstWinnerProcessKey, findFkojunstMailWinnerIdsByMailTriples } from './fkojunst-mail-winner-by-triple.reader.js';
 import { buildFkojunstMailStatusKey } from './fkojunst-mail-status-key.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 import {
@@ -282,15 +282,17 @@ export async function loadFkojunstMailNormalizedRowsFromCsvFile(params: {
   };
 }
 
-export async function resolveFkojunstMailWinnerIdByKey(
-  client: PrismaClient,
-  dedupedRows: FkojunstMailNormalizedRow[]
+async function resolveFkojunstMailWinnerIdByKey(
+  client: Pick<Prisma.TransactionClient, '$queryRaw'>,
+  dedupedRows: readonly FkojunstMailNormalizedRow[],
+  winnerProcessKeys?: Set<string>
 ): Promise<Map<string, string>> {
   if (dedupedRows.length === 0) {
     return new Map();
   }
   return findFkojunstMailWinnerIdsByMailTriples({
     client,
+    winnerProcessKeys,
     productionScheduleDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
     triples: dedupedRows.map((row) => ({
       fkojun: row.fkojun,
@@ -301,16 +303,17 @@ export async function resolveFkojunstMailWinnerIdByKey(
 }
 
 export function buildFkojunstMailReplacementCreateInputs(
-  dedupedRows: FkojunstMailNormalizedRow[],
-  winnerIdByKey: Map<string, string>
+  dedupedRows: readonly FkojunstMailNormalizedRow[],
+  winnerIdByKey: Map<string, string>,
+  winnerProcessKeys?: ReadonlySet<string>
 ): {
   matched: number;
   unmatched: number;
   createInputs: Prisma.ProductionScheduleFkojunstMailStatusCreateManyInput[];
+  resourceSwapEvidenceInputs: Prisma.ProductionScheduleFkojunstResourceSwapEvidenceCreateManyInput[];
 } {
-  let matched = 0;
-  let unmatched = 0;
   const createInputs: Prisma.ProductionScheduleFkojunstMailStatusCreateManyInput[] = [];
+  const resourceSwapEvidenceInputs: Prisma.ProductionScheduleFkojunstResourceSwapEvidenceCreateManyInput[] = [];
 
   for (const row of dedupedRows) {
     const key = buildFkojunstMailStatusKey({
@@ -320,10 +323,18 @@ export function buildFkojunstMailReplacementCreateInputs(
     });
     const winnerRowId = winnerIdByKey.get(key);
     if (!winnerRowId) {
-      unmatched += 1;
+      // 状態 CSV は履歴を含めて約92万の組がある(2026-11-25 本番)。winner の無い工程は判定に使わないので残さない。
+      if (winnerProcessKeys && !winnerProcessKeys.has(buildFkojunstWinnerProcessKey(row.fsezono, row.fkojun))) continue;
+      resourceSwapEvidenceInputs.push({
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        productNo: row.fsezono,
+        fkojun: row.fkojun,
+        resourceCd: row.fkoteicd,
+        statusCode: row.statusCode,
+        sourceUpdatedAt: row.hasUnparseableDate ? null : row.sourceUpdatedAt,
+      });
       continue;
     }
-    matched += 1;
     createInputs.push({
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
       csvDashboardRowId: winnerRowId,
@@ -333,10 +344,96 @@ export function buildFkojunstMailReplacementCreateInputs(
       fsezono: row.fsezono,
       statusCode: row.statusCode,
       sourceUpdatedAt: row.sourceUpdatedAt,
+      hasUnparseableDate: row.hasUnparseableDate,
     });
   }
 
-  return { matched, unmatched, createInputs };
+  return { matched: createInputs.length, unmatched: resourceSwapEvidenceInputs.length, createInputs, resourceSwapEvidenceInputs };
+}
+
+/** The caller holds the mail lock. Reclassify the same snapshot against the current winners. */
+export async function replaceFkojunstMailProjections(
+  tx: Prisma.TransactionClient,
+  dedupedRows: readonly FkojunstMailNormalizedRow[],
+  onlyChanged = false
+) {
+  const winnerProcessKeys = new Set<string>();
+  const winnerIdByKey = await resolveFkojunstMailWinnerIdByKey(tx, dedupedRows, winnerProcessKeys);
+  const { matched, createInputs, resourceSwapEvidenceInputs } =
+    buildFkojunstMailReplacementCreateInputs(dedupedRows, winnerIdByKey, winnerProcessKeys);
+  const unmatched = dedupedRows.length - matched;
+  const sourceCsvDashboardId = PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID;
+  const mailSource = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, sourceCsvDashboardId };
+  let evidenceToCreate = resourceSwapEvidenceInputs;
+  let mailToCreate = createInputs;
+  let prunedEvidence = 0;
+  let pruned = 0;
+  if (onlyChanged) {
+    // Schedule imports can change the match without changing the mail snapshot.
+    // Keep the existing projection rows whose key, status and destination still match.
+    const evidenceKey = (row: { productNo: string; fkojun: string; resourceCd: string }) =>
+      buildFkojunstMailStatusKey({ fsezono: row.productNo, fkojun: row.fkojun, fkoteicd: row.resourceCd });
+    const currentEvidence = new Map((await tx.productionScheduleFkojunstResourceSwapEvidence.findMany({
+      where: { sourceCsvDashboardId },
+    })).map((row) => [evidenceKey(row), row]));
+    evidenceToCreate = resourceSwapEvidenceInputs.filter((input) => {
+      const key = evidenceKey(input);
+      const existing = currentEvidence.get(key);
+      const updatedAt = input.sourceUpdatedAt == null ? undefined : new Date(input.sourceUpdatedAt).getTime();
+      if (!existing || existing.statusCode !== input.statusCode || existing.sourceUpdatedAt?.getTime() !== updatedAt) return true;
+      currentEvidence.delete(key);
+      return false;
+    });
+    const removedEvidence = [...currentEvidence.values()].map(({ productNo, fkojun, resourceCd }) => ({ productNo, fkojun, resourceCd }));
+    for (let i = 0; i < removedEvidence.length; i += CREATE_MANY_CHUNK_SIZE) {
+      prunedEvidence += (await tx.productionScheduleFkojunstResourceSwapEvidence.deleteMany({
+        where: { sourceCsvDashboardId, OR: removedEvidence.slice(i, i + CREATE_MANY_CHUNK_SIZE) },
+      })).count;
+    }
+
+    const currentMail = new Map((await tx.productionScheduleFkojunstMailStatus.findMany({
+      where: mailSource,
+      select: {
+        csvDashboardRowId: true, fsezono: true, fkojun: true, fkoteicd: true,
+        statusCode: true, sourceUpdatedAt: true, hasUnparseableDate: true,
+      },
+    })).map((row) => [row.csvDashboardRowId, row]));
+    mailToCreate = createInputs.filter((input) => {
+      const existing = currentMail.get(input.csvDashboardRowId);
+      if (!existing || existing.fsezono !== input.fsezono || existing.fkojun !== input.fkojun
+        || existing.fkoteicd !== input.fkoteicd || existing.statusCode !== input.statusCode
+        || existing.hasUnparseableDate !== input.hasUnparseableDate
+        || existing.sourceUpdatedAt.getTime() !== new Date(input.sourceUpdatedAt).getTime()) return true;
+      currentMail.delete(input.csvDashboardRowId);
+      return false;
+    });
+    const removedMail = [...currentMail.keys()];
+    for (let i = 0; i < removedMail.length; i += CREATE_MANY_CHUNK_SIZE) {
+      pruned += (await tx.productionScheduleFkojunstMailStatus.deleteMany({
+        where: { ...mailSource, csvDashboardRowId: { in: removedMail.slice(i, i + CREATE_MANY_CHUNK_SIZE) } },
+      })).count;
+    }
+  } else {
+    prunedEvidence = (await tx.productionScheduleFkojunstResourceSwapEvidence.deleteMany({ where: { sourceCsvDashboardId } })).count;
+    pruned = (await tx.productionScheduleFkojunstMailStatus.deleteMany({ where: mailSource })).count;
+  }
+
+  for (let i = 0; i < evidenceToCreate.length; i += CREATE_MANY_CHUNK_SIZE) {
+    await tx.productionScheduleFkojunstResourceSwapEvidence.createMany({
+      data: evidenceToCreate.slice(i, i + CREATE_MANY_CHUNK_SIZE),
+    });
+  }
+  let inserted = 0;
+  for (let i = 0; i < mailToCreate.length; i += CREATE_MANY_CHUNK_SIZE) {
+    const batch = await tx.productionScheduleFkojunstMailStatus.createMany({
+      data: mailToCreate.slice(i, i + CREATE_MANY_CHUNK_SIZE),
+    });
+    inserted += batch.count;
+  }
+  if (inserted !== mailToCreate.length) {
+    throw new Error(`[FkojunstMailSync] insert count mismatch: expected ${mailToCreate.length}, got ${inserted}`);
+  }
+  return { matched, unmatched, upserted: inserted, pruned, prunedEvidence };
 }
 
 async function replaceProcessChangeResidualEvidenceSnapshot(
@@ -380,13 +477,9 @@ export async function runFkojunstMailReplacementTransaction(
   client: PrismaClient,
   params: {
     scanned: number;
-    normalized: number;
-    matched: number;
-    unmatched: number;
+    dedupedRows: readonly FkojunstMailNormalizedRow[];
     skippedInvalidStatus: number;
     skippedUnparseableDate: number;
-    createInputs: Prisma.ProductionScheduleFkojunstMailStatusCreateManyInput[];
-    missingStandardHoursMailRows?: readonly FkojunstMailNormalizedRow[];
     processChangeResidualEvidenceInputs?: Prisma.ProductionScheduleProcessChangeResidualEvidenceCreateManyInput[];
     sourceRowsRevision?: string;
   }
@@ -410,43 +503,23 @@ export async function runFkojunstMailReplacementTransaction(
         });
       }
 
-      await replaceMissingStandardHoursProcesses(tx, params.missingStandardHoursMailRows ?? []);
+      await replaceMissingStandardHoursProcesses(tx, params.dedupedRows);
+      const { matched, unmatched, upserted, pruned } = await replaceFkojunstMailProjections(tx, params.dedupedRows);
 
-      const pruneResult = await tx.productionScheduleFkojunstMailStatus.deleteMany({
-        where: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
-        },
-      });
-
-      let inserted = 0;
-      for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {
-        const chunk = params.createInputs.slice(i, i + CREATE_MANY_CHUNK_SIZE);
-        if (chunk.length === 0) continue;
-        const batch = await tx.productionScheduleFkojunstMailStatus.createMany({ data: chunk });
-        inserted += batch.count;
-      }
-
-      if (inserted !== params.createInputs.length) {
-        throw new Error(
-          `[FkojunstMailSync] insert count mismatch: expected ${params.createInputs.length}, got ${inserted}`
-        );
-      }
-
-      const hasPieces = params.normalized > 0 && await tx.productionScheduleSessakuPieceSet.findFirst({
+      const hasPieces = params.dedupedRows.length > 0 && await tx.productionScheduleSessakuPieceSet.findFirst({
         where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, pieces: { some: {} } }, select: { id: true }
       });
       if (hasPieces) await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true);
       return {
         ...(hasPieces ? { externalCompletionSynced: true as const } : {}),
         scanned: params.scanned,
-        normalized: params.normalized,
-        matched: params.matched,
-        unmatched: params.unmatched,
+        normalized: params.dedupedRows.length,
+        matched,
+        unmatched,
         skippedInvalidStatus: params.skippedInvalidStatus,
         skippedUnparseableDate: params.skippedUnparseableDate,
-        upserted: inserted,
-        pruned: pruneResult.count,
+        upserted,
+        pruned,
       };
     },
     {
@@ -484,12 +557,8 @@ export async function runFkojunstMailClearTransaction(
 
       await replaceMissingStandardHoursProcesses(tx, []);
 
-      const pruneResult = await tx.productionScheduleFkojunstMailStatus.deleteMany({
-        where: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
-        },
-      });
+      const { pruned, prunedEvidence } = await replaceFkojunstMailProjections(tx, []);
+      if (prunedEvidence > 0) await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true, 'clear-resource-swap');
       return {
         scanned,
         normalized: 0,
@@ -498,7 +567,7 @@ export async function runFkojunstMailClearTransaction(
         skippedInvalidStatus,
         skippedUnparseableDate,
         upserted: 0,
-        pruned: pruneResult.count,
+        pruned,
       };
     },
     {

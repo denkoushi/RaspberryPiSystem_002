@@ -3,7 +3,12 @@ import { lockAllSessakuPieceSets, synchronizeSessakuPieceSources } from '../sess
 import { Prisma, type PrismaClient } from '@prisma/client';
 
 import { buildFkojunstMailStatusCompletedScalarSql } from '../completion/fkojunst-mail-status-completion.policy.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import {
+  FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS,
+  FKOJUNST_RESOURCE_SWAP_OWN_BLOCKING_STATUS,
+} from '../completion/fkojunst-resource-swap-completion.policy.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
+import { getResourceCategoryPolicy, SHARED_RESOURCE_CATEGORY_LOCATION } from '../policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 
 export type PrismaExecutor = Pick<PrismaClient, '$executeRaw'>;
@@ -11,6 +16,11 @@ export type PrismaExecutor = Pick<PrismaClient, '$executeRaw'>;
 const winnersBaseSql = () => Prisma.sql`
   SELECT
     "cdr"."id" AS "id",
+    BTRIM("cdr"."rowData"->>'ProductNo') AS "productNo",
+    BTRIM("cdr"."rowData"->>'FKOJUN') AS "fkojun",
+    UPPER(BTRIM("cdr"."rowData"->>'FSIGENCD')) AS "resourceCd",
+    "fkmail"."statusCode" AS "ownStatusCode",
+    CASE WHEN NOT "fkmail"."hasUnparseableDate" THEN "fkmail"."sourceUpdatedAt" END AS "ownUpdatedAt",
     ${buildFkojunstMailStatusCompletedScalarSql()} AS "mailStatusComplete"
   FROM "CsvDashboardRow" AS "cdr"
   LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
@@ -20,11 +30,75 @@ const winnersBaseSql = () => Prisma.sql`
     AND ${buildMaxProductNoWinnerCondition('cdr')}
 `;
 
+const existingResourceSwapCompletionsSql = () => Prisma.sql`
+  SELECT "ext"."csvDashboardRowId" AS "id",
+    "ext"."externallyCompletedFromFkojunstMailStatus" AS "mailStatusComplete",
+    FALSE AS "resourceSwapComplete"
+  FROM "ProductionScheduleExternalCompletion" "ext"
+  WHERE "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    AND "ext"."externallyCompletedFromFkojunstResourceSwap"
+`;
+
+function winnerCompletionCtes(excludedResourceCds: string[]): Prisma.Sql {
+  return Prisma.sql`
+    "winners" AS MATERIALIZED (
+      ${winnersBaseSql()}
+    ),
+    "singleWinnerProcesses" AS (
+      SELECT "productNo", "fkojun"
+      FROM "winners"
+      -- 除外資源(10、組立など)の行は同じ工順に並んでも数えない(KB-456 の本番データ)。
+      WHERE "productNo" <> '' AND "fkojun" <> ''
+        AND "resourceCd" <> ALL(${excludedResourceCds}::text[])
+      GROUP BY "productNo", "fkojun"
+      HAVING COUNT(*) = 1
+    ),
+    "resourceSwapCompletions" AS (
+      SELECT "w"."id"
+      FROM "singleWinnerProcesses" "single"
+      JOIN "winners" "w" USING ("productNo", "fkojun")
+      JOIN "ProductionScheduleFkojunstResourceSwapEvidence" "e"
+        ON "e"."sourceCsvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
+        AND "e"."productNo" = "w"."productNo" AND "e"."fkojun" = "w"."fkojun"
+        AND "e"."resourceCd" <> "w"."resourceCd"
+      WHERE "w"."resourceCd" <> ''
+        AND "w"."resourceCd" <> ALL(${excludedResourceCds}::text[])
+      GROUP BY "w"."id"
+      -- 非 C、除外資源、FUPDTEDT 不明も別資源の件数には含める。
+      HAVING COUNT(*) = 1 AND BOOL_AND(
+        "e"."statusCode" = ${FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS}
+        AND "e"."resourceCd" <> ALL(${excludedResourceCds}::text[])
+        AND "e"."sourceUpdatedAt" IS NOT NULL
+        AND ("w"."ownStatusCode" IS NULL OR (
+          "w"."ownStatusCode" <> ${FKOJUNST_RESOURCE_SWAP_OWN_BLOCKING_STATUS}
+          AND "w"."ownUpdatedAt" IS NOT NULL
+          AND "e"."sourceUpdatedAt" >= "w"."ownUpdatedAt"
+        ))
+      )
+    ),
+    "completionSources" AS (
+      SELECT "w"."id", "w"."mailStatusComplete", "swap"."id" IS NOT NULL AS "resourceSwapComplete"
+      FROM "winners" "w"
+      LEFT JOIN "resourceSwapCompletions" "swap" ON "swap"."id" = "w"."id"
+      UNION ALL
+      ${existingResourceSwapCompletionsSql()}
+        AND NOT EXISTS (SELECT 1 FROM "winners" "w" WHERE "w"."id" = "ext"."csvDashboardRowId")
+    )
+  `;
+}
+
 /**
- * FKOJUNST_Status メール同期後: `fkmail` の **C/X** だけを外部完了に反映する。
+ * FKOJUNST_Status の厳密一致 C/X と、付け替え先の C を外部完了に反映する。
  * 旧「メール dedupe キー消失」と生産日程CSV消滅完了は完了正本から外し、互換列は false に収束させる。
  */
-export async function replaceAllWinnerExternalCompletionStatesFromMailSync(executor: Prisma.TransactionClient, mailCriticalLocked = false): Promise<number> {
+export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
+  executor: Prisma.TransactionClient,
+  mailCriticalLocked = false,
+  mode: 'recompute' | 'clear-resource-swap' = 'recompute'
+): Promise<number> {
+  const completionCtes = mode === 'clear-resource-swap'
+    ? Prisma.sql`"completionSources" AS (${existingResourceSwapCompletionsSql()})`
+    : winnerCompletionCtes((await getResourceCategoryPolicy({ siteKey: SHARED_RESOURCE_CATEGORY_LOCATION }, executor)).cuttingExcludedResourceCds);
   const sets = await lockAllSessakuPieceSets(executor, mailCriticalLocked);
   if (sets.some((set) => set.pieces.length)) await acquireSessakuPieceBoardStateLocks(executor);
   // この transaction は CsvDashboardRow を書き換えないので、片の winner は前後で変わらない。
@@ -39,15 +113,12 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
   // 値が変わる行だけを書く。全 winner（約10万行）を毎回書き直すと WAL が膨らみ、
   // 書き込みの遅い時間帯に transaction が timeout する（2026-11-13 の生産日程2通目）。
   const written = await executor.$executeRaw`
-    WITH "winners" AS (
-      ${winnersBaseSql()}
-    ),
+    WITH ${completionCtes},
     "computed" AS (
       SELECT
-        "w"."id",
-        FALSE AS "mailDisappeared",
-        "w"."mailStatusComplete" AS "mailStatusComplete"
-      FROM "winners" "w"
+        "completionSources".*,
+        "mailStatusComplete" OR "resourceSwapComplete" AS "isExternallyCompleted"
+      FROM "completionSources"
     ),
     "pending" AS (
       SELECT "c".*
@@ -55,9 +126,10 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
       LEFT JOIN "ProductionScheduleExternalCompletion" AS "existing"
         ON "existing"."csvDashboardRowId" = "c"."id"
       WHERE "existing"."csvDashboardRowId" IS NULL
-        OR "existing"."isExternallyCompleted" IS DISTINCT FROM "c"."mailStatusComplete"
+        OR "existing"."isExternallyCompleted" IS DISTINCT FROM "c"."isExternallyCompleted"
         OR "existing"."externallyCompletedFromFkojunstMailStatus" IS DISTINCT FROM "c"."mailStatusComplete"
-        OR "existing"."externallyCompletedFromFkojunstDisappeared" IS DISTINCT FROM "c"."mailDisappeared"
+        OR "existing"."externallyCompletedFromFkojunstResourceSwap" IS DISTINCT FROM "c"."resourceSwapComplete"
+        OR "existing"."externallyCompletedFromFkojunstDisappeared" IS DISTINCT FROM FALSE
         OR "existing"."externallyCompletedFromScheduleCsvDisappeared" IS DISTINCT FROM FALSE
     )
     INSERT INTO "ProductionScheduleExternalCompletion" (
@@ -66,6 +138,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
       "isExternallyCompleted",
       "externallyCompletedFromFkojunstDisappeared",
       "externallyCompletedFromFkojunstMailStatus",
+      "externallyCompletedFromFkojunstResourceSwap",
       "externallyCompletedFromScheduleCsvDisappeared",
       "createdAt",
       "updatedAt"
@@ -73,9 +146,10 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
     SELECT
       "c"."id",
       ${PRODUCTION_SCHEDULE_DASHBOARD_ID},
+      "c"."isExternallyCompleted",
+      FALSE,
       "c"."mailStatusComplete",
-      "c"."mailDisappeared",
-      "c"."mailStatusComplete",
+      "c"."resourceSwapComplete",
       FALSE,
       NOW(),
       NOW()
@@ -83,11 +157,13 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
     ON CONFLICT ("csvDashboardRowId") DO UPDATE SET
       "externallyCompletedFromFkojunstDisappeared" = EXCLUDED."externallyCompletedFromFkojunstDisappeared",
       "externallyCompletedFromFkojunstMailStatus" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
+      "externallyCompletedFromFkojunstResourceSwap" = EXCLUDED."externallyCompletedFromFkojunstResourceSwap",
       "externallyCompletedFromScheduleCsvDisappeared" = FALSE,
-      "isExternallyCompleted" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
+      "isExternallyCompleted" = EXCLUDED."isExternallyCompleted",
       "updatedAt" = NOW()
-    WHERE "ProductionScheduleExternalCompletion"."isExternallyCompleted" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstMailStatus"
+    WHERE "ProductionScheduleExternalCompletion"."isExternallyCompleted" IS DISTINCT FROM EXCLUDED."isExternallyCompleted"
       OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstMailStatus" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstMailStatus"
+      OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstResourceSwap" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstResourceSwap"
       OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstDisappeared" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstDisappeared"
       OR "ProductionScheduleExternalCompletion"."externallyCompletedFromScheduleCsvDisappeared" IS DISTINCT FROM FALSE
   `;
@@ -115,7 +191,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
 /**
  * 生産日程CSV消滅完了は廃止済み。
  *
- * 互換呼び出しが残っても、差分消失キーは完了に使わず、外部完了を FKOJUNST_Status C/X のみに収束させる。
+ * 互換呼び出しが残っても、差分消失キーは完了に使わず、FKOJUNST_Status 由来の外部完了を再計算する。
  */
 export async function replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync(
   executor: Prisma.TransactionClient,

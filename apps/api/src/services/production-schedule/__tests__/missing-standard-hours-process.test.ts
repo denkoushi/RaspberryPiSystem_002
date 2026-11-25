@@ -85,11 +85,12 @@ describe('missing standard hours selection', () => {
     const tx = { $executeRaw: vi.fn(),
       $queryRaw: vi.fn().mockResolvedValue([schedule()]),
       productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn(), createMany: vi.fn() },
+      productionScheduleFkojunstResourceSwapEvidence: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }), createMany: vi.fn() },
       productionScheduleFkojunstMailStatus: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       productionScheduleSessakuPieceSet: { findFirst: vi.fn().mockResolvedValue(null) } };
     const client = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
-    await runFkojunstMailReplacementTransaction(client as never, { scanned: 1, normalized: 1, matched: 0, unmatched: 1,
-      skippedInvalidStatus: 0, skippedUnparseableDate: 0, createInputs: [], missingStandardHoursMailRows: [mail()] });
+    await runFkojunstMailReplacementTransaction(client as never, { scanned: 1, dedupedRows: [mail()],
+      skippedInvalidStatus: 0, skippedUnparseableDate: 0 });
     expect(client.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(tx.productionScheduleMissingStandardHoursProcess.createMany).toHaveBeenCalledTimes(1);
