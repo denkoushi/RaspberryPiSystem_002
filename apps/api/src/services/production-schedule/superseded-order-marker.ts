@@ -12,6 +12,7 @@
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
 
+import { chunk } from '../../lib/chunk.js';
 import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
@@ -136,18 +137,17 @@ type ScheduleRow = SupersedeCandidateRow & { marked: boolean };
 /** 実際に状態が変わった行 id を返す(mark なら NULL → 値になった行)。 */
 async function updateInChunks(client: TxClient, ids: readonly string[], mode: 'mark' | 'clear'): Promise<string[]> {
   const changed: string[] = [];
-  for (let offset = 0; offset < ids.length; offset += UPDATE_CHUNK_SIZE) {
-    const chunk = ids.slice(offset, offset + UPDATE_CHUNK_SIZE);
+  for (const batchIds of chunk(ids, UPDATE_CHUNK_SIZE)) {
     // updatedAt も進める(見える行の集合が変わるので、世代を見ているキャッシュを無効にする)
     const updated = await client.$queryRaw<Array<{ id: string }>>(
       mode === 'mark'
         ? Prisma.sql`UPDATE "CsvDashboardRow" SET "supersededAt" = NOW(), "updatedAt" = NOW()
             WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-              AND "id" = ANY(${chunk}::text[]) AND "supersededAt" IS NULL
+              AND "id" = ANY(${batchIds}::text[]) AND "supersededAt" IS NULL
             RETURNING "id"`
         : Prisma.sql`UPDATE "CsvDashboardRow" SET "supersededAt" = NULL, "updatedAt" = NOW()
             WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-              AND "id" = ANY(${chunk}::text[]) AND "supersededAt" IS NOT NULL
+              AND "id" = ANY(${batchIds}::text[]) AND "supersededAt" IS NOT NULL
             RETURNING "id"`
     );
     for (const row of updated) changed.push(row.id);

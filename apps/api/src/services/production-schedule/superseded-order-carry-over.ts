@@ -11,6 +11,7 @@
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
 
+import { chunk } from '../../lib/chunk.js';
 import { logger } from '../../lib/logger.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './sessaku-pieces/piece-key.js';
@@ -58,12 +59,6 @@ type PairRow = {
   targetFkojun: string;
   targetProductNo: string;
   hasPieceData: boolean;
-};
-
-const chunked = <T>(items: readonly T[]): T[][] => {
-  const chunks: T[][] = [];
-  for (let offset = 0; offset < items.length; offset += CHUNK_SIZE) chunks.push(items.slice(offset, offset + CHUNK_SIZE));
-  return chunks;
 };
 
 /** 古い行ごとの引き継ぎ先を決める。古い ProductNo が大きい順(ord の小さいほうを優先して移す)。 */
@@ -169,9 +164,9 @@ export async function carryOverSupersededOrderData(
     sessakuPieceSets: 0, sessakuPieceHistories: 0,
   };
 
-  for (const chunk of chunked(pairs)) {
-    const o = chunk.map((p) => p.oldId);
-    const t = chunk.map((p) => p.targetId);
+  for (const batch of chunk(pairs, CHUNK_SIZE)) {
+    const o = batch.map((p) => p.oldId);
+    const t = batch.map((p) => p.targetId);
 
     counts.rowNotes += await client.$executeRaw(Prisma.sql`
       WITH cand AS (
@@ -279,9 +274,9 @@ export async function carryOverSupersededOrderData(
 
   // 研削ボードの itemKey(同じキーのままなら書き換え不要)
   const keyPairsList = pairs.filter((p) => p.oldItemKey !== p.targetItemKey);
-  for (const chunk of chunked(keyPairsList)) {
-    const ok = chunk.map((p) => p.oldItemKey);
-    const nk = chunk.map((p) => p.targetItemKey);
+  for (const batch of chunk(keyPairsList, CHUNK_SIZE)) {
+    const ok = batch.map((p) => p.oldItemKey);
+    const nk = batch.map((p) => p.targetItemKey);
 
     counts.grindingOverrides += await client.$executeRaw(Prisma.sql`
       WITH cand AS (

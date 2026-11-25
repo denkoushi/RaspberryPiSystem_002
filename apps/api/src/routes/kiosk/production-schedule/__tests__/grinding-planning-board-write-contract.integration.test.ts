@@ -389,7 +389,7 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
     }
     // Existing operation intervals allow configuration without enabling automatic unit splitting.
     const set = await prisma.productionScheduleSessakuPieceSet.create({ data: {
-      csvDashboardId: dashboardId, fseiban: seiban, fhincd: part, fsigencd: '1', fkojun: '1',
+      csvDashboardId: dashboardId, fseiban: seiban, fhincd: part, fsigencd: '1', fkojun: '1', productNo: '1',
       plannedQuantity: 5, nextPosition: 3, pieces: { create: [
         { position: 1, quantity: 1, opSplits: { create: { fromOpNo: 2, sourceResourceCd: '1', leadingSourceResourceCd: '1' } } },
         { position: 2, quantity: 4 }

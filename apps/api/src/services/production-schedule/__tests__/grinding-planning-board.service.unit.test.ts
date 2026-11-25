@@ -1788,7 +1788,7 @@ describe('bulk grinding resource order service', () => {
       items[1]!
     ];
     mocks.prisma.productionScheduleSessakuPiece.findMany.mockResolvedValue([{
-      id: 'a', pieceSet: { fseiban: 'ORDER-A', fhincd: 'PART-A', fsigencd: '305', fkojun: '1' }
+      id: 'a', pieceSet: { fseiban: 'ORDER-A', fhincd: 'PART-A', fsigencd: '305', fkojun: '1', productNo: mocks.sourceRow.rowData.ProductNo }
     }]);
     const payload = { siteKey: 'site-a', itemId: target.itemId, itemRevision: target.itemRevision, overrideVersion: 0 };
     const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: payload.siteKey };
