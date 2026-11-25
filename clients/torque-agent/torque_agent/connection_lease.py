@@ -392,7 +392,8 @@ class ConnectionLeaseManager:
         target_kind: Literal["assembly", "training"] = "assembly",
     ) -> dict[str, object]:
         async with self._lock:
-            self._clear_local(None)
+            if self._lease is None:
+                self._clear_local(None)
             endpoint = "takeover" if takeover else "acquire"
             lease_prefix = "usage-lease" if target_kind == "training" else "connection-lease"
             payload: dict[str, object] = {
@@ -412,17 +413,19 @@ class ConnectionLeaseManager:
                 )
             except (httpx.TimeoutException, httpx.NetworkError) as error:
                 self._last_error = f"LEASE_API_UNAVAILABLE: {error}"
-                self._communication_lost = True
+                if self._lease is None:
+                    self._communication_lost = True
                 return self.snapshot()
             if status < 200 or status >= 300:
                 details = body.get("details")
-                if isinstance(details, dict) and isinstance(details.get("lease"), dict):
+                if self._lease is None and isinstance(details, dict) and isinstance(details.get("lease"), dict):
                     self._public_lease = details["lease"]
                 self._last_error = str(body.get("errorCode") or f"HTTP_{status}")
-                self._blocked = self._last_error in {
-                    "TORQUE_WRENCH_LEASE_FENCED",
-                    "TORQUE_WRENCH_LEASE_EXPIRED",
-                }
+                if self._lease is None:
+                    self._blocked = self._last_error in {
+                        "TORQUE_WRENCH_LEASE_FENCED",
+                        "TORQUE_WRENCH_LEASE_EXPIRED",
+                    }
                 return self.snapshot()
             lease_body = body.get("lease")
             if not isinstance(lease_body, dict):
@@ -433,6 +436,7 @@ class ConnectionLeaseManager:
             except ValueError as error:
                 self._last_error = str(error)
                 return self.snapshot()
+            self._clear_local(None)
             self._lease = lease
             self._public_lease = lease_body
             self._last_error = None

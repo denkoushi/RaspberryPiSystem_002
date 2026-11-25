@@ -5,7 +5,7 @@ import logging
 from typing import Literal
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -18,7 +18,7 @@ from .delivery import AsyncioOutboxWakeSignal
 from .ingestor import TorqueEventIngestor
 from .parser_registry import ParserRegistry, SyntheticDelimitedFixtureParser
 from .queue_store import QueueStore
-from .websocket_stream import WebSocketDeliveryNotifier, register_delivery_stream
+from .websocket_stream import WebSocketDeliveryNotifier, origin_allowed, register_delivery_stream
 
 LOGGER = logging.getLogger("torque_agent")
 
@@ -81,6 +81,12 @@ def create_app(
         allow_headers=["content-type"],
         max_age=600,
     )
+    allowed_origins = frozenset(config.browser_origins)
+
+    async def require_allowed_origin(request: Request) -> None:
+        if not origin_allowed(request.headers.get("origin"), allowed_origins):
+            raise HTTPException(status_code=403, detail="Origin is not allowed")
+
     register_delivery_stream(
         app,
         delivery_notifier or WebSocketDeliveryNotifier(config.browser_origins),
@@ -96,7 +102,7 @@ def create_app(
             "localAuditEvents": queue.local_error_count(),
         }
 
-    @app.post("/heartbeat")
+    @app.post("/heartbeat", dependencies=[Depends(require_allowed_origin)])
     async def heartbeat(body: HeartbeatBody) -> dict[str, object]:
         return await lease_manager.heartbeat(
             session_id=body.sessionId,
@@ -106,7 +112,7 @@ def create_app(
             target_kind=body.targetKind,
         )
 
-    @app.post("/lease/acquire")
+    @app.post("/lease/acquire", dependencies=[Depends(require_allowed_origin)])
     async def acquire(body: LeaseAcquireBody) -> dict[str, object]:
         return await lease_manager.acquire(
             profile_id=body.torqueWrenchProfileId,
@@ -117,7 +123,7 @@ def create_app(
             target_kind=body.targetKind,
         )
 
-    @app.post("/lease/takeover")
+    @app.post("/lease/takeover", dependencies=[Depends(require_allowed_origin)])
     async def takeover(body: LeaseTakeoverBody) -> dict[str, object]:
         if not body.physicalWrenchPresent:
             return {**lease_manager.snapshot(), "lastError": "PHYSICAL_WRENCH_CONFIRMATION_REQUIRED"}
@@ -132,7 +138,7 @@ def create_app(
             target_kind=body.targetKind,
         )
 
-    @app.post("/lease/release")
+    @app.post("/lease/release", dependencies=[Depends(require_allowed_origin)])
     async def release(body: LeaseReleaseBody) -> dict[str, object]:
         return await lease_manager.release(
             body.reason,

@@ -586,25 +586,31 @@ def test_loopback_api_health_and_disarm_contract(tmp_path: Path) -> None:
     lease_manager = ConnectionLeaseManager(config, bindings)
     app = create_app(config, bindings, QueueStore(config.queue_path), lease_manager)
 
-    async def request_loopback_api() -> tuple[httpx.Response, httpx.Response]:
+    disarm_body = {
+        "sessionId": "session",
+        "currentTemplateBoltId": None,
+        "confirmationId": None,
+        "torqueWrenchProfileId": None,
+    }
+
+    async def request_loopback_api() -> tuple[httpx.Response, httpx.Response, httpx.Response]:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://agent.test") as client:
             health_response = await client.get(
                 "/health",
                 headers={"origin": "http://127.0.0.1:3000"},
             )
+            no_origin_response = await client.post("/heartbeat", json=disarm_body)
             disarm_response = await client.post(
                 "/heartbeat",
-                json={
-                    "sessionId": "session",
-                    "currentTemplateBoltId": None,
-                    "confirmationId": None,
-                    "torqueWrenchProfileId": None,
-                },
+                headers={"origin": "http://127.0.0.1:3000"},
+                json=disarm_body,
             )
-        return health_response, disarm_response
+        return health_response, no_origin_response, disarm_response
 
-    health, disarm = asyncio.run(request_loopback_api())
+    health, no_origin, disarm = asyncio.run(request_loopback_api())
+
+    assert no_origin.status_code == 403
 
     assert health.status_code == 200
     assert health.json()["bound"] is True

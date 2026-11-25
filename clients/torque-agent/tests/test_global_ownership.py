@@ -213,6 +213,7 @@ def test_loopback_status_exposes_self_token_but_never_other_owner_token(tmp_path
                     "torqueWrenchProfileId": "profile",
                     "requestId": "request-1",
                 },
+                headers={"origin": "http://127.0.0.1:3000"},
             )
             response = await client.get("/health")
         return response.json()
@@ -407,3 +408,103 @@ def test_recovery_preserves_takeover_connect_after_guard_delay(tmp_path: Path) -
     manager._reconcile_activation()
     assert manager.active_event.is_set()
     assert manager.intent_path.exists()
+
+
+def _acquire_kwargs(request_id: str) -> dict[str, Any]:
+    return {
+        "profile_id": "profile",
+        "session_id": "session",
+        "current_template_bolt_id": "bolt",
+        "confirmation_id": "confirmation",
+        "request_id": request_id,
+    }
+
+
+def test_rejected_or_failed_acquire_keeps_the_current_local_lease(tmp_path: Path) -> None:
+    fake_api = FakeLeaseApi(
+        [
+            (200, {"lease": _lease_body()}),
+            (409, {"errorCode": "TORQUE_WRENCH_LEASE_HELD"}),
+            httpx.ConnectTimeout("timeout"),
+        ]
+    )
+    manager = ConnectionLeaseManager(_config(tmp_path), BindingStore(8), api=fake_api)
+    asyncio.run(manager.acquire(**_acquire_kwargs("request-1")))
+    _arm_guard(manager, tmp_path)
+
+    for request_id, takeover in (("request-2", False), ("request-3", True)):
+        asyncio.run(manager.acquire(**_acquire_kwargs(request_id), takeover=takeover))
+        binding = manager._bindings.current()
+        assert binding is not None
+        assert binding.connection_lease_id == "lease-1"
+        assert manager.snapshot()["leaseOwned"] is True
+        assert manager.active_event.is_set()
+        assert manager.intent_path.exists()
+        assert manager._hid_paths == {"/dev/input/by-id/wrench"}
+
+
+def test_approved_acquire_replaces_the_current_local_lease(tmp_path: Path) -> None:
+    fake_api = FakeLeaseApi(
+        [
+            (200, {"lease": _lease_body()}),
+            (200, {"lease": _lease_body(lease_id="lease-2", generation=2)}),
+        ]
+    )
+    manager = ConnectionLeaseManager(_config(tmp_path), BindingStore(8), api=fake_api)
+    asyncio.run(manager.acquire(**_acquire_kwargs("request-1")))
+    _arm_guard(manager, tmp_path)
+
+    asyncio.run(manager.acquire(**_acquire_kwargs("request-2")))
+
+    binding = manager._bindings.current()
+    assert binding is not None
+    assert (binding.connection_lease_id, binding.connection_lease_generation) == ("lease-2", 2)
+    assert manager.snapshot()["leaseOwned"] is True
+    assert manager._hid_paths == set()
+
+
+def test_lease_posts_require_an_allowed_origin(tmp_path: Path) -> None:
+    fake_api = FakeLeaseApi([(200, {"lease": _lease_body()})])
+    config = _config(tmp_path)
+    manager = ConnectionLeaseManager(config, BindingStore(8), api=fake_api)
+    app = create_app(config, BindingStore(8), QueueStore(config.queue_path), manager)
+    acquire_body = {
+        "sessionId": "session",
+        "currentTemplateBoltId": "bolt",
+        "confirmationId": "confirmation",
+        "torqueWrenchProfileId": "profile",
+        "requestId": "request-1",
+    }
+    takeover_body = {**acquire_body, "physicalWrenchPresent": True, "reason": "test"}
+    release_body = {
+        "targetKind": "assembly",
+        "sessionId": "session",
+        "torqueWrenchProfileId": "profile",
+        "leaseId": "lease-1",
+        "generation": 1,
+    }
+    bodies = (
+        ("/lease/acquire", acquire_body),
+        ("/lease/takeover", takeover_body),
+        ("/lease/release", release_body),
+    )
+
+    async def post_all() -> tuple[list[int], list[int], int]:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://agent.test") as client:
+            no_origin = [(await client.post(path, json=body)).status_code for path, body in bodies]
+            other_origin = [
+                (await client.post(path, json=body, headers={"origin": "https://evil.example"})).status_code
+                for path, body in bodies
+            ]
+            assert fake_api.calls == []
+            allowed = await client.post(
+                "/lease/acquire", json=acquire_body, headers={"origin": "http://127.0.0.1:3000"}
+            )
+        return no_origin, other_origin, allowed.status_code
+
+    no_origin, other_origin, allowed = asyncio.run(post_all())
+    assert no_origin == [403, 403, 403]
+    assert other_origin == [403, 403, 403]
+    assert allowed == 200
+    assert len(fake_api.calls) == 1

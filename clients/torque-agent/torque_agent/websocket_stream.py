@@ -10,6 +10,10 @@ from .delivery import DeliveryNotifier, TorqueRecordCommitted
 LOGGER = logging.getLogger("torque_agent.stream")
 
 
+def origin_allowed(origin: str | None, allowed_origins: frozenset[str] | tuple[str, ...]) -> bool:
+    return origin is not None and origin in allowed_origins
+
+
 class WebSocketDeliveryNotifier(DeliveryNotifier):
     SEND_TIMEOUT_SECONDS = 0.25
 
@@ -18,7 +22,7 @@ class WebSocketDeliveryNotifier(DeliveryNotifier):
         self._connections: set[WebSocket] = set()
 
     def origin_allowed(self, origin: str | None) -> bool:
-        return origin is not None and origin in self._allowed_origins
+        return origin_allowed(origin, self._allowed_origins)
 
     async def accept(self, websocket: WebSocket) -> bool:
         if not self.origin_allowed(websocket.headers.get("origin")):
