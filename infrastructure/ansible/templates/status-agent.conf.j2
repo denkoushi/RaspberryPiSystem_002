@@ -1,3 +1,4 @@
+{# このファイルを変えると、main は Pi4 の全エージェント(nfc・barcode・torque)の部品を出す(scripts/ci/classify_changes.py の PI4_KIOSK_RELEASE_FILES)。 #}
 # API のベースURL (必須)
 API_BASE_URL="{{ status_agent_api_base_url | default((api_base_url | default('http://127.0.0.1:8080/api'))) }}"
 
