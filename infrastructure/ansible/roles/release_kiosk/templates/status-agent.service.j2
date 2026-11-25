@@ -6,6 +6,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 Environment=STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf
+ExecStartPre=-+/bin/sh -c 'umask 022; v=$$(/usr/bin/vcgencmd get_throttled) && printf "%%s %%s" "$$(date +%%s)" "$$v" > /run/raspi-status-agent-throttled.tmp && mv -f /run/raspi-status-agent-throttled.tmp /run/raspi-status-agent-throttled'
 ExecStart=/usr/bin/env python3 /usr/local/lib/raspi-status-agent/status-agent.py
 User={{ status_agent_user }}
 Group={{ status_agent_user }}

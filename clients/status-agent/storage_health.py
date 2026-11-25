@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
@@ -374,24 +375,29 @@ def read_kernel_log(
     return "", "journalctl/dmesg"
 
 
-FIRMWARE_THROTTLED_PATHS = (
-    Path("/sys/devices/platform/soc/soc:firmware/get_throttled"),
-    Path("/sys/devices/platform/soc:firmware/get_throttled"),
-)
+THROTTLED_SNAPSHOT_PATH = Path("/run/raspi-status-agent-throttled")
+THROTTLED_SNAPSHOT_MAX_AGE_SECONDS = 600
+
+
+def read_throttled_snapshot(path: Path = THROTTLED_SNAPSHOT_PATH, now: Optional[float] = None) -> Optional[str]:
+    try:
+        written_at, value = path.read_text(encoding="ascii").split()
+        age = (time.time() if now is None else now) - int(written_at)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    if -60 <= age <= THROTTLED_SNAPSHOT_MAX_AGE_SECONDS and re.fullmatch(r"throttled=0x[0-9a-fA-F]+", value):
+        return value
+    return None
 
 
 def read_throttled(
     runner: CommandRunner = run_command,
     timeout: float = COMMAND_TIMEOUT_SECONDS,
-    firmware_paths: Sequence[Path] = FIRMWARE_THROTTLED_PATHS,
+    snapshot_path: Path = THROTTLED_SNAPSHOT_PATH,
 ) -> Optional[str]:
-    for path in firmware_paths:
-        try:
-            value = path.read_text(encoding="ascii").strip()
-        except (OSError, UnicodeDecodeError):
-            continue
-        if re.fullmatch(r"[0-9a-fA-F]+", value):
-            return f"throttled=0x{value}"
+    snapshot = read_throttled_snapshot(snapshot_path)
+    if snapshot:
+        return snapshot
     result = runner(["vcgencmd", "get_throttled"], timeout)
     if result.returncode != 0:
         return None

@@ -65,6 +65,8 @@ class StatusAgentUnitTest(unittest.TestCase):
                 self.assertIn("raspi-status-agent" if name == "pi3" else "status_agent_user", service["User"])
                 self.assertEqual(service["SupplementaryGroups"], "systemd-journal video")
                 self.assertEqual(service["StateDirectory"], "raspi-os-security-update/requests")
+                self.assertTrue(service["ExecStartPre"].startswith("-+/bin/sh -c 'umask 022; v=$$(/usr/bin/vcgencmd get_throttled) && "))
+                self.assertTrue(service["ExecStartPre"].endswith(" /run/raspi-status-agent-throttled'"))
         self.assertEqual(service_section(pi3)["RuntimeDirectory"], "raspi-status-agent")
         self.assertEqual(service_section(pi3)["RuntimeDirectoryPreserve"], "yes")
 
