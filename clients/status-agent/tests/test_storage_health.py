@@ -177,6 +177,18 @@ class StorageHealthTest(unittest.TestCase):
             self.assertEqual(storage_health.read_throttled(vcgencmd_runner, snapshot_path=path), "throttled=0x0")
             self.assertEqual(storage_health.read_throttled(vcgencmd_runner, snapshot_path=Path(temp_dir) / "missing"), "throttled=0x0")
 
+    def test_root_mount_uses_host_mounts_not_sandboxed_view(self) -> None:
+        self.assertEqual(storage_health.collect_storage_health_logs.__kwdefaults__["mounts_path"], Path("/proc/1/mounts"))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            logs = storage_health.collect_storage_health_logs(
+                {},
+                runner=lambda args, timeout: storage_health.CommandResult(tuple(args), 1, "", ""),
+                mounts_path=Path(temp_dir) / "missing",
+                disk_path=temp_dir,
+                sys_root=Path(temp_dir),
+            )
+        self.assertIsInstance(logs, list)
+
     def test_command_failures_do_not_raise(self) -> None:
         def failing_runner(args: Sequence[str], timeout: float) -> storage_health.CommandResult:
             return storage_health.CommandResult(tuple(args), 127, "", "not available")

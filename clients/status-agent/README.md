@@ -88,7 +88,7 @@ journalctl -u status-agent.service -n 30 -f
 | CPU 温度 | `/sys/class/thermal/thermal_zone0/temp` が存在すれば読み取り |
 | アップタイム | `/proc/uptime` |
 | Last Boot | `uptimeSeconds` を現在時刻から減算して ISO8601 形式で送信 |
-| SDヘルスログ | 有効時のみ既定1時間ごとに `/proc/mounts`, `/`, kernel log, `vcgencmd get_throttled` を確認 |
+| SDヘルスログ | 有効時のみ既定1時間ごとに `/proc/1/mounts`, `/`, kernel log, `vcgencmd get_throttled` を確認 |
 
 ### SDカード予防保全ログ
 

@@ -734,11 +734,16 @@ def mark_wear_logs_delivered(
     save_wear_state(path, state)
 
 
+# systemd's ProtectSystem=strict remounts / read-only inside the service's own
+# mount namespace, so read the host's view through PID 1.
+HOST_MOUNTS_PATH = Path("/proc/1/mounts")
+
+
 def collect_storage_health_logs(
     config: Mapping[str, str],
     *,
     runner: CommandRunner = run_command,
-    mounts_path: Path = Path("/proc/mounts"),
+    mounts_path: Path = HOST_MOUNTS_PATH,
     disk_path: str = "/",
     observed_at: Optional[dt.datetime] = None,
     sys_root: Path = Path("/sys"),
@@ -750,11 +755,13 @@ def collect_storage_health_logs(
     logs: List[LogEntry] = []
 
     mounts_text = ""
-    try:
-        mounts_text = mounts_path.read_text(encoding="utf-8")
+    for path in (mounts_path, Path("/proc/mounts")):
+        try:
+            mounts_text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
         logs.extend(evaluate_root_mount(mounts_text, observed))
-    except OSError:
-        pass
+        break
 
     logs.extend(evaluate_ext4_errors(mounts_text, sys_root, observed))
 
