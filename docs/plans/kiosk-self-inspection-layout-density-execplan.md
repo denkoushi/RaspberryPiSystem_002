@@ -65,7 +65,7 @@ Operators must be able to see the measurement-point list while entering values a
   Evidence: read-only Pi5-to-Pi3 diagnostics showed no OOM kill, thermal throttling, or disk pressure, isolating the risk to constrained memory and network/TLS latency rather than hardware failure.
 - Observation: `device_type_defaults.pi3.stop_lightdm=true` was only effective in full provisioning; the release-only Signage role never registered `lightdm_stopped`, so its existing post-task restoration branch was unreachable.
   Evidence: `prestage-signage-runtime.yml` is forbidden in release-only mode, while `roles/signage/tasks/main.yml` stopped only Signage units before this remediation.
-- Observation: The Signage watchdog ran as `signageras3` but invoked privileged `systemctl` commands without `sudo`, producing repeated interactive-authentication failures.
+- Observation: The Signage watchdog ran as `<raspberrypi3 のユーザー名>` but invoked privileged `systemctl` commands without `sudo`, producing repeated interactive-authentication failures.
   Evidence: Pi3 journal entries repeatedly reported `Interactive authentication required`; the installed script matched the repository template and exact NOPASSWD commands are available through inventory policy.
 - Observation: Intermittent `status-agent` exit status 2 came from TLS handshake/read timeouts, not malformed configuration.
   Evidence: `/var/log/raspi-status-agent.log` recorded handshake and read timeouts while later timer invocations succeeded with the same redacted config shape.

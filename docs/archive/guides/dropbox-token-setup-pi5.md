@@ -36,7 +36,7 @@ Macのターミナルから以下のコマンドを実行：
 
 ```bash
 # Pi5にSSH接続して.envファイルを編集
-ssh denkon5sd02@<Pi5 の Tailscale IP>
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # .envファイルの場所に移動
 cd /opt/RaspberryPiSystem_002/infrastructure/docker
@@ -68,27 +68,27 @@ cd /opt/RaspberryPiSystem_002
 docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 
 # または、Macのターミナルから実行
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
 ```
 
 ### Step 4: 設定の確認
 
 ```bash
 # コンテナ内の環境変数を確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api env | grep DROPBOX"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api env | grep DROPBOX"
 
 # 設定ファイルでの環境変数参照を確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api cat /app/config/backup.json | python3 -m json.tool | grep -A 3 accessToken"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api cat /app/config/backup.json | python3 -m json.tool | grep -A 3 accessToken"
 ```
 
 ### Step 5: Dropbox連携テスト
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"<password>\"}' | python3 -c 'import sys, json; d=json.load(sys.stdin); print(d.get(\"accessToken\", \"\"))'")
+TOKEN=$(ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"<password>\"}' | python3 -c 'import sys, json; d=json.load(sys.stdin); print(d.get(\"accessToken\", \"\"))'")
 
 # Dropboxストレージプロバイダーでバックアップを実行
-ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -s -X POST http://localhost:8080/api/backup -H 'Content-Type: application/json' -H \"Authorization: Bearer $TOKEN\" -d '{\"kind\":\"csv\",\"source\":\"employees\",\"storage\":{\"provider\":\"dropbox\"}}' | python3 -m json.tool"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "curl -s -X POST http://localhost:8080/api/backup -H 'Content-Type: application/json' -H \"Authorization: Bearer $TOKEN\" -d '{\"kind\":\"csv\",\"source\":\"employees\",\"storage\":{\"provider\":\"dropbox\"}}' | python3 -m json.tool"
 ```
 
 ## ワンライナーコマンド（Macのターミナルから実行）
@@ -100,10 +100,10 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -s -X POST http://localhost:8080/ap
 DROPBOX_TOKEN="sl.あなたのトークン"
 
 # Pi5の.envファイルを更新
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002/infrastructure/docker && sed -i 's/DROPBOX_ACCESS_TOKEN=.*/DROPBOX_ACCESS_TOKEN=$DROPBOX_TOKEN/' .env && grep DROPBOX_ACCESS_TOKEN .env"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002/infrastructure/docker && sed -i 's/DROPBOX_ACCESS_TOKEN=.*/DROPBOX_ACCESS_TOKEN=$DROPBOX_TOKEN/' .env && grep DROPBOX_ACCESS_TOKEN .env"
 
 # APIコンテナを再起動
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
 ```
 
 ## トラブルシューティング

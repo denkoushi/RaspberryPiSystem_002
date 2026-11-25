@@ -23,7 +23,7 @@
 
 ```bash
 # Mac または Pi5 操作端末
-ssh denkon5sd02@<Pi5 の Tailscale IP>
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # Tailscale
 tailscale ping -c 2 <raspberrypi3 の Tailscale IP>
@@ -94,7 +94,7 @@ ls -lh /run/signage/current.jpg
 ノート PC が **`192.168.128.x`** にいる場合:
 
 ```bash
-ssh signageras3@<raspberrypi3 の LAN IP>
+ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の LAN IP>
 # 以降は 3.2 と同じ
 ```
 
@@ -105,8 +105,8 @@ ssh signageras3@<raspberrypi3 の LAN IP>
 SSH が通る場合:
 
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP>
-ssh signageras3@<raspberrypi3 の Tailscale IP>
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
+ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP>
 
 sudo /usr/local/bin/signage-update.sh
 sudo systemctl restart signage-lite.service

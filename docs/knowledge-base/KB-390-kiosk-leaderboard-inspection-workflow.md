@@ -137,7 +137,7 @@ This section preserves the original 2026-06-15 workflow and print layout contrac
 **Standard command**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh main \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```

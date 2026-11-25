@@ -266,7 +266,7 @@ ssh "$SSH_TARGET" "cd /opt/RaspberryPiSystem_002 && \
 **使用方法**:
 ```bash
 # Macから実行
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の LAN IP（自宅）>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の LAN IP（自宅）>"
 ./scripts/update-all-clients.sh
 ```
 
@@ -578,7 +578,7 @@ apps/web/src/pages/admin/clients/
 1. **Mac上でコマンド実行**:
    ```bash
    # Macのターミナルで実行
-   ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "cd /opt/RaspberryPiSystem_002 && \
+   ssh <Pi5 のユーザー名>@<Pi5 の LAN IP（自宅）> "cd /opt/RaspberryPiSystem_002 && \
      ansible-playbook -i infrastructure/ansible/inventory.yml \
      infrastructure/ansible/playbooks/update-clients.yml"
    ```
@@ -595,13 +595,13 @@ apps/web/src/pages/admin/clients/
 **従来の手動更新フロー（各端末で個別に実行）**:
 ```bash
 # Raspberry Pi 4に接続
-ssh tools03@<IP アドレス>
+ssh <raspberrypi4 のユーザー名>@<IP アドレス>
 cd /opt/RaspberryPiSystem_002
 git pull origin main  # ← 手動で実行
 sudo systemctl restart kiosk-browser.service  # ← 手動で実行
 
 # Raspberry Pi 3に接続
-ssh signageras3@<raspberrypi3 の LAN IP>
+ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の LAN IP>
 cd /opt/RaspberryPiSystem_002
 git pull origin main  # ← 手動で実行
 sudo systemctl restart signage-lite.service  # ← 手動で実行
@@ -611,7 +611,7 @@ sudo systemctl restart signage-lite.service  # ← 手動で実行
 **Ansibleを使った自動更新フロー（Macから1コマンド）**:
 ```bash
 # Macから実行（1コマンドで全端末更新）
-ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "cd /opt/RaspberryPiSystem_002 && \
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP（自宅）> "cd /opt/RaspberryPiSystem_002 && \
   ansible-playbook -i infrastructure/ansible/inventory.yml \
   infrastructure/ansible/playbooks/update-clients.yml"
 # → 全端末が自動的に更新される（git pull、サービス再起動も自動）
@@ -631,10 +631,10 @@ ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "cd /opt/RaspberryPiSystem_002 && \
          hosts:
            raspberrypi4:
              ansible_host: <IP アドレス>
-             ansible_user: tools03
+             ansible_user: <raspberrypi4 のユーザー名>
            raspberrypi3:
              ansible_host: <raspberrypi3 の LAN IP>
-             ansible_user: signageras3
+             ansible_user: <raspberrypi3 のユーザー名>
        # 将来的にはグループ分けも可能
        # kiosk_clients:
        #   hosts:
@@ -1023,7 +1023,7 @@ ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "cd /opt/RaspberryPiSystem_002 && \
 
 ```bash
 # Macから1コマンドで全端末を更新
-ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "cd /opt/RaspberryPiSystem_002 && \
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP（自宅）> "cd /opt/RaspberryPiSystem_002 && \
   ansible-playbook -i infrastructure/ansible/inventory.yml \
   infrastructure/ansible/playbooks/update-clients.yml"
 ```

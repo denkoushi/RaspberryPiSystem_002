@@ -238,7 +238,7 @@ Pi5 503/504 sample:
 
 ### 本番デプロイ（Detach Run ID・`ansible-update-` 接頭辞）
 
-**標準**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/leaderboard-continue-delta-safe infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+**標準**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/leaderboard-continue-delta-safe infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
 | 段階 | ホスト | Detach Run ID | 備考 |
 | --- | --- | --- | --- |
@@ -305,7 +305,7 @@ Pi5 503/504 sample:
 | サマリ | **`Git: changed`**・Docker 再起動 **`ok`**・リモート **`exit 0`** |
 | Pi4 / Pi3 | **`no hosts matched`**（Pi4 未展開は **意図的**） |
 
-**標準コマンド（記録）**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/leaderboard-board-initial-10-continue-40 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+**標準コマンド（記録）**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/leaderboard-board-initial-10-continue-40 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
 
 ### 実機検証
 
@@ -431,7 +431,7 @@ docker stop postgres-test-local && docker rm postgres-test-local
 ### 本番反映（2026-05-19 · **`raspberrypi5` のみ**）
 
 - **対象**: **`raspberrypi5` のみ**（**API のみ**·キオスク Pi4 は **Pi5 API** を参照するため **Pi4 順次不要**）。**Pi3**: play **`no hosts matched`**（未適用で正）。
-- **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh perf/leaderboard-board-continue-reuse-totals infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+- **コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh perf/leaderboard-board-continue-reuse-totals infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 - **Detach Run ID**: **`20260519-192007-12328`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit 0`**·ローカル **`--follow` 約 1030s**·サマリ **`Git: changed`**·**Docker 再起動 `ok`**·**`prisma migrate deploy` OK**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **81s**）。
 - **実機（現場）**: 順位ボード **動作 OK**（全スロット行の完走・表示同値）（**ユーザー確認 2026-05-19**）。
@@ -492,7 +492,7 @@ sequenceDiagram
 
 ### 本番デプロイ（2026-05-19 · Pi5→Pi4×4 · 完了）
 
-**標準**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-deferred-decorations-fast-initial infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。**1 台ずつ順次**。
+**標準**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-deferred-decorations-fast-initial infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。**1 台ずつ順次**。
 
 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
 | --- | --- | --- | --- |
@@ -597,7 +597,7 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 | 初回 | **`20260519-203723-29020`** | **`072054f9`** | **`failed=0`**·現場 **真っ白画面** |
 | fix 再デプロイ | **`20260519-205437-31528`** | **`3ae93221`** | **`failed=0`**·Mac/Pi5 **表示 OK** |
 
-- **標準**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **標準**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
 - **Pi4×4**: **未デプロイ**（IDB は **各ブラウザローカル** — Pi4 実機効果には **Pi4 Web 更新が必要**）
 - **Pi3**: **`no hosts matched`**（対象外）
 
@@ -647,7 +647,7 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 
 **方針**: Phase 1 と同型で **Pi5 先行 → Pi4 キオスク 4 台順次**（**1 台ずつ `--limit`**）。**Web のみ**·API 不変。
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase2-swr infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+**標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase2-swr infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
 | ホスト | 現場名 | Detach Run ID | 備考 |
 | --- | --- | --- | --- |
@@ -714,7 +714,7 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 
 **方針**: ユーザー指定どおり **`raspberrypi5` → `raspi4-kensaku-stonebase01` のみ**（**1 台ずつ `--limit`**）。**Web のみ**·API 不変·**新規マイグレーションなし**。
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-cache-120s-swr-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+**標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-cache-120s-swr-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
 | ホスト | 現場名 | Detach Run ID | PLAY RECAP | 備考 |
 | --- | --- | --- | --- | --- |
@@ -799,7 +799,7 @@ pnpm --filter @raspi-system/web build
 
 **方針**: [deployment.md §操作即表示](../archive/deployments/2026-05.md#kiosk-leaderboard-mutation-instant-display-2026-05-20) と同型。**1 台ずつ `--limit`**·**Pi3 は `no hosts matched`**。
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-mutation-instant-display infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+**標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-mutation-instant-display infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
 | --- | --- | --- | --- |
@@ -896,7 +896,7 @@ pnpm --filter @raspi-system/web build
 
 **方針**: Phase 2 と同型で **Pi5 先行 → Pi4 キオスク順次**（**1 台ずつ `--limit`**）。**Web のみ**·API 不変·**新規マイグレーションなし**。
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-seiban-or-client-cache-filter infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+**標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-seiban-or-client-cache-filter infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
 | ホスト | 現場名 | Detach Run ID | PLAY RECAP | 備考 |
 | --- | --- | --- | --- | --- |
@@ -1018,7 +1018,7 @@ pnpm --filter @raspi-system/web build
 
 **方針**: 標準 **`update-all-clients.sh`**·**1 台ずつ `--limit`**·**Web のみ**（Pi3 **`no hosts matched`** で正）。
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh fix/kiosk-leaderboard-footer-chips-terminal-cache infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+**標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh fix/kiosk-leaderboard-footer-chips-terminal-cache infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
 | ホスト | 現場名 | Detach Run ID | PLAY RECAP | 備考 |
 | --- | --- | --- | --- | --- |
@@ -1234,7 +1234,7 @@ pnpm --filter @raspi-system/web build
 
 **方針**: 標準 **`update-all-clients.sh`**·**1 台ずつ `--limit`**·**Web のみ**（キオスク体感は **Pi4 Web** が `pageSize` を送るため **Pi4 反映必須**）。**Pi5 API** は chunk 受け入れ済みのため **Web 変更単体でも整合**·**`12c94486`** 反映時は Pi5 で **api イメージ再ビルド**あり。
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-continue-chunk-80 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+**標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-continue-chunk-80 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
 | ホスト | 現場名 | Detach Run ID | 備考 |
 | --- | --- | --- | --- |
@@ -1326,7 +1326,7 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-
 
 **方針**: 標準 **`update-all-clients.sh`**·**1 台ずつ `--limit`**·**Web のみ**（キオスク体感は **Pi4 Web** が `pageSize` を送るため **Pi4 反映必須**）。**デプロイ前**は **`git status` クリーン**（未コミットでスクリプト拒否 — **`git stash push -u`** 可）。
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-continue-chunk-160 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+**標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-continue-chunk-160 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
 
 | ホスト | Detach Run ID | 備考 |
 | --- | --- | --- |
@@ -1622,7 +1622,7 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 
 ### 本番デプロイ（2026-06-16 · Pi5→Pi4×4 · 完了）
 
-**標準**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/leaderboard-decoration-batches infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ順次**）。**Pi3 / Zero2W は対象外**（リソース僅少のため専用手順未実施で正）。
+**標準**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feat/leaderboard-decoration-batches infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ順次**）。**Pi3 / Zero2W は対象外**（リソース僅少のため専用手順未実施で正）。
 
 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
 | --- | --- | --- | --- |

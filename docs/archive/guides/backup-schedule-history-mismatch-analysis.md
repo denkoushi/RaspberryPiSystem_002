@@ -70,8 +70,8 @@
 
 **実行されていないターゲット**（過去7日間）:
 - `client-directory`: `raspberrypi3:/var/lib/tailscale`（スケジュール: 毎週日曜2時）
-- `client-directory`: `raspberrypi4:/home/tools03/.ssh`（スケジュール: 毎週日曜2時）
-- `client-directory`: `raspberrypi3:/home/signageras3/.ssh`（スケジュール: 毎週日曜2時）
+- `client-directory`: `raspberrypi4:/home/<raspberrypi4 のユーザー名>/.ssh`（スケジュール: 毎週日曜2時）
+- `client-directory`: `raspberrypi3:/home/<raspberrypi3 のユーザー名>/.ssh`（スケジュール: 毎週日曜2時）
 - `file`: `/app/config/backup.json`（スケジュール: 毎日4時）
 - `directory`: `/app/host/certs`（スケジュール: 毎週日曜2時）
 - `directory`: `/app/storage/pdfs`（スケジュール: 毎日6時）

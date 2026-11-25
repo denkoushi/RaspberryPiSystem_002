@@ -989,7 +989,7 @@ update-frequency: medium
 
 **Context**:
 
-- キオスク端末: inventory **`raspberrypi4`** · LAN **`<raspberrypi4 の LAN IP>`**（`tools03`）· Tailscale **`<raspberrypi4 の Tailscale IP>`**（DNS **`raspberrypi-1`** · `tag:kiosk`）
+- キオスク端末: inventory **`raspberrypi4`** · LAN **`<raspberrypi4 の LAN IP>`**（`<raspberrypi4 のユーザー名>`）· Tailscale **`<raspberrypi4 の Tailscale IP>`**（DNS **`raspberrypi-1`** · `tag:kiosk`）
 - Pi5 API/Web: **`<Pi5 の Tailscale IP>`**（`tag:server`）
 - `/usr/local/bin/kiosk-launch.sh` の正本 URL は **`https://<Pi5 の Tailscale IP>/kiosk?clientKey=client-key-raspberrypi4-kiosk1`**（Ansible テンプレ `kiosk-launch.sh.j2` と同型）
 - 同一日に Mac **`tag:admin` 欠落**（[KB-442](#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）と Pi5 **`NeedsLogin` / node key expired**（下記 [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）も発生 — 切り分けを混同しないこと
@@ -1025,8 +1025,8 @@ update-frequency: medium
 
 ```bash
 # Pi5 経由 LAN SSH（例）
-ssh denkon5sd02@<Pi5 の LAN IP>
-ssh tools03@<raspberrypi4 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
+ssh <raspberrypi4 のユーザー名>@<raspberrypi4 の LAN IP>
 
 # 1) 再認証（未ログイン時は URL を表示して管理画面で承認）
 sudo tailscale up --advertise-tags=tag:kiosk
@@ -1107,7 +1107,7 @@ sudo systemctl restart kiosk-browser.service
 **Fix**:
 
 ```bash
-ssh denkon5sd02@<Pi5 の LAN IP>   # または LAN
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>   # または LAN
 sudo tailscale up --advertise-tags=tag:server
 # 表示された https://login.tailscale.com/a/... を管理画面で承認 → Success
 tailscale status | head -3

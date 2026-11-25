@@ -721,10 +721,10 @@ echo "$VERIFY_RESULT" | jq '.'
 2. **実機検証の実行**（MacからPi5へSSH接続）:
 ```bash
 # オフィスから接続する場合（ローカルIP使用）
-ssh -o StrictHostKeyChecking=no denkon5sd02@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && scripts/deploy/tests/test-change-detector-real.sh"
+ssh -o StrictHostKeyChecking=no <Pi5 のユーザー名>@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && scripts/deploy/tests/test-change-detector-real.sh"
 
 # 自宅から接続する場合（Tailscale IP使用）
-ssh -o StrictHostKeyChecking=no denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && scripts/deploy/tests/test-change-detector-real.sh"
+ssh -o StrictHostKeyChecking=no <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && scripts/deploy/tests/test-change-detector-real.sh"
 ```
 
 3. **Pi5上で直接実行する場合**:
@@ -1007,8 +1007,8 @@ Tailscale経由でリモートアクセスし、全検証項目を確認:
 | APIヘルス | Pi5 | ✅ 200 OK | `/api/system/health` |
 | キオスク用API | Pi5 | ✅ 200 OK | `/api/tools/loans/active` (x-client-key付き) |
 | サイネージ用API | Pi5 | ✅ 200 OK | `/api/signage/content` |
-| kiosk-browser.service | Pi4 | ✅ active | tools03ユーザーで確認 |
-| status-agent.timer | Pi4 | ✅ active | tools03ユーザーで確認 |
+| kiosk-browser.service | Pi4 | ✅ active | <raspberrypi4 のユーザー名>ユーザーで確認 |
+| status-agent.timer | Pi4 | ✅ active | <raspberrypi4 のユーザー名>ユーザーで確認 |
 | signage-lite.service | Pi3 | ✅ active | systemモードで確認 |
 | status-agent.timer | Pi3 | ✅ active | systemモードで確認 |
 
@@ -1166,7 +1166,7 @@ infrastructure/ansible/
 **手順**:
 ```bash
 # 1. Pi5にSSH接続
-ssh denkon5sd02@<Pi5 の LAN IP>  # またはTailscale IP
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>  # またはTailscale IP
 
 # 2. 設定変更・コード変更を検知・デプロイ実行
 cd /opt/RaspberryPiSystem_002
@@ -1766,7 +1766,7 @@ fi
   "deployments": [
     {
       "timestamp": "2025-12-06T10:00:00Z",
-      "user": "denkon5sd02",
+      "user": "<Pi5 のユーザー名>",
       "targets": ["server", "pi4_kiosk"],
       "result": "success",
       "duration_seconds": 450,
@@ -1778,7 +1778,7 @@ fi
     },
     {
       "timestamp": "2025-12-06T12:00:00Z",
-      "user": "denkon5sd02",
+      "user": "<Pi5 のユーザー名>",
       "targets": ["pi3_signage"],
       "result": "failure",
       "duration_seconds": 120,

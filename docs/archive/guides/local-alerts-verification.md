@@ -33,7 +33,7 @@ git push origin feature/production-deployment-management
 
 ```bash
 # Raspberry Pi 5にSSH接続
-ssh denkon5sd02@<Pi5 の LAN IP（自宅）>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP（自宅）>
 
 # プロジェクトディレクトリに移動
 cd /opt/RaspberryPiSystem_002
@@ -160,12 +160,12 @@ all:
 EOF
 
 # Ansible更新スクリプトを実行（失敗するはず）
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の LAN IP（自宅）>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の LAN IP（自宅）>"
 # inventory指定が必須（誤デプロイ防止）
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 
 # アラートファイルが生成されたか確認（Raspberry Pi 5で）
-ssh denkon5sd02@<Pi5 の LAN IP（自宅）> "ls -lt /opt/RaspberryPiSystem_002/alerts/ | head -5"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP（自宅）> "ls -lt /opt/RaspberryPiSystem_002/alerts/ | head -5"
 
 # inventory.ymlを元に戻す
 mv infrastructure/ansible/inventory.yml.backup infrastructure/ansible/inventory.yml

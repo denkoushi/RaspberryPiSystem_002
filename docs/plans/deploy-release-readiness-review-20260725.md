@@ -309,12 +309,12 @@ Run the complete safety validation before publishing:
 After required CI succeeds for the merged SHA, perform read-only production
 checks:
 
-    RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP> \
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       scripts/update-all-clients.sh main \
       infrastructure/ansible/inventory.yml \
       --limit raspberrypi5 --print-plan
 
-    RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP> \
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       scripts/update-all-clients.sh main \
       infrastructure/ansible/inventory.yml \
       --limit raspberrypi5 --preflight-only

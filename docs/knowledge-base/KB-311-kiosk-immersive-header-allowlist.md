@@ -101,7 +101,7 @@ category: knowledge-base
 
 - **ブランチ**: `feat/kiosk-bottom-center-header-reveal`（マージ代表 **`cbeb6bbc`**）
 - **標準**: [deployment.md §下端リビール](../archive/deployments/2026-05.md#kiosk-bottom-center-header-reveal-2026-05-22)
-- **`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`** · `update-all-clients.sh feat/kiosk-bottom-center-header-reveal infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）
+- **`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`** · `update-all-clients.sh feat/kiosk-bottom-center-header-reveal infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）
 
 | ホスト | Detach Run ID | PLAY RECAP |
 |--------|---------------|------------|

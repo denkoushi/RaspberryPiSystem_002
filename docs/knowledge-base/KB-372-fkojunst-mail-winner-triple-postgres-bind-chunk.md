@@ -54,7 +54,7 @@ category: knowledge-base
 ## 本番記録（2026-05-08）
 
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 playbook は **no hosts matched**（Pi3 専用手順 **不要**）
-- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh fix/fkojunst-mail-winner-stack-depth infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は引数 `main`**）
+- **標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh fix/fkojunst-mail-winner-stack-depth infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は引数 `main`**）
 - **最終 Detach Run ID**（接頭辞 `ansible-update-`）: **`20260508-230134-12773`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**）
 - **マイグレーション**: **新規なし**（`prisma migrate deploy` / `status` 成功）
 - **Pi5 本処理確認**: `ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard()` をコンテナ内で直接実行し、**`FKOJUNST_Status mail sync completed`**・**`external completion recalculated`**・**`RESULT=...`** を確認（**real 37.309s**）

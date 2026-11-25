@@ -38,7 +38,7 @@
 
 ```bash
 # Pi5で確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -E 'WebRTC routes registered|WEBRTC_ENABLED' | tail -5"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -E 'WebRTC routes registered|WEBRTC_ENABLED' | tail -5"
 ```
 
 期待される出力：
@@ -236,7 +236,7 @@ Pi3は通話対象外です。`/api/kiosk/call/targets` から除外されるた
 
 1. Pi5サーバーを一時停止：
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml stop api"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml stop api"
 ```
 
 2. Macのキオスク画面で以下を確認：
@@ -245,7 +245,7 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker 
 
 3. Pi5サーバーを再起動：
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml start api"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml start api"
 ```
 
 4. 自動再接続が行われることを確認
@@ -270,7 +270,7 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker 
 
 2. **APIログの確認**:
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api --since 10m | grep -E 'signaling|WebRTC|webrtc'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api --since 10m | grep -E 'signaling|WebRTC|webrtc'"
 ```
 
 3. **ブラウザのコンソールログ確認**:
@@ -377,7 +377,7 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 3. **ログで確認**:
 ```bash
 # APIログでping/pongを確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker logs --since 10m docker-api-1 2>&1 | grep -E 'ping|pong'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker logs --since 10m docker-api-1 2>&1 | grep -E 'ping|pong'"
 ```
 
 4. **詳細**: [KB-134](../knowledge-base/api.md#kb-134-websocket接続の5分タイムアウト問題とkeepalive対策)参照

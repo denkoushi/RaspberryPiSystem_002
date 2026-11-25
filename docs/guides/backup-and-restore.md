@@ -296,7 +296,7 @@ cp /opt/backups/api_env_20250101_020000.env /opt/RaspberryPiSystem_002/apps/api/
 
 ```bash
 tar -xzf certs_backup_YYYYMMDD_HHMMSS.tar.gz -C /opt/RaspberryPiSystem_002/
-sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/certs
+sudo chown -R <Pi5 のユーザー名>:<Pi5 のユーザー名> /opt/RaspberryPiSystem_002/certs
 ```
 
 展開後の反映手順は上と同じく未確定です（運用者に確認）。
@@ -415,7 +415,7 @@ cp /opt/backups/api_env_20250101_020000.env /opt/RaspberryPiSystem_002/apps/api/
 
 # 5. 証明書ファイルをリストア
 tar -xzf /opt/backups/certs_backup_20250101_020000.tar.gz -C /opt/RaspberryPiSystem_002/
-sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/certs
+sudo chown -R <Pi5 のユーザー名>:<Pi5 のユーザー名> /opt/RaspberryPiSystem_002/certs
 
 # 6. Dockerコンテナを起動
 docker compose -f infrastructure/docker/docker-compose.server.yml up -d

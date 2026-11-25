@@ -1041,7 +1041,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 1. 管理画面にログイン: `https://<Pi5 の Tailscale IP>/admin`
 2. Pi5側の環境変数を確認:
    ```bash
-   ssh denkon5sd02@<Pi5 の Tailscale IP>
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
    cd /opt/RaspberryPiSystem_002
    # Webhook URL は秘密情報なので値を表示せず、設定の有無だけを確認する
    scripts/server/run-in-active-api.sh sh -c 'test -n "$SLACK_KIOSK_SUPPORT_WEBHOOK_URL" && echo set || echo unset'

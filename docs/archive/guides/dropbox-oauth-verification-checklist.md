@@ -23,7 +23,7 @@
 
 - [ ] Pi5にSSH接続
   ```bash
-  ssh denkon5sd02@<Pi5 の Tailscale IP>
+  ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
   ```
 - [ ] `.env`ファイルを編集
   ```bash

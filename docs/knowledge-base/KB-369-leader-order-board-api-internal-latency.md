@@ -86,7 +86,7 @@ category: knowledge-base
 - **Scope**: API only（`buildMaterializedMaxProductNoWinnerInCondition` · **Prisma migration なし** · **Web 変更なし**）
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4 キオスク 4 台・Pi3 は **デプロイ不要**（Pi5 API 経由で順位ボード取得が復旧する）。
 - **リポジトリ**: ブランチ **`fix/leaderboard-winner-bind-limit`** · 代表 **`f4a93010`**
-- **標準手順**: [`deployment.md` §4161](../archive/deployments/legacy-operator-guide-through-2026-07.md#macから全クライアントを一括更新) · `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"` · `./scripts/update-all-clients.sh fix/leaderboard-winner-bind-limit infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **標準手順**: [`deployment.md` §4161](../archive/deployments/legacy-operator-guide-through-2026-07.md#macから全クライアントを一括更新) · `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"` · `./scripts/update-all-clients.sh fix/leaderboard-winner-bind-limit infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
 - **Detach Run ID**: **`20260618-081723-19946`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート **`exit 0`** · **`Git: changed`** · **`--follow` 約 393s**）
 - **Pi5 HEAD 確認**: `f4a93010 fix: avoid leaderboard winner bind limit`
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 0 / FAIL 1**（約 **79s**）。**FAIL** は `PUT global-rank/auto-generate` **HTTP 400**（本修正の materialized winner 経路とは無関係・**未調査**）。
@@ -172,7 +172,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **必須対象外**（play **no hosts matched**。**Pi3 専用手順不要**）。
 - **リポジトリ**: **`main`**: [PR #265](https://github.com/denkoushi/RaspberryPiSystem_002/pull/265) **squash**・**`ae5f938a`**（ブランチ **`fix/leaderboard-shell-winner-materialization`**・実装代表 **`b05baa5f`**）。
-- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·**`--detach --follow`**）。
+- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·**`--detach --follow`**）。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-190944-2060`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 888s**）。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 132s**・Tailscale）。
 - **トラブルシュート**: 体感が変わらない／挙動が期待と違う → Pi5 **`api` イメージ**が当該コミット以降か（detach ログ・`git log -1`）。**相関 winner と materialize の集合**は統合テストで一致を確認済み。
@@ -181,7 +181,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **本変更の必須デプロイ対象外**（inventory 上 **no hosts matched**）。
 - **リポジトリ**: ブランチ **`fix/leaderboard-internal-query-latency`**・代表コミット **`35629338`**（**`main` マージ後は `main` 先端**を正とする）。
-- **標準手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
+- **標準手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-103441-24679`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**）。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 80s**・Tailscale）。
 
@@ -189,7 +189,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **必須対象外**（play **no hosts matched**）。
 - **リポジトリ**: ブランチ **`feat/leaderboard-phased-fetch-2s`**・代表実装コミット **`cd751a2a`**（**`main` で squash マージされたら `main` 先端 SHA を正とする**）。
-- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
+- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-113443-32585`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 849s**）。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 74s**・Tailscale）。
 - **知見（装飾 hydrate の raw SQL）**: `Prisma.sql` の **`Prisma.join(array, ',')`** は **カンマ区切りの単一プレースホルダ**ではなく **断片連結**として解釈されるため、**`ARRAY[...]::uuid[]`** や **`IN (...)`** には **`Prisma.join` を 1 回だけ**渡す。**UUID 順序付け**は **`::text` 比較の `text[]` + `array_position`** が型安全。**Fkojunst 可視 SQL** は既存 leaderboard と同様、**連結済みフラグメントの先頭に余計な `AND` を付けない**（二重 AND になる）。
@@ -203,7 +203,7 @@ category: knowledge-base
   - **DB**: マイグレーション **`20260506170000_add_global_row_rank_csv_dashboard_row_id_index`**（`ProductionScheduleGlobalRowRank.csvDashboardRowId` 索引のみ・意味変更なし）。
   - **Web**: 段階取得 3 フックの **`staleTime` / `refetchOnWindowFocus: false`**・順位ボードページの **`useKioskProductionScheduleHistoryProgress({ enabled: scheduleEnabled })`**（表示内容は不変・再取得抑制のみ）。
 - **リポジトリ**: ブランチ **`feat/leaderboard-output-stable-speedup`**・代表コミット **`137e7e07`**（**`main` で squash マージ後は `main` 先端 SHA を正とする**）。
-- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
+- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260507-073532-249`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 739s**）。Ansible の **`Run prisma migrate deploy`** **成功**（索引マイグレーション適用）。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 27s**・Tailscale）。
 - **トラブルシュート**:
@@ -228,7 +228,7 @@ category: knowledge-base
   - **TTL** 付き **プロセス内メモリ** `LeaderboardShellSnapshotStore`・**世代トークン**でソースデータ更新時の失効。**continue は同一 snapshot 内を直列化**（ロック）。
   - **`snapshotExpired: true`** 時、Web は **shell/total を invalidate**（`useLeaderboardPhasedScheduleWithAutoAppend`）。
 - **リポジトリ**: [PR #269](https://github.com/denkoushi/RaspberryPiSystem_002/pull/269) **squash merge**・**`main` `fa3f3f2c`**（ブランチ **`fix/leaderboard-shell-snapshot`** は履歴用）。
-- **標準手順**: [`deployment.md` の snapshot 項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
+- **標準手順**: [`deployment.md` の snapshot 項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
 - **Detach Run ID**（`ansible-update-`）: **`20260507-163719-11899`**（Pi5）/ **`20260507-164825-22626`**（`raspberrypi4`）/ **`20260507-165243-2819`**（`raspi4-robodrill01`）/ **`20260507-165602-24775`**（`raspi4-fjv60-80`）/ **`20260507-165951-8928`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s** 規模・Tailscale）。
 - **トラブルシュート**:
@@ -244,7 +244,7 @@ category: knowledge-base
   - **Web**: [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) が **資源 CD ごと**に段階取得し、**装飾 POST はマージ後行 ID で 1 回**。ページ: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。
   - **検証**: Vitest [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx)。
 - **リポジトリ**: ブランチ **`feature/kiosk-leaderboard-card-scope`**・代表コミット **`30a664f1`**（**`main` マージ後は `origin/main` HEAD を正とする**）。
-- **標準手順**: [`deployment.md` のカード単位項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
+- **標準手順**: [`deployment.md` のカード単位項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
 - **Detach Run ID**（`ansible-update-`）: **`20260507-212820-17030`**（Pi5）/ **`20260507-213838-14511`**（`raspberrypi4`）/ **`20260507-214421-9979`**（`raspi4-robodrill01`）/ **`20260507-214913-28430`**（`raspi4-fjv60-80`）/ **`20260507-215416-19850`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 121s**・Tailscale）。
 - **トラブルシュート**:
@@ -256,7 +256,7 @@ category: knowledge-base
 - **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**Pi3 は対象外**。
 - **変更概要**: continue を **`snapshotId` + `cursor`** 主軸にし、**`excludeRowIds`** は後方互換のみ。shell に **`nextCursor` / `hasMore`**。slice 境界は [`leaderboard-shell-continue.slice.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-continue.slice.ts)。Web は cursor ループ・**`appendError`**・**`snapshotExpired` 時に decorations も invalidate**。
 - **リポジトリ**: [PR #270](https://github.com/denkoushi/RaspberryPiSystem_002/pull/270)（**squash マージ後は `main` 先端 SHA を正とする**）。実装ブランチ tip **`52b68c8c`**。
-- **標準手順**: [`deployment.md` の snapshot+cursor 項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
+- **標準手順**: [`deployment.md` の snapshot+cursor 項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・**`--detach --follow`**）。
 - **Detach Run ID**（`ansible-update-`）: **`20260507-190947-13634`**（Pi5）/ **`20260507-192208-14169`**（`raspberrypi4`）/ **`20260507-192734-3017`**（`raspi4-robodrill01`）/ **`20260507-193134-2805`**（`raspi4-fjv60-80`）/ **`20260507-193553-4333`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 104s**・Tailscale）。
 - **トラブルシュート**:
@@ -271,7 +271,7 @@ category: knowledge-base
   - **Web**: 資源カードごとの fan-out ループを撤去し、単一 hook が board 集約 API を主経路として使用。
   - **既存 phased API は維持**し、互換性を壊さない。
 - **リポジトリ**: ブランチ **`fix/leaderboard-shell-bounded-filler-fetch`**（マージ後は `main` を正本とする）。
-- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく `update-all-clients.sh`（`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`--detach --follow`）。
+- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく `update-all-clients.sh`（`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`--detach --follow`）。
 - **Detach Run ID**（`ansible-update-`）: **`20260508-175314-10578`**（Pi5）/ **`20260508-181440-11189`**（`raspberrypi4`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
 - **広域自動検証（途中）**: `./scripts/deploy/verify-phase12-real.sh` は **PASS 42 / WARN 0 / FAIL 1**（約 **77s**）。FAIL は **`deploy-status raspberrypi4` が `isMaintenance:true`** のため。
 - **API 計測（補助）**: `GET …/leaderboard-board?q=A&boardResourceCds=1,2&pageSize=160&responseProfile=leaderboard`（`x-client-key: client-key-raspberrypi4-kiosk1`）は **HTTP 200 / 5.43s・6.01s**（2 回）。この時の payload は **rows 0 件**で、重負荷データ条件の代表計測ではない。

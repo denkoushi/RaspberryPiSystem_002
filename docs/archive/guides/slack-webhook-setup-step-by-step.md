@@ -69,10 +69,10 @@
 2. **Pi5にSSH接続**
    ```bash
    # Tailscale経由の場合
-   ssh denkon5sd02@<Pi5 の Tailscale IP>
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
    
    # ローカルネットワーク経由の場合
-   ssh denkon5sd02@<Pi5 の LAN IP>
+   ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
    ```
 
 3. **接続が成功したことを確認**

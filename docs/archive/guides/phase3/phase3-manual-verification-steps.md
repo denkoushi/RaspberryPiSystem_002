@@ -32,7 +32,7 @@
 
 **注意**: パスワードが不明な場合は、データベースから確認できます：
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c \"SELECT username, role FROM \\\"User\\\" WHERE role = 'ADMIN';\""
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c \"SELECT username, role FROM \\\"User\\\" WHERE role = 'ADMIN';\""
 ```
 
 ---
@@ -121,7 +121,7 @@ curl -X GET 'http://localhost:8080/api/backup/history?status=COMPLETED&limit=10'
 
 1. Pi5にSSH接続：
    ```bash
-   ssh denkon5sd02@<Pi5 の Tailscale IP>
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
    ```
 
 2. `backup.json`を編集：

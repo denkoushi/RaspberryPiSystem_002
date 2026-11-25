@@ -59,7 +59,7 @@ update-frequency: medium
 - **トラブルシュート（本番）**:
   - **フッタがまだ一覧とズレる** → Pi5 **`api` イメージ**が **`c2e7438a` 以降（またはマージ後 `main`）**か、Detach サマリの **`Git: changed`** と **Docker 再起動**有無を確認。
   - **`verify-phase12-real.sh` で `deploy-status` のみ FAIL** → [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・連続デプロイ直後は **再実行**。
-- **運用コマンド（記録どおり）**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feature/leaderboard-footer-winner-rearchitecture infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**マージ後は第2引数を `main`**）。
+- **運用コマンド（記録どおり）**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`·`./scripts/update-all-clients.sh feature/leaderboard-footer-winner-rearchitecture infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**マージ後は第2引数を `main`**）。
 
 ## References
 

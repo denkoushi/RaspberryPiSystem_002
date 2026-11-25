@@ -38,7 +38,7 @@ SSH経由でRaspberry Piに接続して、現在のデータベースの状態�
 
 ```bash
 # SSH接続
-ssh denkon5sd02@<Pi5 の Tailscale IP>
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # データベースの現在の状態を確認
 docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T db psql -U postgres -d borrow_return -c "SELECT COUNT(*) FROM \"Employee\";"

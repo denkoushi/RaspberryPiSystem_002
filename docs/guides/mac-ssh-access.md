@@ -45,7 +45,7 @@ hostname -I
 
 ```bash
 # SSH接続のテスト
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 
 # 初回接続時は、ホスト鍵の確認を求められます
 # Are you sure you want to continue connecting (yes/no)? yes
@@ -76,7 +76,7 @@ cat ~/.ssh/id_ed25519.pub
 
 ```bash
 # Macのターミナルで実行
-ssh-copy-id denkon5sd02@<Pi5 の LAN IP>
+ssh-copy-id <Pi5 のユーザー名>@<Pi5 の LAN IP>
 ```
 
 **方法2: 手動で追加**
@@ -87,7 +87,7 @@ ssh-copy-id denkon5sd02@<Pi5 の LAN IP>
 cat ~/.ssh/id_ed25519.pub
 
 # Raspberry Pi 5に接続して公開鍵を追加
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
@@ -100,7 +100,7 @@ exit
 ```bash
 # Macのターミナルで実行
 # パスワードなしで接続できるか確認
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 ```
 
 ---
@@ -121,7 +121,7 @@ nano ~/.ssh/config
 ```
 Host raspi5
     HostName <Pi5 の LAN IP>
-    User denkon5sd02
+    User <Pi5 のユーザー名>
     IdentityFile ~/.ssh/id_ed25519
     ServerAliveInterval 60
     ServerAliveCountMax 3
@@ -232,7 +232,7 @@ nano ~/.ssh/config
 **または、直接IPアドレスで接続:**
 
 ```bash
-ssh denkon5sd02@<新しいIPアドレス>
+ssh <Pi5 のユーザー名>@<新しいIPアドレス>
 ```
 
 ---
@@ -297,7 +297,7 @@ ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/do
 ping -c 1 <Pi5 の LAN IP>
 
 # SSH接続をテスト
-ssh -v denkon5sd02@<Pi5 の LAN IP>
+ssh -v <Pi5 のユーザー名>@<Pi5 の LAN IP>
 ```
 
 ### Tailscale 接続済みなのに `https://<Pi5 の Tailscale IP>/admin` が開けない場合（2026-06-03）
@@ -335,7 +335,7 @@ ssh -v denkon5sd02@<Pi5 の LAN IP>
 **対処（Pi5 · LAN SSH 可）**:
 
 ```bash
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 sudo tailscale up --advertise-tags=tag:server
 # 表示 URL を Tailscale 管理画面で承認
 ```
@@ -349,7 +349,7 @@ sudo tailscale up --advertise-tags=tag:server
 **症状**:
 - `ssh: connect to host <Pi5 の Tailscale IP> port 22: Connection refused`エラーが発生
 - 管理コンソール（HTTPS）は正常にアクセス可能
-- 正しいユーザー名（`denkon5sd02`）を使用しているにもかかわらず接続できない
+- 正しいユーザー名（`<Pi5 のユーザー名>`）を使用しているにもかかわらず接続できない
 
 **原因**:
 - fail2banがSSH認証失敗を検知し、IPアドレスをBanしている
@@ -382,11 +382,11 @@ sudo tailscale up --advertise-tags=tag:server
 4. **SSH接続を再試行**:
    ```bash
    # Macから実行
-   ssh denkon5sd02@<Pi5 の Tailscale IP>
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
    ```
 
 **再発防止**:
-- SSH接続時は、正しいユーザー名（`denkon5sd02`）を使用する
+- SSH接続時は、正しいユーザー名（`<Pi5 のユーザー名>`）を使用する
 - inventoryファイル（`infrastructure/ansible/inventory.yml`）で正しいユーザー名を確認する
 - デプロイ標準手順（`docs/guides/deployment.md`）を参照する
 
@@ -467,7 +467,7 @@ SSH接続が失敗した場合（fail2ban Banなど）、RealVNC経由でPi5の�
 3. **SSH経由のポートフォワーディング**（代替案）:
    ```bash
    # Macから実行（SSH経由でポートフォワーディング）
-   ssh -L 5900:localhost:5900 denkon5sd02@<Pi5 の Tailscale IP>
+   ssh -L 5900:localhost:5900 <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
    # その後、RealVNC Viewerで localhost:5900 に接続
    ```
 

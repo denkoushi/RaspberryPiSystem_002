@@ -28,7 +28,7 @@ update-frequency: medium
 
 ```bash
 # Pi5にSSH接続
-ssh denkon5sd02@<Pi5 の Tailscale IP>
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # コンテナの状態を確認
 cd /opt/RaspberryPiSystem_002

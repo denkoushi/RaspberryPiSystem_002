@@ -96,22 +96,22 @@ status: historical
 **1. 現在の設定を確認**:
 ```bash
 # Pi5上のnetwork_modeを確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 ```
 
 **2. 設定を変更（必要に応じて）**:
 ```bash
 # Tailscaleモードに変更（通常運用・標準）
-ssh denkon5sd02@<Pi5 の Tailscale IP> "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "sed -i 's/network_mode: \"local\"/network_mode: \"tailscale\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 
 # Localモードに変更（緊急時のみ）
-ssh denkon5sd02@<Pi5 の Tailscale IP> "sed -i 's/network_mode: \"tailscale\"/network_mode: \"local\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "sed -i 's/network_mode: \"tailscale\"/network_mode: \"local\"/' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
 ```
 
 **3. 接続テスト**:
 ```bash
 # Pi5からPi4への接続テスト（実際に使われるIPで）
-ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible raspberrypi4 -i infrastructure/ansible/inventory.yml -m ping"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible raspberrypi4 -i infrastructure/ansible/inventory.yml -m ping"
 ```
 
 **⚠️ 注意**:
@@ -142,7 +142,7 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible
 - [ ] **リモートリポジトリとの比較**: Pi5上のコードとリモートリポジトリ（`origin/main`）を比較し、差分を確認
   ```bash
   # Pi5上で実行
-  ssh denkon5sd02@raspberrypi.local
+  ssh <Pi5 のユーザー名>@raspberrypi.local
   cd /opt/RaspberryPiSystem_002
   git fetch origin
   git diff HEAD origin/main
@@ -155,48 +155,48 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible
 - [ ] **設定ファイルのバックアップ**: `backup.json`などの設定ファイルをバックアップ（[KB-163](../../knowledge-base/infrastructure/backup-restore.md#kb-163-git-cleanによるbackupjson削除問題再発)参照）
   ```bash
   # Pi5上でbackup.jsonをバックアップ
-  ssh denkon5sd02@raspberrypi.local "cp /opt/RaspberryPiSystem_002/config/backup.json /opt/RaspberryPiSystem_002/config/backup.json.backup.$(date +%Y%m%d-%H%M%S)"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "cp /opt/RaspberryPiSystem_002/config/backup.json /opt/RaspberryPiSystem_002/config/backup.json.backup.$(date +%Y%m%d-%H%M%S)"
   ```
 - [ ] **フルバックアップの実行（推奨）**: DB/ENV/ストレージを含むバックアップを実行（[バックアップ手順](../../guides/backup-and-restore.md)参照）
   ```bash
   # Pi5上で実行
-  ssh denkon5sd02@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && ./scripts/server/backup.sh"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && ./scripts/server/backup.sh"
   ```
 - [ ] **バックアップ設定の健全性確認（推奨）**: `backup.json`の衝突/ドリフト/欠落を検知（[KB-148](../../knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装)参照）
   ```bash
   # Pi5上で実行（自己署名TLSのため -k）
-  ssh denkon5sd02@raspberrypi.local "curl -sk https://localhost/api/backup/config/health/internal"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "curl -sk https://localhost/api/backup/config/health/internal"
   ```
 - [ ] **ネットワーク環境の確認**: `group_vars/all.yml`の`network_mode`が現在のネットワーク環境と一致しているか確認
   ```bash
   # Pi5上のnetwork_modeを確認
-  ssh denkon5sd02@raspberrypi.local "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
   ```
 - [ ] **node_modules権限の確認**: root所有の`node_modules`が存在しないか（存在する場合は事前に修正）
   ```bash
   # Pi5上で実行（root所有を検出）
-  ssh denkon5sd02@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && find node_modules packages -type d -name '.bin' -user root -maxdepth 4 | head -n 5"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "cd /opt/RaspberryPiSystem_002 && find node_modules packages -type d -name '.bin' -user root -maxdepth 4 | head -n 5"
   # 修正が必要な場合
-  ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "sudo chown -R <Pi5 のユーザー名>:<Pi5 のユーザー名> /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules"
   ```
-- [ ] **Git権限の確認**: `.git`ディレクトリが`denkon5sd02`所有であることを確認（デタッチ実行に必要、[KB-219](../../knowledge-base/infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題-gitディレクトリがroot所有でデタッチ実行が失敗)参照）
+- [ ] **Git権限の確認**: `.git`ディレクトリが`<Pi5 のユーザー名>`所有であることを確認（デタッチ実行に必要、[KB-219](../../knowledge-base/infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題-gitディレクトリがroot所有でデタッチ実行が失敗)参照）
   ```bash
   # Pi5上で実行（root所有を検出）
-  ssh denkon5sd02@raspberrypi.local "ls -ld /opt/RaspberryPiSystem_002/.git"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "ls -ld /opt/RaspberryPiSystem_002/.git"
   # 修正が必要な場合（root所有の場合）
-  ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "sudo chown -R <Pi5 のユーザー名>:<Pi5 のユーザー名> /opt/RaspberryPiSystem_002/.git"
   ```
 - [ ] **ワークツリー権限の確認（Git 同期失敗対策）**: デプロイ対象リポジトリで **`git reset --hard` が `unable to create file … 許可がありません`** となる場合、**一部ディレクトリだけ `root` 所有**になっていることがある。代表例: `apps/api/src/services/signage/loan-card/`（[KB-325](../../knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git)）。
   ```bash
   # Pi5上で実行（root所有のソースファイルを検出・先頭のみ）
-  ssh denkon5sd02@raspberrypi.local "find /opt/RaspberryPiSystem_002/apps/api/src -user root -type f 2>/dev/null | head"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "find /opt/RaspberryPiSystem_002/apps/api/src -user root -type f 2>/dev/null | head"
   # 対象パスが判明したら chown（例）
-  ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src/services/signage/loan-card"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "sudo chown -R <Pi5 のユーザー名>:<Pi5 のユーザー名> /opt/RaspberryPiSystem_002/apps/api/src/services/signage/loan-card"
   ```
 - [ ] **SSH接続の確認**: MacからPi5へのSSH接続が正常に動作することを確認（fail2ban Banの確認、[KB-218](../../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因-fail2banによるip-ban存在しないユーザーでの認証試行)参照）
   ```bash
   # Macから実行（接続テスト）
-  ssh denkon5sd02@<Pi5 の Tailscale IP> "echo 'SSH接続成功'"
+  ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "echo 'SSH接続成功'"
   # 接続できない場合、fail2ban Banの可能性があるため、RealVNC経由でPi5にアクセスしてBanを解除
   ```
 - [ ] **aptリポジトリの確認**: NodeSourceリポジトリが存在する場合、GPG署名キー問題の可能性があるため確認（[KB-220](../../knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題-sha1が2026-02-01以降拒否される)参照）
@@ -214,7 +214,7 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible
 - [ ] **設定ファイルの確認**: `backup.json`が正しく保持されているか確認
   ```bash
   # Pi5上でbackup.jsonの存在とサイズを確認
-  ssh denkon5sd02@raspberrypi.local "ls -lh /opt/RaspberryPiSystem_002/config/backup.json"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "ls -lh /opt/RaspberryPiSystem_002/config/backup.json"
   ```
 - [ ] **APIヘルスチェック**: APIが正常に起動しているか確認
   ```bash
@@ -246,13 +246,13 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible
 - [ ] **ポート公開/不要サービス/監視の確認**: 不要なLISTEN/UNCONNが出ていないか、`ports-unexpected` がノイズ化していないか確認
   ```bash
   # LISTEN/UNCONN（プロセス込み）
-  ssh denkon5sd02@raspberrypi.local "sudo ss -H -tulpen"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "sudo ss -H -tulpen"
 
   # Dockerの公開状況（db/apiがホストへpublishされていないこと）
-  ssh denkon5sd02@raspberrypi.local "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps"
 
   # security-monitor.timer が有効/稼働していること
-  ssh denkon5sd02@raspberrypi.local "systemctl is-enabled security-monitor.timer && systemctl is-active security-monitor.timer"
+  ssh <Pi5 のユーザー名>@raspberrypi.local "systemctl is-enabled security-monitor.timer && systemctl is-active security-monitor.timer"
   ```
   - 参考: [KB-177](../../knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) / [port-security-audit.md](../../security/port-security-audit.md)
 
@@ -596,7 +596,7 @@ curl http://localhost:7071/api/agent/status
 - サービス状態は`systemctl is-active`で直接確認してください（ログの`unreachable`だけでは判断しない）
   ```bash
   # NOTE: Pi3のTailscale IPは変わることがあるため、到達先はPi5の`tailscale status`で確認してください
-  ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
+  ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'systemctl is-active signage-lite-watchdog.timer signage-daily-reboot.timer'"
   # 結果が "active active" なら正常動作中
   ```
 - 詳細は [KB-216](../../knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) を参照してください
@@ -615,16 +615,16 @@ curl http://localhost:7071/api/agent/status
 **手動実行が必要な場合（プレフライトチェック失敗時）**:
 ```bash
 # メモリ不足の場合のみ、手動でサービスを停止・無効化（自動再起動防止）
-ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'sudo systemctl stop signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer && sudo systemctl disable signage-lite.service signage-lite-update.timer signage-lite-watchdog.timer signage-daily-reboot.timer status-agent.timer'"
 
 # さらに自動再起動を完全に防ぐ（ランタイムマスク）
-ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'sudo systemctl mask --runtime signage-lite.service'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'sudo systemctl mask --runtime signage-lite.service'"
 
 # デバイスタイプによりGUI(lightdm)を停止してメモリを確保（Pi3 / Pi Zero 2W等）
-ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'sudo systemctl stop lightdm || true'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'sudo systemctl stop lightdm || true'"
 
 # 数秒待ってからメモリを確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'sleep 5 && free -m'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'sleep 5 && free -m'"
 
 # メモリが閾値（Pi3 等は 100MB 設定の例あり）以上になったら、再度デプロイを実行
 ```
@@ -649,17 +649,17 @@ cd /path/to/RaspberryPiSystem_002
 # 環境変数を設定（Pi5のTailscale IPを指定）
 # 注意: ローカルIPはネットワーク環境によって変動するため、Tailscale IPを使用
 # 環境変数の設定（Pi5のTailscale IPを指定）
-# ⚠️ 重要: ユーザー名を含める形式（denkon5sd02@...）を推奨
+# ⚠️ 重要: ユーザー名を含める形式（<Pi5 のユーザー名>@...）を推奨
 # ユーザー名を省略した場合、スクリプトがinventory.ymlから自動取得しますが、
-# inventory.ymlが読み込めない場合はデフォルトユーザー名（denkon5sd02）が使用されます
+# inventory.ymlが読み込めない場合はデフォルトユーザー名（<Pi5 のユーザー名>）が使用されます
 # ⚠️ 必須: Pi5へのデプロイ時は、必ずRASPI_SERVER_HOSTを設定してリモート実行してください
 # ansible_connection: localでも、Mac側からansible-playbookを実行するとMac側のsudoパスワードが求められます
 # RASPI_SERVER_HOSTを設定することで、Pi5上でリモート実行され、Pi5上のansible.cfgが正しく読み込まれます
 # 詳細は [KB-233](../../knowledge-base/infrastructure/ansible-deployment.md#kb-233-デプロイ時のsudoパスワード問題ansible_connection-localでもmac側から実行される場合) を参照
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 
 # または、ユーザー名を省略した形式（スクリプトが自動補完）
-# export RASPI_SERVER_HOST="<Pi5 の Tailscale IP>"  # スクリプトが自動的に denkon5sd02@<Pi5 の Tailscale IP> に変換
+# export RASPI_SERVER_HOST="<Pi5 の Tailscale IP>"  # スクリプトが自動的に <Pi5 のユーザー名>@<Pi5 の Tailscale IP> に変換
 
 # mainブランチで全デバイス（Pi5 + Pi3/Pi4）を更新（第2工場）
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
@@ -676,7 +676,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 **ポイント**:
 - Mac/SSH経由の実行はクライアント側タイムアウトで「途中停止して見える」ことがあります。
 - `scripts/update-all-clients.sh` の **リモート実行はデフォルトでデタッチ**されます（Pi5側で処理が継続）。
-- **明示 `--detach` / `--job`**: Mac から実行する場合、`RASPI_SERVER_HOST` が未設定だと `[ERROR] --detach requires RASPI_SERVER_HOST (remote Pi5).` で停止します。先に `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"` を設定してください（[KB-238](../../knowledge-base/infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加) と併せて理解）。
+- **明示 `--detach` / `--job`**: Mac から実行する場合、`RASPI_SERVER_HOST` が未設定だと `[ERROR] --detach requires RASPI_SERVER_HOST (remote Pi5).` で停止します。先に `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"` を設定してください（[KB-238](../../knowledge-base/infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加) と併せて理解）。
 - 前景で実行したい場合は **`--foreground` を明示**してください（長時間は非推奨）。
 - 進捗は `--attach` / `--status` で確認できます。
 
@@ -715,7 +715,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 **重要（2026-03-29 追記）**: 同一 `RASPI_SERVER_HOST`（Pi5）向けに **`update-all-clients.sh` を複数ターミナルから同時起動しない**。2026-03-29 の hardening 後は、Mac 側で `logs/.update-all-clients.local.lock` を使ったローカル排他と、Pi5 側で `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock`（JSON）を使った排他が有効。**2重起動はエラーで停止**するため、解除せずに 1 本目の完了を待つこと。複数台へ配るときは **必ず 1 本のシェルで順次**（`cmd1 && cmd2`）とする。
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 # 1台目: Pi5
 ./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow
 # 2台目: Pi4 研削メイン（1台目成功後）
@@ -933,12 +933,12 @@ ANSIBLE_REPO_VERSION=feature/rigging-management \
 
 # 注意: Ansibleが自動的にサービスを再有効化・再起動するため、手動操作は不要
 # サービスが正常に動作していることを確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'systemctl is-active signage-lite.service'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'systemctl is-active signage-lite.service'"
 # → active を確認（Ansibleが自動的に再有効化している）
 
 # 画像が更新されていることを確認
 # 注意: 軽量サイネージは tmpfs の `/run/signage/current.jpg` を表示・更新します（SD書込み削減）。
-ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'ls -lh /run/signage/current.jpg'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'ls -lh /run/signage/current.jpg'"
 ```
 
 **重要**:
@@ -1233,7 +1233,7 @@ NETWORK_MODE=tailscale \
 1. **ネットワークモード設定の確認**（最重要）
    ```bash
    # Pi5上のnetwork_modeを確認
-   ssh denkon5sd02@<Pi5 の Tailscale IP> "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "grep '^network_mode:' /opt/RaspberryPiSystem_002/infrastructure/ansible/group_vars/all.yml"
    ```
    - `network_mode: "local"` → オフィスネットワーク用
    - `network_mode: "tailscale"` → 自宅ネットワーク/リモートアクセス用
@@ -1244,13 +1244,13 @@ NETWORK_MODE=tailscale \
    ```bash
    # Tailscale IPで接続確認（推奨）
    ping -c 1 <Pi5 の Tailscale IP>
-   ssh denkon5sd02@<Pi5 の Tailscale IP> 'echo "Connected"'
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'echo "Connected"'
    ```
 
 3. **接続テスト**
    ```bash
    # Pi5からPi4/Pi3への接続テスト（実際に使われるIPで）
-   ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
    ```
    - すべてのホストで`SUCCESS`が表示されることを確認
    - `UNREACHABLE`が表示される場合は、`network_mode`設定を確認
@@ -1258,24 +1258,24 @@ NETWORK_MODE=tailscale \
 4. **既存Ansibleプロセスの確認**
    ```bash
    # Pi5上で既存のAnsibleプロセスをkill（重複実行防止）
-   ssh denkon5sd02@<Pi5 の Tailscale IP> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ || true'
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ || true'
    ```
 
 5. **メモリ空き確認**
    ```bash
    # Pi5のメモリ確認（2GB以上推奨）
-   ssh denkon5sd02@<Pi5 の Tailscale IP> 'free -m'
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'free -m'
 
    # Pi3のメモリ確認（120MB以上必要）
-   ssh denkon5sd02@<Pi5 の Tailscale IP> 'ssh signageras3@<raspberrypi3 の Tailscale IP> "free -m"'
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> "free -m"'
    ```
 
 6. **ローカルIPを使う場合の事前確認**
    ```bash
    # 各端末で実IPを取得してからgroup_vars/all.ymlを更新する
-   ssh denkon5sd02@<Pi5 の Tailscale IP> "hostname -I"
-   ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh tools03@<raspberrypi4 の Tailscale IP> 'hostname -I'"    # Pi4例（tailscale経由）
-   ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'hostname -I'" # Pi3例（tailscale経由）
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "hostname -I"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi4 のユーザー名>@<raspberrypi4 の Tailscale IP> 'hostname -I'"    # Pi4例（tailscale経由）
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'hostname -I'" # Pi3例（tailscale経由）
    ```
    - ローカルIPは変動するため、例のアドレス（192.168.x.x）はそのまま使わず、取得した値で`group_vars/all.yml`を更新する
 
@@ -1321,7 +1321,7 @@ NETWORK_MODE=tailscale \
    # Pi5側のサイネージレンダラーが更新されていることを確認
    # Pi3のサイネージ画像を確認（左ペインタイトルが「持出中アイテム」、温度表示が追加されている）
    # 注意: 軽量サイネージは tmpfs の `/run/signage/current.jpg` を表示・更新します（SD書込み削減）。
-   ssh denkon5sd02@<Pi5 の Tailscale IP> 'ssh signageras3@<raspberrypi3 の Tailscale IP> "ls -lh /run/signage/current.jpg"'
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> "ls -lh /run/signage/current.jpg"'
    # → 画像ファイルが更新されていることを確認（タイムスタンプが最新）
    ```
 
@@ -1329,7 +1329,7 @@ NETWORK_MODE=tailscale \
 
 5. **Pi4 systemdサービス確認**
    ```bash
-   ssh denkon5sd02@<Pi5 の Tailscale IP> 'ssh tools03@<raspberrypi4 の Tailscale IP> "systemctl is-active kiosk-browser.service status-agent.timer"'
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'ssh <raspberrypi4 のユーザー名>@<raspberrypi4 の Tailscale IP> "systemctl is-active kiosk-browser.service status-agent.timer"'
    # → active を確認
    ```
 
@@ -1337,11 +1337,11 @@ NETWORK_MODE=tailscale \
    ```bash
    # 注意: Ansibleが自動的にサービスを再有効化・再起動するため、手動操作は不要
    # サービスが正常に動作していることを確認
-   ssh denkon5sd02@<Pi5 の Tailscale IP> 'ssh signageras3@<raspberrypi3 の Tailscale IP> "systemctl is-active signage-lite.service"'
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> "systemctl is-active signage-lite.service"'
    # → active を確認（Ansibleが自動的に再有効化している）
 
    # 画像が更新されていることを確認
-   ssh denkon5sd02@<Pi5 の Tailscale IP> 'ssh signageras3@<raspberrypi3 の Tailscale IP> "ls -lh /run/signage/current.jpg"'
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> "ls -lh /run/signage/current.jpg"'
    ```
    - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（KB-097（本文欠落）参照）
 
@@ -1349,9 +1349,9 @@ NETWORK_MODE=tailscale \
 
 | デバイス | Tailscale IP | ユーザー |
 |----------|--------------|----------|
-| Pi5 (サーバー) | <Pi5 の Tailscale IP> | denkon5sd02 |
-| Pi4 (キオスク) | <raspberrypi4 の Tailscale IP> | tools03 |
-| Pi3 (サイネージ) | <raspberrypi3 の Tailscale IP> | signageras3 |
+| Pi5 (サーバー) | <Pi5 の Tailscale IP> | <Pi5 のユーザー名> |
+| Pi4 (キオスク) | <raspberrypi4 の Tailscale IP> | <raspberrypi4 のユーザー名> |
+| Pi3 (サイネージ) | <raspberrypi3 の Tailscale IP> | <raspberrypi3 のユーザー名> |
 
 ## Phase 9 セキュリティ強化機能の実機テスト
 
@@ -1531,7 +1531,7 @@ device_type_defaults:
 ```yaml
 raspberrypi-zero2w-signage01:
   ansible_host: "{{ signage_ip_02 }}"  # または直接IPアドレス
-  ansible_user: signageras3
+  ansible_user: <raspberrypi3 のユーザー名>
   device_type: "pi_zero_2w"  # デバイスタイプを指定
   manage_signage_lite: true
   status_agent_client_id: raspberrypi-zero2w-signage01

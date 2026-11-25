@@ -33,7 +33,7 @@ update-frequency: low
 
 1. **ユーザーがMacからSSH接続**
    ```bash
-   ssh raspi5  # または ssh denkon5sd02@<Pi5 の LAN IP（自宅）>
+   ssh raspi5  # または ssh <Pi5 のユーザー名>@<Pi5 の LAN IP（自宅）>
    ```
 
 2. **ユーザーがAIアシスタントに指示**

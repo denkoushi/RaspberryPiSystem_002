@@ -51,7 +51,7 @@ Pi5で以下のコマンドを実行して、TailscaleのMagicDNSドメイン用
 
 ```bash
 # SSH接続（Macのターミナルから）
-ssh denkon5sd02@<Pi5 の Tailscale IP>
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # 証明書ディレクトリに移動
 cd /opt/RaspberryPiSystem_002/certs

@@ -8,8 +8,8 @@
 
 ## 検証環境
 
-- **Pi5（サーバー）**: denkon5sd02@<Pi5 の Tailscale IP>
-- **Pi3（サイネージクライアント）**: signageras3@<raspberrypi3 の Tailscale IP>
+- **Pi5（サーバー）**: <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
+- **Pi3（サイネージクライアント）**: <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP>
 
 ## 検証結果
 
@@ -26,7 +26,7 @@
 
 **確認コマンド**:
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/content | jq '{contentType, layoutConfig}'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/content | jq '{contentType, layoutConfig}'"
 ```
 
 ### ✅ 検証2: サイネージ画像の取得確認
@@ -52,7 +52,7 @@ curl -k -s -H "x-client-key: ${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY mu
 
 **確認コマンド**:
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailscale IP> 'ls -lh /var/cache/signage/current.jpg'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP> 'ls -lh /var/cache/signage/current.jpg'"
 ```
 
 ### ✅ 検証4: サイネージレンダリングの動作確認
@@ -65,7 +65,7 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "ssh signageras3@<raspberrypi3 の Tailsc
 
 **確認コマンド**:
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api --tail 50 | grep -i 'signage render'"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api --tail 50 | grep -i 'signage render'"
 ```
 
 ## 次の検証ステップ
@@ -137,7 +137,7 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem
 
 3. **APIでスケジュールを確認**:
    ```bash
-   ssh denkon5sd02@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/schedules | jq '.schedules[] | select(.layoutConfig != null) | {name, layoutConfig}'"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "curl -k -s https://<Pi5 の Tailscale IP>/api/signage/schedules | jq '.schedules[] | select(.layoutConfig != null) | {name, layoutConfig}'"
    ```
 
 4. **Pi3での表示確認**:

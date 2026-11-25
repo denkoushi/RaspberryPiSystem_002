@@ -138,7 +138,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/shelf-layout" \
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-shelf-layout-master infrastructure/ansible/inventory.yml \
   --limit <host> --detach --follow
 ```
@@ -167,7 +167,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/kiosk-shelf-master-zone-dialog-compact \
   infrastructure/ansible/inventory.yml --limit <host> --detach --follow
 ```
@@ -239,7 +239,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 **標準コマンド**（**`main` マージ後は第2引数 `main`**）:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/kiosk-shelf-master-multi-cell-selection \
   infrastructure/ansible/inventory.yml --limit <host> --detach --follow
 ```
@@ -335,7 +335,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 | `raspberrypi5` | **`20260524-123432-32158`** | `ok=134` `changed=4` `failed=0` | Docker compose **changed**·`Git: changed` |
 | Pi4×4 | **未デプロイ**（2026-05-24 時点） | — | 次タスク: Pi5 現場 OK 後に **1 台ずつ** 同ブランチ→**`main` マージ後は `main`** |
 
-- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"` · `./scripts/update-all-clients.sh feat/kiosk-shelf-layout-editor-dock-confirm-reset infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **標準コマンド**: `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"` · `./scripts/update-all-clients.sh feat/kiosk-shelf-layout-editor-dock-confirm-reset infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **111s**）
 - **HTTP / バンドル（Pi5）**: `GET https://127.0.0.1/kiosk/mobile-placement/shelf-master` → **200**（Pi5 上 curl）。`docker-web-1` の `/srv/site/assets/index-*.js` に **`resetFlow`・`選択解除`・`スキャナ割当解除`・`リセット`・`確定`** を確認（minify 後文字列）
 - **Pi5 git**: **`ca45c479`** / ブランチ `feat/kiosk-shelf-layout-editor-dock-confirm-reset`
@@ -404,7 +404,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 **標準コマンド**（**`main` マージ後は第2引数 `main`**）:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/kiosk-shelf-master-release-cells-on-unused \
   infrastructure/ansible/inventory.yml --limit <host> --detach --follow
 ```
@@ -535,7 +535,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 **標準コマンド**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-shelf-master-zero2w-inline-preset \
   infrastructure/ansible/inventory.yml --limit <host> --detach --follow
 ```

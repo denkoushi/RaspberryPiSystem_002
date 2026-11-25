@@ -234,14 +234,14 @@
 **対処法**:
 - Pi4で修正済みスクリプトを再配置し、サービスを再起動
   ```bash
-  # Pi4 (tools03)
+  # Pi4 (<raspberrypi4 のユーザー名>)
   sudo cp /tmp/kiosk-launch-fixed.sh /usr/local/bin/kiosk-launch.sh
   sudo chmod +x /usr/local/bin/kiosk-launch.sh
   sudo systemctl restart kiosk-browser.service
   ```
 - 正常なフラグが入っていることを確認  
   `--app=https://<Pi5 の Tailscale IP>/kiosk`  
-  `--user-data-dir=/home/tools03/.config/chromium-kiosk`  
+  `--user-data-dir=/home/<raspberrypi4 のユーザー名>/.config/chromium-kiosk`  
   `--unsafely-treat-insecure-origin-as-secure=https://<Pi5 の Tailscale IP>`  
   `--use-fake-ui-for-media-stream` / `--ignore-certificate-errors`
 

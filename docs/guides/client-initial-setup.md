@@ -58,7 +58,7 @@ hostname -I
 ```
 
 **記録事項:**
-- ユーザー名（例: `tools03`, `signageras3`）
+- ユーザー名（例: `<raspberrypi4 のユーザー名>`, `<raspberrypi3 のユーザー名>`）
 - ホスト名（例: `raspberrypi`, `raspberrypi4`）
 - IPアドレス（例: `<IP アドレス>`）
 
@@ -105,8 +105,8 @@ cat ~/.ssh/id_ed25519.pub
 ssh-copy-id -i ~/.ssh/id_ed25519.pub <ユーザー名>@<IPアドレス>
 
 # 例:
-# ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@<IP アドレス>
-# ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@<raspberrypi3 の LAN IP>
+# ssh-copy-id -i ~/.ssh/id_ed25519.pub <raspberrypi4 のユーザー名>@<IP アドレス>
+# ssh-copy-id -i ~/.ssh/id_ed25519.pub <raspberrypi3 のユーザー名>@<raspberrypi3 の LAN IP>
 ```
 
 **方法2: 手動で公開鍵を追加（ssh-copy-idが使えない場合）**
@@ -173,7 +173,7 @@ ping -c 3 <Pi4のTailscale IP>
 
 # Pi5からPi4へのSSH接続確認
 ssh <ユーザー名>@<Pi4のTailscale IP>
-# 例: ssh tools04@<raspi4-robodrill01 の Tailscale IP>
+# 例: ssh <raspi4-robodrill01 のユーザー名>@<raspi4-robodrill01 の Tailscale IP>
 ```
 
 **トラブルシューティング**:
@@ -190,9 +190,9 @@ ssh <ユーザー名>@<Pi4のTailscale IP>
 ssh <ユーザー名>@<IPアドレス>
 
 # 例（Tailscale経由）:
-# ssh tools04@<raspi4-robodrill01 の Tailscale IP>  # Pi4のTailscale IP
-# ssh tools03@<raspberrypi4 の Tailscale IP>  # 既存Pi4のTailscale IP
-# ssh signageras3@<raspberrypi3 の Tailscale IP>  # Pi3のTailscale IP
+# ssh <raspi4-robodrill01 のユーザー名>@<raspi4-robodrill01 の Tailscale IP>  # Pi4のTailscale IP
+# ssh <raspberrypi4 のユーザー名>@<raspberrypi4 の Tailscale IP>  # 既存Pi4のTailscale IP
+# ssh <raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP>  # Pi3のTailscale IP
 ```
 
 **期待される結果:**

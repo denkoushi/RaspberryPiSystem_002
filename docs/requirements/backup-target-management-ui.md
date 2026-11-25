@@ -663,7 +663,7 @@ export interface BackupConfig {
    - **問題**: Dockerコンテナ内からSSH接続する際にSSH鍵がマウントされていない
    - **症状**: `Permission denied (publickey,password)`エラーが発生
    - **原因**: `docker-compose.server.yml`にSSH鍵ディレクトリのマウント設定がなかった
-   - **対策**: `/home/denkon5sd02/.ssh:/root/.ssh:ro`をマウント追加
+   - **対策**: `/home/<Pi5 のユーザー名>/.ssh:/root/.ssh:ro`をマウント追加
    - **結果**: Dockerコンテナ内からPi4へのSSH接続が成功
 
 3. **Ansible Playbookのエラーハンドリング**:
@@ -693,9 +693,9 @@ export interface BackupConfig {
   - 結果として、Ansibleは正しいTailscale IPでPi4に接続できる
 
 - **SSH鍵のマウント**:
-  - Pi5のホスト側: `/home/denkon5sd02/.ssh/id_ed25519`
+  - Pi5のホスト側: `/home/<Pi5 のユーザー名>/.ssh/id_ed25519`
   - Dockerコンテナ内: `/root/.ssh/id_ed25519`
-  - マウント設定: `- /home/denkon5sd02/.ssh:/root/.ssh:ro`（読み取り専用）
+  - マウント設定: `- /home/<Pi5 のユーザー名>/.ssh:/root/.ssh:ro`（読み取り専用）
 
 **学んだこと**:
 - Ansible Playbookで`hosts: localhost`を使用する場合、`group_vars/all.yml`の変数が読み込まれない

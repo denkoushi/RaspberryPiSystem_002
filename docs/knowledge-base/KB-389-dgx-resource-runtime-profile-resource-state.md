@@ -147,7 +147,7 @@ Note: full API `tsc --noEmit` still fails on pre-existing `rootDir` scope (`pris
 - `GET /system/model-profiles` returns `runtimeProfile`
 - `GET /v1/models` → 200 when business vLLM ready
 
-**Pi5** (`denkon5sd02@<Pi5 の Tailscale IP>`):
+**Pi5** (`<Pi5 のユーザー名>@<Pi5 の Tailscale IP>`):
 
 - `docker-api-1` healthy, `docker-web-1` running
 - Web bundle includes: `DGX 所有`, `保守: モデルプロファイル起動`, `Strict Ready`, `vLLM memory budget`

@@ -32,10 +32,10 @@ Dropboxは2021年9月30日以降、長期アクセストークンの新規発行
    ```bash
    # Macのターミナルから実行
    DROPBOX_TOKEN="sl.新しいトークン"
-   ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002/infrastructure/docker && sed -i 's/DROPBOX_ACCESS_TOKEN=.*/DROPBOX_ACCESS_TOKEN=$DROPBOX_TOKEN/' .env && grep DROPBOX_ACCESS_TOKEN .env"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002/infrastructure/docker && sed -i 's/DROPBOX_ACCESS_TOKEN=.*/DROPBOX_ACCESS_TOKEN=$DROPBOX_TOKEN/' .env && grep DROPBOX_ACCESS_TOKEN .env"
    
    # APIコンテナを再起動
-   ssh denkon5sd02@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
+   ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
    ```
 
 **注意**: このトークンは約4時間で期限切れになります。定期的に更新が必要です。

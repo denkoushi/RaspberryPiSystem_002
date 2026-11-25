@@ -85,7 +85,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - `ansible raspberrypi5 ... -e network_mode={local,tailscale}` で `server_ip/kiosk_ip/signage_ip` が期待どおりに 192.168.10.x ⇔ 100.x.x.x を往復することを確認  
   - `curl http://localhost:8080/api/system/network-mode` のレスポンスが自動判定（detectedMode=maintenance / configuredMode=local / status=internet_connected）を返すことを確認
 - [x] (2025-12-05) Tailscale接続テスト  
-  - Mac → Pi5 へ `ssh denkon5sd02@<Pi5 の Tailscale IP>`、`curl -kI https://<Pi5 の Tailscale IP>` を実施し、Tailscale経由でもAPI/UIへ到達できることを確認  
+  - Mac → Pi5 へ `ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>`、`curl -kI https://<Pi5 の Tailscale IP>` を実施し、Tailscale経由でもAPI/UIへ到達できることを確認  
   - RealVNCは自宅ネットワーク `<社内 LAN のアドレス帯>` をUFWに追加したうえで接続確認済み
 - [x] (2025-12-05) ファイアウォール設定の動作確認  
   - `sudo ufw status numbered` で 80/443/22/5900 のみ許可、その他遮断であることを確認  
@@ -212,7 +212,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   エビデンス: `inventory.yml`、テンプレートファイル、スクリプトなどにIPアドレスが直接記述されている。
   対応: Ansibleの`group_vars/all.yml`にIPアドレス変数を定義し、一括管理できるようにする。
 - 観測: Pi4キオスクがTailscale経路 (`https://<Pi5 の Tailscale IP>/kiosk`) を指したままになっており、ローカル運用時に旧UI（tagモード）のまま表示され続けている。  
-  エビデンス: `ssh tools03@<raspberrypi4 の Tailscale IP> 'cat /usr/local/bin/kiosk-launch.sh'` の結果より、`--app` 引数がTailscale IPに固定されていることを確認。  
+  エビデンス: `ssh <raspberrypi4 のユーザー名>@<raspberrypi4 の Tailscale IP> 'cat /usr/local/bin/kiosk-launch.sh'` の結果より、`--app` 引数がTailscale IPに固定されていることを確認。  
   対応: `network_mode=local` で再デプロイし、`kiosk_url` をローカルIPへ再設定する。合わせてAnsibleタスクに「現在のnetwork_modeとURLの乖離を検知するヘルスチェック」を追加予定。
 - 観測: Pi3サイネージの物理画面はReact版の新デザインへ更新されていない。  
   エビデンス: `SignageRenderer`（`apps/api/src/services/signage/signage.renderer.ts`）は旧SVGレイアウトを生成しており、Pi3はこのJPEGを表示している。React側のスタイル変更だけでは実機に反映されない。  
@@ -632,7 +632,7 @@ EOF
 
 ```bash
 # Raspberry Pi 5にTailscaleクライアントをインストール（通常運用）
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 # 認証URLが表示されるので、Macのブラウザで開いて承認
@@ -649,7 +649,7 @@ sudo tailscale up
 
 ```bash
 # ufwのインストールと設定（Pi5）
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 sudo apt update
 sudo apt install -y ufw
 sudo ufw allow 80/tcp
@@ -663,7 +663,7 @@ sudo ufw status
 
 ```bash
 # ClamAVのインストール（Pi5）
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 sudo apt update
 sudo apt install -y clamav clamav-daemon
 sudo freshclam

@@ -475,7 +475,7 @@ when the repository implementation is ready.
 
 - Observation: the API's complete host SSH directory serves two unrelated
   purposes: Ansible-based terminal backups and configuration backup coverage.
-  Evidence: Compose mounts `/home/denkon5sd02/.ssh` at `/root/.ssh`, while the
+  Evidence: Compose mounts `/home/<Pi5 のユーザー名>/.ssh` at `/root/.ssh`, while the
   backup catalog also explicitly proposes terminal `.ssh` directories as
   backup sources. Least privilege requires both the mount and catalog to
   change together.

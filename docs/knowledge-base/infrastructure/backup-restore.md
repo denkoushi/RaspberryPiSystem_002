@@ -313,7 +313,7 @@ update-frequency: medium
    - Ansibleは`raspberrypi4({{ kiosk_ip }})`というホスト名で接続を試み、失敗する
 
 2. **SSH鍵のマウント問題**:
-   - Dockerコンテナ内からSSH接続する際に、Pi5のホスト側のSSH鍵（`/home/denkon5sd02/.ssh/id_ed25519`）がマウントされていない
+   - Dockerコンテナ内からSSH接続する際に、Pi5のホスト側のSSH鍵（`/home/<Pi5 のユーザー名>/.ssh/id_ed25519`）がマウントされていない
    - `docker-compose.server.yml`にSSH鍵ディレクトリのマウント設定がなかった
    - 結果として、Dockerコンテナ内からPi4へのSSH接続が失敗する
 
@@ -353,9 +353,9 @@ update-frequency: medium
    ```yaml
    # docker-compose.server.yml
    volumes:
-     - /home/denkon5sd02/.ssh:/root/.ssh:ro
+     - /home/<Pi5 のユーザー名>/.ssh:/root/.ssh:ro
    ```
-   - Pi5のホスト側のSSH鍵（`/home/denkon5sd02/.ssh/id_ed25519`）をDockerコンテナ内の`/root/.ssh/id_ed25519`にマウント
+   - Pi5のホスト側のSSH鍵（`/home/<Pi5 のユーザー名>/.ssh/id_ed25519`）をDockerコンテナ内の`/root/.ssh/id_ed25519`にマウント
    - 読み取り専用（`:ro`）でマウントし、セキュリティを確保
 
 3. **エラーハンドリングの改善**:
@@ -1080,7 +1080,7 @@ update-frequency: medium
 
 **本番デプロイ・実機検証（2026-04-10・Pi5 のみ）**:
 - **対象**: **`raspberrypi5` のみ**（API + 管理 Web。Pi4/Pi3 はコード未配布・**Pi3 専用手順は不要**）。
-- **手順**: [deployment.md](../../guides/deployment.md) 標準。`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/backup-recommended-target-audit infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**1 台のみ**のため順次は 1 回）。
+- **手順**: [deployment.md](../../guides/deployment.md) 標準。`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/backup-recommended-target-audit infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**1 台のみ**のため順次は 1 回）。
 - **Detach Run ID**: `20260410-191940-18752`（**`PLAY RECAP` `failed=0` / `unreachable=0`**・exit **`0`**）。
 - **Phase12**: Mac / Tailscale で `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**）。
 - **スモーク（本機能）**: Pi5 上で `curl -sk https://localhost/api/backup/config/health/internal` → JSON に **`issues[].type":"coverage_gap"`** と **`details.suggestedTarget`** が含まれる（未登録候補がある限り **`status":"warning"`**。候補を `backup.json` に足すと当該 `kind`+`source` は **`coverage_gap` から消える**）。
@@ -1339,7 +1339,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 3. **backup.jsonを復元**:
    ```bash
    # Pi5上でbackup.jsonを復元
-   ssh denkon5sd02@raspberrypi.local
+   ssh <Pi5 のユーザー名>@raspberrypi.local
    sudo nano /opt/RaspberryPiSystem_002/config/backup.json
    # ダウンロードしたバックアップの内容を貼り付け
    ```
@@ -2157,7 +2157,7 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 
 **確認コマンド例（秘密値は出さない）**:
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> 'jq '\''def redact_source: if type == "string" then sub("://[^/@]*@"; "://***:***@") else . end; {storageProvider:.storage.provider, hasDropbox:(.storage.options.dropbox? != null), hasGmail:(.storage.options.gmail? != null), targets:[.targets[]? | {kind, source:(.source|redact_source), enabled, storageProvider:.storage.provider}]}'\'' /opt/RaspberryPiSystem_002/config/backup.json'
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> 'jq '\''def redact_source: if type == "string" then sub("://[^/@]*@"; "://***:***@") else . end; {storageProvider:.storage.provider, hasDropbox:(.storage.options.dropbox? != null), hasGmail:(.storage.options.gmail? != null), targets:[.targets[]? | {kind, source:(.source|redact_source), enabled, storageProvider:.storage.provider}]}'\'' /opt/RaspberryPiSystem_002/config/backup.json'
 ```
 
 **実機検証結果**（2026-06-26）:

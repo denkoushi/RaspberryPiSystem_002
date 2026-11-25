@@ -109,7 +109,7 @@ curl http://<Pi5 の LAN IP>:8080/api/system/network-mode
 
 ```bash
 # 1. Tailscaleクライアントのインストール確認
-ssh denkon5sd02@<Pi5 の LAN IP> "tailscale version"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP> "tailscale version"
 
 # 2. Tailscale接続確認（通常運用）
 tailscale status
@@ -142,7 +142,7 @@ ssh raspi5-tailscale "cd /opt/RaspberryPiSystem_002 && git pull"
 
 ```bash
 # 1. バックアップ暗号化の確認
-ssh denkon5sd02@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && ./scripts/backup.sh"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && ./scripts/backup.sh"
 file /path/to/backup/backup-*.enc
 
 # 2. オフライン保存の確認
@@ -175,7 +175,7 @@ psql -U postgres -d borrow_return < backup.sql
 
 ```bash
 # 1. ファイアウォール設定の確認
-ssh denkon5sd02@<Pi5 の LAN IP> "sudo ufw status"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP> "sudo ufw status"
 
 # 2. HTTPS強制の確認
 curl -I http://<Pi5 の LAN IP>
@@ -185,7 +185,7 @@ curl -I https://<Pi5 の LAN IP>
 # 期待: HTTP 200
 
 # 3. fail2banの動作確認
-ssh denkon5sd02@<Pi5 の LAN IP> "sudo fail2ban-client status"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP> "sudo fail2ban-client status"
 # ブルートフォース攻撃をシミュレートして、IPがブロックされることを確認
 ```
 
@@ -214,15 +214,15 @@ ssh denkon5sd02@<Pi5 の LAN IP> "sudo fail2ban-client status"
 
 ```bash
 # 1. ClamAVの動作確認
-ssh denkon5sd02@<Pi5 の LAN IP> "sudo clamscan --version"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP> "sudo clamscan --version"
 sudo clamscan -r /opt/RaspberryPiSystem_002
 
 # 2. Trivyの動作確認
-ssh denkon5sd02@<Pi5 の LAN IP> "trivy --version"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP> "trivy --version"
 trivy image postgres:15-alpine
 
 # 3. rkhunterの動作確認
-ssh denkon5sd02@<Pi5 の LAN IP> "sudo rkhunter --versioncheck"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP> "sudo rkhunter --versioncheck"
 sudo rkhunter --check
 ```
 

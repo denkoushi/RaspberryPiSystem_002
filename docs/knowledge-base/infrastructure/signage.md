@@ -28,7 +28,7 @@ update-frequency: medium
 
 **Pi3 サイネージ非表示・Tailscale Key expiry（2026-06-03〜04）**: 現場で **デスクトップのみ**・Pi5 から SSH 不可。**管理画面** `raspberrypi-2`（`<raspberrypi3 の Tailscale IP>`・`tag:signage`）が **Expired**。**Pi5 の `current-image` は 200**（サーバ側は正常）。**Extend key** 後も Pi3 側再認証なしでは不通。**オフィス移設後**は tailnet 復旧・`signage-lite` active・**現場戻し後も表示 OK**。**恒久**: 全常時稼働端末で **Disable key expiry**。**Runbook**: [pi3-signage-tailscale-recovery.md](../../runbooks/pi3-signage-tailscale-recovery.md)・**KB**: [KB-386](#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)・**復旧監視**: `scripts/ops/recover-pi3-signage-remote.sh`（Pi5 上）。
 
-**配膳 Android 部品棚 9 枠（2026-04-13・ブランチ `feat/pi3-android-parts-signage`）**: FULL スロット **`mobile_placement_parts_shelf_grid`**（`OrderPlacementBranchState` を 3×3 ゾーンに集約・**SVG→JPEG**・任意 **`maxItemsPerZone`**）。**本番**: API/Web 正本は **Pi5**、表示の `/signage` 用 Web 更新と **`signage-lite-update`** 経路を取り込むなら **Pi3 も順次**（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型の **Pi3 専用プレフライト**）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` の **成功後**に `./scripts/update-all-clients.sh … --limit "raspberrypi3" --detach --follow`（**1 台ずつ・同一ホストへ並列起動しない**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-190750-1020`（`raspberrypi5`）→ `20260413-192539-10430`（`raspberrypi3`）、各 **`PLAY RECAP failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **54s**・Mac / Tailscale）。**ナレッジ**: [KB-341](#kb-341-mobile-placement-parts-shelf-grid-deploy)・[signage-mobile-placement-parts-shelf-grid.md](../../guides/signage-mobile-placement-parts-shelf-grid.md)。
+**配膳 Android 部品棚 9 枠（2026-04-13・ブランチ `feat/pi3-android-parts-signage`）**: FULL スロット **`mobile_placement_parts_shelf_grid`**（`OrderPlacementBranchState` を 3×3 ゾーンに集約・**SVG→JPEG**・任意 **`maxItemsPerZone`**）。**本番**: API/Web 正本は **Pi5**、表示の `/signage` 用 Web 更新と **`signage-lite-update`** 経路を取り込むなら **Pi3 も順次**（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型の **Pi3 専用プレフライト**）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` の **成功後**に `./scripts/update-all-clients.sh … --limit "raspberrypi3" --detach --follow`（**1 台ずつ・同一ホストへ並列起動しない**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-190750-1020`（`raspberrypi5`）→ `20260413-192539-10430`（`raspberrypi3`）、各 **`PLAY RECAP failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **54s**・Mac / Tailscale）。**ナレッジ**: [KB-341](#kb-341-mobile-placement-parts-shelf-grid-deploy)・[signage-mobile-placement-parts-shelf-grid.md](../../guides/signage-mobile-placement-parts-shelf-grid.md)。
 
 <a id="self-inspection-machine-board"></a>
 
@@ -80,7 +80,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 | **代表コミット** | デプロイ時 **`78fc233c`** · **`main` マージ** [PR #421](https://github.com/denkoushi/RaspberryPiSystem_002/pull/421)（squash **`794dd34b`**） |
 | **変更範囲** | **API + Web**（`api`/`web` Docker 再ビルド）· Prisma migration **なし** |
 | **対象ホスト** | **`raspberrypi5` のみ**（Pi4 キオスク×4 · Pi3 サイネージは **デプロイ不要** — JPEG 正本は Pi5 API） |
-| **標準コマンド** | [deployment.md](../../guides/deployment.md) どおり `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"` · `./scripts/update-all-clients.sh feat/signage-self-inspection-machine-board-auto-target infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
+| **標準コマンド** | [deployment.md](../../guides/deployment.md) どおり `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"` · `./scripts/update-all-clients.sh feat/signage-self-inspection-machine-board-auto-target infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` |
 | **Detach Run ID** | **`20260609-140312-5526`** · **`PLAY RECAP ok=134 changed=4 failed=0`** · `Git: changed` |
 | **CI** | GitHub Actions **`27184336224`** **success**（push 後） |
 | **実機（自動）** | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s** · Tailscale） |
@@ -209,7 +209,7 @@ sudo systemctl restart signage-lite.service
 
 **デプロイ（本番）**:
 - [deployment.md](../../guides/deployment.md) に従い、**`raspberrypi5`（server）成功後**に **`raspberrypi3`（signage）を単独**（Pi3 はメモリ僅少のため **常に単独・順序厳守**）。
-- `export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`
+- `export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`
 - `./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow`
 - `./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi3" --detach --follow`
 
@@ -232,7 +232,7 @@ sudo systemctl restart signage-lite.service
 **追記（2026-04-13・第2回ロールアウト・表示・機種名・本番）**:
 - **変更**: 3列目の機種名を **`ProductNo`（製造order）ではなく** 生産スケジュールの **MH/SH 行 `FHINMEI` 集約**（`fetchSeibanProgressRows`・[seiban-progress.service.ts](../../../apps/api/src/services/production-schedule/seiban-progress.service.ts) と同系）に変更。アイテム行フォントを約 **2 倍**。JPEG は **全面スレートパネル廃止**・ゾーン色＋ヘッダ帯 `rgba(0,0,0,0.18)`。`/signage` のレターボックスを **`#333333`** に合わせる。
 - **ブランチ**: `fix/mobile-placement-parts-shelf-display-and-machine`（コミット **`9e135252`**）。
-- **デプロイ**: [deployment.md](../../guides/deployment.md) どおり **`raspberrypi5` 成功後に `raspberrypi3` 単独**・`export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh fix/mobile-placement-parts-shelf-display-and-machine infrastructure/ansible/inventory.yml --limit "<host>" --detach --follow`。
+- **デプロイ**: [deployment.md](../../guides/deployment.md) どおり **`raspberrypi5` 成功後に `raspberrypi3` 単独**・`export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`・`./scripts/update-all-clients.sh fix/mobile-placement-parts-shelf-display-and-machine infrastructure/ansible/inventory.yml --limit "<host>" --detach --follow`。
 - **Detach Run ID**: `20260413-203007-401`（Pi5・**`failed=0`**）→ `20260413-204818-30318`（Pi3・**`failed=1`**：`deploy-staged.yml` の **`signage-daily-reboot.timer` 起動**が **ユニット未導入**で失敗。スクリプトは **`Summary success check: true`**・リモート **exit `0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi3 **`signage-lite`/timer** 含む）。
 - **トラブルシューティング（Pi3・上記 failed=1）**: 当該 Pi3 に **`signage-daily-reboot.timer` が未配置**のとき、ステージド playbook の **timer 起動**が失敗し得る。**Phase12 は通過**（`signage-lite` 系は active）。恒久対応は **Ansible で timer ユニットを配布**するか、inventory の **デバイス既定**を確認（別チケット可）。
@@ -360,9 +360,9 @@ sudo systemctl restart signage-lite.service
 
 **本番デプロイ（2026-05-21・ブランチ `fix/signage-leader-order-due-date-from-prisma-date`）**: **納期 `Date` 正規化**（API のみ）。**対象**: **`raspberrypi5` のみ**。**手順**: [deployment.md](../../archive/deployments/2026-05.md#signage-leader-order-due-date-prisma-date-2026-05-21)。**代表**: **`83501b27`**。**CI**: **`26203259837` success**。**Detach**: `20260521-123106-4810`（**`ok=134` `changed=4` `failed=0`**）。**Phase12**: **43/0/0**（約 **27s**）。**`main` マージ**: [PR #313](https://github.com/denkoushi/RaspberryPiSystem_002/pull/313)（squash **`2ca80f84`**）。
 
-**本番デプロイ（2026-05-21・ブランチ `feat/signage-leader-order-cards-compact-incomplete`）**: **コンパクト化＋未完行のみ表示**（API のみ）。**対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`・1 台）。**Pi4 / Pi3**: **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**）。**手順**: [deployment.md](../../archive/deployments/2026-05.md#signage-leader-order-cards-compact-incomplete-2026-05-21) どおり **`RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`**・`./scripts/update-all-clients.sh feat/signage-leader-order-cards-compact-incomplete infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数を `main`**）。**代表コミット**: **`bdc25afb`**。**CI**: GitHub Actions **`26201804495` success**。**Detach Run ID**: `20260521-114344-436`。**`PLAY RECAP`**: `raspberrypi5` **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit=0`**・ローカル **`--follow` 約 560s**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s**）。**`main` マージ**: [PR #312](https://github.com/denkoushi/RaspberryPiSystem_002/pull/312)（squash **`2667fc7f`**）。
+**本番デプロイ（2026-05-21・ブランチ `feat/signage-leader-order-cards-compact-incomplete`）**: **コンパクト化＋未完行のみ表示**（API のみ）。**対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`・1 台）。**Pi4 / Pi3**: **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**）。**手順**: [deployment.md](../../archive/deployments/2026-05.md#signage-leader-order-cards-compact-incomplete-2026-05-21) どおり **`RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・`./scripts/update-all-clients.sh feat/signage-leader-order-cards-compact-incomplete infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数を `main`**）。**代表コミット**: **`bdc25afb`**。**CI**: GitHub Actions **`26201804495` success**。**Detach Run ID**: `20260521-114344-436`。**`PLAY RECAP`**: `raspberrypi5` **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit=0`**・ローカル **`--follow` 約 560s**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s**）。**`main` マージ**: [PR #312](https://github.com/denkoushi/RaspberryPiSystem_002/pull/312)（squash **`2667fc7f`**）。
 
-**本番デプロイ（2026-05-21・ブランチ `feat/signage-leader-order-kiosk-aligned`）**: **キオスク最新レイアウト整合**（API のみ・`leader-order-cards/` 全面更新）。**対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`・1 台）。**Pi4 キオスク / Pi3 サイネージ**: Ansible play **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**・JPEG は Pi5 から `signage-lite-update` 取得）。**手順**: [deployment.md](../../archive/deployments/2026-05.md#signage-leader-order-kiosk-aligned-2026-05-21) どおり **`RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"`**・`./scripts/update-all-clients.sh feat/signage-leader-order-kiosk-aligned infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数を `main`**）。**代表コミット**: **`7b54d992`**。**CI（機能先行）**: GitHub Actions **`26199566787` success**。**Detach Run ID**: `20260521-104347-10606`（接頭辞 `ansible-update-`）。**`PLAY RECAP`**: `raspberrypi5` **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit=0`**・サマリ **`Git: changed`**・ローカル **`--follow` 約 604s（約 10m）**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**・Tailscale・Pi5 API `<Pi5 の Tailscale IP>`）。**`main` マージ**: [PR #311](https://github.com/denkoushi/RaspberryPiSystem_002/pull/311)（squash **`6cb3bb1e`**）。
+**本番デプロイ（2026-05-21・ブランチ `feat/signage-leader-order-kiosk-aligned`）**: **キオスク最新レイアウト整合**（API のみ・`leader-order-cards/` 全面更新）。**対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`・1 台）。**Pi4 キオスク / Pi3 サイネージ**: Ansible play **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**・JPEG は Pi5 から `signage-lite-update` 取得）。**手順**: [deployment.md](../../archive/deployments/2026-05.md#signage-leader-order-kiosk-aligned-2026-05-21) どおり **`RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"`**・`./scripts/update-all-clients.sh feat/signage-leader-order-kiosk-aligned infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数を `main`**）。**代表コミット**: **`7b54d992`**。**CI（機能先行）**: GitHub Actions **`26199566787` success**。**Detach Run ID**: `20260521-104347-10606`（接頭辞 `ansible-update-`）。**`PLAY RECAP`**: `raspberrypi5` **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit=0`**・サマリ **`Git: changed`**・ローカル **`--follow` 約 604s（約 10m）**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**・Tailscale・Pi5 API `<Pi5 の Tailscale IP>`）。**`main` マージ**: [PR #311](https://github.com/denkoushi/RaspberryPiSystem_002/pull/311)（squash **`6cb3bb1e`**）。
 
 **実機検証（自動・2026-04-08 readability）**: `./scripts/deploy/verify-phase12-real.sh`（Mac / Tailscale）→ **PASS 43 / WARN 0 / FAIL 0**（約 **29s**）。
 
@@ -450,7 +450,7 @@ sudo systemctl restart signage-lite.service
 | 症状 | 原因（特定） | 対処 |
 |------|----------------|------|
 | `Failed to acquire remote lock on …` | 前回デプロイ中断等で Pi5 上 **`/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock`** が残存 | Pi5 で当該 lock を削除（運用上問題なければ）後、デプロイ再実行 |
-| `git reset --hard` で **`unable to create file … 許可がありません`**（`apps/api/.../loan-card/*.ts`） | 当該パスが **`root:root` 所有**のため、デプロイユーザー（例: `denkon5sd02`）がワークツリーを更新できない | `sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src/services/signage/loan-card`（環境に合わせユーザー名を置換）後、再デプロイ |
+| `git reset --hard` で **`unable to create file … 許可がありません`**（`apps/api/.../loan-card/*.ts`） | 当該パスが **`root:root` 所有**のため、デプロイユーザー（例: `<Pi5 のユーザー名>`）がワークツリーを更新できない | `sudo chown -R <Pi5 のユーザー名>:<Pi5 のユーザー名> /opt/RaspberryPiSystem_002/apps/api/src/services/signage/loan-card`（環境に合わせユーザー名を置換）後、再デプロイ |
 | Pi3 でレイアウトが変わらない | Pi5 の **API／コンテナが未更新**、またはスケジュールが **`layoutConfig: SPLIT` の loans ペイン**でない | Pi5 を先に更新。`/api/signage/content` で `layoutConfig` とペイン種別を確認 |
 
 **根本原因（ワークツリー `root` 所有・サブセット）**:
@@ -540,8 +540,8 @@ sudo systemctl restart signage-lite.service
 **実機検証（本番反映直後）**:
 - `curl -k https://<Pi5 の Tailscale IP>/api/system/health` → **200**
 - `curl -k https://<Pi5 の Tailscale IP>/api/signage/content` → **200**
-- Pi3（`signageras3@<raspberrypi3 の Tailscale IP>`）: `systemctl is-active signage-lite.service` → **active**、`ls -lh /run/signage/current.jpg` → **更新時刻確認**
-- Pi4 例（`tools03@<raspberrypi4 の Tailscale IP>`）: `systemctl is-active kiosk-browser.service status-agent.timer` → **active**
+- Pi3（`<raspberrypi3 のユーザー名>@<raspberrypi3 の Tailscale IP>`）: `systemctl is-active signage-lite.service` → **active**、`ls -lh /run/signage/current.jpg` → **更新時刻確認**
+- Pi4 例（`<raspberrypi4 のユーザー名>@<raspberrypi4 の Tailscale IP>`）: `systemctl is-active kiosk-browser.service status-agent.timer` → **active**
 - （**自動回帰の完全体**は `./scripts/deploy/verify-phase12-real.sh`。本セッションでは上記スモークを実施。）
 
 **知見・トラブルシューティング**:
@@ -615,7 +615,7 @@ sudo systemctl restart signage-lite.service
 
 **デプロイ・実機検証結果**（2026-03-06）:
 - **デプロイ**: Run ID `20260306-095122-27071`、`state: success`、所要時間約37分
-- **対象**: `RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>" ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
+- **対象**: `RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>" ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`
 - **実機検証**: APIヘルス（`status: ok`）、`/api/signage/content`（layoutConfig: loans+visualization、tools=0）、`/api/signage/current-image`（JPEG 244KB）、`/api/signage/visualization-image/:id`（200）、Pi3 signage-lite 稼働、`current.jpg` 更新を確認
 - **結論**: サイネージ正常表示を確認
 
@@ -982,14 +982,14 @@ const textX = x + textAreaX;
 1. **デプロイ前の準備**:
    ```bash
    # Pi3サイネージサービスを停止・無効化（自動再起動を防止）
-   ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
-   ssh signageras3@<pi3_ip> 'sudo systemctl disable signage-lite.service signage-lite-update.timer'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'sudo systemctl disable signage-lite.service signage-lite-update.timer'
    
    # メモリ使用状況を確認（120MB以上空きがあることを確認）
-   ssh signageras3@<pi3_ip> 'free -m'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'free -m'
    
    # 既存のAnsibleプロセスをkill
-   ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
+   ssh <Pi5 のユーザー名>@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
    ```
 
 2. **デプロイ実行**:
@@ -1004,11 +1004,11 @@ const textX = x + textAreaX;
    ```bash
    # デプロイが正常に完了したことを確認（PLAY RECAPでfailed=0）
    # サイネージサービスを再有効化・再起動
-   ssh signageras3@<pi3_ip> 'sudo systemctl enable signage-lite.service signage-lite-update.timer'
-   ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'sudo systemctl enable signage-lite.service signage-lite-update.timer'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
    
    # サービスが正常に動作していることを確認
-   ssh signageras3@<pi3_ip> 'systemctl is-active signage-lite.service'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'systemctl is-active signage-lite.service'
    ```
 
 **解決状況**: ✅ **解決済み**（2025-12-06）
@@ -1033,7 +1033,7 @@ const textX = x + textAreaX;
 - `signage-lite.service` や `signage-lite-update.timer` の再起動は成功するが、`status-agent.*` のみ失敗
 
 **要因**:
-1. `signageras3` の `sudo -l` を確認したところ、`NOPASSWD` が `signage-lite` 系コマンドのみに限定されていた
+1. `<raspberrypi3 のユーザー名>` の `sudo -l` を確認したところ、`NOPASSWD` が `signage-lite` 系コマンドのみに限定されていた
 2. `status-agent.service` / `status-agent.timer` に対する `systemctl` はパスワードが必要で、Ansibleはbecome passwordを持たないため昇格プロンプト待ちでタイムアウトしていた
 
 **対策**:
@@ -1130,14 +1130,14 @@ const textX = x + textAreaX;
 1. **デプロイ前の準備**:
    ```bash
    # Pi3サイネージサービスを停止・無効化（自動再起動を防止）
-   ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
-   ssh signageras3@<pi3_ip> 'sudo systemctl disable signage-lite.service signage-lite-update.timer'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'sudo systemctl disable signage-lite.service signage-lite-update.timer'
    
    # メモリ使用状況を確認（120MB以上空きがあることを確認）
-   ssh signageras3@<pi3_ip> 'free -m'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'free -m'
    
    # 既存のAnsibleプロセスをkill
-   ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
+   ssh <Pi5 のユーザー名>@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
    ```
 
 2. **デプロイ実行**:
@@ -1152,11 +1152,11 @@ const textX = x + textAreaX;
    ```bash
    # デプロイが正常に完了したことを確認（ログでfailed=0）
    # サイネージサービスを再有効化・再起動
-   ssh signageras3@<pi3_ip> 'sudo systemctl enable signage-lite.service signage-lite-update.timer'
-   ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'sudo systemctl enable signage-lite.service signage-lite-update.timer'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
    
    # サービスが正常に動作していることを確認
-   ssh signageras3@<pi3_ip> 'systemctl is-active signage-lite.service'
+   ssh <raspberrypi3 のユーザー名>@<pi3_ip> 'systemctl is-active signage-lite.service'
    ```
 
 **学んだこと**:

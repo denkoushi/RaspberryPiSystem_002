@@ -663,7 +663,7 @@ Runbook: [§NFC・手元カメラ](../runbooks/kiosk-part-measurement.md#自主�
 |------|------|
 | **ブランチ / コミット** | `feat/self-inspection-instrument-registration-policy` · `38d4153e` |
 | **CI** | GitHub Actions `28420404387` success（lint/build/API integration/Docker/E2E まで全ジョブ成功） |
-| **本番デプロイ** | `RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP> ./scripts/update-all-clients.sh feat/self-inspection-instrument-registration-policy infrastructure/ansible/inventory.yml --limit '!raspberrypi3' --detach --follow`。Run ID `20260630-134607-14585`、Pi5 + Pi4 キオスク 5 台すべて `failed=0`。Pi3 は対象外 |
+| **本番デプロイ** | `RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> ./scripts/update-all-clients.sh feat/self-inspection-instrument-registration-policy infrastructure/ansible/inventory.yml --limit '!raspberrypi3' --detach --follow`。Run ID `20260630-134607-14585`、Pi5 + Pi4 キオスク 5 台すべて `failed=0`。Pi3 は対象外 |
 | **DB / API スモーク** | Pi5 本番で `SelfInspectionRegistrationPolicyConfig` テーブル存在確認 OK。`GET /api/part-measurement/self-inspection/registration-policy` は `requireMeasuringInstrumentTag:false` を返す |
 | **実機自動検証** | `./scripts/deploy/verify-phase12-real.sh` → `PASS 45 / WARN 0 / FAIL 0` |
 | **現場実機確認** | ユーザー実機検証 OK（2026-06-30） |
@@ -1493,7 +1493,7 @@ curl -sk "${BASE}/part-measurement/inspection-drawing/templates?limit=5" -H "x-c
 **当時のコマンド（Pi5・ブランチ時。現行手順は [deployment.md](../guides/deployment.md#標準更新入口)）**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-preview-parity \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -1575,7 +1575,7 @@ overflow: visible のまま右へはみ出し
 **当時のコマンド（Pi5・ブランチ時。現行手順は [deployment.md](../guides/deployment.md#標準更新入口)）**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/kiosk-inspection-drawing-library-filter-overflow \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -1652,7 +1652,7 @@ pointerup + 10px しきい値 + pointercancel は中止
 **当時のコマンド（Pi5・ブランチ時。現行手順は [deployment.md](../guides/deployment.md#標準更新入口)）**:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/kiosk-inspection-drawing-canvas-zoom \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```

@@ -68,7 +68,7 @@ update-frequency: medium
 **使用方法**:
 ```bash
 # リモートホストでバックアップを取得
-./scripts/ansible-backup-configs.sh tools03@<pi4_ip>
+./scripts/ansible-backup-configs.sh <raspberrypi4 のユーザー名>@<pi4_ip>
 ```
 
 ### 4. ロールバック機能の実装

@@ -24,7 +24,7 @@ update-frequency: medium
 │  (開発者PC) │
 └──────┬──────┘
        │ SSH接続
-       │ (denkon5sd02@<Pi5 の LAN IP>)
+       │ (<Pi5 のユーザー名>@<Pi5 の LAN IP>)
        ▼
 ┌─────────────────┐
 │  Raspberry Pi 5 │
@@ -101,14 +101,14 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit 
 **Pi5に接続して実行**:
 ```bash
 # Pi5にSSH接続
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 
 # Pi5上で実行: Pi4に公開鍵を追加
-ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@<pi4_ip>
+ssh-copy-id -i ~/.ssh/id_ed25519.pub <raspberrypi4 のユーザー名>@<pi4_ip>
 # パスワード入力が必要（初回のみ）
 
 # Pi5上で実行: Pi3に公開鍵を追加
-ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@<pi3_ip>
+ssh-copy-id -i ~/.ssh/id_ed25519.pub <raspberrypi3 のユーザー名>@<pi3_ip>
 # パスワード入力が必要（初回のみ）
 ```
 
@@ -118,7 +118,7 @@ ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@<pi3_ip>
 cat ~/.ssh/id_ed25519.pub
 
 # Pi4に接続して公開鍵を追加
-ssh tools03@<pi4_ip>
+ssh <raspberrypi4 のユーザー名>@<pi4_ip>
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
@@ -126,7 +126,7 @@ chmod 600 ~/.ssh/authorized_keys
 exit
 
 # Pi3に接続して公開鍵を追加
-ssh signageras3@<pi3_ip>
+ssh <raspberrypi3 のユーザー名>@<pi3_ip>
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
@@ -139,19 +139,19 @@ exit
 **Pi5から接続テスト**:
 ```bash
 # Pi5に接続
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 
 # Pi5上で実行: Pi4への接続テスト
-ssh -o StrictHostKeyChecking=no tools03@<pi4_ip> "echo 'Pi4接続成功' && hostname"
+ssh -o StrictHostKeyChecking=no <raspberrypi4 のユーザー名>@<pi4_ip> "echo 'Pi4接続成功' && hostname"
 
 # Pi5上で実行: Pi3への接続テスト
-ssh -o StrictHostKeyChecking=no signageras3@<pi3_ip> "echo 'Pi3接続成功' && hostname"
+ssh -o StrictHostKeyChecking=no <raspberrypi3 のユーザー名>@<pi3_ip> "echo 'Pi3接続成功' && hostname"
 ```
 
 **Ansible接続テスト**:
 ```bash
 # Macのターミナルで実行
-ssh denkon5sd02@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
 ```
 
 ## よくある質問
@@ -192,10 +192,10 @@ ssh denkon5sd02@<Pi5 の LAN IP> "cd /opt/RaspberryPiSystem_002 && ansible all -
 **解決方法**:
 ```bash
 # Pi5から接続テスト（詳細モード）
-ssh -v tools03@<raspberrypi4 の実際の LAN IP>
+ssh -v <raspberrypi4 のユーザー名>@<raspberrypi4 の実際の LAN IP>
 
 # Pi4側でSSH設定を確認
-ssh tools03@<raspberrypi4 の実際の LAN IP>
+ssh <raspberrypi4 のユーザー名>@<raspberrypi4 の実際の LAN IP>
 ls -la ~/.ssh/
 cat ~/.ssh/authorized_keys
 ```
@@ -210,7 +210,7 @@ cat ~/.ssh/authorized_keys
 **解決方法**:
 ```bash
 # Pi5からAnsible接続テスト
-ssh denkon5sd02@<Pi5 の LAN IP>
+ssh <Pi5 のユーザー名>@<Pi5 の LAN IP>
 cd /opt/RaspberryPiSystem_002
 ansible all -i infrastructure/ansible/inventory.yml -m ping -vvv
 ```

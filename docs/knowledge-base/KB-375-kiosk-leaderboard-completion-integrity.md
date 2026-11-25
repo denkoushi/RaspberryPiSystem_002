@@ -73,7 +73,7 @@ update-frequency: medium
   - `20260510-080053-3965` — `raspi4-robodrill01` · `ok=122` `changed=9`。
   - `20260510-080512-13265` — `raspi4-fjv60-80` · `ok=122` `changed=9`。
   - `20260510-080941-22009` — `raspi4-kensaku-stonebase01` · `ok=129` `changed=10`。
-- **実機（自動）**: **`RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP>`** 前提で **`./scripts/deploy/verify-phase12-real.sh`** → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 74s**）。**`deploy-status`**（4 Pi4 キオスク）**すべて PASS**。**Pi3**：スクリプトの **signage / timer チェックは PASS**（本変更の Ansible 適用対象外）。
+- **実機（自動）**: **`RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP>`** 前提で **`./scripts/deploy/verify-phase12-real.sh`** → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 74s**）。**`deploy-status`**（4 Pi4 キオスク）**すべて PASS**。**Pi3**：スクリプトの **signage / timer チェックは PASS**（本変更の Ansible 適用対象外）。
 - **ローカル preflight の失敗例**: デプロイ実行ユーザのリポに **未追跡ファイル**（例: 診断用 `scripts/diagnose-*.ts`）があると **`ensure_local_repo_ready_for_deploy` が exit 2**。**`git stash push -u`** でツリーをクリーンにしてから再実行。
 - **運用スモーク（手動・推奨）**: キオスク **生産日程一覧**と**順位ボード**で、同一行の **✓** と **資源 CD チップ**・**納期側集計**の完了表示が一致すること。**完了操作**後に **同じ操作を繰り返しても未完に戻らない**（`/completion` の **`unchanged`**）。**CSV 同期**後も **手動完了**が **`progress` 空**だけで落ちないこと（現場で問題になった経路）。
 

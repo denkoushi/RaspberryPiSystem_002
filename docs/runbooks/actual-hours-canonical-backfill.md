@@ -30,7 +30,7 @@
 
 ```bash
 # MacからPi5へSSH（Tailscale IP）
-ssh denkon5sd02@<Pi5 の Tailscale IP>
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 
 # 稼働中のblue/green APIスロット内でバックフィル実行（locationKey はデフォルト "default"）
 cd /opt/RaspberryPiSystem_002

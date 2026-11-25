@@ -29,9 +29,9 @@ The reported Pi5 baseline accepted the DV/OV/EV test sites under
   and [NSS trust attributes](https://nss-crypto.org/reference/security/nss/legacy/tools/nss_tools_certutil/index.html).
 
 The managed NSS account is `ansible_user`, resolved through `getent passwd`:
-Pi5 `denkon5sd02`; Pi4 `tools03`, `tools04`, `raspi4-fjv60-80`,
+Pi5 `<Pi5 のユーザー名>`; Pi4 `<raspberrypi4 のユーザー名>`, `<raspi4-robodrill01 のユーザー名>`, `raspi4-fjv60-80`,
 `raspi4-kensaku-stonebase01`, `raspi4-sessaku-01`, `raspi4-assembly-01`,
-`raspi4-kensaku-02`, `raspi4-assembly-02`; signage `signageras3`.
+`raspi4-kensaku-02`, `raspi4-assembly-02`; signage `<raspberrypi3 のユーザー名>`.
 The kiosk unit uses this account. Signage runtime configuration uses it too
 (current signage-lite displays images, but its desktop account is covered).
 The server role defines no host Chromium service; its inventory operator

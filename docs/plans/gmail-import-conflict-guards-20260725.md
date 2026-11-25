@@ -231,7 +231,7 @@ branch, and open a pull request. Wait for CI, CodeQL, secret scanning, and revie
 After merge, identify the exact immutable SHA resolved by `origin/main`, ensure the clean
 local checkout is at that SHA, and run:
 
-    RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP> \
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> \
       scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
       --limit raspberrypi5 --print-plan
 

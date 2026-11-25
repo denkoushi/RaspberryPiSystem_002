@@ -62,7 +62,7 @@ raspberrypi4 | UNREACHABLE! => {"msg": "Failed to connect to the host via ssh"}
 **対応**:
 1. SSH接続を確認:
    ```bash
-   ssh tools03@<pi4_ip>
+   ssh <raspberrypi4 のユーザー名>@<pi4_ip>
    ```
 
 2. インベントリファイルを確認:

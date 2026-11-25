@@ -814,7 +814,7 @@ Target: `raspberrypi5` only. App SHA `d6483420` (`feat: add split order pilot ga
 Deploy evidence:
 
 - Successful detach run: `20260622-082338-13283` (`ok=134` `changed=4` `failed=0`, Docker rebuild executed).
-- First attempt `20260622-081618-20567` failed at `git pull` because `apps/api/src/.../production-schedule-order-split-feature.ts` was `root:root` owned. Fixed with standard workspace chown: `sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src`, then `git reset --hard origin/feat/production-schedule-split-orders`.
+- First attempt `20260622-081618-20567` failed at `git pull` because `apps/api/src/.../production-schedule-order-split-feature.ts` was `root:root` owned. Fixed with standard workspace chown: `sudo chown -R <Pi5 のユーザー名>:<Pi5 のユーザー名> /opt/RaspberryPiSystem_002/apps/api/src`, then `git reset --hard origin/feat/production-schedule-split-orders`.
 - Second attempt on already-synced HEAD skipped Docker rebuild (`prev_head == new_head`). Resolved by resetting Pi5 to `ec4bd7bf` and redeploying so `update-all-clients.sh` detected docker-related diff and set `Docker rebuild: true`.
 
 Post-deploy flag OFF verification:

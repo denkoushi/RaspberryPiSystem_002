@@ -122,7 +122,7 @@ Work from `~/RaspberryPiSystem_002`.
 
 Capture plans without executing the expensive query:
 
-    ssh denkon5sd02@<Pi5 の Tailscale IP> "docker exec docker-db-1 psql ... -c 'EXPLAIN ...'"
+    ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker exec docker-db-1 psql ... -c 'EXPLAIN ...'"
 
 Run focused tests after adding the regression:
 
@@ -135,9 +135,9 @@ Run the repository-prescribed API validation commands discovered from `package.j
 
 After PR merge and exact-SHA CI success:
 
-    RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP> scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --print-plan
-    RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP> scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --preflight-only
-    RASPI_SERVER_HOST=denkon5sd02@<Pi5 の Tailscale IP> scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --print-plan
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --preflight-only
+    RASPI_SERVER_HOST=<Pi5 のユーザー名>@<Pi5 の Tailscale IP> scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5
 
 Use the returned run ID with:
 

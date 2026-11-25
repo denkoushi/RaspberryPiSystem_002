@@ -98,7 +98,7 @@ ssh -N \
   -L 5904:<raspberrypi4 の Tailscale IP>:5900 \
   -L 5905:<raspi4-robodrill01 の Tailscale IP>:5900 \
   -L 5903:<raspberrypi3 の Tailscale IP>:5900 \
-  denkon5sd02@<Pi5 の Tailscale IP>
+  <Pi5 のユーザー名>@<Pi5 の Tailscale IP>
 ```
 
 **注意**: IPは環境により変わる。`tailscale status`（Pi5で実行）で最新のIPを確認すること。

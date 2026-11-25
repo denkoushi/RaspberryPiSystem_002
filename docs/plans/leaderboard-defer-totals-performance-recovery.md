@@ -150,7 +150,7 @@ New concepts in composite hook + interaction lock policy:
 **Command** (standard):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh feat/leaderboard-defer-totals \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -309,7 +309,7 @@ Deployment status: **not deployed**. Next step is to run the same `stonebase` sh
 **Command** (standard):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh chore/leaderboard-board-perf-logging \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -354,7 +354,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 **Command** (standard):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh chore/leaderboard-residual-context-measurement \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
@@ -406,7 +406,7 @@ export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
 **Command** (standard):
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@<Pi5 の Tailscale IP>"
+export RASPI_SERVER_HOST="<Pi5 のユーザー名>@<Pi5 の Tailscale IP>"
 ./scripts/update-all-clients.sh fix/fkojunst-source-row-order-sync \
   infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```

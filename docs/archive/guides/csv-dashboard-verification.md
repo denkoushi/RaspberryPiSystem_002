@@ -13,7 +13,7 @@
 curl -k https://<Pi5 の Tailscale IP>/api/system/health
 
 # マイグレーション確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate status"
 
 # 新APIエンドポイント確認（認証エラーが返れば正常）
 curl -k https://<Pi5 の Tailscale IP>/api/csv-dashboards
@@ -23,7 +23,7 @@ curl -k https://<Pi5 の Tailscale IP>/api/csv-dashboards
 
 ```bash
 # CSV_DASHBOARD_STORAGE_DIRが設定されていることを確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "grep CSV_DASHBOARD_STORAGE_DIR /opt/RaspberryPiSystem_002/infrastructure/docker/.env"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "grep CSV_DASHBOARD_STORAGE_DIR /opt/RaspberryPiSystem_002/infrastructure/docker/.env"
 ```
 
 **期待される出力**: `CSV_DASHBOARD_STORAGE_DIR=/app/storage/csv-dashboards`
@@ -189,7 +189,7 @@ curl -k -H "x-client-key: $PI3_SIGNAGE_CLIENT_KEY" https://<Pi5 の Tailscale IP
 **確認コマンド**:
 ```bash
 # 取り込み履歴確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma studio --browser none" &
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma studio --browser none" &
 # ブラウザで http://localhost:5555 を開き、CsvDashboardIngestRun テーブルを確認
 ```
 
@@ -222,7 +222,7 @@ ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem
 curl -k https://<Pi5 の Tailscale IP>/api/signage/content | jq '.csvDashboardsById."<dashboard-id>".rows | map({date: .date, name: .name})'
 
 # データベースで日付フィルタリングを確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api psql postgresql://postgres:postgres@db:5432/borrow_return -c \"SELECT COUNT(*) as total_rows, COUNT(CASE WHEN \\\"occurredAt\\\" >= '2026-01-08 15:00:00'::timestamp AND \\\"occurredAt\\\" <= '2026-01-09 14:59:59'::timestamp THEN 1 END) as today_rows, COUNT(CASE WHEN \\\"occurredAt\\\" < '2026-01-08 15:00:00'::timestamp THEN 1 END) as yesterday_rows FROM \\\"CsvDashboardRow\\\" WHERE \\\"csvDashboardId\\\" = '<dashboard-id>';\""
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api psql postgresql://postgres:postgres@db:5432/borrow_return -c \"SELECT COUNT(*) as total_rows, COUNT(CASE WHEN \\\"occurredAt\\\" >= '2026-01-08 15:00:00'::timestamp AND \\\"occurredAt\\\" <= '2026-01-09 14:59:59'::timestamp THEN 1 END) as today_rows, COUNT(CASE WHEN \\\"occurredAt\\\" < '2026-01-08 15:00:00'::timestamp THEN 1 END) as yesterday_rows FROM \\\"CsvDashboardRow\\\" WHERE \\\"csvDashboardId\\\" = '<dashboard-id>';\""
 ```
 
 **検証結果**（2026-01-09）:
@@ -256,7 +256,7 @@ date,name,value
 **確認コマンド**:
 ```bash
 # クリーンアップログ確認
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep -i 'csv.*cleanup\|csv.*retention' | tail -20"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | grep -i 'csv.*cleanup\|csv.*retention' | tail -20"
 ```
 
 **期待される結果**:
@@ -287,7 +287,7 @@ curl -k https://<Pi5 の Tailscale IP>/api/signage/content | jq '{contentType, l
 
 **確認コマンド**:
 ```bash
-ssh denkon5sd02@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | tail -50"
+ssh <Pi5 のユーザー名>@<Pi5 の Tailscale IP> "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml logs api | tail -50"
 ```
 
 ### 問題3: GmailからCSVが取得できない
