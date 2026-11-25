@@ -8,15 +8,11 @@ PI3_HOST="signageras3@100.105.224.86"
 BASE_URL="https://100.106.158.2"
 CLIENT_KEY="${PI3_SIGNAGE_CLIENT_KEY:?PI3_SIGNAGE_CLIENT_KEY must be set}"
 
-# TLS は既定で検証する。自己署名など検証できない環境だけ VERIFY_ALLOW_INSECURE_TLS=1 で検証を外す。
-# 独自 CA を使う場合は VERIFY_CA_CERT=<Pi5 上のパス> を渡す。
-CURL_TLS_OPTS=""
-if [ "${VERIFY_ALLOW_INSECURE_TLS:-}" = "1" ]; then
-  CURL_TLS_OPTS="-k"
-fi
-if [ -n "${VERIFY_CA_CERT:-}" ]; then
-  CURL_TLS_OPTS="${CURL_TLS_OPTS} --cacert $(printf '%q' "${VERIFY_CA_CERT}")"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# TLS の設定(既定で検証。外すのは VERIFY_ALLOW_INSECURE_TLS=1 のときだけ。VERIFY_CA_CERT は Pi5 上のパス)
+# shellcheck source=../lib/verify-curl-tls.sh
+source "${SCRIPT_DIR}/../lib/verify-curl-tls.sh"
+CURL_TLS_OPTS="$(verify_curl_tls_remote_opts)"
 
 echo "=========================================="
 echo "サイネージ表示の実機検証"

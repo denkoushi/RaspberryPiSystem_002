@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # 運用者が手で流す確認スクリプトは、既定で TLS 検証あり。
-# VERIFY_ALLOW_INSECURE_TLS=1 のときだけ -k を付ける。
+# 設定は scripts/lib/verify-curl-tls.sh の1か所にあり、VERIFY_ALLOW_INSECURE_TLS=1 のときだけ -k を付ける。
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+LIB="${ROOT_DIR}/scripts/lib/verify-curl-tls.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -22,30 +23,28 @@ SCRIPTS=(
 for rel in "${SCRIPTS[@]}"; do
   path="${ROOT_DIR}/${rel}"
   bash -n "$path"
-  if grep -En 'curl[^|]*(-k([[:space:]]|")|-sk|--insecure)' "$path" >&2; then
-    fail "${rel} passes -k directly to curl"
+  grep -Fq '/lib/verify-curl-tls.sh"' "$path" || fail "${rel} does not source scripts/lib/verify-curl-tls.sh"
+  # 行の折り返しに関係なく、-k / --insecure の直書きを拒む(コメント行は除く)
+  if grep -v '^[[:space:]]*#' "$path" | grep -En '(^|[[:space:]"])(-k|-sk|-ks|--insecure)([[:space:]"]|$)' >&2; then
+    fail "${rel} passes -k/--insecure directly"
   fi
-  grep -Fq 'VERIFY_ALLOW_INSECURE_TLS' "$path" || fail "${rel} lacks the VERIFY_ALLOW_INSECURE_TLS opt-in"
 done
+bash -n "$LIB"
 
-# 組み立て部分(空行まで)だけを取り出して既定と opt-in の結果を確かめる
-extract_block() {
-  awk -v start="$2" 'index($0, start)==1 {on=1} on && $0=="" {exit} on {print}' "$1"
+run_lib() {
+  bash -c 'set -euo pipefail; source "$1"; printf "[%s]|[%s]" "${VERIFY_CURL_TLS_ARGS[*]-}" "$(verify_curl_tls_remote_opts)"' _ "$LIB"
 }
-for rel in scripts/deploy/verify-phase12-real.sh scripts/deploy/verify-services-real.sh scripts/test/security-e2e.sh; do
-  block="$(extract_block "${ROOT_DIR}/${rel}" 'CURL_TLS_ARGS=()')"
-  default="$(env -u VERIFY_ALLOW_INSECURE_TLS -u VERIFY_CA_CERT bash -c "set -u; ${block}; echo \"[\${CURL_TLS_ARGS[*]-}]\"")"
-  [ "$default" = "[]" ] || fail "${rel} adds curl TLS args by default: ${default}"
-  optin="$(VERIFY_ALLOW_INSECURE_TLS=1 bash -c "set -u; ${block}; echo \"[\${CURL_TLS_ARGS[*]-}]\"")"
-  [ "$optin" = "[-k]" ] || fail "${rel} opt-in result unexpected: ${optin}"
-done
 
-for rel in scripts/test/verify-signage-layout-config.sh scripts/test/verify-signage-display.sh; do
-  block="$(extract_block "${ROOT_DIR}/${rel}" 'CURL_TLS_OPTS=""')"
-  default="$(env -u VERIFY_ALLOW_INSECURE_TLS -u VERIFY_CA_CERT bash -c "set -u; ${block}; echo \"[\${CURL_TLS_OPTS}]\"")"
-  [ "$default" = "[]" ] || fail "${rel} adds curl TLS opts by default: ${default}"
-  optin="$(VERIFY_ALLOW_INSECURE_TLS=1 bash -c "set -u; ${block}; echo \"[\${CURL_TLS_OPTS}]\"")"
-  [ "$optin" = "[-k]" ] || fail "${rel} opt-in result unexpected: ${optin}"
-done
+default="$(env -u VERIFY_ALLOW_INSECURE_TLS -u VERIFY_CA_CERT bash -c "$(declare -f run_lib); LIB='$LIB' run_lib")"
+[ "$default" = "[]|[]" ] || fail "default adds curl TLS args: ${default}"
+
+optin="$(env -u VERIFY_CA_CERT VERIFY_ALLOW_INSECURE_TLS=1 bash -c "$(declare -f run_lib); LIB='$LIB' run_lib")"
+[ "$optin" = "[-k]|[-k]" ] || fail "opt-in result unexpected: ${optin}"
+
+other="$(env -u VERIFY_CA_CERT VERIFY_ALLOW_INSECURE_TLS=true bash -c "$(declare -f run_lib); LIB='$LIB' run_lib")"
+[ "$other" = "[]|[]" ] || fail "only the exact value 1 may disable verification: ${other}"
+
+ca="$(env -u VERIFY_ALLOW_INSECURE_TLS VERIFY_CA_CERT='/tmp/my ca.pem' bash -c "$(declare -f run_lib); LIB='$LIB' run_lib")"
+[ "$ca" = "[--cacert /tmp/my ca.pem]|[--cacert /tmp/my\\ ca.pem]" ] || fail "CA result unexpected: ${ca}"
 
 printf 'operator scripts TLS default contract passed\n'

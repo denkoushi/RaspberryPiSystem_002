@@ -8,16 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 cd "${REPO_ROOT}"
 
-# TLS は既定で検証する。自己署名など検証できない環境だけ VERIFY_ALLOW_INSECURE_TLS=1 で検証を外す。
-# 独自 CA を使う場合は VERIFY_CA_CERT=<path> を渡す。
-CURL_TLS_ARGS=()
-if [ "${VERIFY_ALLOW_INSECURE_TLS:-}" = "1" ]; then
-  CURL_TLS_ARGS+=(-k)
-fi
-if [ -n "${VERIFY_CA_CERT:-}" ]; then
-  CURL_TLS_ARGS+=(--cacert "${VERIFY_CA_CERT}")
-fi
-curl_tls() { curl ${CURL_TLS_ARGS[@]+"${CURL_TLS_ARGS[@]}"} "$@"; }
+# TLS の設定(既定で検証。外すのは VERIFY_ALLOW_INSECURE_TLS=1 のときだけ)
+# shellcheck source=../lib/verify-curl-tls.sh
+source "${SCRIPT_DIR}/../lib/verify-curl-tls.sh"
 
 # Pi5 到達判定: verify-phase12-real.sh と同様（Tailscale 高遅延時の ICMP 偶発失敗対策）
 pi5_reachable_tailscale() {
