@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
-import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId, sessakuPieceIdFromItemId, sessakuPieceItemIds, resolveSessakuPieceItemKeys } from '../piece-key.js';
+import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId, sessakuPieceIdFromItemId, sessakuPieceItemIds, resolveSessakuPieceItemKeys, parseSessakuPieceParentItemId, resolveSessakuPieceParentKey, findSessakuPieceWinner } from '../piece-key.js';
 describe('piece identity and scoped generation', () => {
   it.each([['P2003', 'PIECE_REFERENCED'], ['P2002', 'STALE_SESSAKU_PIECES'], ['P2034', 'STALE_SESSAKU_PIECES']])('maps %s to a piece conflict', (code, expected) => {
     const error = new Prisma.PrismaClientKnownRequestError('constraint', { code, clientVersion: 'test' });
@@ -12,7 +12,7 @@ describe('piece identity and scoped generation', () => {
     expect(() => sessakuPieceConflict(error, { preserveSerializationFailure: true })).toThrow(error);
   });
   it('loads boundaries for mutation and projection while loading completions only for projection', async () => {
-    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '1' };
+    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '1', productNo: '' };
     const findUnique = vi.fn().mockResolvedValue(null); const findMany = vi.fn().mockResolvedValue([]);
     const client = { productionScheduleSessakuPieceSet: { findUnique, findMany } } as never;
     await readSessakuPieceSet(client, key);
@@ -21,7 +21,7 @@ describe('piece identity and scoped generation', () => {
     expect(findMany.mock.calls[0][0].include.pieces.include).toEqual({ opCompletions: { select: { opNo: true } }, opSplits: { orderBy: { fromOpNo: 'asc' } }, sourcePiece: { select: { opSplits: { select: { fromOpNo: true }, orderBy: { fromOpNo: 'desc' }, take: 1 } } } });
   });
   it('resolves all interval IDs to their original piece logical locks', async () => {
-    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '1' };
+    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '1', productNo: '' };
     const ids = sessakuPieceItemIds({ id: 'id', opSplits: [{ fromOpNo: 3 }, { fromOpNo: 5 }] });
     expect(ids).toEqual(['piece:id', 'pieceops:id:3', 'pieceops:id:5']);
     expect(ids.map(sessakuPieceIdFromItemId)).toEqual(['id', 'id', 'id']);
@@ -32,7 +32,7 @@ describe('piece identity and scoped generation', () => {
   });
   it('preserves exact winner key strings across encoding', () => {
     const key = sessakuPieceKeyFromRow({ FSEIBAN: ' A ', FHINCD: 'part', FSIGENCD: '01', FKOJUN: 2, ProductNo: 'unrelated' });
-    expect(encodeSessakuPieceKey(key)).toBe('[" A ","part","01","2"]');
+    expect(encodeSessakuPieceKey(key)).toBe('[" A ","part","01","2","unrelated"]');
     expect(decodeSessakuPieceParentItemId(sessakuPieceParentItemId(key))).toEqual(key);
   });
   it.each(['piece:a', 'row:bad', 'row:WzFd'])('rejects malformed parent IDs %s', (value) => expect(() => decodeSessakuPieceParentItemId(value)).toThrow());
@@ -44,7 +44,7 @@ describe('piece identity and scoped generation', () => {
     const queryRaw = vi.fn().mockResolvedValue([{ fingerprint: 'abc' }]);
     expect(await readSessakuPieceGeneration({ $queryRaw: queryRaw } as never)).toBe('abc');
     const text = (queryRaw.mock.calls[0][0] as Prisma.Sql).text;
-    expect(text).toContain('md5(COALESCE(string_agg(jsonb_build_array(s."fseiban", s."fhincd", s."fsigencd", s."fkojun", s."id", s."version")');
+    expect(text).toContain('md5(COALESCE(string_agg(jsonb_build_array(s."fseiban", s."fhincd", s."fsigencd", s."fkojun", s."productNo", s."id", s."version")');
     expect(text).toContain('ORDER BY s."id" COLLATE "C"');
     queryRaw.mockResolvedValue([]);
     expect(await readSessakuPieceGeneration({ $queryRaw: queryRaw } as never)).toBe('');
@@ -57,7 +57,7 @@ describe('piece identity and scoped generation', () => {
     const query = queryRaw.mock.calls[0][0] as Prisma.Sql;
     expect(query.values).toContainEqual(['A']);
     expect(query.text).toContain('SELECT DISTINCT COALESCE(r."rowData"');
-    expect(query.text).toContain('(s."fseiban", s."fhincd", s."fsigencd", s."fkojun") IN');
+    expect(query.text).toContain('(s."fseiban", s."fhincd", s."fsigencd", s."fkojun", s."productNo") IN');
     expect(query.text).toContain('SELECT "sourcePieceSetId" FROM parents');
     expect(query.text).toContain('source."pieceSetId"');
     await readSessakuPieceGeneration(client, { fseibans: [] });
@@ -66,7 +66,7 @@ describe('piece identity and scoped generation', () => {
     expect((queryRaw.mock.calls[2][0] as Prisma.Sql).text).not.toContain('FROM "CsvDashboardRow"');
   });
   it('takes the complete same-part lock group in one stable order from either process', async () => {
-    const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '2' };
+    const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '2', productNo: '' };
     const later = { ...cutting, fsigencd: '305', fkojun: '10' };
     const calls: string[][] = [];
     for (const key of [cutting, later]) {
@@ -84,7 +84,7 @@ describe('piece identity and scoped generation', () => {
     expect(calls[0]).toEqual([...calls[0]].sort());
   });
   it('locks the same ordered row keys before any cutting or later set exists', async () => {
-    const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1' };
+    const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1', productNo: '' };
     const later = { ...cutting, fsigencd: '2', fkojun: '2' };
     const locks = [];
     for (const key of [cutting, later]) {
@@ -106,7 +106,7 @@ describe('piece identity and scoped generation', () => {
   });
 
   it('reads 601 related seiban/part pairs in 300/300/1 batches and locks all unique keys once in global order', async () => {
-    const keys = Array.from({ length: 601 }, (_, i) => ({ fseiban: `S${600 - i}`, fhincd: `P${i % 3}`, fsigencd: '021', fkojun: '1' }));
+    const keys = Array.from({ length: 601 }, (_, i) => ({ fseiban: `S${600 - i}`, fhincd: `P${i % 3}`, fsigencd: '021', fkojun: '1', productNo: '' }));
     const related = keys.map((key) => ({ ...key, fsigencd: '022', fkojun: '2' }));
     const findMany = vi.fn().mockImplementation(async ({ where }) => related.filter((key) =>
       where.OR.some((part: { fseiban: string; fhincd: string }) => part.fseiban === key.fseiban && part.fhincd === key.fhincd)));
@@ -142,7 +142,7 @@ describe('piece identity and scoped generation', () => {
   });
 
   it('expands only parts with sets for CSV while locking ordinary keys once', async () => {
-    const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1' };
+    const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1', productNo: '' };
     const later = { ...cutting, fsigencd: '2', fkojun: '2' };
     const ordinary = { ...cutting, fseiban: 'B' };
     const tx = { productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([cutting]) },
@@ -156,5 +156,38 @@ describe('piece identity and scoped generation', () => {
     await acquireSessakuPieceLogicalLocks(tx as never, [ordinary], { onlyPartsWithSets: true });
     expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(tx.$executeRaw.mock.calls[0][1]).toEqual([`sessaku-pieces:${PRODUCTION_SCHEDULE_DASHBOARD_ID}:${encodeSessakuPieceKey(ordinary)}`]);
+  });
+  describe('five-element parent IDs', () => {
+    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '10', productNo: '7' };
+    const legacy = `row:${Buffer.from(JSON.stringify(['S', 'P', '021', '10'])).toString('base64url')}`;
+    it('gives each order number under one four-column key its own parent ID', () => {
+      expect(sessakuPieceParentItemId(key)).not.toBe(sessakuPieceParentItemId({ ...key, productNo: '8' }));
+      expect(parseSessakuPieceParentItemId(sessakuPieceParentItemId(key))).toEqual(key);
+      expect(decodeSessakuPieceParentItemId(sessakuPieceParentItemId(key))).toEqual(key);
+    });
+    it('parses a legacy four-element ID without a product number and rejects it for the synchronous decoder', () => {
+      expect(parseSessakuPieceParentItemId(legacy)).toEqual({ fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '10', productNo: null });
+      expect(() => decodeSessakuPieceParentItemId(legacy)).toThrowError(expect.objectContaining({ statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM' }));
+    });
+    it('resolves a legacy ID only when exactly one visible row matches', async () => {
+      const one = { $queryRaw: vi.fn().mockResolvedValue([{ productNo: '7' }]) } as never;
+      expect(await resolveSessakuPieceParentKey(one, legacy)).toEqual(key);
+      for (const rows of [[{ productNo: '7' }, { productNo: '8' }], []]) {
+        const client = { $queryRaw: vi.fn().mockResolvedValue(rows) } as never;
+        await expect(resolveSessakuPieceParentKey(client, legacy)).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM' });
+      }
+    });
+    it('does not query for a five-element ID', async () => {
+      const client = { $queryRaw: vi.fn() } as never;
+      expect(await resolveSessakuPieceParentKey(client, sessakuPieceParentItemId(key))).toEqual(key);
+      expect((client as { $queryRaw: ReturnType<typeof vi.fn> }).$queryRaw).not.toHaveBeenCalled();
+    });
+    it('matches the winner row on all five elements', async () => {
+      const $queryRaw = vi.fn().mockResolvedValue([]);
+      expect(await findSessakuPieceWinner({ $queryRaw } as never, key)).toBeNull();
+      const sql = $queryRaw.mock.calls[0][0] as Prisma.Sql;
+      expect(sql.sql).toContain(`'ProductNo'`);
+      expect(sql.values).toEqual(expect.arrayContaining(['S', 'P', '021', '10', '7']));
+    });
   });
 });

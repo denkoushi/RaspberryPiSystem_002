@@ -35,7 +35,7 @@ vi.mock('../../grinding-planning-board/source.js', () => ({
 vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../piece-key.js')>(),
   readSessakuPieceSet: mocks.readSet, readSessakuPieceSets: mocks.sets, findSessakuPieceWinner: mocks.winner,
   acquireSessakuPieceLogicalLocks: mocks.logicalLocks, acquireSessakuPieceBoardStateLocks: vi.fn(),
-  resolveSessakuPieceItemKeys: async (_client: unknown, keys: string[]) => new Map([[keys[0], { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' }]])
+  resolveSessakuPieceItemKeys: async (_client: unknown, keys: string[]) => new Map([[keys[0], { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '1' }]])
 }));
 vi.mock('../piece-audit.js', async () => ({ pieceTimingStage: new (await import('node:async_hooks')).AsyncLocalStorage(), readLaterPieceAuditSnapshots: async () => [], collectLaterPiecePropagationAudits: () => [],
   runSessakuPieceOperation: async (audit: unknown, callback: (audit: unknown) => unknown) => callback(audit) }));
@@ -50,7 +50,7 @@ import { encodeSessakuPieceKey, sessakuPieceParentItemId } from '../piece-key.js
 import { ApiError } from '../../../../lib/errors.js';
 import { cooperativeAutoUnitSplitTransaction } from '../auto-unit-split-transaction.js';
 
-const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
+const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '1' };
 const row = { id: 'row', rowData: { FSEIBAN: 'S', FHINCD: 'PART', FSIGENCD: '021', FKOJUN: '10', ProductNo: '1', FSIGENSHOYORYO: '10' }, updatedAt: null };
 let set: SessakuPieceSet;
 let definitions: { opNo: number }[];

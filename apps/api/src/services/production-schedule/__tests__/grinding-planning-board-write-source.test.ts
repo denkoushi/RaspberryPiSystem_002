@@ -8,7 +8,7 @@ import { decodeRowItemId } from '../grinding-planning-board/shared.js';
 import { buildGrindingPlanningBoardRowItemId } from '../grinding-planning-board-projection.js';
 
 const rowData = (fkojun: string) => ({ FSEIBAN: 'S1', FHINCD: 'PART', FSIGENCD: 'G1', FKOJUN: fkojun, ProductNo: '1' });
-const pieceSet = (fkojun: string) => ({ fseiban: 'S1', fhincd: 'PART', fsigencd: 'G1', fkojun });
+const pieceSet = (fkojun: string) => ({ fseiban: 'S1', fhincd: 'PART', fsigencd: 'G1', fkojun, productNo: '1' });
 
 describe('discoverSourceRows', () => {
   beforeEach(() => {

@@ -6,6 +6,7 @@
  * 引き継ぎ先に同じ種類のものが既にあれば古い行のものはそのまま残す。
  *
  * 引き継ぎ先 = 同じ4列キー(完全一致)で印の無い行のうち、ProductNo が数値として最大の行(winner と同じ順)。
+ * 切削の分割(SessakuPieceSet / SessakuPieceHistory)は、同じ4列キーの古い ProductNo のものを引き継ぎ先の ProductNo に付け替える。
  * 移さないもの(取り込みで自動で付く): OrderSupplement / FkojunstStatus / FkojunstMailStatus / ExternalCompletion。
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
@@ -27,6 +28,8 @@ export type CarryOverCounts = {
   grindingOverrides: number;
   grindingArrivals: number;
   grindingFirstProcessArrivals: number;
+  sessakuPieceSets: number;
+  sessakuPieceHistories: number;
 };
 
 export type CarryOverPair = {
@@ -126,6 +129,7 @@ export async function carryOverSupersededOrderData(
   const counts: CarryOverCounts = {
     targets: 0, rowNotes: 0, orderAssignments: 0, globalRowRanks: 0, orderSplits: 0, progress: 0,
     grindingOverrides: 0, grindingArrivals: 0, grindingFirstProcessArrivals: 0,
+    sessakuPieceSets: 0, sessakuPieceHistories: 0,
   };
   const pairs = await resolveCarryOverPairs(client, oldIds);
   counts.targets = pairs.length;
@@ -195,6 +199,48 @@ export async function carryOverSupersededOrderData(
       )
       UPDATE "ProductionScheduleProgress" p SET "csvDashboardRowId" = c."target_id", "updatedAt" = NOW()
       FROM cand c WHERE p."csvDashboardRowId" = c."old_id"`);
+
+    // 切削の分割: 古い行の4列キー+古い ProductNo のProductionScheduleSessakuPieceSetを、対象行の ProductNo に付け替える。対象の ProductNo に既にあれば移さない
+    counts.sessakuPieceSets += await client.$executeRaw(Prisma.sql`
+      WITH cand AS (
+        SELECT DISTINCT ON (m."target_id") s."id" AS "row_id", COALESCE(t."rowData"->>'ProductNo', '') AS "target_product_no"
+        FROM ${idPairs(o, t)}
+        JOIN "CsvDashboardRow" o ON o."id" = m."old_id"
+        JOIN "CsvDashboardRow" t ON t."id" = m."target_id"
+        JOIN "ProductionScheduleSessakuPieceSet" s ON s."csvDashboardId" = o."csvDashboardId"
+          AND s."fseiban" = COALESCE(o."rowData"->>'FSEIBAN', '') AND s."fhincd" = COALESCE(o."rowData"->>'FHINCD', '')
+          AND s."fsigencd" = COALESCE(o."rowData"->>'FSIGENCD', '') AND s."fkojun" = COALESCE(o."rowData"->>'FKOJUN', '')
+          AND s."productNo" = COALESCE(o."rowData"->>'ProductNo', '')
+        WHERE NOT EXISTS (
+          SELECT 1 FROM "ProductionScheduleSessakuPieceSet" x
+          WHERE x."csvDashboardId" = s."csvDashboardId" AND x."fseiban" = s."fseiban" AND x."fhincd" = s."fhincd"
+            AND x."fsigencd" = s."fsigencd" AND x."fkojun" = s."fkojun"
+            AND x."productNo" = COALESCE(t."rowData"->>'ProductNo', ''))
+        ORDER BY m."target_id", m."ord"
+      )
+      UPDATE "ProductionScheduleSessakuPieceSet" s SET "productNo" = c."target_product_no", "updatedAt" = NOW()
+      FROM cand c WHERE s."id" = c."row_id"`);
+
+    // 切削の分割: 古い行の4列キー+古い ProductNo のProductionScheduleSessakuPieceHistoryを、対象行の ProductNo に付け替える。対象の ProductNo に既にあれば移さない
+    counts.sessakuPieceHistories += await client.$executeRaw(Prisma.sql`
+      WITH cand AS (
+        SELECT DISTINCT ON (m."target_id") s."id" AS "row_id", COALESCE(t."rowData"->>'ProductNo', '') AS "target_product_no"
+        FROM ${idPairs(o, t)}
+        JOIN "CsvDashboardRow" o ON o."id" = m."old_id"
+        JOIN "CsvDashboardRow" t ON t."id" = m."target_id"
+        JOIN "ProductionScheduleSessakuPieceHistory" s ON s."csvDashboardId" = o."csvDashboardId"
+          AND s."fseiban" = COALESCE(o."rowData"->>'FSEIBAN', '') AND s."fhincd" = COALESCE(o."rowData"->>'FHINCD', '')
+          AND s."fsigencd" = COALESCE(o."rowData"->>'FSIGENCD', '') AND s."fkojun" = COALESCE(o."rowData"->>'FKOJUN', '')
+          AND s."productNo" = COALESCE(o."rowData"->>'ProductNo', '')
+        WHERE NOT EXISTS (
+          SELECT 1 FROM "ProductionScheduleSessakuPieceHistory" x
+          WHERE x."csvDashboardId" = s."csvDashboardId" AND x."fseiban" = s."fseiban" AND x."fhincd" = s."fhincd"
+            AND x."fsigencd" = s."fsigencd" AND x."fkojun" = s."fkojun"
+            AND x."productNo" = COALESCE(t."rowData"->>'ProductNo', ''))
+        ORDER BY m."target_id", m."ord"
+      )
+      UPDATE "ProductionScheduleSessakuPieceHistory" s SET "productNo" = c."target_product_no"
+      FROM cand c WHERE s."id" = c."row_id"`);
   }
 
   // 研削ボードの itemKey(同じキーのままなら書き換え不要)

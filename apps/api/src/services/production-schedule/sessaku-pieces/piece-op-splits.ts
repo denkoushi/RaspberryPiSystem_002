@@ -117,7 +117,7 @@ export async function mutateSessakuPieceOps(params: SessakuPieceOpMergeRequest &
 export async function rememberPieceHistory(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey) {
   const logicalKey = sessakuPieceSetWhere(key);
   await tx.productionScheduleSessakuPieceHistory.upsert({
-    where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: logicalKey }, create: logicalKey, update: {}
+    where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun_productNo: logicalKey }, create: logicalKey, update: {}
   });
 }
 

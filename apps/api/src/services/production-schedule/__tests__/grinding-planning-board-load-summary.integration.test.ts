@@ -209,16 +209,17 @@ function projectionInput(fixture: { rows: SummaryRow[]; splitIdsByParentRow: Map
       updatedAt: splitUpdatedAt
     }))
   }] as [string, GrindingPlanningBoardProjectionRowDetail]));
-  const movedParent = fixture.rows.find((row) => String(row.data.FSEIBAN).endsWith('-A'))!;
-  const movedSplitId = fixture.splitIds[0]!;
-  const emptyOverrideRow = fixture.rows.find((row) => row.data.FSEIBAN?.endsWith('-E'))!;
-  const quotedKeyRow = fixture.rows.find((row) => row.data.FSEIBAN?.includes("Q '"))!;
-  const overrides = new Map<string, GrindingPlanningBoardProjectionOverride>([
-    [buildGrindingPlanningBoardRowItemId(movedParent.data), { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }],
-    [`split:${movedSplitId}`, { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }],
-    [buildGrindingPlanningBoardRowItemId(emptyOverrideRow.data), { overrideResourceCd: '', overrideDueDate: null, alternateRank: null, version: 1 }],
-    [buildGrindingPlanningBoardRowItemId(quotedKeyRow.data), { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }]
-  ]);
+  const movedParent = fixture.rows.find((row) => String(row.data.FSEIBAN).endsWith('-A'));
+  const movedSplitId = fixture.splitIds[0];
+  const emptyOverrideRow = fixture.rows.find((row) => row.data.FSEIBAN?.endsWith('-E'));
+  const quotedKeyRow = fixture.rows.find((row) => row.data.FSEIBAN?.includes("Q '"));
+  // Only rows present in this projection (a caller may pass a subset of the fixture) get an override.
+  const entries: Array<[string, GrindingPlanningBoardProjectionOverride]> = [];
+  if (movedParent) entries.push([buildGrindingPlanningBoardRowItemId(movedParent.data), { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }]);
+  if (movedSplitId) entries.push([`split:${movedSplitId}`, { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }]);
+  if (emptyOverrideRow) entries.push([buildGrindingPlanningBoardRowItemId(emptyOverrideRow.data), { overrideResourceCd: '', overrideDueDate: null, alternateRank: null, version: 1 }]);
+  if (quotedKeyRow) entries.push([buildGrindingPlanningBoardRowItemId(quotedKeyRow.data), { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 }]);
+  const overrides = new Map<string, GrindingPlanningBoardProjectionOverride>(entries);
   return { rows, details, overrides };
 }
 
@@ -305,12 +306,12 @@ describeIntegration('grinding planning board lightweight load summary integratio
   });
 
   it.each([
-    { name: 'row match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'row match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 1 },
     { name: 'masked order product match', fseiban: '********', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 1 },
     { name: 'masked order product mismatch', fseiban: '********', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 0 },
-    { name: 'NULL order retains the product residual', fseiban: null, productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 0 },
-    { name: 'NULL order and NULL product retain the product residual', fseiban: null, productNo: null, overrideProductNo: '', split: false, resources: ['G-02'], movedCount: 0 },
-    { name: 'empty order matches without a product', fseiban: '', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'NULL order matches the same ProductNo', fseiban: null, productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'NULL order and NULL product match the empty key', fseiban: null, productNo: null, overrideProductNo: '', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'a different ProductNo is a different order', fseiban: '', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 0 },
     { name: 'split match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02'], movedCount: 0 },
     { name: 'two matching row overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02', 'G-02'], movedCount: 2 },
     { name: 'two matching split overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02', 'G-02'], movedCount: 0 },
@@ -356,7 +357,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
       $executeRaw: db().$executeRaw.bind(db()),
       $transaction: db().$transaction.bind(db()),
       async $queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T> {
-        if ('sql' in query && !query.sql.includes('"effectiveItems"')) return overrideRows as T;
+        if ('sql' in query && query.sql.includes('FROM "ProductionScheduleGrindingPlanningBoardOverride"') && !query.sql.includes('"effectiveItems"')) return overrideRows as T;
         return db().$queryRaw<T>(query, ...values);
       }
     };
@@ -420,8 +421,8 @@ describeIntegration('grinding planning board lightweight load summary integratio
     const splitRow = rows.find((row) => row.splitQuantities.length > 0)!;
     const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: splitRow.data.FSEIBAN!, fhincd: splitRow.data.FHINCD!,
-      fsigencd: splitRow.data.FSIGENCD!, fkojun: splitRow.data.FKOJUN!, plannedQuantity: 5,
-      pieces: { create: [2, 3].map((quantity, position) => ({ quantity, position })) }
+      fsigencd: splitRow.data.FSIGENCD!, productNo: splitRow.data.ProductNo ?? '', fkojun: splitRow.data.FKOJUN!, plannedQuantity: 5, nextPosition: 3,
+      pieces: { create: [2, 3].map((quantity, position) => ({ quantity, position: position + 1 })) }
     } });
     try {
       const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey };
@@ -442,7 +443,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
         AND "CsvDashboardRow"."id" IN (${Prisma.join(ids)})` });
       expect(aggregate).toEqual(fallback);
       expect(aggregate.unknownRequiredMinutesCount).toBe(0);
-      expect(aggregate.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({ requiredMinutes: 190, unfinishedItemCount: 3 });
+      expect(aggregate.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({ requiredMinutes: 160, unfinishedItemCount: 3 }); // setup (30) counts once per lot: (2*10+30) + 3*10 + (5*10+30)
       const { getGrindingPlanningBoardResourceMinutes } = await import('../grinding-planning-board-resource-minutes.service.js');
       const input = projectionInput({ ...fixture, rows });
       for (const row of rows) input.overrides.set(buildGrindingPlanningBoardRowItemId(row.data), {
@@ -612,7 +613,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
     await db().csvDashboardRow.update({ where: { id: row.id }, data: { rowData: row.data } });
     const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, fkojun: row.data.FKOJUN!,
+      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, productNo: row.data.ProductNo ?? '', fkojun: row.data.FKOJUN!,
       plannedQuantity: 5, nextPosition: 3,
       pieces: { create: [2, 3].map((quantity, index) => ({ quantity, position: index + 1 })) }
     } });
@@ -646,7 +647,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
     const ids = [randomUUID(), randomUUID(), randomUUID()].sort();
     const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, fkojun: row.data.FKOJUN!,
+      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, productNo: row.data.ProductNo ?? '', fkojun: row.data.FKOJUN!,
       plannedQuantity: 7, nextPosition: 4,
       pieces: { create: [1, 2, 4].map((quantity, index) => ({ id: ids[index], quantity, position: index + 1 })).reverse() }
     } });
@@ -671,7 +672,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
     const pieceId = randomUUID();
     const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, fkojun: row.data.FKOJUN!,
+      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, productNo: row.data.ProductNo ?? '', fkojun: row.data.FKOJUN!,
       plannedQuantity: 1, nextPosition: 2,
       pieces: { create: [{ id: pieceId, quantity: 1, position: 1,
         opSplits: { create: [{ fromOpNo: 2, sourceResourceCd: 'G-02', leadingSourceResourceCd: 'G-01' }] } }] }
@@ -721,7 +722,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
         const ids = [randomUUID(), randomUUID(), randomUUID()].sort();
         const set = await db().productionScheduleSessakuPieceSet.create({ data: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, fkojun: row.data.FKOJUN!,
+          fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, productNo: row.data.ProductNo ?? '', fkojun: row.data.FKOJUN!,
           plannedQuantity: 7, nextPosition: 4,
           pieces: { create: [1, 2, 4].map((quantity, index) => ({ id: ids[index], quantity, position: 3 - index })).reverse() }
         } });
@@ -749,7 +750,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
     }
   });
 
-  it('keeps logical first-winner order while merging normalized resources and category-external overrides', async () => {
+  it('counts same-part rows of different ProductNo as separate orders while merging normalized resources and category-external overrides', async () => {
     const prefix = `it-${randomUUID().slice(0, 6)}-dedup`;
     const siteKey = `${prefix}-site`;
     const rows = await Promise.all([
@@ -810,7 +811,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
       data: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         siteKey,
-        itemKey: buildGrindingPlanningBoardRowItemId({ FSEIBAN: `${prefix}-override`, FHINCD: `${prefix}-part-3`, FSIGENCD: 'G-01', FKOJUN: '3' }),
+        itemKey: buildGrindingPlanningBoardRowItemId({ FSEIBAN: `${prefix}-override`, FHINCD: `${prefix}-part-3`, FSIGENCD: 'G-01', FKOJUN: '3', ProductNo: `${prefix}-p-d` }),
         overrideResourceCd: 'C-99'
       }
     });
@@ -830,13 +831,12 @@ describeIntegration('grinding planning board lightweight load summary integratio
     const fallbackSummary = await summaryReader()({ ...summaryParams, winnerRowIds: rowIds });
     expect(summary).toEqual(fallbackSummary);
 
-    const firstDuplicateId = duplicateRows.map((row) => row.id).sort()[0]!;
-    const firstDuplicateMinutes = firstDuplicateId === duplicateRows[0]!.id ? 10 : 20;
+    // Rows that differ only by ProductNo are separate manufacturing orders: both are counted.
     expect(summary.load.find((entry) => entry.resourceCd === 'G-01')).toMatchObject({
-      originalItemCount: 3,
-      alternateItemCount: 2,
-      originalRequiredMinutes: firstDuplicateMinutes + 3 + 4,
-      alternateRequiredMinutes: firstDuplicateMinutes + 3
+      originalItemCount: 4,
+      alternateItemCount: 3,
+      originalRequiredMinutes: 10 + 20 + 3 + 4,
+      alternateRequiredMinutes: 10 + 20 + 3
     });
     expect(summary.load.find((entry) => entry.resourceCd === 'C-99')).toMatchObject({
       originalItemCount: 0,

@@ -77,7 +77,7 @@ describe('refreshSupersededProductionScheduleRows carry-over (real PostgreSQL)',
     expect(first.marked).toBe(2);
     expect(first.carriedOver).toMatchObject({
       targets: 2, rowNotes: 1, orderAssignments: 1, globalRowRanks: 1, orderSplits: 1, progress: 1,
-      grindingOverrides: 1, grindingArrivals: 1, grindingFirstProcessArrivals: 1,
+      grindingOverrides: 1, grindingArrivals: 1, grindingFirstProcessArrivals: 1, sessakuPieceSets: 0, sessakuPieceHistories: 0,
     });
     expect((await prisma.csvDashboardRow.findUnique({ where: { id: 'old' } }))?.supersededAt).not.toBeNull();
     expect((await prisma.csvDashboardRow.findUnique({ where: { id: 'new' } }))?.supersededAt).toBeNull();
@@ -120,6 +120,38 @@ describe('refreshSupersededProductionScheduleRows carry-over (real PostgreSQL)',
     await refreshSupersededProductionScheduleRows(prisma, { statusByKey: xStatus('0004000001', '0004000000') });
     const notes = await prisma.productionScheduleRowNote.findMany({ orderBy: { csvDashboardRowId: 'asc' } });
     expect(notes.map((n) => [n.csvDashboardRowId, n.note])).toEqual([['new', 'note-a'], ['newer-old', 'note-b']]);
+  });
+
+  const pieceKey = (productNo: string) => ({ csvDashboardId: D, fseiban: 'BA1SC381', fhincd: 'MD005279290', fsigencd: '200', fkojun: '10', productNo });
+
+  it('切削の分割(セットと履歴)も新しい番号に付け替わり、片も一緒についていく', async () => {
+    const set = await prisma.productionScheduleSessakuPieceSet.create({ data: { ...pieceKey('0004000001'), pieces: { create: [{ position: 1, quantity: 2 }, { position: 2, quantity: 3 }] } } });
+    await prisma.productionScheduleSessakuPieceHistory.create({ data: pieceKey('0004000001') });
+
+    const result = await refreshSupersededProductionScheduleRows(prisma, { statusByKey: xStatus('0004000001') });
+    expect(result.carriedOver).toMatchObject({ sessakuPieceSets: 1, sessakuPieceHistories: 1 });
+    const sets = await prisma.productionScheduleSessakuPieceSet.findMany({ include: { pieces: true } });
+    expect(sets.map((s) => [s.id, s.productNo, s.pieces.length])).toEqual([[set.id, '0004000002', 2]]);
+    expect((await prisma.productionScheduleSessakuPieceHistory.findMany()).map((h) => h.productNo)).toEqual(['0004000002']);
+  });
+
+  it('引き継ぎ先の番号に切削の分割が既にあれば、古い番号のセットと履歴は移さず残る', async () => {
+    await prisma.productionScheduleSessakuPieceSet.create({ data: pieceKey('0004000001') });
+    await prisma.productionScheduleSessakuPieceSet.create({ data: pieceKey('0004000002') });
+    await prisma.productionScheduleSessakuPieceHistory.create({ data: pieceKey('0004000001') });
+    await prisma.productionScheduleSessakuPieceHistory.create({ data: pieceKey('0004000002') });
+
+    const result = await refreshSupersededProductionScheduleRows(prisma, { statusByKey: xStatus('0004000001') });
+    expect(result.carriedOver).toMatchObject({ sessakuPieceSets: 0, sessakuPieceHistories: 0 });
+    expect((await prisma.productionScheduleSessakuPieceSet.findMany({ orderBy: { productNo: 'asc' } })).map((s) => s.productNo)).toEqual(['0004000001', '0004000002']);
+    expect(await prisma.productionScheduleSessakuPieceHistory.count()).toBe(2);
+  });
+
+  it('同じ引き継ぎ先に古い番号が2つあっても、切削のセットは1つだけ移り一意制約に当たらない', async () => {
+    await prisma.productionScheduleSessakuPieceSet.create({ data: pieceKey('0004000001') });
+    await prisma.productionScheduleSessakuPieceSet.create({ data: pieceKey('0004000000') });
+    await refreshSupersededProductionScheduleRows(prisma, { statusByKey: xStatus('0004000001', '0004000000') });
+    expect((await prisma.productionScheduleSessakuPieceSet.findMany({ orderBy: { productNo: 'asc' } })).map((s) => s.productNo)).toEqual(['0004000000', '0004000002']);
   });
 
   it('印が外れても(古い番号の復活)移したものは戻さない', async () => {

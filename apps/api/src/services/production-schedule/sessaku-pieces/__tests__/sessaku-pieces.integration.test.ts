@@ -39,6 +39,8 @@ import { reconcileSessakuPieceQuantities } from '../piece-quantity.js';
 import { reconcileSessakuPieceProgress } from '../piece-completion.js';
 import { lockSessakuPieceSourceRows, publishSessakuPieceProgress, readSessakuPiecePublicationState, synchronizeSessakuPieceSources } from '../piece-sync.js';
 import { driveProductionScheduleRowCompletion, setProductionScheduleRowCompletionIntent } from '../../production-schedule-command.service.js';
+import { refreshSupersededProductionScheduleRows } from '../../superseded-order-marker.js';
+import { buildFkojunstMailStatusKey } from '../../fkojunst-mail-status-key.js';
 import { ProgressSyncFromCsvService } from '../../progress-sync-from-csv.service.js';
 import { CsvDashboardIngestor } from '../../../csv-dashboard/csv-dashboard-ingestor.js';
 import { calculateProductionScheduleDataHash, PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from '../../row-resolver/index.js';
@@ -178,6 +180,34 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     const after = await board();
     expect(after.items.find((item) => item.itemId === suffix.itemId)?.unitRequiredMinutes).toBe(35);
     expect(after.items.find((item) => item.itemId === units.pieces[1].itemId)?.unitRequiredMinutes).toBe(50);
+  });
+  it('keeps a separate piece set per order number under one four-column key', async () => {
+    const secondRow = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...rowData, ProductNo: '124' },
+      occurredAt: new Date(), dataHash: `${site}-second-order` } });
+    await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: secondRow.id,
+      sourceCsvDashboardId: site, productNo: '124', resourceCd: '1', processOrder: '1', plannedQuantity: 5 } });
+    const rowItem = async (id: string) => (await board(false)).items.find((item) => item.sourceRowId === id)!;
+    const first = await rowItem(rowId);
+    const second = await rowItem(secondRow.id);
+    expect(first.itemId).not.toBe(second.itemId);
+    await splitSessakuPieces({ siteKey: site, parentItemId: first.itemId, itemRevision: first.itemRevision,
+      expectedPieceSetVersion: first.pieceSetVersion ?? 0, quantities: [2, 3] });
+    // Splitting the first order must not touch the second order's row.
+    const secondAfterFirst = await rowItem(secondRow.id);
+    expect(secondAfterFirst.pieceSetVersion ?? 0).toBe(0);
+    const firstPieces = await readSessakuPieceSet(prisma, key());
+    expect(firstPieces?.productNo).toBe('123');
+    expect(await readSessakuPieceSet(prisma, { ...key(), productNo: '124' })).toBeNull();
+    await splitSessakuPieces({ siteKey: site, parentItemId: second.itemId, itemRevision: secondAfterFirst.itemRevision,
+      expectedPieceSetVersion: secondAfterFirst.pieceSetVersion ?? 0, quantities: [1, 4] });
+    const sets = await prisma.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: dashboardId, fseiban: seiban, fhincd: 'PART-A', fsigencd: '1', fkojun: '1' },
+      include: { pieces: { orderBy: { position: 'asc' } } }, orderBy: { productNo: 'asc' } });
+    expect(sets.map((set) => [set.productNo, set.pieces.map((piece) => piece.quantity)])).toEqual([['123', [2, 3]], ['124', [1, 4]]]);
+    expect(new Set(sets.map((set) => set.id)).size).toBe(2);
+    // The legacy four-element ID is ambiguous while both orders are visible.
+    const legacyId = `row:${Buffer.from(JSON.stringify([seiban, 'PART-A', '1', '1'])).toString('base64url')}`;
+    await expect(splitSessakuPieces({ siteKey: site, parentItemId: legacyId, itemRevision: first.itemRevision,
+      expectedPieceSetVersion: 1, quantities: [2, 3] })).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM' });
   });
   it('preserves a piece-free sibling save across a ReadCommitted split lane rewrite', async () => {
     const siblingRow = await prisma.csvDashboardRow.create({ data: {
@@ -522,12 +552,13 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
   });
   it('backfills deleted pre-feature manual keys from successful split/merge audits exactly and idempotently', async () => {
     const keys = [
-      { fseiban: seiban, fhincd: '\t手動 品番\u3000', fsigencd: ' 021', fkojun: '０１０' },
-      { fseiban: seiban, fhincd: 'MERGED', fsigencd: '022', fkojun: '20' }
+      { fseiban: seiban, fhincd: '\t手動 品番\u3000', fsigencd: ' 021', fkojun: '０１０', productNo: '' },
+      { fseiban: seiban, fhincd: 'MERGED', fsigencd: '022', fkojun: '20', productNo: '' }
     ];
     const ignored = { ...keys[0], fhincd: 'REJECTED' };
     const audit = (key: typeof ignored, action: string, outcome = 'success') => ({
-      action, outcome, fseiban: seiban, parentItemId: `row:${Buffer.from(encodeSessakuPieceKey(key)).toString('base64url')}`,
+      action, outcome, fseiban: seiban, // Audit values written before the five-element ID are four-element keys; the historic backfill reads exactly those.
+      parentItemId: `row:${Buffer.from(JSON.stringify([key.fseiban, key.fhincd, key.fsigencd, key.fkojun])).toString('base64url')}`,
       httpStatus: outcome === 'success' ? 200 : 409, pieceIds: [], beforeJson: {}, afterJson: {}, itemRevisions: {}
     });
     await prisma.productionScheduleSessakuPieceAuditLog.createMany({ data: [
@@ -541,11 +572,14 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     // Neither a PieceSet nor a current CSV row remains for these logical keys.
     const migration = readFileSync(new URL('../../../../../prisma/migrations/20261109130000_sessaku_unit_split_ops/migration.sql', import.meta.url), 'utf8');
     const backfill = migration.slice(migration.indexOf('DO $$'));
+    // The historic backfill predates the productNo column, so give the column its backfill default while it runs.
+    await prisma.$executeRawUnsafe(`ALTER TABLE "ProductionScheduleSessakuPieceHistory" ALTER COLUMN "productNo" SET DEFAULT ''`);
     for (let run = 0; run < 2; run++) {
       await prisma.$executeRawUnsafe(backfill);
       const saved = await prisma.productionScheduleSessakuPieceHistory.findMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
       expect(saved.map(encodeSessakuPieceKey).sort()).toEqual(keys.map(encodeSessakuPieceKey).sort());
     }
+    await prisma.$executeRawUnsafe(`ALTER TABLE "ProductionScheduleSessakuPieceHistory" ALTER COLUMN "productNo" DROP DEFAULT`);
     const policy = await getResourceCategoryPolicy({ siteKey: site });
     // Both historical and untouched raw keys are eligible on enabled resources.
     for (const key of [keys[0], { ...keys[0], fhincd: 'UNTOUCHED' }]) {
@@ -1196,9 +1230,9 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(await prisma.productionScheduleSessakuPieceHistory.findMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toEqual(history);
   });
   it.each(['set', 'piece'] as const)('excludes 54 blocked %s-linked lots in SQL and splits the normal tail without rejected transactions', async (link) => {
-    const keys = Array.from({ length: 55 }, (_, i) => ({ fseiban: seiban, fhincd: `BLOCK-${i}`, fsigencd: '021', fkojun: '10' }))
-      .sort((a, b) => Buffer.compare(Buffer.from(buildGrindingPlanningBoardRowItemId({ FSEIBAN: a.fseiban, FHINCD: a.fhincd, FSIGENCD: a.fsigencd, FKOJUN: a.fkojun })),
-        Buffer.from(buildGrindingPlanningBoardRowItemId({ FSEIBAN: b.fseiban, FHINCD: b.fhincd, FSIGENCD: b.fsigencd, FKOJUN: b.fkojun }))));
+    const keys = Array.from({ length: 55 }, (_, i) => ({ fseiban: seiban, fhincd: `BLOCK-${i}`, fsigencd: '021', fkojun: '10', productNo: '123' }))
+      .sort((a, b) => Buffer.compare(Buffer.from(buildGrindingPlanningBoardRowItemId({ FSEIBAN: a.fseiban, FHINCD: a.fhincd, FSIGENCD: a.fsigencd, FKOJUN: a.fkojun, ProductNo: a.productNo })),
+        Buffer.from(buildGrindingPlanningBoardRowItemId({ FSEIBAN: b.fseiban, FHINCD: b.fhincd, FSIGENCD: b.fsigencd, FKOJUN: b.fkojun, ProductNo: b.productNo }))));
     const tail = keys.at(-1)!;
     const blocked = keys.slice(0, -1);
     const sourceIds = blocked.map(() => randomUUID());
@@ -1219,7 +1253,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       quantity: 5, sourcePieceId: pieceIds[i], isCompleted: i % 2 === 0, completedAt: i % 2 === 0 ? new Date() : null })) });
     const policy = await getResourceCategoryPolicy({ siteKey: site });
     const sqlCandidates = await prisma.$queryRaw<Array<{ parentId: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
-    const tailId = buildGrindingPlanningBoardRowItemId({ FSEIBAN: tail.fseiban, FHINCD: tail.fhincd, FSIGENCD: tail.fsigencd, FKOJUN: tail.fkojun });
+    const tailId = buildGrindingPlanningBoardRowItemId({ FSEIBAN: tail.fseiban, FHINCD: tail.fhincd, FSIGENCD: tail.fsigencd, FKOJUN: tail.fkojun, ProductNo: tail.productNo });
     expect(sqlCandidates.map((candidate) => candidate.parentId)).toEqual([tailId]);
     expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
     expect((await readSessakuPieceSet(prisma, tail))?.pieces.map((piece) => piece.quantity)).toEqual([1, 1, 1, 1, 1]);
@@ -1771,7 +1805,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         const cachedPage = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy, [], firstPage));
         expect(cachedPage.map((row) => row.id)).not.toEqual(expect.arrayContaining(firstPage.map((row) => row.id)));
         await prisma.csvDashboardRow.update({ where: { id: predecessorIds[0] },
-          data: { rowData: { ...lots[0], FSIGENCD: '305', FKOJUN: '1', ProductNo: '124' } } });
+          data: { rowData: { ...lots[0], FSIGENCD: '305', FKOJUN: '1', FSIGENSHOYORYO: '101' } } });
         const changedPage = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy, [], firstPage));
         expect(changedPage.map((row) => row.id)).toEqual(expect.arrayContaining(firstPage.map((row) => row.id)));
         now.mockReturnValue(AUTO_UNIT_SPLIT_BUDGET_MS + 2000);
@@ -1816,7 +1850,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     });
     expect((await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).splitCount).toBe(1);
     expect(await prisma.productionScheduleSessakuPieceHistory.findUnique({ where: {
-      csvDashboardId_fseiban_fhincd_fsigencd_fkojun: { csvDashboardId: dashboardId, ...key() }
+      csvDashboardId_fseiban_fhincd_fsigencd_fkojun_productNo: { csvDashboardId: dashboardId, ...key() }
     } })).not.toBeNull();
   });
   it('auto-splits successive lots in the same lane after the first split changes their ranks', async () => {
@@ -2157,6 +2191,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     { resource: '999', quantity: 3, expected: false }, { resource: '021', quantity: 1, expected: false },
     { resource: '021', quantity: 51, expected: false }, { resource: '021', quantity: 3, completed: true, expected: false },
     { resource: '021', quantity: 3, external: true, expected: false }, { resource: '021', quantity: 3, earlierGrinding: true, expected: false },
+    { resource: '021', quantity: 3, earlierGrinding: true, earlierOtherOrder: true, expected: true },
     { resource: '021', quantity: 3, touched: true, expected: true },
     { resource: '\t021\u3000', quantity: 3, expected: true },
     { resource: '０２１', quantity: 3, expected: false }, { resource: '０２１', quantity: 3, flag: true, expected: true },
@@ -2178,7 +2213,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       csvDashboardId: dashboardId, siteKey: site, resourceCd: scenario.resource.trim(), dailyHours: 8, unitSplitEnabled: scenario.flag } });
     if ('completed' in scenario) await prisma.productionScheduleProgress.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: rowId, isCompleted: true } });
     if ('external' in scenario) await prisma.productionScheduleExternalCompletion.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: rowId, isExternallyCompleted: true } });
-    if ('earlierGrinding' in scenario) await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: { ...rowData, FHINCD: '\tPART-A\u3000', FKOJUN: '０', FSIGENCD: '305' } } });
+    if ('earlierGrinding' in scenario) await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: { ...rowData, FHINCD: '\tPART-A\u3000', FKOJUN: '０', FSIGENCD: '305', ...('earlierOtherOrder' in scenario ? { ProductNo: '124' } : {}) } } });
     if ('differentPart' in scenario) await prisma.csvDashboardRow.update({ where: { id: nextRowId },
       data: { rowData: { ...rowData, FHINCD: scenario.differentPart, FKOJUN: '2', FSIGENCD: '305' } } });
     if ('warning' in scenario) await prisma.productionScheduleSessakuPieceSet.create({ data: {
@@ -2706,7 +2741,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
   });
   it.each(['new-key', 'winner-replacement'])('retries a first split after CSV inserts a later key or winner and locks its logical key and parent row before CSV Progress sync (%s)', async (kind) => {
     const p = await parent();
-    const data = { ...rowData, FSIGENCD: kind === 'new-key' ? '3' : '2', FKOJUN: kind === 'new-key' ? '3' : '2', ProductNo: '999', progress: '完了', updatedAt: '2099/01/01 00:00' };
+    const data = { ...rowData, FSIGENCD: kind === 'new-key' ? '3' : '2', FKOJUN: kind === 'new-key' ? '3' : '2', ProductNo: rowData.ProductNo, progress: '完了', updatedAt: '2099/01/01 00:00' };
     const laterKey = sessakuPieceKeyFromRow(data);
     let releaseFirst!: () => void, firstReady!: () => void, releaseRetry!: () => void, retryReady!: () => void, csvReady!: () => void;
     const firstHeld = new Promise<void>((resolve) => { firstReady = resolve; });
@@ -2816,16 +2851,20 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     const oldIds = r.pieces.map((p) => p.pieceId); let release!: () => void; let ready!: () => void;
     const barrier = new Promise<void>((r) => { ready = r; }); const unlock = new Promise<void>((r) => { release = r; });
     let newRow = '';
+    const newKey = { ...key(), productNo: '999' };
     const publish = reader.$transaction(async (tx) => {
-      await acquireSessakuPieceLogicalLocks(tx, [key()]); const states = await readSessakuPiecePublicationState(tx, [key()]);
+      await acquireSessakuPieceLogicalLocks(tx, [key(), newKey]); const states = await readSessakuPiecePublicationState(tx, [key(), newKey]);
       newRow = (await tx.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...rowData, ProductNo: '999' }, dataHash: `${site}-new`, occurredAt: new Date() } })).id;
+      // The old order number is process state X: it is marked and its data is carried over in the same transaction.
+      await refreshSupersededProductionScheduleRows(tx, { statusByKey: new Map([[buildFkojunstMailStatusKey({ fkojun: '1', fkoteicd: '1', fsezono: '123' }), 'X']]) });
       await publishSessakuPieceProgress(tx, states); ready(); await unlock;
     });
     await barrier;
     expect((await findSessakuPieceWinner(prisma, key()))?.id).toBe(rowId); expect((await prisma.productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: rowId } })).isCompleted).toBe(true);
     release(); await publish;
-    expect((await findSessakuPieceWinner(prisma, key()))?.id).toBe(newRow); expect((await prisma.productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: newRow } })).isCompleted).toBe(true);
-    expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((p) => p.id)).toEqual(oldIds);
+    expect((await findSessakuPieceWinner(prisma, newKey))?.id).toBe(newRow); expect((await prisma.productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: newRow } })).isCompleted).toBe(true);
+    expect((await readSessakuPieceSet(prisma, newKey))?.pieces.map((p) => p.id)).toEqual(oldIds);
+    expect(await readSessakuPieceSet(prisma, key())).toBeNull();
   });
   it('site-specific ordering does not change the shared piece-set version', async () => {
     const r = await split(); const otherBefore = (await board(true, other)).items.filter((i) => i.kind === 'piece' && i.sourceRowId === rowId); const b = await board();
@@ -3012,7 +3051,10 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
   });
 
   describe('linked later process pieces', () => {
-    const laterKey = () => ({ ...key(), fsigencd: '2', fkojun: '2' });
+    const laterKey = (productNo = key().productNo) => ({ ...key(), productNo, fsigencd: '2', fkojun: '2' });
+    // The old order number has process state X: it is marked superseded and its data is carried over in the caller's transaction.
+    const supersedeOrder = (tx: Prisma.TransactionClient, fkojun: string, fsigencd: string, productNo = '123') =>
+      refreshSupersededProductionScheduleRows(tx, { statusByKey: new Map([[buildFkojunstMailStatusKey({ fkojun, fkoteicd: fsigencd, fsezono: productNo }), 'X']]) });
     const allBoard = (targetSite = site) => getGrindingPlanningBoard({ siteKey: targetSite, category: 'all', view: 'resource', includePieces: true, includeLoad: false, snapshotStore: store });
     const laterItems = async () => (await allBoard()).items.filter((item) => item.sourceRowId === nextRowId);
     const splitThree = async () => {
@@ -3099,7 +3141,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         new Map(supplements.map((supplement) => [buildOrderSupplementKey(supplement), supplement])), new Date());
       await runOrderSupplementReplacementTransaction(prisma, { ...plan, scanned: ids.length, normalized: ids.length });
     };
-    it.each(['later', 'cutting'])('rejects completion of the old winner of an empty %s set before quantity restoration', async (kind) => {
+    it.each(['later', 'cutting'])('keeps the empty %s set of the new order number untouched when the superseded old number is completed before quantity restoration', async (kind) => {
       await splitThree();
       if (kind === 'later') await laterQuantity(0); else await quantity(0);
       const targetKey = kind === 'later' ? laterKey() : key();
@@ -3107,26 +3149,30 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       const before = (await readSessakuPieceSet(prisma, targetKey))!;
       expect(before.pieces).toEqual([]);
       expect(Boolean(before.sourcePieceSetId)).toBe(kind === 'later');
+      const nextTargetKey = { ...targetKey, productNo: '999' };
       const replacementId = await reader.$transaction(async (tx) => {
-        await acquireSessakuPieceLogicalLocks(tx, [targetKey]);
-        const states = await readSessakuPiecePublicationState(tx, [targetKey]);
+        await acquireSessakuPieceLogicalLocks(tx, [targetKey, nextTargetKey]);
+        const states = await readSessakuPiecePublicationState(tx, [targetKey, nextTargetKey]);
         const previous = await tx.csvDashboardRow.findUniqueOrThrow({ where: { id: previousId } });
         const replacement = await tx.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...previous.rowData as Prisma.InputJsonObject, ProductNo: '999' }, dataHash: `${site}-replacement`, occurredAt: new Date() } });
         await tx.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: replacement.id, sourceCsvDashboardId: site, productNo: '999', resourceCd: targetKey.fsigencd, processOrder: targetKey.fkojun, plannedQuantity: 0 } });
+        await supersedeOrder(tx, targetKey.fkojun, targetKey.fsigencd);
         await publishSessakuPieceProgress(tx, states);
         return replacement.id;
       });
-      expect((await findSessakuPieceWinner(prisma, targetKey))?.id).toBe(replacementId);
-      const oldProgress = await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: previousId } });
+      expect((await findSessakuPieceWinner(prisma, nextTargetKey))?.id).toBe(replacementId);
+      expect(await readSessakuPieceSet(prisma, targetKey)).toBeNull();
       const newProgress = await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: replacementId } });
       for (const drive of [{ mode: 'intent', intent: 'complete' }, { mode: 'toggle' }] as const) {
-        await expect(driveProductionScheduleRowCompletion({ rowId: previousId, locationKey: site, drive })).rejects.toMatchObject({ statusCode: 409, code: 'SOURCE_ITEM_MISSING' });
+        // The old number no longer owns a piece set (it moved with the carry-over), so it is only a hidden plain row now.
+        await driveProductionScheduleRowCompletion({ rowId: previousId, locationKey: site, drive });
+        expect(await readSessakuPieceSet(prisma, targetKey)).toBeNull();
+        expect(await readSessakuPieceSet(prisma, nextTargetKey)).toMatchObject({ pieces: [] });
       }
-      expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: previousId } })).toEqual(oldProgress);
       expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: replacementId } })).toEqual(newProgress);
       if (kind === 'later') { nextRowId = replacementId; await laterQuantity(5); }
-      else { rowId = replacementId; await quantity(5); await splitThree(); }
-      const restored = (await readSessakuPieceSet(prisma, targetKey))!;
+      else { rowId = replacementId; rowData = { ...rowData, ProductNo: '999' }; await quantity(5); await splitThree(); }
+      const restored = (await readSessakuPieceSet(prisma, nextTargetKey))!;
       expect(restored.pieces.map((piece) => piece.quantity)).toEqual([1, 2, 2]);
       expect(restored.pieces.every((piece) => !piece.isCompleted && piece.completedAt === null)).toBe(true);
       expect((await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: replacementId } }))?.isCompleted).not.toBe(true);
@@ -3373,13 +3419,20 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ pieces: [], sourcePieceSetId: expect.any(String) });
       const columns = Object.keys(incoming);
       try {
-        await prisma.csvDashboard.update({ where: { id: dashboardId }, data: { enabled: true, ingestMode: 'DEDUP', dateColumnName: null, dedupKeyColumns: [...PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS], columnDefinitions: columns.map((name) => ({ internalName: name, displayName: name, csvHeaderCandidates: [name], dataType: 'string' })) } });
+        await prisma.csvDashboard.update({ where: { id: dashboardId }, data: { enabled: true, ingestMode: 'DEDUP', dateColumnName: null, dedupKeyColumns: [...PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS, 'ProductNo'], columnDefinitions: columns.map((name) => ({ internalName: name, displayName: name, csvHeaderCandidates: [name], dataType: 'string' })) } });
         await new CsvDashboardIngestor().ingestFromGmail(dashboardId, `${columns.join(',')}\n${Object.values(incoming).join(',')}\n`, undefined, site);
         nextRowId = candidate.id;
-        expect((await findSessakuPieceWinner(prisma, laterKey()))?.id).toBe(nextRowId);
-        expect(await prisma.csvDashboardRow.findUnique({ where: { id: previousRowId } })).toBeNull();
+        const incomingProductNo = String(((await prisma.csvDashboardRow.findUniqueOrThrow({ where: { id: nextRowId } })).rowData as Record<string, unknown>).ProductNo);
+        expect(incomingProductNo).not.toBe('123');
+        // The re-issued order number is a separate order until the old one's process state becomes X.
+        expect((await findSessakuPieceWinner(prisma, laterKey()))?.id).toBe(previousRowId);
+        await prisma.$transaction((tx) => supersedeOrder(tx, '2', '2'));
+        const incomingKey = laterKey(incomingProductNo);
+        expect((await findSessakuPieceWinner(prisma, incomingKey))?.id).toBe(nextRowId);
+        expect(await prisma.csvDashboardRow.findUniqueOrThrow({ where: { id: previousRowId } })).toMatchObject({ supersededAt: expect.any(Date) });
         expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: nextRowId } })).toMatchObject({ isCompleted: true });
-        expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ pieces: [], sourcePieceSetId: expect.any(String) });
+        expect(await readSessakuPieceSet(prisma, incomingKey)).toMatchObject({ pieces: [], sourcePieceSetId: expect.any(String) });
+        expect(await readSessakuPieceSet(prisma, laterKey())).toBeNull();
       } finally {
         await prisma.csvDashboardRow.deleteMany({ where: { id: candidate.id } });
         await prisma.csvDashboardIngestRun.deleteMany({ where: { messageSubject: site } });
@@ -3784,12 +3837,14 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       let release!: () => void, ready!: () => void;
       const held = new Promise<void>((resolve) => { ready = resolve; });
       const unlock = new Promise<void>((resolve) => { release = resolve; });
+      const nextProductNo = path === 'later-update' ? '999' : '123';
       const publication = reader.$transaction(async (tx) => {
-        await acquireSessakuPieceLogicalLocks(tx, [laterKey()]);
-        const states = await readSessakuPiecePublicationState(tx, [laterKey()]);
+        await acquireSessakuPieceLogicalLocks(tx, [laterKey(), laterKey(nextProductNo)]);
+        const states = await readSessakuPiecePublicationState(tx, [laterKey(), laterKey(nextProductNo)]);
         const previous = await tx.csvDashboardRow.findUniqueOrThrow({ where: { id: previousRowId } });
-        replacementId = (await tx.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...previous.rowData as Prisma.InputJsonObject, ProductNo: path === 'later-update' ? '999' : '123' },
+        replacementId = (await tx.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...previous.rowData as Prisma.InputJsonObject, ProductNo: nextProductNo },
           dataHash: `${site}-later-winner`, occurredAt: new Date(), updatedAt: new Date('2099-01-01') } })).id;
+        if (path === 'later-update') await supersedeOrder(tx, '2', '2');
         await publishSessakuPieceProgress(tx, states);
         await tx.csvDashboardRow.delete({ where: { id: previousRowId } });
         ready(); await unlock;
@@ -3807,7 +3862,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         await prisma.productionScheduleOrderSupplement.update({ where: { csvDashboardRowId: nextRowId }, data: { plannedQuantity: 5 } });
         await quantity(5);
       }
-      const restored = (await readSessakuPieceSet(prisma, laterKey()))!;
+      const restored = (await readSessakuPieceSet(prisma, laterKey(nextProductNo)))!;
       expect(restored.pieces.map((piece) => piece.quantity)).toEqual([1, 2, 2]);
       expect(restored.pieces.every((piece) => piece.isCompleted && piece.completedAt)).toBe(true);
       expect((await prisma.productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: nextRowId } })).isCompleted).toBe(true);

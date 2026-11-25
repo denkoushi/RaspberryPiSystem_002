@@ -6,6 +6,8 @@ import type { Prisma } from '@prisma/client';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { buildFkojunstMailStatusKey } from '../fkojunst-mail-status-key.js';
+import { refreshSupersededProductionScheduleRows } from '../superseded-order-marker.js';
 
 /**
  * This file intentionally has no localhost/database fallback. The production
@@ -347,6 +349,8 @@ describeIntegration('grinding planning board service real Postgres integration',
       { fseiban: `${f.prefix}-B`, fhincd: 'PART-B', processOrder: '1', productNo: '3' },
       { fseiban: `${f.prefix}-A`, fhincd: 'PART-C', processOrder: '2', productNo: '1', resourceCd: '100' }
     ]);
+    // The old number (ProductNo 1) has process state X: it is marked superseded and hidden; the new number (2) stays visible.
+    await refreshSupersededProductionScheduleRows(db(), { statusByKey: new Map([[buildFkojunstMailStatusKey({ fkojun: '1', fkoteicd: '305', fsezono: '1' }), 'X']]) });
     const { Prisma } = await import('@prisma/client');
     const { buildProductionScheduleLeaderboardMaterializedWinners } = await import('../row-resolver/max-product-no-winner-materialization.js');
     const { prepareProductionScheduleDashboardFilters } = await import('../production-schedule-query/filters.js');
@@ -1224,17 +1228,19 @@ describeIntegration('grinding planning board service real Postgres integration',
     const oldItem = boardItem(first, (item) => item.sourceRowId === oldRow);
     await updateItem(fixture, oldItem, { resourceCd: '581' }, first.sourceRevision);
     const [newRow] = await addRows(fixture, [{ fseiban: `${fixture.prefix}-WINNER`, fhincd: 'PART-W', processOrder: '1', productNo: '2' }]);
+    // The old number has process state X: marking hides it and carries the override over to the new number.
+    await refreshSupersededProductionScheduleRows(db(), { statusByKey: new Map([[buildFkojunstMailStatusKey({ fkojun: '1', fkoteicd: '305', fsezono: '1' }), 'X']]) });
     const afterWinner = await boardFor(fixture);
     const winnerItem = boardItem(afterWinner, (item) => item.fseiban === `${fixture.prefix}-WINNER`);
     expect(winnerItem.sourceRowId).toBe(newRow);
-    expect(winnerItem.itemId).toBe(oldItem.itemId);
+    expect(winnerItem.itemId).not.toBe(oldItem.itemId);
     expect(winnerItem.effectiveResourceCd).toBe('581');
     await db().productionScheduleRowNote.deleteMany({ where: { csvDashboardRowId: oldRow } });
     await db().productionScheduleOrderSupplement.deleteMany({ where: { csvDashboardRowId: oldRow } });
     await db().productionScheduleOrderAssignment.deleteMany({ where: { csvDashboardRowId: oldRow } });
     await db().csvDashboardRow.delete({ where: { id: oldRow } });
     const afterOldWinnerDelete = await boardFor(fixture);
-    expect(boardItem(afterOldWinnerDelete, (item) => item.fseiban === `${fixture.prefix}-WINNER`)).toMatchObject({ sourceRowId: newRow, itemId: oldItem.itemId, effectiveResourceCd: '581' });
+    expect(boardItem(afterOldWinnerDelete, (item) => item.fseiban === `${fixture.prefix}-WINNER`)).toMatchObject({ sourceRowId: newRow, itemId: winnerItem.itemId, effectiveResourceCd: '581' });
 
     const splitFixture = await createFixture();
     const [parentRow] = await addRows(splitFixture, [{ fseiban: `${splitFixture.prefix}-SPLIT`, splitQuantity: 2, requiredMinutes: '100', rank: 4 }]);

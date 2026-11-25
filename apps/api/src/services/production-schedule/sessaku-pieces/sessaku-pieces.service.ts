@@ -25,7 +25,7 @@ import { decodeRowItemId } from '../grinding-planning-board/shared.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireProductionScheduleParentRowLockInTransaction, acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
-import { sessakuPieceItemIds, sessakuPieceIdFromItemId, acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
+import { sessakuPieceItemIds, sessakuPieceIdFromItemId, acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, parseSessakuPieceParentItemId, resolveSessakuPieceParentKey, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
@@ -110,14 +110,14 @@ async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key:
   for (const itemId of inboundIds) {
     const encoded = decodeRowItemId(itemId);
     if (!encoded) continue;
-    const [fseiban, fhincd, fsigencd, fkojun] = JSON.parse(encoded) as string[];
-    const inbound = { fseiban, fhincd, fsigencd, fkojun };
-    inboundKeys.set(encoded, inbound);
+    // 古い4要素の ID は注文が決まらない。出所の行は write-source が同じ規則で解決する。
+    const [fseiban, fhincd, fsigencd, fkojun, productNo] = JSON.parse(encoded) as string[];
+    inboundKeys.set(encoded, { fseiban, fhincd, fsigencd, fkojun, productNo: productNo ?? '' });
   }
   const pieceIds = inboundIds.map(sessakuPieceIdFromItemId).filter((id): id is string => id !== null);
   if (pieceIds.length) {
     const pieces = await tx.productionScheduleSessakuPiece.findMany({ where: { id: { in: pieceIds } },
-      select: { pieceSet: { select: { fseiban: true, fhincd: true, fsigencd: true, fkojun: true } } } });
+      select: { pieceSet: { select: { fseiban: true, fhincd: true, fsigencd: true, fkojun: true, productNo: true } } } });
     for (const { pieceSet } of pieces) inboundKeys.set(sessakuPieceParentItemId(pieceSet), pieceSet);
   }
   return { targetFseiban: key.fseiban, resourceCds: [...resources].filter((value): value is string => value != null), inboundKeys: [...inboundKeys.values()] };
@@ -304,7 +304,9 @@ async function operate(params: { lockOperationDefinition?: boolean; dueSource?: 
   definitionKeys: SessakuPieceLogicalKey[]; external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
 }) => Promise<void>): Promise<SessakuPiecesMutationResponse> {
   const batch = params.autoUnitSplit ? autoUnitSplitBatch.getStore() : undefined;
-  const key = decodeSessakuPieceParentItemId(params.parentItemId);
+  // 古い4要素の親 ID は、見える行が1つならその注文に、2つ以上なら 409 にする。以降は5要素の ID で扱う。
+  const key = await resolveSessakuPieceParentKey(prisma, params.parentItemId);
+  params = { ...params, parentItemId: sessakuPieceParentItemId(key) };
   if (params.audit) Object.assign(params.audit, { parentItemId: params.parentItemId, fseiban: key.fseiban });
   if (!batch) await ensurePlanningBoardState(params.siteKey);
   const retryWithExpandedLocks = new Error('Later process lock scope changed');
@@ -447,7 +449,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
   if (!params.audit) return runSessakuPieceOperation({ action: params.autoUnitSplit ? 'auto_unit_split_lot' : 'split', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
     requestedQuantities: params.quantities, parentItemId: params.parentItemId, pieceIds: params.targetPieceId ? [params.targetPieceId] : [], itemRevision: params.itemRevision }, (audit) => splitSessakuPieces({ ...params, audit }));
   params.audit.requestedQuantities = params.quantities;
-  try { params.audit.fseiban = decodeSessakuPieceParentItemId(params.parentItemId).fseiban; } catch { /* Invalid IDs are rejected by operate when enabled. */ }
+  try { params.audit.fseiban = parseSessakuPieceParentItemId(params.parentItemId).fseiban; } catch { /* Invalid IDs are rejected by operate when enabled. */ }
   if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true') throw new ApiError(403, '分割作成は無効です', undefined, 'SESSAKU_PIECES_CREATE_DISABLED');
   return operate({ ...params, discoverUnsplitLater: true }, async (tx, c) => {
     assertCuttingPieceSet(c.set);
@@ -466,7 +468,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     }
     const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
     if (!isProductionScheduleCuttingResourceCd(c.key.fsigencd, policy)) throw new ApiError(403, '切削工程だけ分割できます', undefined, 'RESOURCE_CATEGORY_MISMATCH');
-    if (Object.values(c.key).some((value) => !value) || c.key.fseiban === '********') conflict('UNSUPPORTED_PIECE_PARENT');
+    if (!c.key.fseiban || !c.key.fhincd || !c.key.fsigencd || !c.key.fkojun || c.key.fseiban === '********') conflict('UNSUPPORTED_PIECE_PARENT');
     if (c.external) conflict('EXTERNALLY_COMPLETED_ITEM');
     if (c.set?.quantityWarning) conflict('PIECE_QUANTITY_CONFLICT');
     const target = params.targetPieceId ? c.set?.pieces.find((p) => p.id === params.targetPieceId) : undefined;

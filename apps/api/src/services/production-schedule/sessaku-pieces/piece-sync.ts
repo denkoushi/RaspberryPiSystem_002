@@ -43,7 +43,7 @@ export async function lockAllSessakuPieceSets(tx: Prisma.TransactionClient, mail
 /** Preserve the published logical parent's completion while its transient source row is replaced. */
 export async function readSessakuPiecePublicationState(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[]) {
   const states = [];
-  const sets = await readSessakuPieceSets(tx, keys.map((key) => ({ rowData: { FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun } })));
+  const sets = await readSessakuPieceSets(tx, keys.map((key) => ({ rowData: { FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun, ProductNo: key.productNo } })));
   for (const key of sets.values()) {
     if (!key.pieces.length && !key.sourcePieceSetId) continue;
     const previous = await findSessakuPieceWinner(tx, key);
