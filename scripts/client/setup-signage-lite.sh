@@ -13,7 +13,7 @@ IMAGE_URL="${SERVER_URL%/}/api/signage/current-image"
 CACHE_DIR="/run/signage"
 CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 UPDATE_INTERVAL="${SIGNAGE_UPDATE_INTERVAL:-30}" # デフォルト30秒
-ALLOW_INSECURE_TLS="${SIGNAGE_ALLOW_INSECURE_TLS:-true}"
+ALLOW_INSECURE_TLS="${SIGNAGE_ALLOW_INSECURE_TLS:-false}"
 CURL_OPTIONS=(-s -f)
 if [[ "${ALLOW_INSECURE_TLS,,}" == "true" ]]; then
   CURL_OPTIONS+=(-k)

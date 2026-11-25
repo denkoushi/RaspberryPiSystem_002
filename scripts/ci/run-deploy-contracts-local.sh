@@ -82,6 +82,7 @@ bash scripts/deploy/tests/test-web-static-routing.sh
 python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
 bash scripts/server/tests/test_storage_maintenance_retention.sh
 bash scripts/client/tests/test_pi4_storage_maintenance.sh
+bash scripts/client/tests/test_setup_signage_lite_tls.sh
 python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py
 bash scripts/deploy/tests/test-signage-deploy-maintenance.sh
 bash scripts/deploy/tests/test-deploy-status-postgres-observability.sh

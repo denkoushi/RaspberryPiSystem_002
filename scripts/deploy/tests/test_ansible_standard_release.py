@@ -1109,10 +1109,20 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("    --user-data-dir=/home/kiosk/.config/chromium\n", pinned)
         self.assertNotIn("    --ignore-certificate-errors\n", pinned)
 
+        self.assertNotIn("--ignore-certificate-errors\n", pinned)
         for unpinned in (render(), render(kiosk_server_cert_spki_sha256="")):
-            self.assertIn("    --ignore-certificate-errors\n", unpinned)
-            self.assertNotIn("--ignore-certificate-errors-spki-list", unpinned)
-            self.assertNotIn("--user-data-dir", unpinned)
+            self.assertNotIn("--ignore-certificate-errors", unpinned)
+
+        role_tasks = yaml.safe_load(
+            (ANSIBLE / "roles/kiosk/tasks/main.yml").read_text(encoding="utf-8")
+        )
+        role_names = [task.get("name") for task in role_tasks]
+        refuse = role_names.index("Refuse to deploy a Chromium launcher without the pinned server key")
+        self.assertLess(refuse, role_names.index("Deploy kiosk-launch script"))
+        self.assertIn(
+            "kiosk_server_cert_spki_sha256 | default('') | length > 0",
+            role_tasks[refuse]["ansible.builtin.assert"]["that"],
+        )
 
     def test_pi4_image_pull_time_is_reported_per_host(self) -> None:
         import yaml

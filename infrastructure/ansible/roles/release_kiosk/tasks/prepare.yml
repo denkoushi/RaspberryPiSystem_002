@@ -129,6 +129,17 @@
     - kiosk_browser_engine_resolved | default('') == 'chromium'
     - kiosk_server_cert_spki_sha256 | default('') | length > 0
 
+- name: Refuse to stage a Chromium launcher without the pinned server key
+  ansible.builtin.assert:
+    that:
+      - kiosk_server_cert_spki_sha256 | default('') | length > 0
+    fail_msg: >-
+      kiosk_server_cert_spki_sha256 が空です。Chromium のキオスクは、サーバー証明書の
+      公開鍵(SPKI SHA-256)を指定しないと起動設定を作れません。inventory の kiosk グループ変数に値を入れてください。
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved | default('') == 'chromium'
+
 - name: Refuse to stage a Chromium launcher whose certificate pin does not match the server
   ansible.builtin.assert:
     that:
