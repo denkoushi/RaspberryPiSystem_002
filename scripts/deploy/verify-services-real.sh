@@ -8,6 +8,17 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 cd "${REPO_ROOT}"
 
+# TLS は既定で検証する。自己署名など検証できない環境だけ VERIFY_ALLOW_INSECURE_TLS=1 で検証を外す。
+# 独自 CA を使う場合は VERIFY_CA_CERT=<path> を渡す。
+CURL_TLS_ARGS=()
+if [ "${VERIFY_ALLOW_INSECURE_TLS:-}" = "1" ]; then
+  CURL_TLS_ARGS+=(-k)
+fi
+if [ -n "${VERIFY_CA_CERT:-}" ]; then
+  CURL_TLS_ARGS+=(--cacert "${VERIFY_CA_CERT}")
+fi
+curl_tls() { curl ${CURL_TLS_ARGS[@]+"${CURL_TLS_ARGS[@]}"} "$@"; }
+
 # Pi5 到達判定: verify-phase12-real.sh と同様（Tailscale 高遅延時の ICMP 偶発失敗対策）
 pi5_reachable_tailscale() {
   local attempt
@@ -46,12 +57,12 @@ elif pi5_reachable_local; then
   PI4_IP="192.168.10.223"
   ACTUAL_MODE="local"
 # ICMP が落ちるが API は生きているケース（verify-phase12-real.sh 終盤など）のフォールバック
-elif curl -sk --connect-timeout 5 "https://100.106.158.2/api/system/health" | grep -q '"status"'; then
+elif curl_tls -s --connect-timeout 5 "https://100.106.158.2/api/system/health" | grep -q '"status"'; then
   PI5_IP="100.106.158.2"
   PI3_IP="100.105.224.86"
   PI4_IP="100.74.144.79"
   ACTUAL_MODE="tailscale"
-elif curl -sk --connect-timeout 5 "https://192.168.10.230/api/system/health" | grep -q '"status"'; then
+elif curl_tls -s --connect-timeout 5 "https://192.168.10.230/api/system/health" | grep -q '"status"'; then
   PI5_IP="192.168.10.230"
   PI3_IP="192.168.10.109"
   PI4_IP="192.168.10.223"
