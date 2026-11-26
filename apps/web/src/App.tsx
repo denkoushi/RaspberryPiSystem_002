@@ -18,6 +18,7 @@ import { HaizenScheduleDetail } from './features/mobile-placement/haizen/HaizenS
 import { HaizenScheduleList } from './features/mobile-placement/haizen/HaizenScheduleList';
 import { PlacementDeleteSyncJob } from './features/mobile-placement/part-search/offline/PlacementDeleteSyncJob';
 import { MobileSyncProvider } from './features/mobile-placement/sync/MobileSyncProvider';
+import { TailscaleOffBand } from './features/mobile-placement/sync/TailscaleOffBand';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -311,7 +312,7 @@ function App() {
             path="/kiosk/production-schedule/planning-board"
             element={<ProductionScheduleGrindingPlanningBoardPage />}
           />
-          <Route element={<MobileSyncProvider><PlacementDeleteSyncJob /><Outlet /></MobileSyncProvider>}>
+          <Route element={<MobileSyncProvider><PlacementDeleteSyncJob /><TailscaleOffBand /><Outlet /></MobileSyncProvider>}>
             <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
             <Route path="/kiosk/inventory/haizen/verify-history" element={<KioskHaizenVerifyHistoryPage />} />
             <Route path="/kiosk/inventory/haizen/trail" element={<KioskHaizenTrailPage />} />

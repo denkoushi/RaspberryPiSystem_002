@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-import { canUseMobileNetwork, subscribeMobileConnectivity } from '../connectivity';
+import { canUseMobileNetwork, isMobileServerUnreachable, subscribeMobileConnectivity } from '../connectivity';
 
 type Connection = EventTarget & { type?: string };
 const connection = () => typeof navigator === 'undefined' ? undefined
@@ -25,4 +25,15 @@ export function subscribeCanSync(listener: () => void) {
 
 export function useCanSync() {
   return useSyncExternalStore(subscribeCanSync, canSyncNow, () => false);
+}
+
+// Wi-Fi is up but the server cannot be reached (usually Tailscale is off).
+export function isServerUnreachableOnWifi() {
+  if (typeof navigator === 'undefined' || navigator.onLine === false) return false;
+  const type = connection()?.type;
+  return isMobileServerUnreachable() && (type === 'wifi' || type === 'ethernet');
+}
+
+export function useServerUnreachableOnWifi() {
+  return useSyncExternalStore(subscribeCanSync, isServerUnreachableOnWifi, () => false);
 }

@@ -13,6 +13,7 @@ import { saveOrderBranches } from '../orderPlacementBranchesCache';
 import { saveScanFrame } from '../scan-frames/saveScanFrame';
 import { shelfOfflineQueueStore } from '../shelfMaster/offline/shelfOfflineQueueStore';
 import { MobileSyncProvider } from '../sync/MobileSyncProvider';
+import { isServerUnreachableOnWifi } from '../sync/networkGate';
 import { resetSyncSchedulerForTests } from '../sync/syncScheduler';
 import { useMobilePlacementPageState } from '../useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../useOrderPlacementBranches';
@@ -681,7 +682,8 @@ describe('Haizen hub', () => {
     mount(); typePlaceSlip('po', '4501238876'); await chooseShelf();
     fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
     await screen.findByText('スマホに保存しました（未送信 1件）');
-    expect(screen.getByText('圏外')).toBeInTheDocument();
+    expect(isServerUnreachableOnWifi()).toBe(true);
+    expect(screen.queryByText('圏外')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現品票を読む' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '未送信 1' }));
     const sheet = within(screen.getByRole('dialog', { name: '未送信' }));

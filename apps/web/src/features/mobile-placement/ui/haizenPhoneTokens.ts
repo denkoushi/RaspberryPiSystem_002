@@ -16,7 +16,7 @@ export const haizenPhoneStyle = {
 } as CSSProperties;
 
 export const hp = {
-  screen: 'fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden bg-[var(--hp-bg)] text-[var(--hp-ink)] [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]',
+  screen: 'fixed inset-x-0 bottom-0 top-[var(--mobile-top-band,0px)] z-40 flex flex-col overflow-hidden bg-[var(--hp-bg)] text-[var(--hp-ink)] [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]',
   content: 'relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col',
   iconButton: 'grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--hp-line)] bg-[var(--hp-panel)] disabled:opacity-40',
   chip: 'h-9 shrink-0 whitespace-nowrap rounded-full border border-[var(--hp-line)] bg-[var(--hp-panel)] px-[13px] text-[13px] font-bold text-[var(--hp-ink2)] aria-pressed:border-[var(--hp-ink)] aria-pressed:text-[var(--hp-ink)]',

@@ -37,6 +37,8 @@ export function canUseMobileNetwork() {
   return (typeof navigator === 'undefined' || navigator.onLine !== false) && !unreachable;
 }
 
+export function isMobileServerUnreachable() { return unreachable; }
+
 export function reportMobileNetworkSuccess() {
   if (!unreachable) return;
   unreachable = false;
