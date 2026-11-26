@@ -184,9 +184,14 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
       const ownStarted = await addRow(`${prefix}-own-s`, caseNo('own-s'));
       const ownNewer = await addRow(`${prefix}-own-newer`, caseNo('own-newer'));
       const ownOlderR = await addRow(`${prefix}-own-older-r`, caseNo('own-older-r'));
-      await addRow(`${prefix}-own-older-r-sibling`, caseNo('own-older-r'), '052');
       const ownRWithMatchedC = await addRow(`${prefix}-matched-r`, caseNo('matched'), '26M');
       const matchedC = await addRow(`${prefix}-matched-c`, caseNo('matched'), '24M');
+      // 日程に2行あるとき、R 以外、R が新しい、別資源が2つ、は完了にしない。
+      const twoWinnerBlocked = [];
+      for (const name of ['two-o', 'r-newer', 'r-two']) {
+        twoWinnerBlocked.push(await addRow(`${prefix}-${name}-own`, caseNo(name), '26M'));
+        await addRow(`${prefix}-${name}-other`, caseNo(name), '24M');
+      }
       const otherX = await addRow(`${prefix}-other-x`, caseNo('other-x'));
       const otherExcluded = await addRow(`${prefix}-other-excluded`, caseNo('other-excluded'));
       const status = (number: string, resourceCd: string, code: string, day = '25') =>
@@ -206,12 +211,15 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
         status(caseNo('own-newer'), '021', 'R', '26'), status(caseNo('own-newer'), '301', 'C'),
         status(caseNo('own-older-r'), '021', 'R', '24'), status(caseNo('own-older-r'), '301', 'C'),
         status(caseNo('matched'), '26M', 'R', '24'), status(caseNo('matched'), '24M', 'C'),
+        status(caseNo('two-o'), '26M', 'O', '24'), status(caseNo('two-o'), '24M', 'C'),
+        status(caseNo('r-newer'), '26M', 'R', '26'), status(caseNo('r-newer'), '24M', 'C'),
+        status(caseNo('r-two'), '26M', 'R', '24'), status(caseNo('r-two'), '24M', 'C'), status(caseNo('r-two'), '301', 'C'),
         status(caseNo('other-x'), '301', 'X'),
         status(caseNo('other-excluded'), '10', 'C'),
         // winner の無い工程は証拠に残さない。
         status(`${productNo}-nowinner`, '301', 'C'),
       ];
-      expect(await replaceFkojunstMailProjections(tx, rows)).toMatchObject({ matched: 6, unmatched: 12 });
+      expect(await replaceFkojunstMailProjections(tx, rows)).toMatchObject({ matched: 12, unmatched: 13 });
       expect(await tx.productionScheduleFkojunstResourceSwapEvidence.count({
         where: { sourceCsvDashboardId: mailDashboardId, productNo: `${productNo}-nowinner` },
       })).toBe(0);
@@ -234,7 +242,7 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
       expect(await readExternal(tx, matchedC)).toMatchObject({
         isExternallyCompleted: true, externallyCompletedFromFkojunstMailStatus: true, externallyCompletedFromFkojunstResourceSwap: false,
       });
-      for (const blocked of [ownStarted, ownNewer, otherX, otherExcluded]) {
+      for (const blocked of [ownStarted, ownNewer, otherX, otherExcluded, ...twoWinnerBlocked]) {
         expect(await readExternal(tx, blocked)).toMatchObject({ isExternallyCompleted: false, externallyCompletedFromFkojunstResourceSwap: false });
       }
       expect(await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true)).toBe(0);
@@ -255,7 +263,7 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
       await tx.csvDashboardRow.update({ where: { id: oldWinner }, data: { supersededAt: new Date() } });
       const replacement = await addRow(`${prefix}-replacement`, scheduleChangeNo);
       expect(await replaceFkojunstMailProjections(tx, nextRows, true)).toMatchObject({
-        matched: 5, unmatched: 13, pruned: 1, prunedEvidence: 0,
+        matched: 11, unmatched: 14, pruned: 1, prunedEvidence: 0,
       });
       await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true);
       expect(await readExternal(tx, replacement)).toMatchObject({
