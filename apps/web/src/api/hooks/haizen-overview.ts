@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenOverview, getHaizenUnplacedParts, getMobilePlacementRegisteredShelves } from '../domains/mobile-placement';
+import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenMaterialArrival, getHaizenOverview, getHaizenUnplacedParts, getMobilePlacementRegisteredShelves } from '../domains/mobile-placement';
 
 import type { HaizenOverviewRow } from '../domains/mobile-placement';
 
@@ -32,4 +32,13 @@ export function useDeleteHaizenPlacement() {
 
 export function useHaizenUnplacedParts(enabled: boolean) {
   return useQuery({ queryKey: ['mobile-placement', 'haizen-overview', 'unplaced-parts'], queryFn: getHaizenUnplacedParts, enabled, refetchInterval: 60_000 });
+}
+
+export function useHaizenMaterialArrival(parts: Array<{ fseiban: string; fhincd: string }>) {
+  return useQuery({
+    queryKey: ['mobile-placement', 'haizen-material-arrival', parts],
+    queryFn: () => getHaizenMaterialArrival(parts),
+    enabled: parts.length > 0,
+    refetchInterval: 60_000
+  });
 }

@@ -2,6 +2,7 @@ import { api } from '../http';
 
 import type { ProductionScheduleListResponse } from './production-schedule';
 import type { RegisteredShelfEntryDto } from '../../features/mobile-placement/registeredShelves/types';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
 /** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
 export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;
@@ -418,5 +419,17 @@ export type HaizenUnplacedPart = {
 
 export async function getHaizenUnplacedParts() {
   const { data } = await api.get<HaizenUnplacedPart[]>('/mobile-placement/haizen-overview/unplaced-parts');
+  return data;
+}
+
+export type HaizenMaterialArrivalItem = {
+  fseiban: string;
+  fhincd: string;
+  status: MaterialArrivalStatus;
+  basis: MaterialArrivalBasis;
+};
+
+export async function getHaizenMaterialArrival(parts: Array<{ fseiban: string; fhincd: string }>) {
+  const { data } = await api.post<{ items: HaizenMaterialArrivalItem[] }>('/mobile-placement/haizen-material-arrival', { parts });
   return data;
 }

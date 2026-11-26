@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom';
 
 import { useDeleteHaizenPlacement, useHaizenOverview, useHaizenShelves, useHaizenUnplacedParts } from '../../api/hooks/haizen-overview';
+import { buildHaizenDueRows, buildHaizenUnplacedRows, haizenNewest } from '../../features/kiosk/haizen/haizenDueRows';
 import { matchesHaizenSearch, normalizeHaizenSearch, parseHaizenSpeech, searchKinds, timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
 import { HaizenShelfHoverCard } from '../../features/kiosk/haizen/HaizenShelfHoverCard';
 import { HaizenShelfPhoto } from '../../features/kiosk/haizen/HaizenShelfPhoto';
@@ -13,10 +14,10 @@ import { ASCENDING_DIGIT_KEYS } from '../../features/kiosk/KioskDigitTenkey';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 import type { HaizenOverviewRow, MobilePlacementRegisteredShelfEntry } from '../../api/domains/mobile-placement';
+import type { HaizenListRow } from '../../features/kiosk/haizen/haizenDueRows';
 import type { HaizenSearch } from '../../features/kiosk/haizen/haizenSearch';
 import type { InventoryThumbnailSize } from '../../features/kiosk/inventory/InventoryItemGrid';
 
-type HaizenListRow = HaizenOverviewRow & { unplaced?: boolean };
 const emptyRows: HaizenOverviewRow[] = [];
 const gridSizes = {
   small: 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))]',
@@ -89,28 +90,12 @@ export function KioskHaizenPage() {
   const hitIds = new Set(hits.map(row => `${row.source}:${row.id}`));
   const hitShelves = new Set(hits.map(row => row.shelfCodeRaw));
   const visibleShelves = shelves.filter(shelf => !query || hitShelves.has(shelf.shelfCodeRaw));
-  const newest = (a: HaizenOverviewRow, b: HaizenOverviewRow) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt) || a.id.localeCompare(b.id);
-  const unplacedRows: HaizenListRow[] = includeUnplaced ? (unplaced.data ?? []).map(part => ({
-    ...part, id: `${part.fseiban}:${part.productNo}`, source: 'branch', unplaced: true,
-    manufacturingOrderBarcodeRaw: part.productNo, shelfCodeRaw: '', branchNo: null, updatedAt: '', sendOutDate: null
-  })) : [];
-  const dueRows: HaizenListRow[] = [...rows, ...unplacedRows];
-  const groupDates = new Map<string | null, string | null>();
-  for (const row of dueRows) {
-    const date = groupDates.get(row.fseiban);
-    if (!groupDates.has(row.fseiban) || (row.dueDate && (!date || row.dueDate < date))) groupDates.set(row.fseiban, row.dueDate);
-  }
+  const unplacedRows: HaizenListRow[] = includeUnplaced ? buildHaizenUnplacedRows(unplaced.data ?? []) : [];
   const listRows: HaizenListRow[] = (listOrder === 'shelf'
     ? shelves.flatMap(shelf => grouped.byShelf.get(shelf.shelfCodeRaw) ?? [])
     : listOrder === 'due'
-      ? dueRows.sort((a, b) => {
-        const aDate = groupDates.get(a.fseiban), bDate = groupDates.get(b.fseiban);
-        const dateOrder = aDate === bDate ? 0 : !aDate ? 1 : !bDate ? -1 : aDate.localeCompare(bDate);
-        const groupOrder = dateOrder || (a.fseiban ?? '').localeCompare(b.fseiban ?? '');
-        const rank = (row: HaizenListRow) => row.unplaced ? (row.verified ? 1 : 0) : 2;
-        return groupOrder || rank(a) - rank(b) || (a.unplaced && b.unplaced ? a.manufacturingOrderBarcodeRaw.localeCompare(b.manufacturingOrderBarcodeRaw) : newest(a, b));
-      })
-      : [...rows].sort(newest)
+      ? buildHaizenDueRows(rows, unplacedRows)
+      : [...rows].sort(haizenNewest)
   ).filter(row => !query || matchesHaizenSearch(row, query));
   const unplacedHits = query ? unplacedRows.filter(row => matchesHaizenSearch(row, query)) : [];
   const selected = shelves.find(shelf => shelf.shelfCodeRaw === selectedCode);
@@ -181,6 +166,7 @@ export function KioskHaizenPage() {
     <nav aria-label="ほかの画面" className="flex shrink-0 gap-2">
       <Link to="/kiosk/inventory/haizen/verify-history" className={invButtonGhost}><VerifyLogIcon />照合の記録</Link>
       <Link to="/kiosk/inventory/haizen/trail" className={invButtonGhost}><TrailIcon />足取り</Link>
+      <Link to="/kiosk/inventory/haizen/materials" className={invButtonGhost}>納期と材料</Link>
     </nav>
     {voice.error && <p role="alert" className="text-inv-red">{voice.error}。番号を入力してください。</p>}
     {(overview.isError || master.isError || (includeUnplaced && unplaced.isError)) && <div role="alert" className="flex items-center gap-3 text-inv-red">配膳情報を更新できません。{!unavailable && '前回取得した情報を表示しています。'}<button type="button" className={invButton} onClick={() => { void overview.refetch(); void master.refetch(); if (includeUnplaced) void unplaced.refetch(); }}>再読込</button></div>}

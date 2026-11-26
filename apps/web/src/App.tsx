@@ -33,6 +33,7 @@ import { KioskAssemblyTraceabilityPage } from './pages/kiosk/KioskAssemblyTracea
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
+import { KioskHaizenMaterialPage } from './pages/kiosk/KioskHaizenMaterialPage';
 import { KioskHaizenPage } from './pages/kiosk/KioskHaizenPage';
 import { KioskHaizenTrailPage } from './pages/kiosk/KioskHaizenTrailPage';
 import { KioskHaizenVerifyHistoryPage } from './pages/kiosk/KioskHaizenVerifyHistoryPage';
@@ -315,6 +316,7 @@ function App() {
             <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
             <Route path="/kiosk/inventory/haizen/verify-history" element={<KioskHaizenVerifyHistoryPage />} />
             <Route path="/kiosk/inventory/haizen/trail" element={<KioskHaizenTrailPage />} />
+            <Route path="/kiosk/inventory/haizen/materials" element={<KioskHaizenMaterialPage />} />
             <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
             <Route path="/kiosk/mobile-placement/schedule-seibans" element={<HaizenScheduleList />} />
             <Route path="/kiosk/mobile-placement/schedule-seibans/:fseiban" element={<HaizenScheduleDetail />} />
