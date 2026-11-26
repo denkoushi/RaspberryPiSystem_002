@@ -42,6 +42,23 @@ describe('listStartDateLevelingQueryRows', () => {
     expect(sql).not.toContain('from "csvdashboardrow" as "r2"');
   });
 
+  it('keeps a row with a saved swap in the destination resource filter, even without an exact mail match', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { rowId: 'moved', resourceCd: '503', requiredMinutes: 50 },
+      { rowId: 'other', resourceCd: '051', requiredMinutes: 30 },
+    ]);
+    const rows = await listStartDateLevelingQueryRows({
+      dueSource: 'scaw', siteKey: '第2工場', deviceScopeKey: 'mac',
+      rangeStart: new Date('2026-05-01Z'), rangeEndExclusive: new Date('2026-06-01Z'),
+      resourceCdFilter: '503', winnerRowIds: ['moved', 'other']
+    });
+
+    expect(rows.map(({ rowId, resourceCd }) => [rowId, resourceCd])).toEqual([['moved', '503']]);
+    const sql = captureTaggedTemplateQuerySql();
+    expect(sql).toMatch(/coalesce\(\s*"ext"\."loadresourcecdfromfkojunstresourceswap", "csvdashboardrow"\."rowdata"->>'fsigencd'/);
+    expect(sql).toContain('or "ext"."loadresourcecdfromfkojunstresourceswap" is not null');
+  });
+
   it('着手日または有効納期欠損行をクエリ結果から除外しない', async () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([
       {

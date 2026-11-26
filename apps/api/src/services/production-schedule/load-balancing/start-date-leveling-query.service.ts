@@ -1,4 +1,5 @@
 import { prisma } from '../../../lib/prisma.js';
+import { LOAD_RESOURCE_CD_SQL as loadResourceCdSql } from '../completion/fkojunst-resource-swap-load-resource.sql.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { BOARD_DUE_JOINS_SQL, buildBoardDueDateSql } from '../d-schedule-minutes/board-due.sql.js';
 import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
@@ -13,6 +14,7 @@ import { buildCsvDashboardRowRequiredMinutesSql } from './csv-dashboard-row-requ
 import { buildLoadBalancingRowEligibilityWhereSql } from './load-balancing-eligibility.policy.js';
 import { buildStartDateLevelingQueryWindowWhereSql } from './start-date-leveling-query-window.policy.js';
 import type { StartDateLevelingQueryRow } from './start-date-leveling.types.js';
+
 
 type RawRow = {
   rowId: string;
@@ -75,7 +77,7 @@ export async function listStartDateLevelingQueryRows(params: {
       COALESCE(("CsvDashboardRow"."rowData"->>'FHINCD'), '') AS "fhincd",
       COALESCE(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') AS "fhinmei",
       COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
-      UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
+      ${loadResourceCdSql} AS "resourceCd",
       ${buildCsvDashboardRowRequiredMinutesSql()} AS "requiredMinutes",
       "supplement"."plannedStartDate" AS "plannedStartDate",
       ${buildBoardDueDateSql(params.dueSource)} AS "effectiveDueDate"
@@ -102,7 +104,7 @@ export async function listStartDateLevelingQueryRows(params: {
         UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'MH%'
         AND UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'SH%'
       )
-      AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
+      AND NULLIF(${loadResourceCdSql}, '') IS NOT NULL
       ${buildStartDateLevelingQueryWindowWhereSql({
         dueSource: params.dueSource,
         rangeStart: params.rangeStart,

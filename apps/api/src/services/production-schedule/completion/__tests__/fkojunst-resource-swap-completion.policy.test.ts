@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isFkojunstResourceSwapComplete } from '../fkojunst-resource-swap-completion.policy.js';
+import { isFkojunstResourceSwapComplete, resolveFkojunstResourceSwapLoadResourceCd } from '../fkojunst-resource-swap-completion.policy.js';
 import { isProductionScheduleExcludedCuttingResourceCd } from '../../policies/resource-category-policy.service.js';
 
 const completedAt = new Date('2026-11-25T01:00:00Z');
@@ -46,5 +46,36 @@ describe('isFkojunstResourceSwapComplete', () => {
   it('no longer completes when the other resource changes from C to P', () => {
     expect(isFkojunstResourceSwapComplete(candidate)).toBe(true);
     expect(isFkojunstResourceSwapComplete({ ...candidate, other: { ...completed, statusCode: 'P' } })).toBe(false);
+  });
+});
+
+describe('resolveFkojunstResourceSwapLoadResourceCd', () => {
+  const pending = { resourceCd: '503', statusCode: 'P', sourceUpdatedAt: completedAt };
+  const eligible = { ...candidate, other: pending, isOtherResourceInMaster: true, isCompleted: false };
+
+  it.each(['S', 'R', 'O', 'P'])('moves load for destination status %s', (statusCode) => {
+    const input = { ...eligible, other: { ...pending, statusCode } };
+    expect(resolveFkojunstResourceSwapLoadResourceCd(input)).toBe('503');
+    expect(resolveFkojunstResourceSwapLoadResourceCd({ ...input, own: { statusCode: 'R', sourceUpdatedAt: completedAt } })).toBe('503');
+  });
+
+  const blocked: [string, Partial<Parameters<typeof resolveFkojunstResourceSwapLoadResourceCd>[0]>][] = [
+    ['C', { other: { ...pending, statusCode: 'C' } }],
+    ['X', { other: { ...pending, statusCode: 'X' } }],
+    ['unknown status', { other: { ...pending, statusCode: 'Z' } }],
+    ['two winners', { winnerCount: 2 }],
+    ['two other resources', { otherResourceCount: 2 }],
+    ['excluded original resource', { isOwnResourceExcluded: true }],
+    ['excluded destination', { isOtherResourceExcluded: true }],
+    ['destination missing from the master', { isOtherResourceInMaster: false }],
+    ['S on the original resource', { own: { statusCode: 'S', sourceUpdatedAt: completedAt } }],
+    ['newer own status', { own: { statusCode: 'P', sourceUpdatedAt: new Date(completedAt.getTime() + 1) } }],
+    ['unknown own timestamp', { own: { statusCode: 'R', sourceUpdatedAt: null } }],
+    ['unknown destination timestamp', { other: { ...pending, sourceUpdatedAt: null } }],
+    ['completed row', { isCompleted: true }],
+    ['removed destination', { other: undefined, otherResourceCount: 0 }],
+  ];
+  it.each(blocked)('returns NULL for %s', (_label, overrides) => {
+    expect(resolveFkojunstResourceSwapLoadResourceCd({ ...eligible, ...overrides })).toBeNull();
   });
 });
