@@ -51,6 +51,7 @@ describe('planning board offline page', () => {
       if (url.endsWith('/resource-uptime')) return response({ endDate: null, days: 30, resources: [] });
       if (url.endsWith('/resources')) return response({ resources: ['305'], resourceNameMap: {} });
       if (url.endsWith('/load')) return response({ load: [], unknownRequiredMinutesCount: 0 });
+      if (url.endsWith('/arrival-revision')) return response({ revision: '0' });
       if (url.endsWith('/grinding-planning-board')) return response({ ...current, view: config?.params.view });
       throw new Error(`Unexpected GET: ${url}`);
     });
@@ -122,7 +123,7 @@ describe('planning board offline page', () => {
     fireEvent.click(screen.getByRole('button', { name: '固定', exact: true }));
     expect(screen.getByRole('button', { name: '固定', exact: true })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText('圏外のため操作できません')).not.toBeInTheDocument();
-    expect(get.mock.calls.filter(([, config]) => config?.kioskTelemetry === 'background')).toHaveLength(1);
+    expect(get.mock.calls.filter(([url, config]) => config?.kioskTelemetry === 'background' && !String(url).endsWith('/arrival-revision'))).toHaveLength(1);
   });
   it.each([true, false, undefined, 'error', 'pending'] as const)('enables the production page only for an explicit true capability: %s', async (capability) => {
     const originalGet = get.getMockImplementation()!;
@@ -145,7 +146,7 @@ describe('planning board offline page', () => {
       expect(screen.queryByText('圏外')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '固定', exact: true }));
       expect(screen.getByRole('button', { name: '固定', exact: true })).toHaveAttribute('aria-pressed', 'true');
-      expect(get.mock.calls.filter(([, config]) => config?.kioskTelemetry === 'background')).toHaveLength(0);
+      expect(get.mock.calls.filter(([url, config]) => config?.kioskTelemetry === 'background' && !String(url).endsWith('/arrival-revision'))).toHaveLength(0);
     }
   });
   it('starts in the last known mode and does not remount the board when the capability answer arrives', async () => {
@@ -183,7 +184,7 @@ describe('planning board offline page', () => {
     await advance(5000); expect(screen.getByText('復帰')).toBeVisible(); expect(screen.getByText('最新に更新しました')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
     expect(screen.getByText('最新部品')).toBeVisible();
-    const probes = get.mock.calls.filter(([, config]) => config?.kioskTelemetry === 'background');
+    const probes = get.mock.calls.filter(([url, config]) => config?.kioskTelemetry === 'background' && !String(url).endsWith('/arrival-revision'));
     expect(probes.length).toBeGreaterThan(2);
     expect(probes[0][1]).toMatchObject({ timeout: 3000, headers: { 'Cache-Control': 'no-cache, no-store' } });
     await advance(3000); expect(screen.queryByText('復帰')).not.toBeInTheDocument();
