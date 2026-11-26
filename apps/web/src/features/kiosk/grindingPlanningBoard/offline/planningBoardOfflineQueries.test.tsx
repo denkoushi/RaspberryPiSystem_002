@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from './planningBoardOfflineConfig';
 import { usePlanningBoardOffline } from './planningBoardOfflineContext';
 import { PlanningBoardOfflineProvider } from './PlanningBoardOfflineProvider';
-import { useOfflineBoard } from './planningBoardOfflineQueries';
+import { useOfflineBoard, usePlanningBoardPageQueries } from './planningBoardOfflineQueries';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../../../api/client', () => ({ api: { get: mocks.get }, getResolvedClientKey: () => 'test-device' }));
@@ -64,4 +64,55 @@ it('loads the board initially even when periodic polling is paused', async () =>
   const calls = mocks.get.mock.calls.filter(([path]) => path.endsWith('/grinding-planning-board')).length;
   await act(async () => { await vi.advanceTimersByTimeAsync(300000); });
   expect(mocks.get.mock.calls.filter(([path]) => path.endsWith('/grinding-planning-board'))).toHaveLength(calls);
+});
+
+it('refreshes the board only on an arrival revision change and waits for the refresh to finish', async () => {
+  function PageQueries({ paused = false }: { paused?: boolean }) {
+    usePlanningBoardPageQueries({ category: 'grinding', view: 'seiban' }, {
+      refetchIntervalMs: paused ? false : undefined, drawerOpen: false, showCompletedCandidates: false, dueDetailFseiban: null
+    });
+    return null;
+  }
+  const config = { ...DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG, enabled: true };
+  const board = { status: 200, headers: {}, data: {
+    items: [], sourceRevision: 'source', siteKey: 'test', nextCursor: null,
+    dailyHoursByResource: {}, runsThroughBreaksResources: []
+  } };
+  let revision = 'initial';
+  let releaseBoard: (() => void) | undefined;
+  let holdBoard = false;
+  mocks.get.mockImplementation(async (path: string) => {
+    if (path.endsWith('/arrival-revision')) return { data: { revision } };
+    if (path.endsWith('/load')) return { status: 200, headers: {}, data: { load: [] } };
+    if (path.endsWith('/resources')) return { status: 200, headers: {}, data: { resources: [] } };
+    if (path.endsWith('/grinding-planning-board') && holdBoard) await new Promise<void>((resolve) => { releaseBoard = resolve; });
+    return board;
+  });
+  const boardCalls = () => mocks.get.mock.calls.filter(([path]) => path.endsWith('/grinding-planning-board')).length;
+  const revisionCalls = () => mocks.get.mock.calls.filter(([path]) => path.endsWith('/arrival-revision')).length;
+  const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  const view = render(<PlanningBoardOfflineProvider config={config}><PageQueries /></PlanningBoardOfflineProvider>);
+  await act(async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); });
+  await advance(15_000);
+  const initialBoardCalls = boardCalls();
+  expect(initialBoardCalls).toBe(1);
+  expect(revisionCalls()).toBe(2);
+  revision = 'changed';
+  holdBoard = true;
+  await advance(15_000);
+  expect(boardCalls()).toBe(initialBoardCalls + 1);
+  await advance(15_000);
+  expect(boardCalls()).toBe(initialBoardCalls + 1);
+  holdBoard = false;
+  await act(async () => { releaseBoard?.(); });
+  await advance(15_000);
+  expect(boardCalls()).toBe(initialBoardCalls + 1);
+  const beforePause = revisionCalls();
+  view.rerender(<PlanningBoardOfflineProvider config={config}><PageQueries paused /></PlanningBoardOfflineProvider>);
+  revision = 'changed while paused';
+  await advance(15_000);
+  expect(revisionCalls()).toBe(beforePause);
+  view.rerender(<PlanningBoardOfflineProvider config={config}><PageQueries /></PlanningBoardOfflineProvider>);
+  await advance(0);
+  expect(boardCalls()).toBe(initialBoardCalls + 2);
 });

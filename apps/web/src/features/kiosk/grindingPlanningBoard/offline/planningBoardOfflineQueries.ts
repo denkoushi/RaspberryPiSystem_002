@@ -42,8 +42,9 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
     return registerRead(key, { read, commit });
   }, [key, scopeKey, enabled, read, commit, registerRead]);
   useEffect(() => subscribeFreeze(() => inFlight.current?.abort()), [subscribeFreeze]);
-  const refetch = useCallback(async (): Promise<Result<T>> => {
+  const refetch = useCallback(async (options?: { cancelRefetch?: boolean }): Promise<Result<T>> => {
     if (!gate.canWrite()) return { data: undefined, isError: true, error: new Error('Read only') };
+    if (options?.cancelRefetch === false && inFlight.current) return { data: undefined, isError: true, error: new Error('Read in progress') };
     const generation = gate.generation();
     inFlight.current?.abort();
     const abort = new AbortController(); inFlight.current = abort;
@@ -56,7 +57,9 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
       const next = { data: undefined, isError: true, error };
       if (mounted.current && !abort.signal.aborted && generation === gate.generation() && scopeKey === activeScope.current) setResult((previous) => previous.data ? previous : { ...next, scopeKey: previous.scopeKey });
       return next;
-    } finally { if (mounted.current && inFlight.current === abort) setFetching(false); }
+    } finally {
+      if (inFlight.current === abort) { inFlight.current = undefined; if (mounted.current) setFetching(false); }
+    }
   }, [gate, read, scopeKey]);
   const previousScope = useRef(scopeKey);
   useEffect(() => {
@@ -64,9 +67,9 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
     if (previousScope.current !== scopeKey || !result.data) void refetch();
     previousScope.current = scopeKey;
     if (refetchIntervalMs === false) return;
-    const timer = setInterval(() => { void refetch(); }, refetchIntervalMs);
+    const timer = setInterval(() => { void refetch({ cancelRefetch: key !== 'board' }); }, refetchIntervalMs);
     return () => clearInterval(timer);
-  }, [scopeKey, enabled, offline.frozen, refetch, result.data, refetchIntervalMs]);
+  }, [key, scopeKey, enabled, offline.frozen, refetch, result.data, refetchIntervalMs]);
   const frozenResult = useFrozenValue(result);
   const visibleFetching = useFrozenValue(fetching);
   return { ...frozenResult, refetch, isFetching: visibleFetching, isLoading: !frozenResult.data && !frozenResult.isError,
@@ -157,6 +160,53 @@ export function useOfflineUptime(enabled: boolean) {
   return useOfflineRead('uptime', null, (signal) => request<MachineSignalResourceUptime>('/machine-signal/resource-uptime', signal, (data) => Array.isArray(data.resources), { days: 30 }), enabled);
 }
 
+function usePlanningBoardArrivalRefresh(paused: boolean, board: {
+  scopeReady: boolean; isFetching: boolean; isAppending: boolean;
+  refetch: (options: { cancelRefetch: false }) => Promise<{ isError: boolean }>;
+}) {
+  const { gate, frozen, snapshot, subscribeFreeze } = usePlanningBoardOffline();
+  const online = snapshot.phase === 'online';
+  const latestBoard = useRef(board);
+  useLayoutEffect(() => { latestBoard.current = board; }, [board]);
+  const previous = useRef<{ identity: ReturnType<typeof getResolvedClientKey>; revision: string } | undefined>(undefined);
+  const refreshing = useRef(false);
+  useLayoutEffect(() => {
+    if (paused || frozen || !online) return;
+    let pending: AbortController | undefined;
+    const unsubscribe = subscribeFreeze(() => pending?.abort());
+    const poll = async () => {
+      if (pending || refreshing.current || !gate.canWrite()) return;
+      const identity = getResolvedClientKey();
+      const generation = gate.generation();
+      const abort = new AbortController(); pending = abort;
+      try {
+        const { data } = await api.get<{ revision: string }>(`${base}/arrival-revision`, {
+          signal: abort.signal, timeout: 15_000, kioskTelemetry: 'background',
+          headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' }
+        });
+        if (abort.signal.aborted || generation !== gate.generation() || !gate.canWrite() ||
+            identity !== getResolvedClientKey() || typeof data?.revision !== 'string') return;
+        if (!previous.current || previous.current.identity !== identity) {
+          previous.current = { identity, revision: data.revision };
+          return;
+        }
+        const currentBoard = latestBoard.current;
+        if (previous.current.revision === data.revision || !currentBoard.scopeReady || currentBoard.isFetching || currentBoard.isAppending) return;
+        refreshing.current = true;
+        try {
+          const result = await currentBoard.refetch({ cancelRefetch: false });
+          if (!result.isError) previous.current = { identity, revision: data.revision };
+        } finally { refreshing.current = false; }
+      } catch {
+        // Keep the last revision so the next poll can retry.
+      } finally { pending = undefined; }
+    };
+    void poll();
+    const timer = setInterval(() => { void poll(); }, 15_000);
+    return () => { clearInterval(timer); pending?.abort(); unsubscribe(); };
+  }, [paused, frozen, online, gate, subscribeFreeze]);
+}
+
 export function usePlanningBoardPageQueries(params: KioskGrindingPlanningBoardQuery, options: {
   refetchIntervalMs: number | false | undefined; drawerOpen: boolean; showCompletedCandidates: boolean; dueDetailFseiban: string | null;
 }) {
@@ -168,6 +218,7 @@ export function usePlanningBoardPageQueries(params: KioskGrindingPlanningBoardQu
   const useDueDetail = enabled ? useOfflineDueDetail : useKioskGrindingPlanningBoardDueDetail;
   // View only changes server ordering; the page sorts the shared items for each display.
   const query = useBoard({ ...params, view: 'resource' }, { refetchIntervalMs: options.refetchIntervalMs });
+  usePlanningBoardArrivalRefresh(options.refetchIntervalMs === false, query);
   const data = useMemo(() => query.data ? { ...query.data, view: params.view ?? 'resource' } : undefined, [query.data, params.view]);
   const boardQuery = { ...query, data };
   const loadQuery = useLoad(params.category, params.scheduleSource);
