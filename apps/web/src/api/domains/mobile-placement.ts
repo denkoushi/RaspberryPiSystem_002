@@ -6,6 +6,20 @@ import type { RegisteredShelfEntryDto } from '../../features/mobile-placement/re
 /** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
 export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;
 
+export type ResourceShelfAssignment = { resourceCd: string; resourceNames: string[]; shelfCodes: string[] };
+
+export async function getMobilePlacementResourceShelves() {
+  const { data } = await api.get<{ resources: ResourceShelfAssignment[] }>('/mobile-placement/resource-shelves');
+  return data;
+}
+
+export async function replaceMobilePlacementResourceShelves(resourceCd: string, shelfCodes: string[]) {
+  const { data } = await api.put<Pick<ResourceShelfAssignment, 'resourceCd' | 'shelfCodes'>>(
+    `/mobile-placement/resource-shelves/${encodeURIComponent(resourceCd)}`, { shelfCodes }
+  );
+  return data;
+}
+
 export async function getMobilePlacementRegisteredShelves() {
   const { data } = await api.get<{ shelves: RegisteredShelfEntryDto[] }>('/mobile-placement/registered-shelves');
   return data;
@@ -164,7 +178,7 @@ export type MobilePlacementSlipMatchResponse = {
   reason: 'match' | 'different_seiban' | 'different_part' | 'part_required' | 'order_not_found' | 'transfer_not_found';
   legacyReason?: string;
   actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
-  expected?: { fseiban: string; fhincd: string; partName?: string };
+  expected?: { fseiban: string; fhincd: string; partName?: string; firstResourceCd?: string };
   actual?: { fseiban?: string; partCode?: string };
   matchedBy?: 'part_name';
 };

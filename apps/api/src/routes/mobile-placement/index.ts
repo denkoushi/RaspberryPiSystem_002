@@ -29,6 +29,7 @@ import {
   listRegisteredShelvesFromShelfMaster,
   registerMobilePlacementShelf
 } from '../../services/mobile-placement/mobile-placement-shelf-master.service.js';
+import { getResourceShelfAssignments, replaceResourceShelves } from '../../services/mobile-placement/mobile-placement-resource-shelves.service.js';
 import {
   applyHaizenScan,
   deleteHaizenCurrentPlacement,
@@ -173,8 +174,27 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
    */
   app.get('/mobile-placement/registered-shelves', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
-    const shelves = await listRegisteredShelvesFromShelfMaster();
-    return { shelves };
+    try {
+      const { shelves } = await getResourceShelfAssignments();
+      return { shelves };
+    } catch (error) {
+      // Shelf choice must keep working even if the resource links cannot be read.
+      request.log.warn({ err: error }, 'resource shelf links unavailable');
+      return { shelves: await listRegisteredShelvesFromShelfMaster() };
+    }
+  });
+
+  app.get('/mobile-placement/resource-shelves', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { resources } = await getResourceShelfAssignments();
+    return { resources };
+  });
+
+  app.put('/mobile-placement/resource-shelves/:resourceCd', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { resourceCd } = z.object({ resourceCd: z.string().trim().min(1).max(20) }).parse(request.params);
+    const { shelfCodes } = z.object({ shelfCodes: z.array(z.string().min(1).max(200)).max(1000) }).parse(request.body);
+    return replaceResourceShelves(resourceCd, shelfCodes);
   });
 
   app.get('/mobile-placement/client-capabilities', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {

@@ -1,7 +1,9 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { api } from '../../api/http';
 import { effectiveVerifyResult } from '../../features/kiosk/haizen/haizenVerifyResult';
 
 import { KioskHaizenVerifyHistoryPage } from './KioskHaizenVerifyHistoryPage';
@@ -9,6 +11,7 @@ import { KioskHaizenVerifyHistoryPage } from './KioskHaizenVerifyHistoryPage';
 import type { HaizenVerifyRecord } from '../../features/kiosk/haizen/haizenRecordTypes';
 
 const hooks = vi.hoisted(() => ({ records: [] as unknown[] }));
+vi.mock('../../api/http', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
 vi.mock('../../api/hooks/haizen-records', () => ({
   useHaizenVerifyRecords: () => ({ data: { records: hooks.records }, dataUpdatedAt: 0, isError: false, isPending: false })
 }));
@@ -21,7 +24,7 @@ const make = (id: string, order: string, result: HaizenVerifyRecord['result'], r
   mismatch: null, fhinmei: null, machineName: null, placedShelfCodeRaw: null, branchNo: null
 });
 afterEach(cleanup);
-const mount = () => render(<MemoryRouter><KioskHaizenVerifyHistoryPage /></MemoryRouter>);
+const mount = () => render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><KioskHaizenVerifyHistoryPage /></MemoryRouter></QueryClientProvider>);
 const filterLabel = (name: string) => within(screen.getByRole('group', { name: '結果' })).getByRole('button', { name: new RegExp(`^${name}`) }).textContent;
 
 describe('effectiveVerifyResult', () => {
@@ -65,5 +68,32 @@ describe('KioskHaizenVerifyHistoryPage recheck', () => {
     hooks.records = [make('1', 'A', 'not_found')];
     mount();
     expect(screen.queryByTestId('recheck-line')).toBeNull();
+  });
+
+  it('opens shelf assignments over the history and can restore or save an empty selection', async () => {
+    localStorage.clear();
+    hooks.records = [make('1', 'A', 'match')];
+    vi.mocked(api.get).mockImplementation(async (url) => ({ data: url.endsWith('/resource-shelves')
+      ? { resources: [{ resourceCd: '025', resourceNames: ['M1'], shelfCodes: ['M1 北'] }] }
+      : { shelves: [{ shelfCodeRaw: 'M1 北', machineName: 'M1', isStructured: true }] }
+    }));
+    vi.mocked(api.put).mockResolvedValue({ data: { resourceCd: '025', shelfCodes: [] } });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '資源CDと棚' }));
+    const dialog = within(screen.getByRole('dialog', { name: '資源CDと棚' }));
+    expect(screen.getByRole('table', { name: '照合の記録' })).toBeInTheDocument();
+    expect(await dialog.findByRole('button', { name: /025 M1 M1 北/ })).toHaveAttribute('aria-pressed', 'true');
+    const tile = dialog.getByRole('button', { name: 'M1 北', exact: true });
+    fireEvent.click(tile);
+    expect(tile).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(dialog.getByRole('button', { name: '元に戻す' }));
+    expect(tile).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(tile);
+    fireEvent.click(dialog.getByRole('button', { name: '保存' }));
+    expect(await dialog.findByText('✓ 保存しました')).toBeInTheDocument();
+    expect(api.put).toHaveBeenCalledExactlyOnceWith('/mobile-placement/resource-shelves/025', { shelfCodes: [] });
+    expect(dialog.getByRole('button', { name: /025 M1 棚なし/ })).toBeInTheDocument();
+    fireEvent.click(dialog.getByRole('button', { name: '閉じる' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

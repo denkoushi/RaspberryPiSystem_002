@@ -371,20 +371,21 @@ describe('IndexedDB staged snapshots', () => {
     const { store, table, transaction } = setup();
     await store.replace({ purchase: { ...versions.purchase, rows: [packPurchase(purchaseRow)] } });
     const s2 = { version: 's2', dataUpdatedAt: null };
-    await store.writeStagingPage('schedule', s2, 1, 1, [packSchedule(scheduleRow)], 1, ['FS1']);
+    const first = { ...scheduleRow, rowId: 'first', fkojun: 0, fsigencd: '025', ordinal: 1 };
+    await store.writeStagingPage('schedule', s2, 1, 1, [packSchedule(scheduleRow), packSchedule(first)], 2, ['FS1']);
     await store.promoteStaging('schedule');
-    expect(await store.listScheduleByProductNo('T1')).toEqual([scheduleRow]);
-    expect(await store.verify(input)).toMatchObject({ ok: true });
+    expect(await store.listScheduleByProductNo('T1')).toEqual([scheduleRow, first]);
+    expect(await store.verify(input)).toMatchObject({ ok: true, expected: { firstResourceCd: '025' } });
     expect(transaction).toHaveBeenLastCalledWith(['metadata', 'stagingPurchase', 'stagingSchedule']);
     expect(await store.snapNative(['FS1'], '')).toMatchObject({ fseiban: 'FS1' });
     await store.writeStagingPage('schedule', { ...s2, version: 's3' }, 1, 1, [], 1, ['FS2']);
-    expect(await store.listScheduleByProductNo('T1')).toEqual([scheduleRow]);
+    expect(await store.listScheduleByProductNo('T1')).toEqual([scheduleRow, first]);
     expect(await store.snapNative(['FS1'], '')).toMatchObject({ fseiban: 'FS1' });
     await store.replace({ schedule: { version: 'replacement', dataUpdatedAt: null,
       rows: [packSchedule({ ...scheduleRow, fhinmei: 'replacement' })], knownFseibans: ['FS3'] } });
     expect(table('metadata').get('live:schedule')).toEqual({ liveStore: 'schedule' });
     expect((await store.listScheduleByProductNo('T1'))[0].fhinmei).toBe('replacement');
-    expect(table('stagingSchedule').size).toBe(1);
+    expect(table('stagingSchedule').size).toBe(2);
     await store.discardStaging('schedule');
     expect((await store.listScheduleByProductNo('T1'))[0].fhinmei).toBe('replacement');
     expect(await store.snapNative(['FS3'], '')).toMatchObject({ fseiban: 'FS3' });

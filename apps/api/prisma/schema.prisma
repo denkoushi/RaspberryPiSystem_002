@@ -775,6 +775,18 @@ model MobilePlacementShelf {
   createdBy               ClientDevice?                 @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
   layoutEntities          MobilePlacementLayoutEntity[]
   photo                   MobilePlacementShelfPhoto?
+  resourceShelves         MobilePlacementResourceShelf[]
+}
+
+model MobilePlacementResourceShelf {
+  id         String                @id @default(uuid())
+  resourceCd String
+  /// A row with id = resourceCd and no shelf marks a saved resource, even with no linked shelves.
+  shelfId    String?
+  shelf      MobilePlacementShelf? @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceCd, shelfId])
+  @@index([shelfId])
 }
 
 model MobilePlacementShelfPhoto {
