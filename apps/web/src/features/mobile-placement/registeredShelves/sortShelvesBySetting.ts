@@ -1,5 +1,16 @@
 import type { RegisteredShelfEntryDto } from './types';
 
+/** 加工機名ごとの塊にする。先に出てきた順を保つ。 */
+export function groupShelvesByMachine(shelves: RegisteredShelfEntryDto[]): Map<string | undefined, RegisteredShelfEntryDto[]> {
+  const groups = new Map<string | undefined, RegisteredShelfEntryDto[]>();
+  for (const shelf of shelves) {
+    const group = groups.get(shelf.machineName) ?? [];
+    group.push(shelf);
+    groups.set(shelf.machineName, group);
+  }
+  return groups;
+}
+
 const order = (shelf: RegisteredShelfEntryDto) => shelf.sortOrder ?? null;
 
 /**
@@ -7,13 +18,7 @@ const order = (shelf: RegisteredShelfEntryDto) => shelf.sortOrder ?? null;
  * 並び順が無いものは後ろに、元の順のまま並ぶ。
  */
 export function sortShelvesBySetting(shelves: RegisteredShelfEntryDto[]): RegisteredShelfEntryDto[] {
-  const groups = new Map<string | undefined, RegisteredShelfEntryDto[]>();
-  for (const shelf of shelves) {
-    const group = groups.get(shelf.machineName) ?? [];
-    group.push(shelf);
-    groups.set(shelf.machineName, group);
-  }
-  const sortedGroups = [...groups.values()].map((group) => {
+  const sortedGroups = [...groupShelvesByMachine(shelves).values()].map((group) => {
     const ordered = group.filter((shelf) => order(shelf) !== null).sort((a, b) => order(a)! - order(b)!);
     const rest = group.filter((shelf) => order(shelf) === null);
     return { shelves: [...ordered, ...rest], min: ordered.length ? order(ordered[0])! : null };

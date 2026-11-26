@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { replaceMobilePlacementShelfOrder } from '../../../../api/domains/mobile-placement';
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
-import { sortShelvesBySetting } from '../../registeredShelves';
+import { groupShelvesByMachine, sortShelvesBySetting } from '../../registeredShelves';
 import { refreshRegisteredShelvesAfterOrder } from '../../shelfListCache';
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
 import { hp } from '../../ui/haizenPhoneTokens';
@@ -12,15 +12,9 @@ import { useRegisteredShelves } from '../../useRegisteredShelves';
 
 import type { RegisteredShelfEntryDto } from '../../registeredShelves';
 
-/** 加工機ごとの塊。先頭に出てきた順を保つ。 */
-function groupByMachine(shelves: RegisteredShelfEntryDto[]): string[][] {
-  const groups = new Map<string, string[]>();
-  for (const shelf of shelves) {
-    const key = shelf.machineName ?? '';
-    groups.set(key, [...(groups.get(key) ?? []), shelf.shelfCodeRaw]);
-  }
-  return [...groups.values()];
-}
+/** 加工機ごとの塊の棚コード。先頭に出てきた順を保つ。 */
+const groupByMachine = (shelves: RegisteredShelfEntryDto[]): string[][] =>
+  [...groupShelvesByMachine(shelves).values()].map((group) => group.map((shelf) => shelf.shelfCodeRaw));
 
 function move<T>(items: T[], index: number, dir: -1 | 1): T[] {
   const next = [...items];
