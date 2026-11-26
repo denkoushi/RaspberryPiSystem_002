@@ -86,13 +86,3 @@ export async function getAudioVideoStream(deviceId?: string): Promise<MediaStrea
     throw new Error(`カメラ/マイクへのアクセスに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-
-/**
- * メディアストリームを停止
- */
-export function stopMediaStream(stream: MediaStream | null): void {
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
-  }
-}
-
