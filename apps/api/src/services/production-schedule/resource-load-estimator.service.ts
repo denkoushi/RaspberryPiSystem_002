@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
+import { LOAD_RESOURCE_CD_SQL as loadResourceCdSql } from './completion/fkojunst-resource-swap-load-resource.sql.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { normalizeFseibanList } from './fseiban-list.js';
 import {
@@ -10,9 +11,6 @@ import {
 } from './policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
-const loadResourceCdSql = Prisma.sql`UPPER(BTRIM(COALESCE(
-  "ext"."loadResourceCdFromFkojunstResourceSwap", "CsvDashboardRow"."rowData"->>'FSIGENCD'
-)))`;
 
 type ResourceLoadRow = {
   fseiban: string;

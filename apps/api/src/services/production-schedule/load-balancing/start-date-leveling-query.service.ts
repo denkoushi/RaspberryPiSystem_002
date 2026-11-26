@@ -1,6 +1,5 @@
-import { Prisma } from '@prisma/client';
-
 import { prisma } from '../../../lib/prisma.js';
+import { LOAD_RESOURCE_CD_SQL as loadResourceCdSql } from '../completion/fkojunst-resource-swap-load-resource.sql.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { BOARD_DUE_JOINS_SQL, buildBoardDueDateSql } from '../d-schedule-minutes/board-due.sql.js';
 import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
@@ -16,9 +15,6 @@ import { buildLoadBalancingRowEligibilityWhereSql } from './load-balancing-eligi
 import { buildStartDateLevelingQueryWindowWhereSql } from './start-date-leveling-query-window.policy.js';
 import type { StartDateLevelingQueryRow } from './start-date-leveling.types.js';
 
-const loadResourceCdSql = Prisma.sql`UPPER(BTRIM(COALESCE(
-  "ext"."loadResourceCdFromFkojunstResourceSwap", "CsvDashboardRow"."rowData"->>'FSIGENCD'
-)))`;
 
 type RawRow = {
   rowId: string;
