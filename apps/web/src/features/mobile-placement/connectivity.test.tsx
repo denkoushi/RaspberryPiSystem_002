@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../api/http';
 
-import { canUseMobileNetwork, MOBILE_REQUEST_TIMEOUT_MS, mobileRequest, resetMobileConnectivityForTests, useMobileConnectivity } from './connectivity';
+import { canUseMobileNetwork, MOBILE_REQUEST_TIMEOUT_MS, mobileConnection, mobileRequest, resetMobileConnectivityForTests, useMobileConnectivity } from './connectivity';
+import { failMobileRequest } from './connectivityTestUtils';
 
 vi.mock('../../api/http', () => ({ api: { get: vi.fn() } }));
 
@@ -21,7 +22,7 @@ describe('mobile connectivity', () => {
     vi.useFakeTimers();
     vi.mocked(api.get).mockRejectedValueOnce(new Error('network')).mockResolvedValue({ status });
     const { result } = renderHook(useMobileConnectivity);
-    await act(async () => { await mobileRequest(() => Promise.reject(new Error('network'))).catch(() => {}); });
+    await act(failMobileRequest);
     expect(result.current).toBe(false);
     await act(async () => { await vi.advanceTimersByTimeAsync(14_999); });
     expect(api.get).not.toHaveBeenCalled();
@@ -40,18 +41,33 @@ describe('mobile connectivity', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('skips probes while browser offline and stops probing on the online event', async () => {
+  it('skips probes while browser offline and probes once on the online event before recovering', async () => {
     vi.useFakeTimers();
+    vi.mocked(api.get).mockResolvedValue({ status: 200 });
     await mobileRequest(() => Promise.reject(new Error('network'))).catch(() => {});
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(api.get).not.toHaveBeenCalled();
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     window.dispatchEvent(new Event('online'));
+    expect(canUseMobileNetwork()).toBe(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.get).toHaveBeenCalledTimes(1);
     expect(canUseMobileNetwork()).toBe(true);
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(api.get).not.toHaveBeenCalled();
+    expect(api.get).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears on the online event without probing when not on Wi-Fi', async () => {
+    const connection = mobileConnection()!;
+    connection.type = 'cellular';
+    try {
+      await failMobileRequest();
+      window.dispatchEvent(new Event('online'));
+      expect(canUseMobileNetwork()).toBe(true);
+      expect(api.get).not.toHaveBeenCalled();
+    } finally { connection.type = 'wifi'; }
   });
 
   it.each([60_000, 180_000])('allows requests longer than three seconds with a %s ms limit', async (timeoutMs) => {
@@ -97,7 +113,8 @@ describe('mobile connectivity', () => {
     await expect(mobileRequest(request)).rejects.toThrow('offline');
     expect(request).not.toHaveBeenCalled();
     expect(setOnline).not.toHaveBeenCalled();
-    act(() => window.dispatchEvent(new Event('online')));
+    vi.mocked(api.get).mockResolvedValue({ status: 200 });
+    await act(async () => { window.dispatchEvent(new Event('online')); });
     expect(result.current).toBe(true);
     await expect(mobileRequest(request)).resolves.toBe('ok');
   });
