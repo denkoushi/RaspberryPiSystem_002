@@ -114,4 +114,13 @@ describe('sessaku background splitting', () => {
     }, expect.any(String));
     expect(mocks.query).not.toHaveBeenCalled(); expect(mocks.split).not.toHaveBeenCalled();
   });
+  it('treats a retained-only restore page as progress instead of backing off', async () => {
+    mocks.restore.mockResolvedValueOnce({ restoredCount: 0, retainedCount: 5, failedCount: 0, nextCursor: 'page-1' })
+      .mockResolvedValueOnce({ restoredCount: 0, retainedCount: 1, failedCount: 0 });
+    vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'false'); scheduler.start();
+    await vi.advanceTimersByTimeAsync(31000);
+    expect(mocks.restore.mock.calls).toEqual([[undefined], ['page-1']]);
+    expect(mocks.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.auto_unit_split_background_backoff' }), expect.any(String));
+  });
 });

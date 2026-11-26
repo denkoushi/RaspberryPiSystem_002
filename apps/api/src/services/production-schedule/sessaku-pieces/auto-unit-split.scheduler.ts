@@ -62,15 +62,16 @@ export function createSessakuAutoUnitSplitScheduler() {
     let hasMore = false;
     let delayed = false;
     let splitCount = 0;
-    let restoredCount = 0;
+    let restoreVisited = 0;
     const roundStarted = Date.now();
     try {
       if (roundStarted >= restoreNextAt) {
         try {
           const result = await restoreGrindingLaterPieceSets(restoreAfter);
           restoreAfter = result.nextCursor;
-          restoredCount = result.restoredCount;
-          restoreTotals.restoredCount += restoredCount;
+          // The cursor moved even when every set on the page was retained, so that is progress too.
+          restoreVisited = result.restoredCount + result.retainedCount + result.failedCount;
+          restoreTotals.restoredCount += result.restoredCount;
           restoreTotals.retainedCount += result.retainedCount;
           restoreTotals.failedCount += result.failedCount;
           if (!restoreAfter) {
@@ -125,7 +126,7 @@ export function createSessakuAutoUnitSplitScheduler() {
       let delayMs: number;
       holding = false;
       if (delayed) delayMs = IDLE_INTERVAL_MS;
-      else if (hasMore && splitCount + restoredCount === 0) {
+      else if (hasMore && splitCount + restoreVisited === 0) {
         backoffMs = Math.min(backoffMs ? backoffMs * 2 : ZERO_PROGRESS_FIRST_DELAY_MS, IDLE_INTERVAL_MS);
         delayMs = backoffMs;
         holding = true;
@@ -134,10 +135,10 @@ export function createSessakuAutoUnitSplitScheduler() {
       } else {
         backoffMs = 0;
         delayMs = hasMore || wakeRequested ? ACTIVE_INTERVAL_MS : IDLE_INTERVAL_MS;
-        if (splitCount + restoredCount > 0 && hasMore) {
+        if (splitCount + restoreVisited > 0 && hasMore) {
           delayMs = Math.min(Math.max(delayMs, (Date.now() - roundStarted) * PACING_FACTOR), MAX_PACING_DELAY_MS);
           holding = true;
-          logger.info({ event: 'sessaku_piece.auto_unit_split_background_pacing', splitCount, restoredCount, retryAfterMs: delayMs },
+          logger.info({ event: 'sessaku_piece.auto_unit_split_background_pacing', splitCount, restoreVisited, retryAfterMs: delayMs },
             'Automatic unit split pacing the next round');
         }
       }
