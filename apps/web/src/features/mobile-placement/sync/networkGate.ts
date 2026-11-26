@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-import { canUseMobileNetwork, isMobileServerUnreachable, subscribeMobileConnectivity } from '../connectivity';
+import { canUseMobileNetwork, isMobileServerUnreachable, isOnWifiOrEthernet, subscribeMobileConnectivity } from '../connectivity';
 
 type Connection = EventTarget & { type?: string };
 const connection = () => typeof navigator === 'undefined' ? undefined
@@ -8,9 +8,7 @@ const connection = () => typeof navigator === 'undefined' ? undefined
 
 // Sync only when the phone is confirmed to be on Wi-Fi (or wired); never on mobile data or an unknown link.
 export function canSyncNow() {
-  if (!canUseMobileNetwork()) return false;
-  const type = connection()?.type;
-  return type === 'wifi' || type === 'ethernet';
+  return canUseMobileNetwork() && isOnWifiOrEthernet();
 }
 
 export function subscribeCanSync(listener: () => void) {
@@ -30,8 +28,7 @@ export function useCanSync() {
 // Wi-Fi is up but the server cannot be reached (usually Tailscale is off).
 export function isServerUnreachableOnWifi() {
   if (typeof navigator === 'undefined' || navigator.onLine === false) return false;
-  const type = connection()?.type;
-  return isMobileServerUnreachable() && (type === 'wifi' || type === 'ethernet');
+  return isMobileServerUnreachable() && isOnWifiOrEthernet();
 }
 
 export function useServerUnreachableOnWifi() {

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../features/mobile-placement/useRegisteredShelves', () => ({ useRegisteredShelves: () => ({ data: { shelves: [] } }) }));
 vi.mock('../../api/domains/mobile-placement', () => ({ deleteOrderPlacementBranch: vi.fn() }));
 vi.mock('../../features/mobile-placement/connectivity', () => ({ mobileRequest: (request: () => Promise<unknown>) => request() }));
-vi.mock('../../features/mobile-placement/sync/networkGate', () => ({ canSyncNow: vi.fn(() => false), useCanSync: () => false }));
+vi.mock('../../features/mobile-placement/sync/networkGate', () => ({ canSyncNow: vi.fn(() => false), useCanSync: () => false, useServerUnreachableOnWifi: () => false }));
 vi.mock('../../features/mobile-placement/local-data/mobileLocalDataStore', async (original) => {
   const module = await original<typeof import('../../features/mobile-placement/local-data/mobileLocalDataStore')>();
   return { ...module, mobileLocalDataStore: module.createMobileLocalDataStore('parts-page-test') };
