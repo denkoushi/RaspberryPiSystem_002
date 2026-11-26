@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: { $transaction: mocks.transaction, mobilePlacementResourceShelf: mocks.links }
 }));
-vi.mock('../machine-master-query.service.js', () => ({ listMachineMastersForShelfLayout: mocks.listMachines }));
+vi.mock('../machine-master-query.service.js', () => ({ listResourceMastersWithFactory: mocks.listMachines }));
 vi.mock('../mobile-placement-shelf-master.service.js', () => ({ listRegisteredShelvesFromShelfMaster: mocks.listShelves }));
 
 const north = { shelfCodeRaw: 'Ｍｈ 北', machineName: 'Ｍｈ', isStructured: true };
@@ -22,8 +22,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.listShelves.mockResolvedValue([north, south, legacy]);
   mocks.listMachines.mockResolvedValue({ machines: [
-    { resourceCd: '025', resourceName: 'mh' }, { resourceCd: '025', resourceName: 'ＡＰ' },
-    { resourceCd: '026', resourceName: 'MH' }, { resourceCd: '027', resourceName: 'MH' }
+    { resourceCd: '025', resourceName: 'mh', factory: 'MISHIMA' }, { resourceCd: '025', resourceName: 'ＡＰ', factory: 'MISHIMA' },
+    { resourceCd: '026', resourceName: 'MH', factory: 'MISHIMA' }, { resourceCd: '027', resourceName: 'MH', factory: 'SENDAI' }
   ] });
   mocks.links.findMany.mockResolvedValue([
     { resourceCd: '026', shelf: null }, { resourceCd: '027', shelf: null }, { resourceCd: '027', shelf: legacy }
@@ -34,9 +34,9 @@ describe('resource shelf assignments', () => {
   it('uses every matching name only for unsaved resources and publishes the same assignments on shelves', async () => {
     expect(await getResourceShelfAssignments()).toEqual({
       resources: [
-        { resourceCd: '025', resourceNames: ['mh', 'ＡＰ'], shelfCodes: ['AP 南', 'Ｍｈ 北'] },
-        { resourceCd: '026', resourceNames: ['MH'], shelfCodes: [] },
-        { resourceCd: '027', resourceNames: ['MH'], shelfCodes: ['西-北-01'] }
+        { resourceCd: '025', factory: 'MISHIMA', resourceNames: ['mh', 'ＡＰ'], shelfCodes: ['AP 南', 'Ｍｈ 北'] },
+        { resourceCd: '026', factory: 'MISHIMA', resourceNames: ['MH'], shelfCodes: [] },
+        { resourceCd: '027', factory: 'SENDAI', resourceNames: ['MH'], shelfCodes: ['西-北-01'] }
       ],
       shelves: [{ ...north, resourceCds: ['025'] }, { ...south, resourceCds: ['025'] }, { ...legacy, resourceCds: ['027'] }]
     });

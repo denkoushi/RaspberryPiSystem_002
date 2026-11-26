@@ -6,7 +6,8 @@ import type { RegisteredShelfEntryDto } from '../../features/mobile-placement/re
 /** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
 export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;
 
-export type ResourceShelfAssignment = { resourceCd: string; resourceNames: string[]; shelfCodes: string[] };
+export type ResourceFactory = 'MISHIMA' | 'SENDAI';
+export type ResourceShelfAssignment = { resourceCd: string; factory: ResourceFactory; resourceNames: string[]; shelfCodes: string[] };
 
 export async function getMobilePlacementResourceShelves() {
   const { data } = await api.get<{ resources: ResourceShelfAssignment[] }>('/mobile-placement/resource-shelves');

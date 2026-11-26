@@ -24,6 +24,24 @@ export async function listMachineMastersForShelfLayout(): Promise<{ machines: Ma
   };
 }
 
+export type ResourceFactory = 'MISHIMA' | 'SENDAI';
+
+/** 資源マスタの全資源CD。仙台の資源グループに属する資源CDは仙台工場とする。 */
+export async function listResourceMastersWithFactory(): Promise<{ machines: (MachineMasterEntry & { factory: ResourceFactory })[] }> {
+  const [rows, sendaiResourceCds] = await Promise.all([
+    prisma.productionScheduleResourceMaster.findMany({
+      select: { resourceCd: true, resourceName: true },
+      orderBy: [{ resourceName: 'asc' }, { resourceCd: 'asc' }]
+    }),
+    getSendaiResourceCds()
+  ]);
+  return {
+    machines: rows.map(({ resourceCd, resourceName }) => ({
+      resourceCd, resourceName, factory: sendaiResourceCds.has(normalizeResourceCd(resourceCd)) ? 'SENDAI' : 'MISHIMA'
+    }))
+  };
+}
+
 /** 三島の生産スケジュールに登場する加工機。切削用の除外フラグは適用しない。 */
 export async function listMachinesForShelfRegistration(): Promise<{ machines: string[] }> {
   const { resources, resourceNameMap } = await listProductionScheduleResources({});

@@ -74,7 +74,8 @@ describe('KioskHaizenVerifyHistoryPage recheck', () => {
     localStorage.clear();
     hooks.records = [make('1', 'A', 'match')];
     vi.mocked(api.get).mockImplementation(async (url) => ({ data: url.endsWith('/resource-shelves')
-      ? { resources: [{ resourceCd: '025', resourceNames: ['M1'], shelfCodes: ['M1 北'] }] }
+      ? { resources: [{ resourceCd: '025', factory: 'MISHIMA', resourceNames: ['M1'], shelfCodes: ['M1 北'] },
+        { resourceCd: '901', factory: 'SENDAI', resourceNames: ['S1'], shelfCodes: [] }] }
       : { shelves: [{ shelfCodeRaw: 'M1 北', machineName: 'M1', isStructured: true }] }
     }));
     vi.mocked(api.put).mockResolvedValue({ data: { resourceCd: '025', shelfCodes: [] } });
@@ -93,7 +94,15 @@ describe('KioskHaizenVerifyHistoryPage recheck', () => {
     expect(await dialog.findByText('✓ 保存しました')).toBeInTheDocument();
     expect(api.put).toHaveBeenCalledExactlyOnceWith('/mobile-placement/resource-shelves/025', { shelfCodes: [] });
     expect(dialog.getByRole('button', { name: /025 M1 棚なし/ })).toBeInTheDocument();
+    expect(dialog.queryByRole('button', { name: /901 S1/ })).toBeNull();
+    fireEvent.click(dialog.getByRole('button', { name: '仙台工場' }));
+    expect(dialog.getByRole('button', { name: /901 S1 棚なし/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(dialog.queryByRole('button', { name: /025 M1/ })).toBeNull();
     fireEvent.click(dialog.getByRole('button', { name: '閉じる' }));
     expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '資源CDと棚' }));
+    const reopened = within(screen.getByRole('dialog', { name: '資源CDと棚' }));
+    expect(reopened.getByRole('button', { name: '仙台工場' })).toHaveAttribute('aria-pressed', 'true');
+    expect(reopened.getByRole('button', { name: /901 S1/ })).toBeInTheDocument();
   });
 });
