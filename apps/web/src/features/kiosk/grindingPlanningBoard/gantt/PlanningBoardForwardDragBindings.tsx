@@ -18,6 +18,7 @@ export const PlanningBoardForwardLaneFrame = memo(function PlanningBoardForwardL
   laneResource: string | null | undefined;
   children: ReactNode;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'style'>) {
+  const active = useSyncExternalStore(store.subscribe, () => Boolean(resource && effectivePreview(store, fallback)));
   const dimmed = useSyncExternalStore(store.subscribe, () => {
     const preview = effectivePreview(store, fallback);
     return Boolean(preview && resource && !preview.allowed.has(resource));
@@ -27,13 +28,14 @@ export const PlanningBoardForwardLaneFrame = memo(function PlanningBoardForwardL
     return preview?.drop?.resource === resource && resource !== preview?.bar.resource;
   });
   // Dim and outline on their own compositor layers: changing a lane's own opacity or outline repaints the whole
-  // lane, which costs hundreds of milliseconds of GPU raster per lane crossing on a 4K kiosk.
-  return <div {...rest} className="relative">{children}
+  // lane, which costs hundreds of milliseconds of GPU raster per lane crossing on a 4K kiosk. The layers exist only
+  // while a bar is moving, so idle lanes keep no extra GPU tiles.
+  return <div {...rest} className="relative">{children}{active && <>
     <div aria-hidden="true" data-gantt-lane-dim={dimmed ? '' : undefined} className="pointer-events-none absolute inset-0 z-[25] bg-slate-900"
       style={{ opacity: dimmed ? 0.7 : 0, willChange: 'opacity' }} />
     <div aria-hidden="true" data-gantt-lane-outline={outlined ? '' : undefined} className="pointer-events-none absolute inset-0 z-[25]"
       style={{ opacity: outlined ? 1 : 0, boxShadow: 'inset 0 0 0 3px rgb(110 231 183)', willChange: 'opacity' }} />
-  </div>;
+  </>}</div>;
 });
 
 /** A Gantt row that reads only its own dragged id and insertion position, so other rows stay memoized while the drop target moves. */
