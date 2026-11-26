@@ -34,6 +34,7 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/inventory'],
     ['/kiosk/inventory/haizen'],
     ['/kiosk/inventory/haizen/'],
+    ['/kiosk/inventory/haizen/verify-history'],
     ['/kiosk/inventory/'],
     ['/kiosk/inventory/settings'],
     ['/kiosk/inventory/dashboard'],
