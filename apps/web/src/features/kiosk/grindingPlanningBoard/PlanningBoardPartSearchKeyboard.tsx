@@ -1,8 +1,6 @@
 import { katakanaToHiragana, normalizePartSearchQuery } from '@raspi-system/part-search-core';
 import { useMemo, useState } from 'react';
 
-import type { GrindingPlanningBoardTestBarPartCandidatesResponse } from '@raspi-system/shared-types';
-
 const KANA_COLUMNS = ['あいうえお', 'かきくけこ', 'さしすせそ', 'たちつてと', 'なにぬねの', 'はひふへほ', 'まみむめも', 'や ゆ よ', 'らりるれろ', 'わを ん '];
 const KANA_KEYS = Array.from({ length: 5 }, (_, row) => KANA_COLUMNS.map((column) => column[row])).flat();
 const ABC_KEYS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'];
@@ -11,20 +9,26 @@ const ABC_KEYS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'];
 const comparable = (value: string) => [...katakanaToHiragana(value.normalize('NFKC'))]
   .map((char) => normalizePartSearchQuery(char)).join('').toUpperCase();
 
-export function usePlanningBoardPartSearch(parts: GrindingPlanningBoardTestBarPartCandidatesResponse['parts'] | undefined) {
+export function usePlanningBoardPartSearch<Part extends { partName: string; partCode?: string }>(parts: readonly Part[] | undefined) {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'kana' | 'abc'>('kana');
-  const indexed = useMemo(() => (parts ?? []).map((part) => ({ ...part, comparable: comparable(part.partName) })), [parts]);
+  const indexed = useMemo(() => (parts ?? []).map((part) => ({
+    part, terms: [comparable(part.partName), comparable(part.partCode ?? '')]
+  })), [parts]);
   const search = comparable(query);
   const { hits, nextChars } = useMemo(() => {
-    const hits = indexed.filter((part) => part.comparable.includes(search));
+    const hits: Part[] = [];
     const nextChars = new Set<string>();
-    for (const part of hits) {
-      let at = part.comparable.indexOf(search);
-      while (at >= 0 && at < part.comparable.length) {
-        const next = part.comparable[at + search.length];
-        if (next) nextChars.add(next);
-        at = part.comparable.indexOf(search, at + 1);
+    for (const { part, terms } of indexed) {
+      if (!terms.some((term) => term.includes(search))) continue;
+      hits.push(part);
+      for (const term of terms) {
+        let at = term.indexOf(search);
+        while (at >= 0 && at < term.length) {
+          const next = term[at + search.length];
+          if (next) nextChars.add(next);
+          at = term.indexOf(search, at + 1);
+        }
       }
     }
     return { hits, nextChars };

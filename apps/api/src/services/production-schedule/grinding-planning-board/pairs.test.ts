@@ -4,11 +4,17 @@ import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 const mocks = vi.hoisted(() => ({
   raw: vi.fn(),
   pairs: vi.fn(),
+  findPair: vi.fn(),
+  createPair: vi.fn(),
   unarrived: new Set<string>(),
   outsourced: new Map<string, 'pending'>()
 }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   $queryRaw: mocks.raw,
+  $transaction: (run: (tx: unknown) => unknown) => run({
+    $queryRaw: mocks.raw,
+    productionScheduleGrindingPlanningBoardPair: { findFirst: mocks.findPair, create: mocks.createPair }
+  }),
   productionScheduleGrindingPlanningBoardPair: { findMany: mocks.pairs },
   productionScheduleGrindingPlanningBoardArrival: { findMany: async () => [] },
   productionScheduleGrindingPlanningBoardFirstProcessArrival: { findMany: async () => [] },
@@ -41,18 +47,21 @@ vi.mock('../../purchase-order-lookup/material-arrival-status.service.js', () => 
 }));
 
 import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-shell-snapshot.store.js';
-import { getPlanningPairSuggestions } from './pairs.js';
+import { createPlanningPair, getPlanningPairCandidates, getPlanningPairStatus, getPlanningPairSuggestions } from './pairs.js';
 import { getGrindingPlanningBoard } from './read.js';
 
 const firstPartName = '足（１）';
 const secondPartName = '足（２）';
-const item = (itemId: string, fhinmei: string, overrides: Partial<GrindingPlanningBoardItem> = {}) => ({
+const firstPartCode = 'MD004291472';
+const secondPartCode = 'MD004291481';
+const pair = { firstPartCode, firstPartName, secondPartCode, secondPartName };
+const item = (itemId: string, fhinmei: string, fhincd: string, overrides: Partial<GrindingPlanningBoardItem> = {}) => ({
   itemId, sourceRowId: itemId, itemRevision: itemId, kind: 'row', version: 0,
-  fseiban: 'lot', processOrder: '210', fhinmei, fhincd: fhinmei, productNo: itemId,
+  fseiban: 'lot', processOrder: '210', fhinmei, fhincd, productNo: itemId,
   originalResourceCd: '305', effectiveResourceCd: '305', isCompleted: false, ...overrides
 } as GrindingPlanningBoardItem);
-const own = item('left', firstPartName);
-const other = item('right', secondPartName, { originalResourceCd: '581' });
+const own = item('left', firstPartName, firstPartCode);
+const other = item('right', secondPartName, secondPartCode, { originalResourceCd: '581' });
 const piece = (itemId: string) => ({ ...other, itemId, kind: 'piece' as const, parentItemId: other.itemId });
 
 async function readFirst(counterparts: GrindingPlanningBoardItem[], options: {
@@ -79,7 +88,9 @@ async function readFirst(counterparts: GrindingPlanningBoardItem[], options: {
 
 beforeEach(() => {
   mocks.raw.mockReset().mockResolvedValue([]);
-  mocks.pairs.mockReset().mockResolvedValue([{ id: 'pair', firstPartName, secondPartName }]);
+  mocks.pairs.mockReset().mockResolvedValue([{ id: 'pair', ...pair }]);
+  mocks.findPair.mockReset().mockResolvedValue(null);
+  mocks.createPair.mockReset();
   mocks.unarrived.clear();
   mocks.unarrived.add(other.itemId);
   mocks.outsourced.clear();
@@ -96,9 +107,14 @@ describe('grinding board pair arrivals', () => {
     ['absent from the schedule', []],
     ['another work order', [{ ...other, processOrder: '220' }]],
     ['another serial number', [{ ...other, fseiban: 'other-lot' }]],
-    ['a different exact FHINMEI', [{ ...other, fhinmei: '足(2)' }]]
+    ['a different FHINCD with the same name', [{ ...other, fhincd: 'MD004240000' }]]
   ])('does not wait for a counterpart %s', async (_label, counterparts) => {
     expect((await readFirst(counterparts)).items[0]).toMatchObject({ arrived: true, waitingForPair: false });
+  });
+
+  it('matches the same FHINCD even when the name has changed', async () => {
+    expect((await readFirst([{ ...other, fhinmei: '足(2)' }])).items[0])
+      .toMatchObject({ arrived: true, waitingForPair: true });
   });
 
   it('does not wait when there is no registered pair', async () => {
@@ -140,15 +156,79 @@ describe('grinding board pair arrivals', () => {
 
 it('ranks pair suggestions by the number of distinct matching serial numbers', async () => {
   const results = [
-    { partName: 'テーブル', seibanCount: 41 },
-    { partName: 'Y軸テーブル', seibanCount: 12 },
-    { partName: secondPartName, seibanCount: 190 }
+    { partName: 'テーブル', partCode: 'table', seibanCount: 41 },
+    { partName: secondPartName, partCode: 'MD004240000', seibanCount: 12 },
+    { partName: secondPartName, partCode: secondPartCode, seibanCount: 190 }
   ];
   mocks.raw.mockResolvedValue(results);
-  expect((await getPlanningPairSuggestions(firstPartName)).suggestions.map(({ partName }) => partName))
-    .toEqual([secondPartName, 'テーブル', 'Y軸テーブル']);
+  expect((await getPlanningPairSuggestions(firstPartCode)).suggestions.map(({ partCode }) => partCode))
+    .toEqual([secondPartCode, 'table', 'MD004240000']);
   const [query] = mocks.raw.mock.calls[0];
   expect(query.sql).toContain('JOIN selected USING (fseiban, process_order)');
   expect(query.sql).toContain('COUNT(DISTINCT other.fseiban)');
-  expect(query.values).toEqual(expect.arrayContaining([firstPartName, '305', '581', '589']));
+  expect(query.sql).toContain('GROUP BY other.part_code');
+  expect(query.values).toEqual(expect.arrayContaining([firstPartCode, '305', '581', '589']));
+});
+
+it('puts the closest part name first when serial counts tie', async () => {
+  mocks.raw.mockResolvedValue([
+    { partName: 'カバー', partCode: 'cover', seibanCount: 6, selectedName: firstPartName },
+    { partName: secondPartName, partCode: secondPartCode, seibanCount: 6, selectedName: firstPartName }
+  ]);
+  expect((await getPlanningPairSuggestions(firstPartCode)).suggestions).toEqual([
+    { partName: secondPartName, partCode: secondPartCode, seibanCount: 6 },
+    { partName: 'カバー', partCode: 'cover', seibanCount: 6 }
+  ]);
+});
+
+it('lists distinct grinding part names and codes', async () => {
+  const parts = [
+    { partCode: firstPartCode, partName: firstPartName },
+    { partCode: 'MD004239990', partName: firstPartName }
+  ];
+  mocks.raw.mockResolvedValue(parts);
+  expect(await getPlanningPairCandidates()).toEqual({ parts });
+  const [query] = mocks.raw.mock.calls[0];
+  expect(query.sql).toContain('SELECT DISTINCT part_name AS "partName", part_code AS "partCode"');
+  expect(query.values).toEqual(expect.arrayContaining(['305', '581', '589']));
+});
+
+it('lists the target grinding parts with distinct serial-number counts per name and code', async () => {
+  const parts = [
+    { partCode: firstPartCode, partName: firstPartName, seibanCount: 146 },
+    { partCode: 'MD004239990', partName: firstPartName, seibanCount: 29 }
+  ];
+  mocks.raw.mockResolvedValue(parts);
+  expect(await getPlanningPairStatus()).toEqual({ parts });
+  const [query] = mocks.raw.mock.calls[0];
+  expect(query.sql).toContain("COUNT(DISTINCT fseiban) FILTER (WHERE fseiban NOT IN ('', '********'))");
+  expect(query.sql).toContain('GROUP BY part_name, part_code');
+  expect(query.values).toEqual(expect.arrayContaining(['305', '581', '589', '%足%', '%脚%', '%スタンド%']));
+});
+
+it('registers different codes with the same name and checks both sides for membership', async () => {
+  const sameNames = { ...pair, secondPartName: firstPartName };
+  mocks.raw.mockResolvedValue([
+    { partCode: firstPartCode, partName: firstPartName },
+    { partCode: secondPartCode, partName: firstPartName }
+  ]);
+  const saved = { id: 'pair', ...sameNames };
+  mocks.createPair.mockResolvedValue(saved);
+  expect(await createPlanningPair('site', sameNames)).toEqual(saved);
+  expect(mocks.findPair).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+    siteKey: 'site', OR: [
+      { firstPartCode: { in: [firstPartCode, secondPartCode] } },
+      { secondPartCode: { in: [firstPartCode, secondPartCode] } }
+    ]
+  }) }));
+
+  mocks.findPair.mockResolvedValue(saved);
+  await expect(createPlanningPair('site', {
+    ...pair, firstPartCode: secondPartCode, secondPartCode: firstPartCode
+  })).resolves.toEqual(saved);
+  await expect(createPlanningPair('site', { ...pair, firstPartCode: secondPartCode, secondPartCode: 'other' }))
+    .rejects.toMatchObject({ code: 'PLANNING_PAIR_PART_IN_USE' });
+  await expect(createPlanningPair('site', { ...pair, secondPartCode: firstPartCode }))
+    .rejects.toMatchObject({ code: 'SAME_PLANNING_PAIR_PART' });
+  expect(mocks.createPair).toHaveBeenCalledTimes(1);
 });
