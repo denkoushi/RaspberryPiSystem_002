@@ -122,5 +122,7 @@ describe('sessaku background splitting', () => {
     expect(mocks.restore.mock.calls).toEqual([[undefined], ['page-1']]);
     expect(mocks.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'sessaku_piece.auto_unit_split_background_backoff' }), expect.any(String));
+    expect(mocks.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.grinding_restore_sweep' }), expect.any(String));
   });
 });

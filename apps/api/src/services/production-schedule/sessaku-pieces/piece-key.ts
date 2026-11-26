@@ -200,3 +200,8 @@ export function sessakuPieceIdFromItemId(itemId: string): string | null {
 export function sessakuPieceItemIds(piece: { id: string; opSplits?: readonly { fromOpNo: number }[] }): string[] {
   return [`piece:${piece.id}`, ...(piece.opSplits ?? []).map((split) => `pieceops:${piece.id}:${split.fromOpNo}`)];
 }
+
+/** Pieces whose source cutting piece is about to be removed. */
+export function piecesReferencing<T extends { sourcePieceId: string | null }>(pieces: readonly T[] | undefined, removedSourceIds: readonly string[]): T[] {
+  return pieces?.filter((piece) => piece.sourcePieceId !== null && removedSourceIds.includes(piece.sourcePieceId)) ?? [];
+}

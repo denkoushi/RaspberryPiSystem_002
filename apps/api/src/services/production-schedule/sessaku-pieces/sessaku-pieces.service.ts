@@ -26,7 +26,7 @@ import { decodeRowItemId } from '../grinding-planning-board/shared.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireProductionScheduleParentRowLockInTransaction, acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
-import { sessakuPieceItemIds, sessakuPieceIdFromItemId, acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
+import { sessakuPieceItemIds, sessakuPieceIdFromItemId, acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, piecesReferencing, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
@@ -183,7 +183,7 @@ export async function saveSiteVersions(tx: Prisma.TransactionClient, before: Map
 }
 async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], removedSourceIds: string[]) {
   later = nonGrindingLaterProcesses(later, removedSourceIds);
-  const references = later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId && removedSourceIds.includes(piece.sourcePieceId)) ?? []);
+  const references = later.flatMap(({ set }) => piecesReferencing(set?.pieces, removedSourceIds));
   const ids = references.filter((piece) => !piece.isCompleted).map((piece) => piece.id);
   const completedIds = references.filter((piece) => piece.isCompleted).map((piece) => piece.id);
   if (completedIds.length) await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: completedIds } }, data: { sourcePieceId: null } });

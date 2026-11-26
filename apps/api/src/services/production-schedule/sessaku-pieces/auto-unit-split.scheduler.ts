@@ -75,7 +75,7 @@ export function createSessakuAutoUnitSplitScheduler() {
           restoreTotals.retainedCount += result.retainedCount;
           restoreTotals.failedCount += result.failedCount;
           if (!restoreAfter) {
-            if (restoreTotals.restoredCount || restoreTotals.retainedCount || restoreTotals.failedCount) {
+            if (restoreTotals.restoredCount || restoreTotals.failedCount) {
               logger.info({ event: 'sessaku_piece.grinding_restore_sweep', ...restoreTotals }, 'Grinding piece set restore sweep');
             }
             restoreTotals = { restoredCount: 0, retainedCount: 0, failedCount: 0 };

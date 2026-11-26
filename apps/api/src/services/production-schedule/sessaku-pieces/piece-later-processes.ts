@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { readWinnerRowsByLogicalKeyFseibans, readRowDetails } from '../grinding-planning-board/source.js';
 import { isLaterProcessOrder } from '../process-order.js';
-import { readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, isGrindingPieceKey, supportsSessakuPieceRelations, type SessakuPieceLogicalKey } from './piece-key.js';
+import { readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, isGrindingPieceKey, piecesReferencing, supportsSessakuPieceRelations, type SessakuPieceLogicalKey } from './piece-key.js';
 
 export type LaterProcess = { key: SessakuPieceLogicalKey; rowId?: string; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean; externallyCompleted: boolean; previousCompleted: boolean | null };
 
@@ -69,7 +69,7 @@ export function assertLaterProcessesEditable(later: LaterProcess[]) {
 export function nonGrindingLaterProcesses(later: LaterProcess[], removedSourceIds: string[] = []) {
   // Until background cleanup removes a legacy grinding link, its referenced cutting piece must survive.
   if (later.some(({ key, set }) => isGrindingPieceKey(key)
-    && set?.pieces.some((piece) => piece.sourcePieceId && removedSourceIds.includes(piece.sourcePieceId)))) {
+    && piecesReferencing(set?.pieces, removedSourceIds).length)) {
     throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'PIECE_REFERENCED');
   }
   return later.filter(({ key }) => !isGrindingPieceKey(key));
