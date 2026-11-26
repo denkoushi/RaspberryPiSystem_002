@@ -2,6 +2,7 @@ import { getSameModelResourceGroupsForSite, replaceSameModelResourceGroupsForSit
 import { ApiError } from '../../../lib/errors.js';
 import { updateGrindingPlanningBoardResourceMove } from '../../../services/production-schedule/grinding-planning-board/write.js';
 import { createPlanningTestBar, getPlanningTestBarPartCandidates, mutatePlanningTestBar } from '../../../services/production-schedule/grinding-planning-board/test-bars.js';
+import { createPlanningPair, deletePlanningPair, getPlanningPairSuggestions, readPlanningPairs } from '../../../services/production-schedule/grinding-planning-board/pairs.js';
 import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
 import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
@@ -41,6 +42,7 @@ import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shar
 import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
 const scheduleSourceSchema = z.enum(['general', 'dCompany', 'both']).default('both');
+const pairPartNameSchema = z.string().refine((name) => Boolean(name.trim()) && !name.includes('\u0000') && [...name].length <= 200);
 
 const querySchema = z.object({
   scheduleSource: scheduleSourceSchema,
@@ -318,8 +320,35 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
   app.get('/kiosk/production-schedule/grinding-planning-board/test-bars/part-candidates', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
-    const query = z.object({ resourceCd: z.string().trim().min(1).max(20) }).parse(request.query);
-    return getPlanningTestBarPartCandidates({ siteKey: scope.siteKey, resourceCd: query.resourceCd });
+    const query = z.union([
+      z.object({ resourceCd: z.string().trim().min(1).max(20) }),
+      z.object({ exactNames: z.literal('true') })
+    ]).parse(request.query);
+    return getPlanningTestBarPartCandidates({ siteKey: scope.siteKey, resourceCd: 'resourceCd' in query ? query.resourceCd : undefined });
+  });
+
+  const pairsPath = '/kiosk/production-schedule/grinding-planning-board/pairs';
+  app.get(pairsPath, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
+    return { pairs: await readPlanningPairs(siteKey) };
+  });
+  app.get(`${pairsPath}/suggestions`, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await deps.requireClientDevice(request.headers['x-client-key']);
+    const { partName } = z.object({ partName: pairPartNameSchema }).parse(request.query);
+    return getPlanningPairSuggestions(partName);
+  });
+  app.post(pairsPath, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
+    const { firstPartName, secondPartName } = z.object({ firstPartName: pairPartNameSchema, secondPartName: pairPartNameSchema }).parse(request.body);
+    return { pair: await createPlanningPair(siteKey, firstPartName, secondPartName) };
+  });
+  app.delete(`${pairsPath}/:id`, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    return deletePlanningPair(siteKey, id);
   });
 
   app.post('/kiosk/production-schedule/grinding-planning-board/test-bars', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {

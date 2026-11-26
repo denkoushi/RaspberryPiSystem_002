@@ -200,6 +200,7 @@ export type PlanningSnapshotPayload = {
   testBars?: GrindingPlanningBoardResponse['testBars'];
   nextTestBarSequence?: number;
   items: GrindingPlanningBoardItem[];
+  pairPieces?: GrindingPlanningBoardItem[];
   load: GrindingPlanningBoardLoad[];
   unknownRequiredMinutesCount: number;
   seibanProgress: Record<string, { completed: number; total: number }>;
