@@ -91,6 +91,12 @@ function BusinessHermesProactiveSuggestionsPanel() {
   );
 }
 
+function severityTextClassName(severity: string): string {
+  if (severity === 'ERROR' || severity === 'CRITICAL') return 'text-red-300';
+  if (severity === 'WARNING') return 'text-amber-300';
+  return 'text-slate-300';
+}
+
 export function DashboardPage() {
   const employees = useEmployees();
   const items = useItems();
@@ -113,57 +119,62 @@ export function DashboardPage() {
       {/* アラートバナー */}
       {hasAlerts && (
         <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-red-200">⚠️ アラート</h3>
-              <div className="mt-2 space-y-1 text-sm text-red-100">
-                {alerts && alerts.staleClients > 0 && (
-                  <p>
-                    <Link to="/admin/clients" className="underline">
-                      {alerts.staleClients}台のクライアントがオフラインです
-                    </Link>
-                  </p>
-                )}
-                {alerts && alerts.errorLogs > 0 && (
-                  <p>
-                    <Link to="/admin/clients" className="underline">
-                      {alerts.errorLogs}件のエラーログが検出されました（過去24時間）
-                    </Link>
-                  </p>
-                )}
-                {dbAlerts.length > 0 && (
-                  <div className="mt-2">
-                    <p className="font-semibold">アラート:</p>
-                    {dbAlerts.map((alert) => (
-                      <div key={alert.id} className="ml-2 flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {alert.type && `[${alert.type}] `}
-                            {alert.message ?? 'アラート'}
-                            {alert.severity && (
-                              <span className="ml-1 text-xs text-slate-600">({alert.severity})</span>
-                            )}
-                          </p>
-                          <p className="text-xs text-slate-600">
-                            {new Date(alert.timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
-                          </p>
-                        </div>
-                        <Button
-                          variant="secondary"
-                          onClick={() => handleAcknowledge(alert.id)}
-                          disabled={acknowledgeMutation.isPending}
-                        >
-                          確認済み
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <Link to="/admin/clients">
-              <Button variant="secondary">詳細を確認</Button>
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-semibold text-red-200">⚠️ アラート</h3>
+            <Link to="/admin/clients" className="shrink-0">
+              <Button variant="secondary" className="whitespace-nowrap">
+                詳細を確認
+              </Button>
             </Link>
+          </div>
+          <div className="mt-2 space-y-1 text-sm text-red-100">
+            {alerts && alerts.staleClients > 0 && (
+              <p>
+                <Link to="/admin/clients" className="underline">
+                  {alerts.staleClients}台のクライアントがオフラインです
+                </Link>
+              </p>
+            )}
+            {alerts && alerts.errorLogs > 0 && (
+              <p>
+                <Link to="/admin/clients" className="underline">
+                  {alerts.errorLogs}件のエラーログが検出されました（過去24時間）
+                </Link>
+              </p>
+            )}
+            {dbAlerts.length > 0 && (
+              <div className="mt-2">
+                <p className="font-semibold">アラート:</p>
+                <ul className="divide-y divide-white/10">
+                  {dbAlerts.map((alert) => (
+                    <li key={alert.id} className="flex items-center gap-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-semibold text-white">
+                          {alert.type && `[${alert.type}] `}
+                          {alert.message ?? 'アラート'}
+                          {alert.severity && (
+                            <span className={`ml-1 text-xs font-bold ${severityTextClassName(alert.severity)}`}>
+                              ({alert.severity})
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-300">
+                          {new Date(alert.timestamp).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        className="shrink-0 whitespace-nowrap"
+                        onClick={() => handleAcknowledge(alert.id)}
+                        disabled={acknowledgeMutation.isPending}
+                      >
+                        確認済み
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       )}
