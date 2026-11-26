@@ -1,7 +1,7 @@
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
 import { lockAllSessakuPieceSets, lockSessakuPieceSourceRows, prepareSessakuPiecePublication, synchronizeSessakuPieceSources } from '../piece-sync.js';
-import { readSessakuPieceSets } from '../piece-key.js';
+import { encodeSessakuPieceKey, readSessakuPieceSets } from '../piece-key.js';
 import { publishSessakuPieceSourceCreates } from '../piece-source-publication.js';
 
 const key = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1', productNo: '' };
@@ -14,6 +14,13 @@ function client(sets: unknown[] = []) {
   };
 }
 describe('piece publication lock budget and legacy paths', () => {
+  it('skips quantity and version synchronization for a raw grinding key', async () => {
+    const grinding = { ...key, fsigencd: '\t581\u3000' };
+    const tx = client([{ ...grinding, sourcePieceSetId: 'source', pieces: [] }]);
+    await synchronizeSessakuPieceSources(tx as never, [grinding], new Set([encodeSessakuPieceKey(grinding)]));
+    expect(tx.productionScheduleSessakuPieceSet.findUnique).not.toHaveBeenCalled();
+    expect(tx.productionScheduleSessakuPieceSet.update).not.toHaveBeenCalled();
+  });
   it('mail sync reads only live sets, with no row scan, logical lock or board lock when empty', async () => {
     const tx = client();
     expect(await lockAllSessakuPieceSets(tx as never)).toEqual([]);

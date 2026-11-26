@@ -32,8 +32,9 @@ import { createPrismaClient } from '../../../../lib/prisma-client.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID as dashboardId } from '../../constants.js';
 import { getGrindingPlanningBoard, updateGrindingPlanningBoardOverrides, updateGrindingPlanningBoardArrival, updateGrindingPlanningBoardRank, updateGrindingPlanningBoardResourceOrder } from '../../grinding-planning-board.service.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from '../../leaderboard/leaderboard-shell-snapshot.store.js';
+import { restoreGrindingLaterPieceSets } from '../piece-grinding-restore.js';
 import { splitSessakuPieces, mergeSessakuPieces, setSessakuPieceCompletion, setSessakuPieceOpCompletion } from '../sessaku-pieces.service.js';
-import { encodeSessakuPieceKey, acquireSessakuPieceLogicalLocks, sessakuPieceKeyFromRow, readSessakuPieceSet, readSessakuPieceSets, findSessakuPieceWinner } from '../piece-key.js';
+import { encodeSessakuPieceKey, acquireSessakuPieceLogicalLocks, sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSet, readSessakuPieceSets, findSessakuPieceWinner } from '../piece-key.js';
 import { publishSessakuPieceSourceCreates } from '../piece-source-publication.js';
 import { reconcileSessakuPieceQuantities } from '../piece-quantity.js';
 import { reconcileSessakuPieceProgress } from '../piece-completion.js';
@@ -602,7 +603,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     }
     rowData = { ...rowData, FHINCD: fhincd, FSIGENCD: '021', FKOJUN: '200' };
     await prisma.csvDashboardRow.update({ where: { id: rowId }, data: { rowData } });
-    const processes = [['200', '10'], ['210', '10'], ['210', '305'], ['210', '588'], ['210', '589'], ['450', 'MSZ'], ['460', 'MSZ']];
+    const processes = [['200', '10'], ['210', '10'], ['210', '405'], ['210', '488'], ['210', '489'], ['450', 'MSZ'], ['460', 'MSZ']];
     await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: { ...rowData, FKOJUN: '200', FSIGENCD: '10' } } });
     const rows = [{ id: rowId, order: '200', resource: '021' }, { id: nextRowId, order: '200', resource: '10' }];
     for (const [order, resource] of processes.slice(1)) {
@@ -648,7 +649,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     const seibans = Array.from({ length: 89 }, (_, i) => `PERF-${i}-${seiban}`);
     const rows = Array.from({ length: 3307 }, (_, i) => ({ id: randomUUID(), csvDashboardId: dashboardId,
       rowData: { ...rowData, FSEIBAN: seibans[i % seibans.length], FHINCD: `PART-${i}`,
-        FSIGENCD: i < 1800 ? ['021', '10', '305', '588', '589', 'MSZ'][i % 6] : `UNRELATED-${i % 40}`,
+        FSIGENCD: i < 1800 ? ['021', '10', '405', '488', '489', 'MSZ'][i % 6] : `UNRELATED-${i % 40}`,
         FKOJUN: '100', ProductNo: String(1000 + i) }, occurredAt: new Date(), dataHash: `${site}-scale-${i}` }));
     const audit: PieceAuditContext = { action: 'auto_unit_split_lot', siteKey: site };
     try {
@@ -725,7 +726,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
           overrides: new Map(overrides.filter((row) => row.siteKey === targetSite).map((row) => [row.itemKey, row])),
           ranks: { rows: new Map() }, includePieces: true, seibanOrder: [...seibans, seiban], category: 'all', view: 'resource' }).items;
         for (const item of projected) {
-          if (!['021', '588', '589', 'MSZ'].includes(item.effectiveResourceCd ?? '')) continue;
+          if (!['021', '488', '489', 'MSZ'].includes(item.effectiveResourceCd ?? '')) continue;
           const ranks = byResource.get(item.effectiveResourceCd!) ?? [];
           ranks.push(item.alternateRank!); byResource.set(item.effectiveResourceCd!, ranks);
         }
@@ -772,13 +773,13 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
   }
   function productionLaneFixture(lotCount = 1) {
     const sites = [site, other, `${site}-third`, `${site}-fourth`];
-    const resources = ['021', '10', '587', '10', 'MSZ', '584', '10'];
+    const resources = ['021', '10', '487', '10', 'MSZ', '484', '10'];
     const seibans = Array.from({ length: 89 }, (_, i) => `LANE-${i}-${seiban}`);
     rowData = { ...rowData, FSIGENCD: '021', FKOJUN: '100' };
     const targets = resources.map((resource, i) => ({ id: i === 0 ? rowId : i === 1 ? nextRowId : randomUUID(),
       csvDashboardId: dashboardId, rowData: { ...rowData, FSIGENCD: resource, FKOJUN: String(100 + i * 10) } as Record<string, string>,
       occurredAt: new Date(), dataHash: `${site}-lot-${i}` }));
-    const rows = ([['10', 2700], ['MSZ', 1360], ['587', 170], ['584', 100], ['021', 75], ['586', 89], ['26M', 82]] as const)
+    const rows = ([['10', 2700], ['MSZ', 1360], ['487', 170], ['484', 100], ['021', 75], ['586', 89], ['26M', 82]] as const)
       .flatMap(([resource, count]) => Array.from({ length: count }, (_, i) => ({ id: randomUUID(), csvDashboardId: dashboardId,
         rowData: { ...rowData, FSEIBAN: seibans[i % seibans.length], FHINCD: `FILL-${resource}-${i}`,
           FSIGENCD: resource, FKOJUN: '100', ProductNo: String(1000 + i) },
@@ -796,7 +797,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
   async function productionLaneScale(placement: 'head' | 'tail', measure = false) {
     const { sites, resources, seibans, targets, rows } = productionLaneFixture();
     // 4576 filler rows + seven target operations; CSV rows are shared across four sites.
-    // Per site: 80 (021) + 2707 + 2711 + 2715 (10) + 175 (587) + 1365 (MSZ) + 105 (584).
+    // Per site: 80 (021) + 2707 + 2711 + 2715 (10) + 175 (487) + 1365 (MSZ) + 105 (484).
     const expectedUpserts = 39432;
     try {
       for (const target of targets.slice(0, 2)) {
@@ -1242,14 +1243,14 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     const laterIds = blocked.map(() => randomUUID());
     const pieceIds = blocked.map(() => randomUUID());
     const rows = keys.flatMap((key, i) => [10, 20].map((order) => ({ id: randomUUID(), csvDashboardId: dashboardId,
-      rowData: { ...rowData, FHINCD: key.fhincd, FSIGENCD: order === 10 ? '021' : '305', FKOJUN: String(order) },
+      rowData: { ...rowData, FHINCD: key.fhincd, FSIGENCD: order === 10 ? '021' : '405', FKOJUN: String(order) },
       occurredAt: new Date(), dataHash: `${site}-blocked-${i}-${order}` })));
     await prisma.csvDashboardRow.createMany({ data: rows });
     await prisma.productionScheduleOrderSupplement.createMany({ data: rows.map((row) => ({ csvDashboardId: dashboardId,
       csvDashboardRowId: row.id, sourceCsvDashboardId: site, productNo: row.rowData.FHINCD, resourceCd: row.rowData.FSIGENCD, processOrder: row.rowData.FKOJUN, plannedQuantity: 5 })) });
     await prisma.productionScheduleSessakuPieceSet.createMany({ data: blocked.map((key, i) => ({ id: sourceIds[i], csvDashboardId: dashboardId, ...key, plannedQuantity: 5 })) });
     await prisma.productionScheduleSessakuPieceSet.createMany({ data: blocked.map((key, i) => ({ id: laterIds[i], csvDashboardId: dashboardId,
-      ...key, fsigencd: '305', fkojun: '20', plannedQuantity: 5, sourcePieceSetId: link === 'set' ? sourceIds[i] : null,
+      ...key, fsigencd: '405', fkojun: '20', plannedQuantity: 5, sourcePieceSetId: link === 'set' ? sourceIds[i] : null,
       quantityWarning: i % 2 ? 'INVALID_PLANNED_QUANTITY' : null })) });
     await prisma.productionScheduleSessakuPiece.createMany({ data: blocked.map((_, i) => ({ id: pieceIds[i], pieceSetId: sourceIds[i], position: 1, quantity: 5 })) });
     await prisma.productionScheduleSessakuPiece.createMany({ data: blocked.map((_, i) => ({ pieceSetId: laterIds[i], position: 1,
@@ -3109,6 +3110,146 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: nextRowId, sourceCsvDashboardId: site, productNo: '123', resourceCd: '2', processOrder: '2', plannedQuantity: 5 } });
     });
     const resplit = (r: Awaited<ReturnType<typeof splitThree>>, index = 1) => splitSessakuPieces({ siteKey: site, parentItemId: r.parentItemId, targetPieceId: r.pieces[index].pieceId, itemRevision: r.pieces[index].itemRevision, expectedPieceSetVersion: r.pieceSetVersion, quantities: [1, 1] });
+    const addGrinding = async (order = '1.5') => {
+      const data = { ...rowData, FKOJUN: order, FSIGENCD: '\t581\u3000' };
+      const row = await prisma.csvDashboardRow.create({ data: {
+        csvDashboardId: dashboardId, rowData: data, occurredAt: new Date(), dataHash: `${site}-grinding-${order}`
+      } });
+      return { row, key: sessakuPieceKeyFromRow(data) };
+    };
+    const expectDirectLaterLink = async (quantities: number[]) => {
+      const source = (await readSessakuPieceSet(prisma, key()))!;
+      const later = await readSessakuPieceSet(prisma, laterKey());
+      expect(later?.sourcePieceSetId).toBe(source.id);
+      expect(later?.pieces.map((piece) => piece.quantity)).toEqual(quantities);
+      expect(later?.pieces.map((piece) => piece.sourcePieceId)).toEqual(source.pieces.map((piece) => piece.id));
+    };
+    it('auto-splits cutting across an intervening grinding process without mirroring it', async () => {
+      rowData = { ...rowData, FSIGENCD: '021' };
+      await prisma.csvDashboardRow.update({ where: { id: rowId }, data: { rowData } });
+      const grinding = await addGrinding();
+      expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 1 });
+      expect(await readSessakuPieceSet(prisma, grinding.key)).toBeNull();
+      expect((await allBoard()).items.find((item) => item.sourceRowId === grinding.row.id)).toMatchObject({ kind: 'row' });
+      await expectDirectLaterLink([1, 1, 1, 1, 1]);
+    });
+    it('manual split skips a grinding row whose placement is on a cutting machine', async () => {
+      const grinding = await addGrinding();
+      await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: {
+        csvDashboardId: dashboardId, siteKey: site, itemKey: sessakuPieceParentItemId(grinding.key), overrideResourceCd: '022'
+      } });
+      await splitThree();
+      expect(await readSessakuPieceSet(prisma, grinding.key)).toBeNull();
+      await expectDirectLaterLink([1, 2, 2]);
+    });
+    it.each(['resplit', 'partial merge', 'full merge'] as const)('keeps grinding unsplit on cutting %s', async (operation) => {
+      const initial = await splitThree();
+      const grinding = await addGrinding();
+      if (operation === 'resplit') {
+        await resplit(initial);
+        await expectDirectLaterLink([1, 1, 1, 2]);
+      } else if (operation === 'partial merge') {
+        await merge(initial, initial.pieces.slice(1));
+        await expectDirectLaterLink([1, 4]);
+      } else {
+        await merge(initial);
+        expect(await readSessakuPieceSet(prisma, laterKey())).toBeNull();
+      }
+      expect(await readSessakuPieceSet(prisma, grinding.key)).toBeNull();
+    });
+    it('leaves empty and piece-only legacy grinding links untouched during both directions of quantity synchronization', async () => {
+      await splitThree();
+      const cutting = (await readSessakuPieceSet(prisma, key()))!;
+      const empty = await addGrinding();
+      const pieceOnly = await addGrinding('1.7');
+      await prisma.productionScheduleSessakuPieceSet.create({ data: {
+        csvDashboardId: dashboardId, ...empty.key, sourcePieceSetId: cutting.id
+      } });
+      await prisma.productionScheduleSessakuPieceSet.create({ data: {
+        csvDashboardId: dashboardId, ...pieceOnly.key, pieces: { create: {
+          position: 1, quantity: 1, sourcePieceId: cutting.pieces[0].id
+        } }
+      } });
+      const keys = [empty.key, pieceOnly.key];
+      const readGrinding = () => Promise.all(keys.map((key) => readSessakuPieceSet(prisma, key)));
+      const before = await readGrinding();
+      await reader.$transaction(async (tx) => {
+        await lockSessakuPieceSourceRows(tx, [empty.row.id, pieceOnly.row.id]);
+        await synchronizeSessakuPieceSources(tx, keys);
+      });
+      await quantity(7);
+      await expectDirectLaterLink([1, 2, 2]);
+      expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((piece) => piece.quantity)).toEqual([1, 2, 4]);
+      await quantity(0);
+      expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((piece) => piece.id)).toEqual(cutting.pieces.map((piece) => piece.id));
+      expect((await readSessakuPieceSet(prisma, key()))?.quantityWarning).toBe('INVALID_PLANNED_QUANTITY');
+      expect(await readGrinding()).toEqual(before);
+    });
+    it('restores unrecorded grinding pieces in bounded rounds, preserving placement and recorded sets', async () => {
+      await splitThree();
+      const cutting = (await readSessakuPieceSet(prisma, key()))!;
+      const grinding = await addGrinding();
+      const seed = (target: typeof grinding.key, completed = false) => prisma.productionScheduleSessakuPieceSet.create({ data: {
+        csvDashboardId: dashboardId, ...target, sourcePieceSetId: cutting.id, plannedQuantity: 5, pieces: { create:
+          cutting.pieces.map((piece) => ({ position: piece.position, quantity: piece.quantity, sourcePieceId: piece.id,
+            isCompleted: completed, completedAt: completed ? new Date() : null })) }
+      }, include: { pieces: { orderBy: { position: 'asc' } } } });
+      const removable = await seed(grinding.key);
+      const itemIds = removable.pieces.map(({ id }) => `piece:${id}`);
+      const parentId = sessakuPieceParentItemId(grinding.key);
+      await prisma.productionScheduleGrindingPlanningBoardState.updateMany({ where: { siteKey: site },
+        data: { seibanOrder: [seiban, ...itemIds, `pieceops:${removable.pieces[0].id}:7`] } });
+      await prisma.productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: other } });
+      for (const [siteKey, resource] of [[site, '587'], [other, '588']]) {
+        await prisma.productionScheduleGrindingPlanningBoardOverride.createMany({ data: itemIds.map((itemKey, i) => ({
+          csvDashboardId: dashboardId, siteKey, itemKey, overrideResourceCd: i === 0 ? resource : '589', alternateRank: i + 1, orderPinned: true
+        })) });
+      }
+      const retainedKeys = Array.from({ length: 5 }, (_, i) => ({ ...grinding.key, fkojun: String(i + 3) }));
+      const retained = [];
+      for (const [i, target] of retainedKeys.entries()) retained.push(await seed(target, i === 0));
+      const [completed, arrived, firstArrived, splitOps, completedOps] = retained.map((set) => set.pieces[0].id);
+      await prisma.productionScheduleGrindingPlanningBoardArrival.create({ data: {
+        csvDashboardId: dashboardId, siteKey: site, itemKey: `piece:${arrived}`, arrivalDate: new Date()
+      } });
+      await prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.create({ data: {
+        csvDashboardId: dashboardId, siteKey: site, itemKey: `pieceops:${firstArrived}:3`, state: 'arrived', recordedAt: new Date()
+      } });
+      await prisma.productionScheduleSessakuPieceOpSplit.create({ data: { pieceId: splitOps, fromOpNo: 3, sourceResourceCd: '581' } });
+      await prisma.productionScheduleSessakuPieceOpCompletion.create({ data: { pieceId: completedOps, opNo: 3 } });
+      const readRetained = () => Promise.all(retainedKeys.map((key) => readSessakuPieceSet(prisma, key)));
+      const before = await readRetained();
+
+      const first = await restoreGrindingLaterPieceSets();
+      expect(first.nextCursor).toBeDefined();
+      const last = await restoreGrindingLaterPieceSets(first.nextCursor);
+      expect(last.nextCursor).toBeUndefined();
+      expect(first.restoredCount + last.restoredCount).toBe(1);
+      expect(first.retainedCount + last.retainedCount).toBe(5);
+      expect(first.failedCount + last.failedCount).toBe(0);
+      expect(await readSessakuPieceSet(prisma, grinding.key)).toBeNull();
+      expect((await allBoard()).items.find((item) => item.sourceRowId === grinding.row.id)).toMatchObject({
+        kind: 'row', itemId: parentId, effectiveResourceCd: '587', alternateRank: 1
+      });
+      const placements = () => prisma.productionScheduleGrindingPlanningBoardOverride.findMany({
+        where: { siteKey: { in: [site, other] }, itemKey: { in: [parentId, ...itemIds] } }, orderBy: { siteKey: 'asc' }
+      });
+      const overrides = await placements();
+      expect(overrides.map(({ itemKey, overrideResourceCd, alternateRank, orderPinned }) =>
+        [itemKey, overrideResourceCd, alternateRank, orderPinned])).toEqual([[parentId, '587', 1, true], [parentId, '588', 1, true]]);
+      const state = () => prisma.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({
+        where: { csvDashboardId_siteKey: { csvDashboardId: dashboardId, siteKey: site } }
+      });
+      const savedState = await state();
+      expect(savedState.seibanOrder).toEqual([seiban]);
+      expect(await readRetained()).toEqual(before);
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.count({ where: { pieceId: completedOps } })).toBe(1);
+      expect(await prisma.productionScheduleSessakuPiece.count({ where: { id: completed, isCompleted: true } })).toBe(1);
+      expect(await restoreGrindingLaterPieceSets()).toEqual({ restoredCount: 0, retainedCount: 5, failedCount: 0, nextCursor: undefined });
+      expect(await placements()).toEqual(overrides);
+      expect(await state()).toEqual(savedState);
+      expect(await readRetained()).toEqual(before);
+    });
     it.each(['split', 'merge'].flatMap((action) => [false, true].map((linked) => ({ action, linked }))))(
       'checks only affected downstream operations for $action (linked=$linked)', async ({ action, linked }) => {
         await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '2', fhincd: 'PART-A', perUnitMinutes: 3,

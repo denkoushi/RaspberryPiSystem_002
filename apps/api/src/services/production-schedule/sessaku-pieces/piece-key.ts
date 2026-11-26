@@ -4,6 +4,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 import { buildGrindingPlanningBoardRowItemIdFromKey } from '../grinding-planning-board-projection.js';
 import { PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from '../row-resolver/constants.js';
+import { STATIC_GRINDING_RESOURCE_CDS, isProductionScheduleGrindingResourceCd } from '../policies/resource-category-policy.service.js';
 
 /** 分割の親の識別。研削ボードの行と同じ5要素(4列 + ProductNo)。 */
 export type SessakuPieceLogicalKey = { fseiban: string; fhincd: string; fsigencd: string; fkojun: string; productNo: string };
@@ -12,6 +13,12 @@ export type SessakuPieceSet = Omit<Prisma.ProductionScheduleSessakuPieceSetGetPa
   pieces: Array<Prisma.ProductionScheduleSessakuPieceGetPayload<object> & { sourcePiece?: { opSplits: Array<{ fromOpNo: number }> } | null; opCompletions?: Array<{ opNo: number }>; opSplits?: Array<{ fromOpNo: number; sourceResourceCd: string; leadingSourceResourceCd?: string | null }> }>;
 };
 const RELATED_KEY_CHUNK = 300;
+
+export function isGrindingPieceKey(key: Pick<SessakuPieceLogicalKey, 'fsigencd'>): boolean {
+  return isProductionScheduleGrindingResourceCd(key.fsigencd, {
+    grindingResourceCds: [...STATIC_GRINDING_RESOURCE_CDS], cuttingExcludedResourceCds: []
+  });
+}
 
 export function sessakuPieceKeyFromRow(data: unknown): SessakuPieceLogicalKey {
   const row = data as Record<string, unknown>;
@@ -192,4 +199,9 @@ export function sessakuPieceIdFromItemId(itemId: string): string | null {
 }
 export function sessakuPieceItemIds(piece: { id: string; opSplits?: readonly { fromOpNo: number }[] }): string[] {
   return [`piece:${piece.id}`, ...(piece.opSplits ?? []).map((split) => `pieceops:${piece.id}:${split.fromOpNo}`)];
+}
+
+/** Pieces whose source cutting piece is about to be removed. */
+export function piecesReferencing<T extends { sourcePieceId: string | null }>(pieces: readonly T[] | undefined, removedSourceIds: readonly string[]): T[] {
+  return pieces?.filter((piece) => piece.sourcePieceId !== null && removedSourceIds.includes(piece.sourcePieceId)) ?? [];
 }

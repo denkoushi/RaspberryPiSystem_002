@@ -7,7 +7,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
 import { readRowDetails, readWinnerRowsByLogicalKeyFseibans } from '../grinding-planning-board/source.js';
 import { acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
-import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey,
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, isGrindingPieceKey,
   sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId, type SessakuPieceLogicalKey, type SessakuPieceSet } from './piece-key.js';
 import { STRING_TRIM_CHARACTERS } from '../grinding-planning-board/shared.js';
 import { stateOrder } from '../grinding-planning-board/state.js';
@@ -110,6 +110,7 @@ export async function syncWholePiecesOperationCompletions(tx: Prisma.Transaction
 /** Keep completed pieces closed; aggregate remaining operation evidence for unfinished pieces. */
 export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionClient, params: { siteKey: string; resourceCd: string },
   keys: SessakuPieceLogicalKey[], opNos: number[], previousOpNos: number[] = []) {
+  keys = keys.filter((key) => !isGrindingPieceKey(key));
   if (!keys.length) return;
   const states = await tx.productionScheduleGrindingPlanningBoardState.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }

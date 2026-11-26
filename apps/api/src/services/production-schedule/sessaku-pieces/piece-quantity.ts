@@ -5,7 +5,7 @@ import { sessakuPieceParentItemId } from './piece-key.js';
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { SessakuPieceQuantityWarning } from '@raspi-system/shared-types';
-import { sessakuPieceItemIds, acquireSessakuPieceBoardStateLocks, findSessakuPieceWinner, readSessakuPieceSet, type SessakuPieceSet, type SessakuPieceLogicalKey } from './piece-key.js';
+import { sessakuPieceItemIds, acquireSessakuPieceBoardStateLocks, findSessakuPieceWinner, isGrindingPieceKey, piecesReferencing, readSessakuPieceSet, type SessakuPieceSet, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
 export type QuantityPiece = { id: string; position: number; quantity: number; isCompleted: boolean };
@@ -174,6 +174,7 @@ async function readUnitSplitEnabled(tx: Prisma.TransactionClient, set: SessakuPi
 /** Caller holds all related logical locks. Progress for the requested row is published by its caller. */
 export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, nextTotal: number | null, consolidateUnfinished = false,
   initialLinkedSource?: { set: SessakuPieceSet; plannedQuantity: number | null; target?: SessakuPieceSet }): Promise<boolean> {
+  if (isGrindingPieceKey(key)) return false;
   const set = initialLinkedSource?.target ?? await readSessakuPieceSet(tx, key);
   if (!set || !set.pieces.length && !set.sourcePieceSetId) return false;
   // The split caller already locked and checked this unfinished winner and its source.
@@ -229,11 +230,13 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
   }
   // Invalid later plans retain their source references; retain the cutting pieces too.
   if (removed.length && later.some((process, index) => {
+    if (isGrindingPieceKey(process)) {
+      return piecesReferencing(process.pieces, removed).length > 0;
+    }
     const detail = laterDetails[index];
     if (!detail.hasWinner) return false;
     const total = detail.plannedQuantity ?? nextTotal ?? plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
-    return planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition, false, protectedIds).pieces
-      .some((piece) => piece.sourcePieceId !== null && removed.includes(piece.sourcePieceId));
+    return piecesReferencing(planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition, false, protectedIds).pieces, removed).length > 0;
   })) {
     plan.pieces = set.pieces;
     plan.quantityWarning = 'INVALID_PLANNED_QUANTITY';
@@ -241,9 +244,10 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
   }
   const changed = await saveQuantityPlan(tx, set, plan, nextTotal, undefined, true);
   for (const [index, process] of later.entries()) {
+    if (isGrindingPieceKey(process)) continue;
     const detail = laterDetails[index];
     if (!detail.hasWinner) {
-      const references = process.pieces.filter((piece) => piece.sourcePieceId && removed.includes(piece.sourcePieceId));
+      const references = piecesReferencing(process.pieces, removed);
       if (references.length) {
         await removeQuantityPieces(tx, set.csvDashboardId, references.filter((piece) => !piece.isCompleted && !protectedIds.has(piece.id)).map((piece) => piece.id));
         await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: references.filter((piece) => piece.isCompleted || protectedIds.has(piece.id)).map((piece) => piece.id) } }, data: { sourcePieceId: null } });

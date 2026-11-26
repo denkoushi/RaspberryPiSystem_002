@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { logger } from '../../../lib/logger.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { AUTO_UNIT_SPLIT_BUDGET_MS, autoSplitSessakuUnits } from './auto-unit-split.service.js';
+import { restoreGrindingLaterPieceSets } from './piece-grinding-restore.js';
 
 const START_DELAY_MS = 30000;
 const ACTIVE_INTERVAL_MS = 1000;
@@ -33,6 +34,10 @@ export function createSessakuAutoUnitSplitScheduler() {
   let wakeRequested = false;
   let backoffMs = 0;
   let holding = false;
+  let splitEnabled = false;
+  let restoreAfter: string | undefined;
+  let restoreNextAt = 0;
+  let restoreTotals = { restoredCount: 0, retainedCount: 0, failedCount: 0 };
 
   const schedule = (delayMs: number) => {
     if (stopped) return;
@@ -57,8 +62,33 @@ export function createSessakuAutoUnitSplitScheduler() {
     let hasMore = false;
     let delayed = false;
     let splitCount = 0;
+    let restoreVisited = 0;
     const roundStarted = Date.now();
     try {
+      if (roundStarted >= restoreNextAt) {
+        try {
+          const result = await restoreGrindingLaterPieceSets(restoreAfter);
+          restoreAfter = result.nextCursor;
+          // The cursor moved even when every set on the page was retained, so that is progress too.
+          restoreVisited = result.restoredCount + result.retainedCount + result.failedCount;
+          restoreTotals.restoredCount += result.restoredCount;
+          restoreTotals.retainedCount += result.retainedCount;
+          restoreTotals.failedCount += result.failedCount;
+          if (!restoreAfter) {
+            if (restoreTotals.restoredCount || restoreTotals.failedCount) {
+              logger.info({ event: 'sessaku_piece.grinding_restore_sweep', ...restoreTotals }, 'Grinding piece set restore sweep');
+            }
+            restoreTotals = { restoredCount: 0, retainedCount: 0, failedCount: 0 };
+            restoreNextAt = Date.now() + IDLE_INTERVAL_MS;
+          }
+        } catch (err) {
+          delayed = true;
+          restoreNextAt = Date.now() + IDLE_INTERVAL_MS;
+          logger.warn({ event: 'sessaku_piece.grinding_restore_error', err }, 'Grinding piece set discovery failed');
+        }
+      }
+      hasMore = restoreAfter !== undefined;
+      if (!splitEnabled || stopped) return;
       const sites = await prisma.$queryRaw<Array<{ siteKey: string }>>(Prisma.sql`
         SELECT "siteKey" FROM "ProductionScheduleGrindingPlanningBoardState"
         WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -96,7 +126,7 @@ export function createSessakuAutoUnitSplitScheduler() {
       let delayMs: number;
       holding = false;
       if (delayed) delayMs = IDLE_INTERVAL_MS;
-      else if (hasMore && splitCount === 0) {
+      else if (hasMore && splitCount + restoreVisited === 0) {
         backoffMs = Math.min(backoffMs ? backoffMs * 2 : ZERO_PROGRESS_FIRST_DELAY_MS, IDLE_INTERVAL_MS);
         delayMs = backoffMs;
         holding = true;
@@ -105,10 +135,10 @@ export function createSessakuAutoUnitSplitScheduler() {
       } else {
         backoffMs = 0;
         delayMs = hasMore || wakeRequested ? ACTIVE_INTERVAL_MS : IDLE_INTERVAL_MS;
-        if (splitCount > 0 && hasMore) {
+        if (splitCount + restoreVisited > 0 && hasMore) {
           delayMs = Math.min(Math.max(delayMs, (Date.now() - roundStarted) * PACING_FACTOR), MAX_PACING_DELAY_MS);
           holding = true;
-          logger.info({ event: 'sessaku_piece.auto_unit_split_background_pacing', splitCount, retryAfterMs: delayMs },
+          logger.info({ event: 'sessaku_piece.auto_unit_split_background_pacing', splitCount, restoreVisited, retryAfterMs: delayMs },
             'Automatic unit split pacing the next round');
         }
       }
@@ -118,9 +148,10 @@ export function createSessakuAutoUnitSplitScheduler() {
   };
   return {
     start() {
-      if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true' || started || stopped) return;
+      if (started || stopped) return;
       started = true;
-      activeWake = wake;
+      splitEnabled = process.env.SESSAKU_PIECES_CREATE_ENABLED === 'true';
+      if (splitEnabled) activeWake = wake;
       schedule(START_DELAY_MS);
     },
     async stop() {

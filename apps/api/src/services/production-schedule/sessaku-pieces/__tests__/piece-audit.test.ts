@@ -145,6 +145,15 @@ describe('runSessakuPieceOperation', () => {
       expect((await readLaterPieceAuditSnapshots(tx, keys))[0].key).toEqual(first);
     }
   });
+  it('excludes preserved grinding links from propagation snapshots', async () => {
+    const key = { fseiban: 'S1', fhincd: 'P1', fsigencd: '021', fkojun: '1', productNo: '' };
+    const findMany = vi.fn().mockResolvedValue([
+      { ...key, id: 'grinding', fsigencd: ' 581 ', fkojun: '2', pieces: [] },
+      { ...key, id: 'cutting', fsigencd: '022', fkojun: '3', pieces: [] }
+    ]);
+    const tx = { productionScheduleSessakuPieceSet: { findMany } } as unknown as Prisma.TransactionClient;
+    expect(await readLaterPieceAuditSnapshots(tx, [key])).toEqual([{ key, sets: [{ setId: 'cutting', pieces: [] }] }]);
+  });
   it('groups blank parent keys by manufacturing part without decoding and keeps different parts separate', async () => {
     const snapshot = (fhincd: string, quantity: number, fsigencd = '') => [{
       key: { fseiban: 'S1', fhincd, fsigencd, fkojun: '' },
