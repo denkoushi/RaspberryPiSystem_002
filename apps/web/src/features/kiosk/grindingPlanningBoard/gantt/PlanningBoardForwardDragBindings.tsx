@@ -29,12 +29,13 @@ export const PlanningBoardForwardLaneFrame = memo(function PlanningBoardForwardL
   });
   // Dim and outline on their own compositor layers: changing a lane's own opacity or outline repaints the whole
   // lane, which costs hundreds of milliseconds of GPU raster per lane crossing on a 4K kiosk. The layers exist only
-  // while a bar is moving, so idle lanes keep no extra GPU tiles.
-  return <div {...rest} className="relative">{children}{active && <>
+  // while a bar is moving, so idle lanes keep no extra GPU tiles. A dimmed lane is isolated, as its old opacity made it,
+  // so chain links drawn above the lanes stay bright; the outline sits under bars, labels and links like the old outline.
+  return <div {...rest} className={dimmed ? 'relative isolate' : 'relative'}>{children}{active && <>
     <div aria-hidden="true" data-gantt-lane-dim={dimmed ? '' : undefined} className="pointer-events-none absolute inset-0 z-[25] bg-slate-900"
       style={{ opacity: dimmed ? 0.7 : 0, willChange: 'opacity' }} />
-    <div aria-hidden="true" data-gantt-lane-outline={outlined ? '' : undefined} className="pointer-events-none absolute inset-0 z-[25]"
-      style={{ opacity: outlined ? 1 : 0, boxShadow: 'inset 0 0 0 3px rgb(110 231 183)', willChange: 'opacity' }} />
+    <div aria-hidden="true" data-gantt-lane-outline={outlined ? '' : undefined} className="pointer-events-none absolute inset-0 z-[5] ring-[3px] ring-inset ring-emerald-300"
+      style={{ opacity: outlined ? 1 : 0, willChange: 'opacity' }} />
   </>}</div>;
 });
 
