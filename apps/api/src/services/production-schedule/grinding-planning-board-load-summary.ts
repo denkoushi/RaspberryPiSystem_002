@@ -411,7 +411,7 @@ async function readAggregatedLoadSummary(params: {
     SELECT
       COALESCE("resourceSwapCd", "originalResourceCd") AS "originalResourceCd",
       -- A board override is the planner's explicit choice and wins over the load-only swap.
-      CASE WHEN "effectiveResourceCd" IS DISTINCT FROM "originalResourceCd" THEN "effectiveResourceCd"
+      CASE WHEN UPPER(BTRIM("effectiveResourceCd")) IS DISTINCT FROM UPPER(BTRIM("originalResourceCd")) THEN "effectiveResourceCd"
         ELSE COALESCE("resourceSwapCd", "effectiveResourceCd") END AS "effectiveResourceCd",
       "effectiveResourceCd" AS "minutesResourceCd",
       "fhincd", "quantity", "includeSetup",

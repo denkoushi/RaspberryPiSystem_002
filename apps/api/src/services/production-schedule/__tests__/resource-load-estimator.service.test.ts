@@ -46,7 +46,8 @@ describe('estimateResourceLoadSignals', () => {
     const resource = 'COALESCE( "ext"."loadResourceCdFromFkojunstResourceSwap", "CsvDashboardRow"."rowData"->>\'FSIGENCD\' )';
     expect(sql).toContain(`UPPER(BTRIM(${resource})) AS "resourceCd"`);
     expect(sql).toContain(`GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN'), UPPER(BTRIM(${resource}))`);
-    expect(sql).toContain('OR COALESCE("ext"."isExternallyCompleted", FALSE)');
+    expect(sql).toContain('AND COALESCE("p"."isCompleted", FALSE) = FALSE');
+    expect(sql).not.toContain('isExternallyCompleted');
   });
 
   it('computes concentration, bottleneck and crowded ratios across candidates', async () => {

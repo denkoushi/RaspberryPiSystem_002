@@ -8,7 +8,6 @@ import {
   isProductionScheduleExcludedCuttingResourceCd,
   normalizeProductionScheduleResourceCd
 } from './policies/resource-category-policy.service.js';
-import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 const loadResourceCdSql = Prisma.sql`UPPER(BTRIM(COALESCE(
@@ -72,7 +71,7 @@ export async function estimateResourceLoadSignals(params: {
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
       AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(candidates)})
-      AND NOT ${buildProductionScheduleEffectiveCompletedSql()}
+      AND COALESCE("p"."isCompleted", FALSE) = FALSE
       AND NULLIF(${loadResourceCdSql}, '') IS NOT NULL
     GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN'), ${loadResourceCdSql}
   `;
