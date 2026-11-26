@@ -1635,7 +1635,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
     const arrived = await screen.findByTestId('planning-forward-queue-card-b', undefined, { timeout: 3000 });
     expect(arrived).not.toHaveClass('text-slate-500');
-    fireEvent.click(within(arrived).getByRole('button', { name: '取り消し', exact: true }));
+    fireEvent.click(within(arrived).getByRole('button', { name: '取消・手押1106', exact: true }));
     await waitFor(() => expect(mocks.arrival).toHaveBeenLastCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: false }));
     await waitFor(() => expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument());
   });

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { pageZoom } from '../pageZoom';
+import { formatPlanningBoardDate } from '../planningBoardDateLabel';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
@@ -313,7 +314,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
             disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, true)}>着</button>
         ) : <>
           {item.manualArrivalDate && <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
-            disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, false)}>取り消し</button>}
+            disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, false)}>{`取消・手押${formatPlanningBoardDate(item.manualArrivalDate, '')}`}</button>}
         </>}
 
         </>}
