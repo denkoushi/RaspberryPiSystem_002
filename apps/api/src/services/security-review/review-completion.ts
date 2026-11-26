@@ -23,13 +23,26 @@ export async function loadKnown(dataDir: string) {
     else if (error instanceof SyntaxError || error instanceof z.ZodError) state = 'invalid';
     else throw error;
   }
+  return { state, entries, fingerprints: new Set(entries.map(item => item.fingerprint)) };
+}
+const KNOWN_PROMPT_BYTES = 8000;
+// Only 8KB of known findings fit in a call. Send the ones whose file is in this chunk first, then the
+// rest of the same kind, newest first, so recently confirmed false alarms reach the model.
+export function knownForChunk(known: Awaited<ReturnType<typeof loadKnown>>, chunk: ReviewChunk) {
+  const inChunk = (location: string) => {
+    const file = location.replace(/:\d+(?:[-–]\d+)?(?:\s.*)?$/, '').trim();
+    return file.length >= 4 && chunk.text.includes(file);
+  };
+  const rank = (entry: (typeof known.entries)[number]) => (inChunk(entry.location) ? 0 : entry.kind === chunk.kind ? 1 : 2);
+  const ordered = known.entries.map((entry, index) => ({ entry, index }))
+    .sort((a, b) => rank(a.entry) - rank(b.entry) || b.entry.date.localeCompare(a.entry.date) || b.index - a.index);
   const prompt = []; let bytes = 0;
-  for (const { kind, location, what } of entries) {
-    const item = { kind, location, what }; bytes += Buffer.byteLength(JSON.stringify(item));
-    if (bytes > 8000) break;
-    prompt.push(item);
+  for (const { entry: { kind, location, what, reason } } of ordered) {
+    const item = { kind, location, what, reason }; const size = Buffer.byteLength(JSON.stringify(item));
+    if (bytes + size > KNOWN_PROMPT_BYTES) continue;
+    bytes += size; prompt.push(item);
   }
-  return { state, prompt, fingerprints: new Set(entries.map(item => item.fingerprint)) };
+  return prompt;
 }
 export function timedOut(error: unknown): boolean {
   return error instanceof Error && error.name === 'TimeoutError';
@@ -77,7 +90,7 @@ export async function completeReview(completion: TextCompletionPort, chunk: Revi
       let response;
       try { response = await completion.complete({ useCase: 'security_review', background: true,
         maxTokens: 2000, timeoutMs: CALL_TIMEOUT_MS, temperature: 0, enableThinking: false, jsonOutput: true,
-        signal: callSignal, messages: reviewMessages(chunk, known.prompt) });
+        signal: callSignal, messages: reviewMessages(chunk, knownForChunk(known, chunk)) });
       } catch (error) {
         if (!signal.aborted && callSignal.aborted) throw new DOMException('Review call timed out', 'TimeoutError');
         throw error;
