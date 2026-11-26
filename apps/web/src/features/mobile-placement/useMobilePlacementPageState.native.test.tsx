@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { snapFseibanTokens } from '../../api/client';
 
 import { initialActualSlipOcrFeedback } from './actual-slip-ocr-feedback';
-import { resetMobileConnectivityForTests } from './connectivity';
+import { reportMobileNetworkSuccess, resetMobileConnectivityForTests } from './connectivity';
 import { useMobilePlacementPageState } from './useMobilePlacementPageState';
 
 import type { ActualSlipOcrResponse } from '../../api/domains/mobile-placement';
@@ -138,7 +138,7 @@ describe('mobile placement native OCR', () => {
     expect(result.current.actualSlipOcrFeedback).toMatchObject({ status: 'error', errorDetail: 'offline' });
     expect(result.current.actualSlipImageOcrBusy).toBe(false);
     await act(async () => {
-      window.dispatchEvent(new Event('online'));
+      reportMobileNetworkSuccess();
       const reading = result.current.scanActualSlipNative();
       window.__haizenNativeScanResult?.(nativeResult);
       await reading;

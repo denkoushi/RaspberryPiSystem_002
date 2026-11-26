@@ -6,6 +6,7 @@ vi.mock('../../../api/http', () => ({ api: { get: vi.fn().mockRejectedValue(new 
 
 import { api } from '../../../api/http';
 import { canUseMobileNetwork, mobileRequest, resetMobileConnectivityForTests } from '../connectivity';
+import { failMobileRequest } from '../connectivityTestUtils';
 import { registerSyncJob, resetSyncSchedulerForTests, start, stop } from '../sync/syncScheduler';
 
 import { LOCAL_READ_TIMEOUT_MS, lookupPurchaseLocalFirst, snapNativeLocalFirst, verifyLocalFirst } from './localFirstLookup';
@@ -59,7 +60,7 @@ describe('mobile local-first data', () => {
     const { result, unmount } = renderHook(() => useMobileLocalData('purchase'));
     await act(async () => {});
     expect(sync).toHaveBeenCalledTimes(1);
-    await act(async () => { await mobileRequest(() => Promise.reject(new Error('network'))).catch(() => {}); });
+    await act(failMobileRequest);
     expect(result.current.offline).toBe(true);
     expect(sync).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });

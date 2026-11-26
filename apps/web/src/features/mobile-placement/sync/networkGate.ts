@@ -1,10 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-import { canUseMobileNetwork, isMobileServerUnreachable, isOnWifiOrEthernet, subscribeMobileConnectivity } from '../connectivity';
-
-type Connection = EventTarget & { type?: string };
-const connection = () => typeof navigator === 'undefined' ? undefined
-  : (navigator as Navigator & { connection?: Connection }).connection;
+import { canUseMobileNetwork, isMobileServerUnreachable, isOnWifiOrEthernet, mobileConnection, subscribeMobileConnectivity } from '../connectivity';
 
 // Sync only when the phone is confirmed to be on Wi-Fi (or wired); never on mobile data or an unknown link.
 export function canSyncNow() {
@@ -12,7 +8,7 @@ export function canSyncNow() {
 }
 
 export function subscribeCanSync(listener: () => void) {
-  const current = connection();
+  const current = mobileConnection();
   current?.addEventListener('change', listener);
   const unsubscribe = subscribeMobileConnectivity(listener);
   return () => {

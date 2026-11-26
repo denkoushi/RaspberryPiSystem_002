@@ -228,7 +228,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const resultTitle = flow.result === 'ok' ? '一致' : flow.result === 'ng' ? '不一致' : flow.result === 'not-found' ? (slipDetails?.reason === 'part_required' ? 'あと1つ' : '未登録') : '照合できませんでした';
   const resultColor = flow.result === 'ok' ? colors.ok : flow.result === 'ng' ? colors.ng : colors.shelf;
 
-  return <div style={haizenPhoneStyle} onPointerDown={unlockHaizenSound} onClickCapture={(e) => { if ((e.target as Element).closest('button')) playHaizenSound('tap'); }} className={`fixed inset-x-0 bottom-0 top-[var(--mobile-top-band,0px)] z-40 flex flex-col ${hp.surface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]`}>
+  return <div style={haizenPhoneStyle} onPointerDown={unlockHaizenSound} onClickCapture={(e) => { if ((e.target as Element).closest('button')) playHaizenSound('tap'); }} className={hp.frame}>
     <div className="relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col">
       <main className="relative flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-3.5">
         {tab === 'verify' ? <>
