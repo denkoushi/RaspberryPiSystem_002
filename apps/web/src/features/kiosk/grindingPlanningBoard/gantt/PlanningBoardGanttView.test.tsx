@@ -2507,6 +2507,46 @@ describe('forward PlanningBoardGanttView', () => {
     act(() => vi.advanceTimersByTime(1));
     expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
   });
+  it('keeps the open queue following the bar under the cursor while the gantt scrolls', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    hoverBarAndWaitForQueue(bar);
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+    fireEvent.scroll(screen.getByLabelText('ガントの日付と工程'));
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    fireEvent.pointerLeave(bar, { pointerType: 'mouse' });
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+    expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
+  });
+  it('still waits 2000ms after a scroll when no queue was open', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.scroll(screen.getByLabelText('ガントの日付と工程'));
+    fireEvent.pointerLeave(bar, { pointerType: 'mouse' });
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(1999));
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+  });
+  it('waits 2000ms again once the scroll has settled', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    hoverBarAndWaitForQueue(bar);
+    fireEvent.scroll(screen.getByLabelText('ガントの日付と工程'));
+    fireEvent.pointerLeave(bar, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+  });
   it('cancels the pending queue when the mouse leaves the bar before it opens', () => {
     vi.useFakeTimers();
     render(<PlanningBoardGanttView {...forwardProps()} />);

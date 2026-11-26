@@ -19,6 +19,8 @@ import type { PointerEvent, RefObject } from 'react';
 
 const HOVER_SHOW_DELAY_MS = 2000;
 const HOVER_PIN_DELAY_MS = 3000;
+// After a wheel scroll closes an open float, the bar that lands under the cursor opens at once so the float keeps following.
+const SCROLL_FOLLOW_MS = 1000;
 
 type OpenQueue = { itemId: string; anchor: HTMLButtonElement };
 type Drop = { bar: GanttBar; placement: GrindingPlanningBoardResourceOrderPlacement };
@@ -28,6 +30,7 @@ export type ForwardQueueHandle = {
   showAfterHover: (anchor: HTMLButtonElement, resolve: () => GanttBar | null) => void;
   isPinned: () => boolean;
   closeUnlessPinned: () => void;
+  closeForScroll: () => void;
   hideSoon: () => void;
   close: () => void;
 };
@@ -61,6 +64,9 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
 }, ref) {
   const { gate, frozen } = usePlanningBoardOffline();
   const [open, setOpen] = useState<OpenQueue | null>(null);
+  const openRef = useRef<OpenQueue | null>(null);
+  openRef.current = open;
+  const scrollFollowUntil = useRef(0);
   const pinned = useRef(false);
   const [isPinned, setPinned] = useState(false);
   const mouseOverPanel = useRef(false);
@@ -92,7 +98,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   useEffect(() => gate.subscribeReadOnly(clearDrag), [clearDrag, gate]);
   useEffect(() => { if (frozen) clearDrag(); }, [clearDrag, frozen]);
   const closeVisibleQueue = useCallback(() => { cancelHide(); cancelPin(); mouseOverPanel.current = false; clearDrag(); pinned.current = false; setPinned(false); setOpen(null); }, [cancelHide, cancelPin, clearDrag]);
-  const close = useCallback(() => { cancelHover(); closeVisibleQueue(); }, [cancelHover, closeVisibleQueue]);
+  const close = useCallback(() => { scrollFollowUntil.current = 0; cancelHover(); closeVisibleQueue(); }, [cancelHover, closeVisibleQueue]);
   const hideSoon = useCallback(() => {
     cancelHover();
     cancelHide();
@@ -108,6 +114,11 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   const showAfterHover = useCallback((anchor: HTMLButtonElement, resolve: () => GanttBar | null) => {
     cancelHover();
     if (pinned.current) return;
+    if (Date.now() < scrollFollowUntil.current) {
+      const bar = resolve();
+      if (bar && !drag.current) show(bar, anchor);
+      return;
+    }
     hoverTimer.current = setTimeout(() => {
       hoverTimer.current = undefined;
       const bar = resolve();
@@ -115,7 +126,13 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     }, HOVER_SHOW_DELAY_MS);
   }, [cancelHover, show]);
   useImperativeHandle(ref, () => ({
-    show, showAfterHover, hideSoon, close, closeUnlessPinned: () => { cancelHover(); closeUnlessPinned(); }, isPinned: () => pinned.current
+    show, showAfterHover, hideSoon, close, closeUnlessPinned: () => { cancelHover(); closeUnlessPinned(); }, isPinned: () => pinned.current,
+    closeForScroll: () => {
+      cancelHover();
+      const following = Date.now() < scrollFollowUntil.current || (openRef.current !== null && !pinned.current && !mouseOverPanel.current && !drag.current);
+      if (following) scrollFollowUntil.current = Date.now() + SCROLL_FOLLOW_MS;
+      closeUnlessPinned();
+    }
   }), [show, showAfterHover, hideSoon, close, closeUnlessPinned, cancelHover]);
   const openBar = open && [...(layout.forwardQueue ?? []), ...layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))]
     .find((bar) => bar.item.itemId === open.itemId);
