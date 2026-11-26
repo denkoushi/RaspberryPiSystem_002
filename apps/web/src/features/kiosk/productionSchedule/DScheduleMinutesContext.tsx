@@ -1,21 +1,25 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
-import { useKioskDScheduleMinutes, type DScheduleMinutesExtras } from '../../../api/hooks/production-schedule/d-schedule-minutes';
+import { useKioskDScheduleMinutes, type DScheduleMinutesExtras, type DScheduleMinutesReceivedAt } from '../../../api/hooks/production-schedule/d-schedule-minutes';
 import { usePlanningBoardQueryData } from '../grindingPlanningBoard/usePlanningBoardQueryData';
 
 export type BoardDueSource = 'excel' | 'scaw';
-export const DScheduleMinutesContext = createContext<{ dueSource: BoardDueSource; rows: ReadonlyMap<string, DScheduleMinutesExtras> }>({ dueSource: 'excel', rows: new Map() });
+export const DScheduleMinutesContext = createContext<{ dueSource: BoardDueSource; rows: ReadonlyMap<string, DScheduleMinutesExtras>; latestReceivedAt?: DScheduleMinutesReceivedAt }>({ dueSource: 'excel', rows: new Map() });
 
 export function DScheduleMinutesProvider({ dueSource, children }: { dueSource: BoardDueSource; children: ReactNode }) {
   const query = useKioskDScheduleMinutes();
   const rows = usePlanningBoardQueryData(query.data?.rows);
-  const value = useMemo(() => ({ dueSource, rows: new Map(rows?.map((row) => [row.fseiban, row])) }), [dueSource, rows]);
+  const value = useMemo(() => ({ dueSource, rows: new Map(rows?.map((row) => [row.fseiban, row])), latestReceivedAt: query.data?.latestReceivedAt }), [dueSource, rows, query.data?.latestReceivedAt]);
   return <DScheduleMinutesContext.Provider value={value}>{children}</DScheduleMinutesContext.Provider>;
 }
 
 export function useDScheduleMinutesExtras(fseiban: string) {
   const { dueSource, rows } = useContext(DScheduleMinutesContext);
   return { extras: rows.get(fseiban), dueSource };
+}
+
+export function useDScheduleMinutesReceivedDates() {
+  return useContext(DScheduleMinutesContext).latestReceivedAt;
 }
 
 export function DScheduleMinutesChips({ extras, dueSource, large = false }: { extras: DScheduleMinutesExtras; dueSource: BoardDueSource; large?: boolean }) {
