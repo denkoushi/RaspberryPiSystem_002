@@ -5,6 +5,7 @@ import {
 
 export const FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS = 'C';
 export const FKOJUNST_RESOURCE_SWAP_OWN_BLOCKING_STATUS = 'S';
+export const FKOJUNST_RESOURCE_SWAP_MULTI_WINNER_OWN_STATUS = 'R';
 export const FKOJUNST_RESOURCE_SWAP_LOAD_STATUS_CODES: readonly string[] = [
   ...FKOJUNST_MAIL_LIST_VISIBLE_STATUS_CODES,
   ...FKOJUNST_MAIL_HIDDEN_INCOMPLETE_STATUS_CODES,
@@ -26,9 +27,8 @@ type ResourceSwapCandidate = {
 
 /** The caller supplies the deduped statuses and the counts for this ProductNo and FKOJUN. */
 function isEligibleResourceSwap(params: ResourceSwapCandidate): boolean {
-  const { winnerCount, otherResourceCount, own, other, isOwnResourceExcluded, isOtherResourceExcluded } = params;
-  return winnerCount === 1
-    && otherResourceCount === 1
+  const { otherResourceCount, own, other, isOwnResourceExcluded, isOtherResourceExcluded } = params;
+  return otherResourceCount === 1
     && !isOwnResourceExcluded
     && !isOtherResourceExcluded
     && other !== undefined
@@ -41,7 +41,9 @@ function isEligibleResourceSwap(params: ResourceSwapCandidate): boolean {
 }
 
 export function isFkojunstResourceSwapComplete(params: ResourceSwapCandidate): boolean {
-  return params.other?.statusCode === FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS && isEligibleResourceSwap(params);
+  return params.other?.statusCode === FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS
+    && (params.winnerCount === 1 || (params.winnerCount > 1 && params.own?.statusCode === FKOJUNST_RESOURCE_SWAP_MULTI_WINNER_OWN_STATUS))
+    && isEligibleResourceSwap(params);
 }
 
 export function resolveFkojunstResourceSwapLoadResourceCd(params: ResourceSwapCandidate & {
@@ -50,7 +52,7 @@ export function resolveFkojunstResourceSwapLoadResourceCd(params: ResourceSwapCa
   isCompleted: boolean;
 }): string | null {
   const { other } = params;
-  return other && !params.isCompleted && params.isOtherResourceInMaster
+  return other && params.winnerCount === 1 && !params.isCompleted && params.isOtherResourceInMaster
     && FKOJUNST_RESOURCE_SWAP_LOAD_STATUS_CODES.includes(other.statusCode) && isEligibleResourceSwap(params)
     ? other.resourceCd : null;
 }
