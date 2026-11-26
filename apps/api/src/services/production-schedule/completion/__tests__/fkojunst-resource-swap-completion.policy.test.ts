@@ -5,6 +5,7 @@ import { isProductionScheduleExcludedCuttingResourceCd } from '../../policies/re
 
 const completedAt = new Date('2026-11-25T01:00:00Z');
 const completed = { statusCode: 'C', sourceUpdatedAt: completedAt };
+const ownR = { statusCode: 'R', sourceUpdatedAt: completedAt };
 const candidate = {
   winnerCount: 1,
   otherResourceCount: 1,
@@ -20,12 +21,24 @@ describe('isFkojunstResourceSwapComplete', () => {
     expect(isFkojunstResourceSwapComplete({ ...candidate, own: { statusCode: 'R', sourceUpdatedAt: completedAt } })).toBe(true);
   });
 
+  it.each([0, -1])('accepts R with two winners and an own timestamp %i ms from C', (offset) => {
+    expect(isFkojunstResourceSwapComplete({
+      ...candidate, winnerCount: 2, own: { ...ownR, sourceUpdatedAt: new Date(completedAt.getTime() + offset) },
+    })).toBe(true);
+  });
+
+  it.each(['O', 'P', 'S'])('blocks %s with two winners', (statusCode) => {
+    expect(isFkojunstResourceSwapComplete({ ...candidate, winnerCount: 2, own: { ...ownR, statusCode } })).toBe(false);
+  });
+
   const blockedCases: [string, Partial<Parameters<typeof isFkojunstResourceSwapComplete>[0]>][] = [
     ['an X on the other resource', { other: { ...completed, statusCode: 'X' } }],
     ['two winners', { winnerCount: 2 }],
     ['two other resources', { otherResourceCount: 2 }],
     ['an S on the original resource', { own: { statusCode: 'S', sourceUpdatedAt: completedAt } }],
     ['a newer own status', { own: { statusCode: 'R', sourceUpdatedAt: new Date(completedAt.getTime() + 1) } }],
+    ['a newer R with two winners', { winnerCount: 2, own: { ...ownR, sourceUpdatedAt: new Date(completedAt.getTime() + 1) } }],
+    ['two other resources with R and two winners', { winnerCount: 2, own: ownR, otherResourceCount: 2 }],
     ['an unparseable other timestamp', { other: { ...completed, sourceUpdatedAt: null } }],
     ['an unparseable own timestamp', { own: { statusCode: 'R', sourceUpdatedAt: null } }],
     ['an excluded destination', { isOtherResourceExcluded: true }],

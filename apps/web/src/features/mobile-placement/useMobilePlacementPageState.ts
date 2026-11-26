@@ -18,11 +18,13 @@ import {
   initialActualSlipOcrFeedback,
   type ActualSlipOcrFeedback
 } from './actual-slip-ocr-feedback';
+import { playHaizenSound } from './haizen/haizenSounds';
 import { scanFseibanNative } from './haizenNative';
 import { snapNativeLocalFirst, verifyLocalFirst } from './local-data/localFirstLookup';
 import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
 import { createSlipVerifyRecorder } from './verify-records/recordSlipVerify';
 
+import type { HaizenSound } from './haizen/haizenSounds';
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
 import type { ActualSlipOcrResponse, MobilePlacementSlipMatchResponse } from '../../api/domains/mobile-placement';
@@ -74,6 +76,7 @@ export function useMobilePlacementPageState() {
   const onScanSuccess = useCallback(
     (text: string) => {
       const v = text.trim();
+      if (v) playHaizenSound('decide');
       switch (scanField) {
         case 'shelf':
           setShelfCode(v);
@@ -120,6 +123,7 @@ export function useMobilePlacementPageState() {
     const preview = buildOcrPreview(res.ocrPreviewSafe ?? res.ocrText);
     const mo = res.manufacturingOrder10 ?? null;
     const fs = res.fseiban ?? null;
+    if (mo || fs) playHaizenSound('decide');
     if (mo) {
       setActualOrder(mo);
     } else if (fs) {
@@ -194,7 +198,8 @@ export function useMobilePlacementPageState() {
     actualOrderBarcodeRaw: actualOrder, actualFseibanRaw: actualFseiban, actualPartBarcodeRaw: actualPart
   }, clientRecordId), [verifyRecorder, transferOrder, transferPart, actualOrder, actualFseiban, actualPart]);
 
-  const runSlipVerify = useCallback(async () => {
+  /** Returns the sound for the result, so the caller can play it only while this pair is still current. */
+  const runSlipVerify = useCallback(async (): Promise<HaizenSound | null> => {
     setSlipVerifying(true);
     setSlipResult('idle');
     setSlipDetails(null);
@@ -210,9 +215,11 @@ export function useMobilePlacementPageState() {
       setSlipDetails(res);
       setSlipResult(res.ok ? 'ok' : res.reason === 'order_not_found' || res.reason === 'transfer_not_found' || res.reason === 'part_required' ? 'not-found' : 'ng');
       await verifyRecorder.record(input, res).catch(() => console.warn('Verify record could not be saved'));
+      return res.ok ? 'ok' : res.reason === 'part_required' ? null : 'ng';
     } catch {
       setSlipResult('error');
       await verifyRecorder.record(input, 'error').catch(() => console.warn('Verify record could not be saved'));
+      return 'ng';
     } finally {
       setSlipVerifying(false);
     }
