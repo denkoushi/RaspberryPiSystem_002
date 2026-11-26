@@ -102,6 +102,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const [scannedAt, setScannedAt] = useState('');
   const [verifyBranchNo, setVerifyBranchNo] = useState<number | null>(null);
   const [verifyShelfCode, setVerifyShelfCode] = useState('');
+  const [showAllVerifyShelves, setShowAllVerifyShelves] = useState(false);
   const [verifyScannedAt, setVerifyScannedAt] = useState('');
   const [placeToast, setPlaceToast] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -125,13 +126,14 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   useEffect(() => {
     setVerifyBranchNo(null);
     setVerifyShelfCode('');
+    setShowAllVerifyShelves(false);
   }, [mp.transferOrder, flow.result]);
   useEffect(() => {
     if (!knownBranches || (tab === 'verify' && flow.result !== 'ok')) return;
     const onlyNone = knownBranches.length === 1 && knownBranches[0].branchNo === 0;
     if (activeBranchNo !== null && (activeBranchNo === 0 ? hasNumbered : hasNone)) {
       setActiveBranchNo(onlyNone ? 0 : null);
-    } else if (activeBranchNo === null && onlyNone) {
+    } else if (activeBranchNo === null && (onlyNone || (tab === 'verify' && !hasNumbered))) {
       setActiveBranchNo(0);
     }
   }, [knownBranches, activeBranchNo, setActiveBranchNo, hasNumbered, hasNone, tab, flow.result]);
@@ -184,13 +186,20 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const registerError = tab === 'place' ? null : mp.registerError;
 
   const previousShelfCodes = selectedBranch ? [selectedBranch.shelfCodeRaw] : [];
+  const registeredShelves = shelves.data?.shelves ?? [];
+  const firstResourceCd = flow.result === 'ok' ? slipDetails?.expected?.firstResourceCd : undefined;
+  const linkedShelves = firstResourceCd ? registeredShelves.filter((shelf) => shelf.resourceCds?.includes(firstResourceCd)) : [];
+  const hasLinkedShelves = linkedShelves.length > 0;
+  const verifyShelves = hasLinkedShelves && !showAllVerifyShelves
+    ? registeredShelves.filter((shelf) => linkedShelves.includes(shelf) || shelf.shelfCodeRaw === previousShelfCodes[0] || shelf.shelfCodeRaw === verifyShelfCode)
+    : registeredShelves;
   const clearActual = () => {
     mp.setActualOrder(''); mp.setActualFseiban(''); mp.setActualPart('');
     mp.resetSlipResult(); mp.resetActualSlipOcrFeedback();
   };
   const nextVerify = () => {
     clearActual(); mp.setTransferOrder(''); mp.setTransferPart('');
-    setVerifyBranchNo(null); setVerifyShelfCode('');
+    setVerifyBranchNo(0); setVerifyShelfCode(''); setShowAllVerifyShelves(false);
   };
   const change = (setter: (value: string) => void, value: string, actual = false) => {
     setter(value);
@@ -250,7 +259,8 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
             {flow.result === 'not-found' && <div className="flex shrink-0 gap-2">{onPhoto && <button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={onPhoto}>写真で製番</button>}<button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={() => setSheet('inputs')}>部品番号</button></div>}
           </>}
           <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
-            <HaizenShelfPhotoList key={`${mp.transferOrder}:${verifyBranchNo}:${previousShelfCodes.join()}`} compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes} shelfCounts={targetFseiban ? scheduleShelfCounts : undefined}
+            <HaizenShelfPhotoList key={`${mp.transferOrder}:${verifyBranchNo}:${previousShelfCodes.join()}`} compact shelves={verifyShelves} previousShelfCodes={previousShelfCodes} shelfCounts={targetFseiban ? scheduleShelfCounts : undefined}
+              allShelvesToggle={hasLinkedShelves ? { pressed: showAllVerifyShelves, onToggle: () => setShowAllVerifyShelves((show) => !show) } : undefined}
               loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={verifyShelfCode} onSelect={setVerifyShelfCode}
               disabled={flow.result !== 'ok' || verifyBranchNo === null} onScan={() => mp.setScanField('shelf')} onExpand={() => setSheet('shelves')} />
           </section>

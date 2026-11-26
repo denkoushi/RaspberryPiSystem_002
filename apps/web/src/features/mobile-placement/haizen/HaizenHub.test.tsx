@@ -29,6 +29,7 @@ import type { ScanFrameCapture } from '../../barcode-scan/scanFrameCapture';
 vi.mock('../../../api/http', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 
 const mocks = vi.hoisted(() => ({ schedule: undefined as ScheduleSeibanDetail | undefined, scheduleRefetch: vi.fn(), scanValue: 'SCANNED', realBranches: false, branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
+const shelfOptions = vi.hoisted(() => ({ extra: false }));
 vi.mock('../../../api/hooks/schedule-seibans', () => ({ scheduleSeibanQueryKey: ['mobile-placement', 'schedule-seibans'], useScheduleSeiban: () => ({ data: mocks.schedule, refetch: mocks.scheduleRefetch }) }));
 vi.mock('../local-data/mobileLocalDataSync', () => ({ syncMobileLocalData: vi.fn() }));
 vi.mock('../../../api/client', () => ({
@@ -43,7 +44,11 @@ vi.mock('../../barcode-scan', () => ({
     ? <div role="dialog" aria-label="scanner"><span>{engine}</span><button onClick={() => { onFrameCaptured?.({ outcome: 'decoded', decodedValue: mocks.scanValue, decodeMs: 1500, retryCount: 0, engine: 'native', camera: {}, cropBox: null, capturedAt: new Date().toISOString(), fullCanvas: document.createElement('canvas') }); onSuccess(mocks.scanValue); }}>scan</button><button onClick={onAbort}>abort</button><button onClick={() => { onFrameCaptured?.({ outcome: 'timeout', decodedValue: null, decodeMs: 30000, retryCount: 0, engine: 'native', camera: {}, cropBox: null, capturedAt: new Date().toISOString(), fullCanvas: document.createElement('canvas') }); onAbort(); }}>timeout</button></div> : null
 }));
 vi.mock('../useRegisteredShelves', () => ({ useRegisteredShelves: () => ({
-  data: { shelves: [{ shelfCodeRaw: 'A-03', isStructured: true, machineName: '50013_540AP', direction: '北' }, { shelfCodeRaw: 'A-04', isStructured: true, machineName: '研削', direction: '南' }] },
+  data: { shelves: [
+    { shelfCodeRaw: 'A-03', isStructured: true, machineName: '50013_540AP', direction: '北', resourceCds: ['025'] },
+    { shelfCodeRaw: 'A-04', isStructured: true, machineName: '研削', direction: '南' },
+    ...(shelfOptions.extra ? [{ shelfCodeRaw: 'A-05', isStructured: true, machineName: '旋盤', direction: '西' }] : [])
+  ] },
   isLoading: false, isError: false, refetch: vi.fn()
 }) }));
 vi.mock('../useOrderPlacementBranches', async (importOriginal) => {
@@ -98,6 +103,7 @@ beforeEach(async () => {
   localStorage.clear();
   mocks.schedule = undefined;
   mocks.scanValue = 'SCANNED';
+  shelfOptions.extra = false;
   mocks.realBranches = false; mocks.branches = []; mocks.branchError = false; mocks.branchLoading = false; mocks.branchFetching = false;
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
   window.dispatchEvent(new Event('online'));
@@ -282,7 +288,8 @@ describe('Haizen hub', () => {
     expect(result).toHaveTextContent('FS1 PART1 ブラケット');
     expect(screen.getByRole('group', { name: '分配' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '次を照合' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '分配なし' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '分配2', exact: true }));
     const tile = screen.getByRole('button', { name: '棚 50013_540AP 北' });
     expect(tile).toBeEnabled();
@@ -326,6 +333,52 @@ describe('Haizen hub', () => {
     expect(screen.getByRole('button', { name: '移動票を読む' })).not.toHaveTextContent('0002178005');
     expect(screen.getByRole('button', { name: '現品票を読む' })).toBeDisabled();
     expect(registerOrderPlacement).not.toHaveBeenCalled();
+  });
+
+  it('shows linked shelves and the last shelf after a match, with a resettable all-shelves toggle', async () => {
+    shelfOptions.extra = true;
+    mocks.branches = [{ id: 'none', branchNo: 0, shelfCodeRaw: 'A-04' }];
+    vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({
+      ok: true, reason: 'match', expected: { fseiban: 'FS1', fhincd: 'PART1', firstResourceCd: '025' }
+    });
+    mount(); typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    const all = screen.getByRole('button', { name: '全部', exact: true });
+    expect(all).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toBeEnabled();
+    expect(within(screen.getByRole('button', { name: '棚 研削 南' })).getByText('前回')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '棚 旋盤 西' })).toBeNull();
+    fireEvent.click(all);
+    expect(screen.getByRole('button', { name: '棚 旋盤 西' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '旋盤', exact: true })).toBeEnabled();
+    fireEvent.click(all);
+    expect(screen.queryByRole('button', { name: '棚 旋盤 西' })).toBeNull();
+    fireEvent.click(all);
+    fireEvent.click(screen.getByRole('button', { name: '次を照合' }));
+    typeSlips(); await screen.findByRole('status', { name: '一致' });
+    expect(screen.getByRole('button', { name: '全部', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: '棚 旋盤 西' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '全部', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '棚 旋盤 西' }));
+    fireEvent.click(screen.getByRole('button', { name: '全部', exact: true }));
+    expect(screen.getByRole('button', { name: '棚 旋盤 西' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not preselect no-distribution before the branches are known', async () => {
+    mocks.branchLoading = true;
+    mount(); typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    expect(screen.getByRole('button', { name: '分配なし' })).not.toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows every shelf with no toggle when the matched resource has no shelves', async () => {
+    vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({
+      ok: true, reason: 'match', expected: { fseiban: 'FS1', fhincd: 'PART1', firstResourceCd: '999' }
+    });
+    mount(); typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    expect(screen.getAllByRole('button', { name: /^棚 / })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: '全部', exact: true })).toBeNull();
   });
 
   it.each(['sent', 'pending', 'needs_check'])('uses the full picker and known no-distribution branch for a verify move (%s)', async (status) => {

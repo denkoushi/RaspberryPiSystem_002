@@ -4,12 +4,14 @@ import { snapNativeSlip } from './native-slip.js';
 import { packPurchase, packSchedule, unpackPurchase, unpackSchedule } from './snapshot.js';
 import { verifySlipMatch } from './verify.js';
 
+import type { ProductionScheduleLookupRow } from './types.js';
+
 const schedule = { rowId: 'r', fseiban: 'FS1', productNo: 'T1', fhincd: 'MD1(A)-001', fhinmei: 'ブラケット', fsigencd: 'M', fkojun: 1 };
 const purchase = { purchaseOrderNo: '1234567890', seiban: 'FS1', purchasePartName: 'ブラケット', purchasePartCodeRaw: 'MD1(B)-002',
   purchasePartCodeNormalized: 'MD1-002', purchasePartCodeMatchKey: 'MD1', masterPartName: '部品', machineName: '機種', acceptedQuantity: 2, plannedStartDate: '2026-10-27' };
 const input = { transferOrderBarcodeRaw: ' T1 ', actualOrderBarcodeRaw: '1234567890', actualFseibanRaw: '' };
 function source() {
-  return { listScheduleRowsByProductNo: vi.fn((no: string) => Promise.resolve(no === 'T1' ? [schedule] : [])),
+  return { listScheduleRowsByProductNo: vi.fn((no: string): Promise<ProductionScheduleLookupRow[]> => Promise.resolve(no === 'T1' ? [schedule] : [])),
     listScheduleRowsByFseiban: vi.fn(() => Promise.resolve([schedule])),
     findPurchaseOrderLookupRows: vi.fn(() => Promise.resolve([purchase])) };
 }
@@ -22,6 +24,24 @@ describe('shared slip verification', () => {
     const data = source();
     expect(await verifySlipMatch(input, data)).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'purchaseOrder' });
     expect(data.listScheduleRowsByProductNo).toHaveBeenCalledWith('T1');
+  });
+  it('selects the first process with a resource regardless of row order', async () => {
+    const data = source();
+    const rows = [
+      { ...schedule, rowId: 'null', fsigencd: 'UNNUMBERED', fkojun: null },
+      { ...schedule, rowId: 'blank', fsigencd: ' ', fkojun: 0 },
+      { ...schedule, rowId: 'later', fsigencd: 'LATER', fkojun: 90 },
+      { ...schedule, rowId: 'first', fsigencd: ' 025 ', fkojun: 3 },
+      { ...schedule, rowId: 'tie', fsigencd: 'TIE', fkojun: 3 }
+    ];
+    for (const candidateRows of [rows, [...rows].reverse()]) {
+      data.listScheduleRowsByProductNo.mockResolvedValue(candidateRows);
+      expect(await verifySlipMatch(input, data)).toMatchObject({ ok: true, expected: { firstResourceCd: '025' } });
+    }
+    data.listScheduleRowsByProductNo.mockResolvedValue(rows.slice(0, 2));
+    expect(await verifySlipMatch(input, data)).toMatchObject({ expected: { firstResourceCd: 'UNNUMBERED' } });
+    data.listScheduleRowsByProductNo.mockResolvedValue([rows[1]]);
+    expect((await verifySlipMatch(input, data)).expected).not.toHaveProperty('firstResourceCd');
   });
   it('retains part-name fallback and rejection of explicitly scanned wrong parts', async () => {
     const data = source(); data.findPurchaseOrderLookupRows.mockResolvedValue([{ ...purchase, purchasePartCodeMatchKey: 'OTHER' }]);

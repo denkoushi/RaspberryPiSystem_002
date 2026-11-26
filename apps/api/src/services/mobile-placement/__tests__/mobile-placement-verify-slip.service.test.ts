@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { verifySlipMatch } from '../mobile-placement-verify-slip.service.js';
-import { resolveScheduleRowByProductNo, resolveScheduleRowByFseiban } from '../mobile-placement-order-lookup.js';
+import { listScheduleRowsByProductNo, listScheduleRowsByFseiban } from '../../production-schedule/production-schedule-lookup.service.js';
 import { findPurchaseOrderLookupRows } from '../../purchase-order-lookup/purchase-order-lookup-query.service.js';
 
-vi.mock('../mobile-placement-order-lookup.js', () => ({
-  resolveScheduleRowByProductNo: vi.fn(), resolveScheduleRowByFseiban: vi.fn()
+vi.mock('../../production-schedule/production-schedule-lookup.service.js', () => ({
+  listScheduleRowsByProductNo: vi.fn(), listScheduleRowsByFseiban: vi.fn()
 }));
 vi.mock('../../purchase-order-lookup/purchase-order-lookup-query.service.js', () => ({ findPurchaseOrderLookupRows: vi.fn() }));
 
@@ -23,7 +23,7 @@ const purchase = (seiban = 'fs1', key = 'MD123') => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(resolveScheduleRowByProductNo).mockImplementation(async (order) => order === 'T1' ? transfer : null);
+  vi.mocked(listScheduleRowsByProductNo).mockImplementation(async (order) => order === 'T1' ? [transfer] : []);
   vi.mocked(findPurchaseOrderLookupRows).mockResolvedValue([]);
 });
 
@@ -56,13 +56,20 @@ describe('verifySlipMatch purchase order resolution', () => {
     expect(await verifySlipMatch(input)).toEqual({ ok: false, reason, legacyReason: 'FSEIBAN_OR_PART_PAIR_MISMATCH', actualResolvedBy: 'purchaseOrder', expected,
       actual: { fseiban: seiban, partCode: 'MD123(B)-002' } });
   });
+  it('passes all transfer operations to the shared verification', async () => {
+    vi.mocked(listScheduleRowsByProductNo).mockResolvedValueOnce([
+      { ...transfer, rowId: 'late', fsigencd: 'LATE', fkojun: 7 },
+      { ...transfer, rowId: 'first', fsigencd: '025', fkojun: 2 }
+    ]).mockResolvedValueOnce([transfer]);
+    expect(await verifySlipMatch(input)).toMatchObject({ ok: true, expected: { firstResourceCd: '025' } });
+  });
   it('gives ProductNo precedence', async () => {
-    vi.mocked(resolveScheduleRowByProductNo).mockResolvedValue(transfer);
+    vi.mocked(listScheduleRowsByProductNo).mockResolvedValue([transfer]);
     expect(await verifySlipMatch(input)).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'productNo', expected });
     expect(findPurchaseOrderLookupRows).not.toHaveBeenCalled();
   });
   it('does not override a ProductNo pair mismatch', async () => {
-    vi.mocked(resolveScheduleRowByProductNo).mockResolvedValueOnce(transfer).mockResolvedValueOnce({ ...transfer, fseiban: 'OTHER' });
+    vi.mocked(listScheduleRowsByProductNo).mockResolvedValueOnce([transfer]).mockResolvedValueOnce([{ ...transfer, fseiban: 'OTHER' }]);
     expect(await verifySlipMatch(input)).toMatchObject({ ok: false, reason: 'different_seiban', actualResolvedBy: 'productNo', actual: { fseiban: 'OTHER' } });
     expect(findPurchaseOrderLookupRows).not.toHaveBeenCalled();
   });
@@ -70,7 +77,7 @@ describe('verifySlipMatch purchase order resolution', () => {
     expect(await verifySlipMatch(input)).toEqual({ ok: false, reason: 'order_not_found', legacyReason: 'ACTUAL_ORDER_UNRESOLVED', expected });
   });
   it('prioritizes an unknown transfer while retaining known PO metadata', async () => {
-    vi.mocked(resolveScheduleRowByProductNo).mockResolvedValue(null);
+    vi.mocked(listScheduleRowsByProductNo).mockResolvedValue([]);
     vi.mocked(findPurchaseOrderLookupRows).mockResolvedValue([purchase('OTHER')]);
     expect(await verifySlipMatch(input)).toEqual({ ok: false, reason: 'transfer_not_found', legacyReason: 'TRANSFER_ORDER_UNRESOLVED', actualResolvedBy: 'purchaseOrder', actual: { fseiban: 'OTHER', partCode: 'MD123(B)-002' } });
   });
@@ -81,18 +88,18 @@ describe('verifySlipMatch purchase order resolution', () => {
     });
   });
   it('uses the transfer row for the 製番 fallback and needs the part number', async () => {
-    vi.mocked(resolveScheduleRowByProductNo).mockResolvedValue(transfer);
-    vi.mocked(resolveScheduleRowByFseiban).mockResolvedValue({ ...transfer, fhincd: 'OTHER-PART' });
+    vi.mocked(listScheduleRowsByProductNo).mockResolvedValue([transfer]);
+    vi.mocked(listScheduleRowsByFseiban).mockResolvedValue([{ ...transfer, fhincd: 'OTHER-PART' }]);
     const base = { ...input, actualOrderBarcodeRaw: '', actualFseibanRaw: 'FS1' };
     expect(await verifySlipMatch(base)).toMatchObject({ ok: true, reason: 'match' });
     expect(await verifySlipMatch({ ...base, actualPartBarcodeRaw: '' })).toMatchObject({ ok: false, reason: 'part_required' });
     expect(await verifySlipMatch({ ...base, actualPartBarcodeRaw: 'WRONG' })).toMatchObject({ ok: false, reason: 'different_part' });
-    vi.mocked(resolveScheduleRowByFseiban).mockResolvedValue({ ...transfer, fseiban: 'FS9' });
+    vi.mocked(listScheduleRowsByFseiban).mockResolvedValue([{ ...transfer, fseiban: 'FS9' }]);
     expect(await verifySlipMatch({ ...base, actualFseibanRaw: 'FS9' })).toMatchObject({ ok: false, reason: 'different_seiban', actual: { fseiban: 'FS9' } });
   });
 
   it('retains fseiban fallback', async () => {
-    vi.mocked(resolveScheduleRowByFseiban).mockResolvedValue(transfer);
+    vi.mocked(listScheduleRowsByFseiban).mockResolvedValue([transfer]);
     expect(await verifySlipMatch({ ...input, actualOrderBarcodeRaw: '', actualFseibanRaw: 'FS1' })).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'fseiban' });
   });
 });

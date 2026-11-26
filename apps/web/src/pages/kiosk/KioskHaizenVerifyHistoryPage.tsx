@@ -9,6 +9,7 @@ import { TrailIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { invButton, invButtonGhost, invCard, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
 import { ASCENDING_DIGIT_KEYS } from '../../features/kiosk/KioskDigitTenkey';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { ResourceShelfKioskDialog } from '../../features/mobile-placement/shelfMaster/components/ResourceShelfSettings';
 
 import type { HaizenVerifyRecord } from '../../features/kiosk/haizen/haizenRecordTypes';
 
@@ -23,6 +24,7 @@ export function KioskHaizenVerifyHistoryPage() {
   const [result, setResult] = useState<'all' | HaizenVerifyRecord['result']>('all');
   const [device, setDevice] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [resourceSettings, setResourceSettings] = useState(false);
   const records = useHaizenVerifyRecords(days);
   const master = useHaizenShelves();
   const all = records.data?.records ?? [];
@@ -49,13 +51,17 @@ export function KioskHaizenVerifyHistoryPage() {
       <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{records.dataUpdatedAt ? `${time(records.dataUpdatedAt)} 更新` : '読込中…'}</span>
     </div>
     <div className="flex shrink-0 flex-wrap gap-2">
-      <div role="group" aria-label="結果" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
-        {(['all', 'match', 'mismatch', 'not_found', 'error'] as const).map(value => <button key={value} type="button" aria-pressed={result === value} className={`h-11 px-4 text-[15px] font-bold ${result === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'bg-inv-s2 text-inv-muted'}`} onClick={() => setResult(value)}>{value === 'all' ? '全部' : value === 'error' ? '照合できず' : results[value].label} {base.filter(record => value === 'all' || effectiveVerifyResult(record) === value).length}</button>)}
+      <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto whitespace-nowrap">
+        <div role="group" aria-label="結果" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
+          {(['all', 'match', 'mismatch', 'not_found', 'error'] as const).map(value => <button key={value} type="button" aria-pressed={result === value} className={`h-11 px-4 text-[15px] font-bold ${result === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'bg-inv-s2 text-inv-muted'}`} onClick={() => setResult(value)}>{value === 'all' ? '全部' : value === 'error' ? '照合できず' : results[value].label} {base.filter(record => value === 'all' || effectiveVerifyResult(record) === value).length}</button>)}
+        </div>
+        <div role="group" aria-label="端末" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
+          {[null, ...devices].map(value => <button key={value ?? 'all'} type="button" aria-pressed={device === value} className={`h-11 px-4 text-[15px] font-bold ${device === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'bg-inv-s2 text-inv-muted'}`} onClick={() => setDevice(value)}>{value ?? '全端末'}</button>)}
+        </div>
       </div>
-      <div role="group" aria-label="端末" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
-        {[null, ...devices].map(value => <button key={value ?? 'all'} type="button" aria-pressed={device === value} className={`h-11 px-4 text-[15px] font-bold ${device === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'bg-inv-s2 text-inv-muted'}`} onClick={() => setDevice(value)}>{value ?? '全端末'}</button>)}
-      </div>
+      <button type="button" className={`${invButton} ml-auto`} onClick={() => setResourceSettings(true)}>資源CDと棚</button>
     </div>
+    {resourceSettings && <ResourceShelfKioskDialog onClose={() => setResourceSettings(false)} />}
     {records.isError && <p role="alert" className="text-inv-red">照合の記録を取得できません</p>}
     <div className="grid min-h-0 flex-1 items-start gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
       <div className={`${invPanel} max-h-full overflow-x-auto overflow-y-auto`}>

@@ -15,4 +15,5 @@ export type RegisteredShelfEntryDto = {
   displayLabel?: string | null;
   photoUpdatedAt?: string | null;
   macroZoneId?: string | null;
+  resourceCds?: string[];
 };

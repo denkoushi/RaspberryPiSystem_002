@@ -4,8 +4,10 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from '../../../../api/client';
+import { api as http } from '../../../../api/http';
 import { ShelfMasterPageContent } from '../ShelfMasterPageContent';
 
+vi.mock('../../../../api/http', () => ({ api: { get: vi.fn(), put: vi.fn() } }));
 vi.mock('../../../../api/client', () => ({
   getMobilePlacementShelfMachines: vi.fn(),
   getMobilePlacementRegisteredShelves: vi.fn(), getMobilePlacementShelfPhoto: vi.fn(),
@@ -50,5 +52,34 @@ describe('photo-only shelf master', () => {
     await screen.findByRole('button', { name: '棚を追加' });
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
     expect(JSON.parse(screen.getByTestId('hub-state').textContent!)).toEqual(routeState);
+  });
+
+  it('opens the resource list, edits shelf photos by touch and refreshes the terminal cache', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const shelf = { shelfCodeRaw: 'M1 北', isStructured: true, machineName: 'M1', direction: '北' as const };
+    vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [shelf] });
+    vi.mocked(http.get).mockResolvedValue({ data: { resources: [{ resourceCd: '025', resourceNames: ['M1'], shelfCodes: [] }] } });
+    vi.mocked(http.put).mockImplementation(async () => {
+      vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [{ ...shelf, resourceCds: ['025'] }] });
+      return { data: { resourceCd: '025', shelfCodes: ['M1 北'] } };
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: /025 M1 棚なし/ }));
+    expect(screen.queryByRole('textbox')).toBeNull();
+    const tile = screen.getByRole('button', { name: '棚 M1 北' });
+    fireEvent.click(tile);
+    expect(tile).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(http.put).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /025 M1 棚なし/ }));
+    expect(screen.getByRole('button', { name: '棚 M1 北' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '棚 M1 北' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存', exact: true }));
+    expect(await screen.findByRole('button', { name: /025 M1 M1 北/ })).toBeInTheDocument();
+    expect(http.put).toHaveBeenCalledExactlyOnceWith('/mobile-placement/resource-shelves/025', { shelfCodes: ['M1 北'] });
+    expect(JSON.parse(localStorage.getItem('mobile-placement-registered-shelves-v1')!)).toEqual({
+      shelves: [{ ...shelf, resourceCds: ['025'] }]
+    });
   });
 });
