@@ -5,7 +5,7 @@ import { replaceMobilePlacementShelfOrder } from '../../../../api/domains/mobile
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
 import { sortShelvesBySetting } from '../../registeredShelves';
-import { getCachedRegisteredShelves } from '../../shelfListCache';
+import { refreshRegisteredShelvesAfterOrder } from '../../shelfListCache';
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
 import { hp } from '../../ui/haizenPhoneTokens';
 import { useRegisteredShelves } from '../../useRegisteredShelves';
@@ -55,12 +55,8 @@ export function ShelfOrderPhoneSettings({ onClose, onMessage }: { onClose: () =>
       const result = await replaceMobilePlacementShelfOrder(shelfCodes);
       const key = mobilePlacementQueryKeys.registeredShelves;
       await client.cancelQueries({ queryKey: key });
-      const order = new Map(result.shelfCodes.map((code, index) => [code, index]));
-      client.setQueryData<{ shelves: RegisteredShelfEntryDto[] }>(key, (data) => data && ({
-        shelves: data.shelves.map((shelf) => ({ ...shelf, sortOrder: order.get(shelf.shelfCodeRaw) ?? null }))
-      }));
-      // Refreshing also rewrites the terminal's saved list; a failed refresh keeps the confirmed order above.
-      try { client.setQueryData(key, await getCachedRegisteredShelves({ refresh: true })); } catch { /* keep */ }
+      const current = client.getQueryData<{ shelves: RegisteredShelfEntryDto[] }>(key) ?? { shelves: all };
+      client.setQueryData(key, await refreshRegisteredShelvesAfterOrder(current, result.shelfCodes));
     },
     onSuccess: () => { onMessage?.('並び順を保存しました'); onClose(); }
   });

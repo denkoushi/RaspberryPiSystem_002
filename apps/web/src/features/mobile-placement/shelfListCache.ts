@@ -65,3 +65,11 @@ export function refreshRegisteredShelvesAfterAssignment(current: Shelves, resour
   try { localStorage.setItem(SHELVES_KEY, JSON.stringify(fallback)); } catch { /* Keep the live result if storage is full. */ }
   return withShelfCache(SHELVES_KEY, getMobilePlacementRegisteredShelves, fallback, true);
 }
+
+export function refreshRegisteredShelvesAfterOrder(current: Shelves, shelfCodes: string[]) {
+  // Retain the confirmed order if the connection drops between the PUT and refresh.
+  const order = new Map(shelfCodes.map((code, index) => [code, index]));
+  const fallback = { shelves: current.shelves.map((shelf) => ({ ...shelf, sortOrder: order.get(shelf.shelfCodeRaw) ?? null })) };
+  try { localStorage.setItem(SHELVES_KEY, JSON.stringify(fallback)); } catch { /* Keep the live result if storage is full. */ }
+  return withShelfCache(SHELVES_KEY, getMobilePlacementRegisteredShelves, fallback, true);
+}
