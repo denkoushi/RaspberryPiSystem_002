@@ -22,6 +22,7 @@ import {
   kioskPageTitleClassName,
   kioskPanelClassName
 } from '../../features/kiosk/kioskTheme';
+import { normalizeInspectionDrawingProcessGroup } from '../../features/part-measurement/inspection-drawing/inspectionDrawingCreateDraft';
 import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import {
   MANUFACTURING_ORDER_DIGIT_LENGTH,
@@ -96,7 +97,7 @@ function mapEligibleRow(row: ProductionScheduleRow): SelfInspectionCandidateRow 
     fhinmei: String(rowData.FHINMEI ?? '').trim(),
     machineName: typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : null,
     updatedAt: row.updatedAt ?? null,
-    processGroup: row.partMeasurementProcessGroup === 'grinding' ? 'grinding' : 'cutting',
+    processGroup: normalizeInspectionDrawingProcessGroup(row.partMeasurementProcessGroup),
     plannedQuantity,
     selfInspectionTemplateId: templateId,
     selfInspectionEntryPath: entryPath.length > 0 ? entryPath : null,
