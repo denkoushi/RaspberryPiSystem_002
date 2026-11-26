@@ -8,6 +8,7 @@ import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 import { pageZoom } from './pageZoom';
 import { PlanningBoardDropdown } from './PlanningBoardDropdown';
 import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
+import { PlanningBoardPairsDialog } from './PlanningBoardPairsDialog';
 import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResourcePicker';
 import { planningBoardPair } from './planningBoardTwoMachine';
 import { usePersistedPlanningBoardFillHeight } from './usePersistedPlanningBoardFillHeight';
@@ -202,6 +203,10 @@ export function PlanningBoardToolbar({
     startModeTransition(() => onGanttModeChange?.(next));
   };
   const { frozen } = usePlanningBoardOffline();
+  const [pairsOpen, setPairsOpen] = useState(false);
+  const pairsButton = category === 'grinding' && <button type="button" aria-haspopup="dialog" disabled={frozen || Boolean(orderPreview)}
+    onClick={() => setPairsOpen(true)}
+    className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border border-slate-600 text-[13px] font-bold text-sky-300 disabled:opacity-40">組</button>;
   const { pieceLinks, changePieceLinks } = usePersistedPlanningBoardPieceLinks();
   const fill = usePersistedPlanningBoardFillHeight(category === 'grinding');
   const showFillHeight = fill.available && ganttEnabled && ganttMode === 'forward' && (view === 'resource' || Boolean(singleResourceCd));
@@ -308,6 +313,7 @@ export function PlanningBoardToolbar({
           {!singleResourceCd && ganttMode === 'forward' && allocation === 'alternate' && onTestBarAdd && <button type="button" aria-label="棒を差し込む"
             onClick={onTestBarAdd} disabled={testBarDisabled || Boolean(orderPreview) || frozen}
             className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border border-violet-400 bg-violet-400/15 text-2xl font-bold text-violet-300 disabled:opacity-40">＋</button>}
+          {pairsButton}
           {!orderPreview && singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
             anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={planningBoardPair(singleResourceCd, singleResourceLanes)?.[0] ?? singleResourceCd} resourceNameMap={singleResourceNameMap}
             onSelect={onSingleResourceChange} onClose={onCloseSingleResourcePicker} />}
@@ -322,6 +328,8 @@ export function PlanningBoardToolbar({
       </div>}
       {!orderPreview && <button type="button" aria-pressed={scawEnabled} onClick={onToggleScawMode}
         className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-[11px] font-bold', scawEnabled ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>SCAW</button>}
+      {(!onToggleGantt || !ganttEnabled) && pairsButton}
+      {pairsOpen && <PlanningBoardPairsDialog onClose={() => setPairsOpen(false)} />}
       {onOrderScan && <PlanningBoardOrderScan onScan={onOrderScan} />}
       {!ganttEnabled && focusedSeiban && <div className="flex shrink-0 items-center gap-1 rounded-md border border-slate-600 pl-2 text-sm">
         <span>製番 {focusedSeiban}</span>

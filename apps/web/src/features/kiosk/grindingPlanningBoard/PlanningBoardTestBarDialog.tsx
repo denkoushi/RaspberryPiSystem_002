@@ -1,16 +1,9 @@
-import { katakanaToHiragana, normalizePartSearchQuery } from '@raspi-system/part-search-core';
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { usePlanningBoardTestBarPartCandidates } from '../../../api/hooks/production-schedule/grinding-planning-board-test-bar-parts';
 import { Dialog } from '../../../components/ui/Dialog';
 
-const KANA_COLUMNS = ['あいうえお', 'かきくけこ', 'さしすせそ', 'たちつてと', 'なにぬねの', 'はひふへほ', 'まみむめも', 'や ゆ よ', 'らりるれろ', 'わを ん '];
-const KANA_KEYS = Array.from({ length: 5 }, (_, row) => KANA_COLUMNS.map((column) => column[row])).flat();
-const ABC_KEYS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'];
-
-// Normalize one kana at a time so small kana fold even inside yoon combinations.
-const comparable = (value: string) => [...katakanaToHiragana(value.normalize('NFKC'))]
-  .map((char) => normalizePartSearchQuery(char)).join('').toUpperCase();
+import { PlanningBoardPartSearchKeyboard, usePlanningBoardPartSearch } from './PlanningBoardPartSearchKeyboard';
 
 export function PlanningBoardTestBarDialog({ sequence, resources, initialResource, onInsert, onClose }: {
   sequence: number; resources: readonly string[]; initialResource: string;
@@ -19,24 +12,9 @@ export function PlanningBoardTestBarDialog({ sequence, resources, initialResourc
   const [minutes, setMinutes] = useState('30');
   const [resource, setResource] = useState(initialResource);
   const [partName, setPartName] = useState('');
-  const [query, setQuery] = useState('');
-  const [mode, setMode] = useState<'kana' | 'abc'>('kana');
   const { data: candidates, isLoading: candidatesLoading } = usePlanningBoardTestBarPartCandidates(resource);
-  const indexed = useMemo(() => (candidates?.parts ?? []).map((part) => ({ ...part, comparable: comparable(part.partName) })), [candidates]);
-  const search = comparable(query);
-  const { hits, nextChars } = useMemo(() => {
-    const hits = indexed.filter((part) => part.comparable.includes(search));
-    const nextChars = new Set<string>();
-    for (const part of hits) {
-      let at = part.comparable.indexOf(search);
-      while (at >= 0 && at < part.comparable.length) {
-        const next = part.comparable[at + search.length];
-        if (next) nextChars.add(next);
-        at = part.comparable.indexOf(search, at + 1);
-      }
-    }
-    return { hits, nextChars };
-  }, [indexed, search]);
+  const search = usePlanningBoardPartSearch(candidates?.parts);
+  const { hits, setQuery } = search;
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -53,26 +31,7 @@ export function PlanningBoardTestBarDialog({ sequence, resources, initialResourc
           className={`h-11 min-w-[72px] rounded-lg border px-3 font-mono text-base font-bold ${resource === cd ? 'border-violet-300 bg-violet-300 text-indigo-950' : 'border-slate-600'}`}>{cd}</button>)}
       </div>}
       <div className="mt-3 grid gap-3 min-[721px]:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-        <div className="min-w-0">
-          <div className="flex h-12 items-center gap-1.5 rounded-[10px] border border-violet-400 bg-slate-800 px-1.5 pl-3">
-            <input aria-label="部品検索" value={query} disabled={pending || candidatesLoading} onChange={(event) => setQuery(event.target.value)}
-              className="min-w-0 flex-1 bg-transparent text-xl font-bold outline-none" />
-            <button type="button" aria-label="1文字消す" disabled={pending || candidatesLoading || !query} onClick={() => setQuery([...query].slice(0, -1).join(''))}
-              className="h-9 min-w-11 rounded-lg border border-slate-600 disabled:opacity-40">⌫</button>
-            <button type="button" aria-label="全部消す" disabled={pending || candidatesLoading || !query} onClick={() => setQuery('')}
-              className="h-9 min-w-11 rounded-lg border border-slate-600 disabled:opacity-40">×</button>
-          </div>
-          <div className="mt-2 grid grid-cols-10 gap-1">
-            {(mode === 'kana' ? KANA_KEYS : ABC_KEYS).map((key, index) => key === ' '
-              ? <span key={`blank-${index}`} aria-hidden="true" />
-              : <button key={key} type="button" disabled={pending || candidatesLoading || !nextChars.has(comparable(key))} onClick={() => setQuery(query + key)}
-                className="h-11 rounded-md border border-slate-600 bg-slate-800 p-0 text-lg font-bold disabled:cursor-default disabled:border-slate-800 disabled:bg-transparent disabled:text-slate-600">{key}</button>)}
-          </div>
-          <div className="mt-1.5 flex gap-1">
-            {(['kana', 'abc'] as const).map((nextMode) => <button key={nextMode} type="button" aria-pressed={mode === nextMode} disabled={pending || candidatesLoading} onClick={() => setMode(nextMode)}
-              className={`h-10 flex-1 rounded-md border font-bold disabled:opacity-40 ${mode === nextMode ? 'border-slate-200 bg-slate-200 text-slate-900' : 'border-slate-600 text-slate-400'}`}>{nextMode === 'kana' ? 'かな' : '英数'}</button>)}
-          </div>
-        </div>
+        <PlanningBoardPartSearchKeyboard search={search} disabled={pending || candidatesLoading} />
         <div className="min-w-0 overflow-hidden rounded-[10px] border border-slate-600" aria-busy={candidatesLoading}>
           <div className="bg-slate-800 px-3 py-2 text-right text-sm tabular-nums text-slate-400">{hits.length}件</div>
           <div role="group" aria-label="部品候補" className="max-h-[352px] overflow-y-auto">

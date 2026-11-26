@@ -136,6 +136,7 @@ export interface GrindingPlanningBoardItem {
   isCompleted: boolean;
   lslhSurface: boolean;
   arrived?: boolean;
+  waitingForPair?: boolean;
   isFirstProcess?: boolean;
   firstProcessState?: GrindingPlanningBoardFirstProcessState;
   manualArrivalDate?: string | null;

@@ -270,8 +270,28 @@ export async function setKioskSessakuPieceOpCompletion(pieceId: string, opNo: nu
   return data;
 }
 
-export async function getKioskGrindingPlanningBoardTestBarPartCandidates(resourceCd: string) {
-  return (await api.get<GrindingPlanningBoardTestBarPartCandidatesResponse>('/kiosk/production-schedule/grinding-planning-board/test-bars/part-candidates', { params: { resourceCd } })).data;
+export async function getKioskGrindingPlanningBoardTestBarPartCandidates(resourceCd?: string) {
+  const params = resourceCd === undefined ? { exactNames: true } : { resourceCd };
+  return (await api.get<GrindingPlanningBoardTestBarPartCandidatesResponse>('/kiosk/production-schedule/grinding-planning-board/test-bars/part-candidates', { params })).data;
+}
+
+export type GrindingPlanningBoardPair = { id: string; firstPartName: string; secondPartName: string };
+const pairsPath = '/kiosk/production-schedule/grinding-planning-board/pairs';
+
+export async function getKioskGrindingPlanningBoardPairs() {
+  return (await api.get<{ pairs: GrindingPlanningBoardPair[] }>(pairsPath)).data;
+}
+
+export async function getKioskGrindingPlanningBoardPairSuggestions(partName: string) {
+  return (await api.get<{ suggestions: { partName: string; seibanCount: number }[] }>(`${pairsPath}/suggestions`, { params: { partName } })).data;
+}
+
+export async function createKioskGrindingPlanningBoardPair(firstPartName: string, secondPartName: string) {
+  return (await api.post<{ pair: GrindingPlanningBoardPair }>(pairsPath, { firstPartName, secondPartName })).data;
+}
+
+export async function deleteKioskGrindingPlanningBoardPair(id: string) {
+  return (await api.delete<{ deleted: boolean }>(`${pairsPath}/${id}`)).data;
 }
 
 export async function createKioskGrindingPlanningBoardTestBar(body: GrindingPlanningBoardTestBarCreateRequest) {

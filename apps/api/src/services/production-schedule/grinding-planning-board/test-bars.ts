@@ -21,20 +21,26 @@ export function projectPlanningTestBar(row: ProductionScheduleGrindingPlanningBo
     alternateRank: row.alternateRank, isCompleted: row.completedAt != null,
     completedAt: row.completedAt?.toISOString() ?? null, deletedAt: row.deletedAt?.toISOString() ?? null };
 }
-export async function getPlanningTestBarPartCandidates(params: { siteKey: string; resourceCd: string }): Promise<GrindingPlanningBoardTestBarPartCandidatesResponse> {
-  const resourceCd = normalizeProductionScheduleResourceCd(params.resourceCd);
-  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
-  const master = await readMasterResourceCds(prisma);
-  if (!resourceCd || !master.has(resourceCd) || !isCategoryResource(resourceCd, 'all', policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
+export async function getPlanningTestBarPartCandidates(params: { siteKey: string; resourceCd?: string }): Promise<GrindingPlanningBoardTestBarPartCandidatesResponse> {
+  const resourceCd = params.resourceCd == null ? null : normalizeProductionScheduleResourceCd(params.resourceCd);
+  if (params.resourceCd != null) {
+    const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+    const master = await readMasterResourceCds(prisma);
+    if (!resourceCd || !master.has(resourceCd) || !isCategoryResource(resourceCd, 'all', policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
+  }
+  // The site-wide picker saves exact FHINMEI names. The machine picker keeps its display trimming.
+  const partName = resourceCd
+    ? Prisma.sql`BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS})`
+    : Prisma.sql`"rowData"->>'FHINMEI'`;
   const parts = await prisma.$queryRaw<GrindingPlanningBoardTestBarPartCandidatesResponse['parts']>(Prisma.sql`
     WITH machine_stock AS (
       SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
       FROM "CsvDashboardRow"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND "rowData"->>'FSEIBAN' = '********'
-        AND BTRIM("rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ${resourceCd}
+        AND BTRIM("rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ${resourceCd}::text
     ), parts AS (
-      SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
+      SELECT DISTINCT ${partName} AS "partName"
       FROM "CsvDashboardRow"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) <> ''

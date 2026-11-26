@@ -69,7 +69,9 @@ describe('テスト加工の画面', () => {
         testBarControls={controls({ create, selectedBar: selection === 'test' ? testBar({ resourceCd: '301' }) : null })} />
     </>);
     if (selection === 'anchor') fireEvent.click(screen.getAllByTestId(`planning-gantt-bar-${selected.itemId}`)[0]!);
-    fireEvent.click(screen.getByRole('button', { name: '棒を差し込む' }));
+    const plus = screen.getByRole('button', { name: '棒を差し込む' });
+    expect(plus.nextElementSibling).toBe(screen.getByRole('button', { name: '組' }));
+    fireEvent.click(plus);
     const machines = screen.getByRole('group', { name: '機械' });
     expect(within(machines).getAllByRole('button').map((button) => button.textContent)).toEqual(['301', '300', '302']);
     expect(within(machines).getByRole('button', { name: expectedResource })).toHaveAttribute('aria-pressed', 'true');

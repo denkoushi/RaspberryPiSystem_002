@@ -43,6 +43,7 @@ const mocks = vi.hoisted(() => {
     productionScheduleGrindingPlanningBoardFirstProcessArrival: { findMany: vi.fn(), findUnique: vi.fn(), createMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     productionScheduleGrindingPlanningBoardArrival: { findMany: vi.fn(), findFirst: vi.fn(), createMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     productionScheduleGrindingPlanningBoardTestBar: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
+    productionScheduleGrindingPlanningBoardPair: { findMany: vi.fn().mockResolvedValue([]) },
     productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), aggregate: vi.fn(), upsert: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
     productionScheduleResourceMaster: { findMany: vi.fn(), aggregate: vi.fn() },
@@ -1367,7 +1368,7 @@ describe('grinding planning board service orchestration', () => {
       expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
       const continued = await getGrindingPlanningBoard({ ...params, snapshotId: reused.snapshotId, cursor: 1 });
       expect(continued.snapshotId).toBe(reused.snapshotId);
-      expect(continued.items).toEqual([{ ...items[1], arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null }]);
+      expect(continued.items).toEqual([{ ...items[1], arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null, waitingForPair: false }]);
       expect(continued.nextCursor).toBeNull();
       expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
       const queries = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => !JSON.stringify(sql).includes('string_agg('));
@@ -1441,7 +1442,7 @@ describe('grinding planning board service orchestration', () => {
     expect(larger.snapshotId).not.toBe(first.snapshotId);
     expect(larger.items).toHaveLength(2);
     const second = await getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId, cursor: 1, pageSize: 1 });
-    expect(second.items).toEqual([{ ...items[1], arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null }]);
+    expect(second.items).toEqual([{ ...items[1], arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null, waitingForPair: false }]);
     expect(second.nextCursor).toBeNull();
     expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
   });
@@ -1545,7 +1546,7 @@ describe('grinding planning board service orchestration', () => {
     for (const [cursor, pageSize] of [[160, 640], [800, 641]]) {
       vi.clearAllMocks();
       const continued = await getGrindingPlanningBoard({ ...params, cursor, pageSize, snapshotId: first.snapshotId });
-      expect(continued.items).toEqual(items.slice(cursor, cursor + 640).map((item) => ({ ...item, arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null })));
+      expect(continued.items).toEqual(items.slice(cursor, cursor + 640).map((item) => ({ ...item, arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null, waitingForPair: false })));
       expect(continued.nextCursor).toBe(String(cursor + 640));
       expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(1);
       expect(mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique).toHaveBeenCalledTimes(2);
