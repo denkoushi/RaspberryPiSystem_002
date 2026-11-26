@@ -26,7 +26,14 @@ export const PlanningBoardForwardLaneFrame = memo(function PlanningBoardForwardL
     const preview = effectivePreview(store, fallback);
     return preview?.drop?.resource === resource && resource !== preview?.bar.resource;
   });
-  return <div {...rest} style={{ opacity: dimmed ? 0.3 : undefined, outline: outlined ? '3px solid rgb(110 231 183)' : undefined, outlineOffset: -3 }}>{children}</div>;
+  // Dim and outline on their own compositor layers: changing a lane's own opacity or outline repaints the whole
+  // lane, which costs hundreds of milliseconds of GPU raster per lane crossing on a 4K kiosk.
+  return <div {...rest} className="relative">{children}
+    <div aria-hidden="true" data-gantt-lane-dim={dimmed ? '' : undefined} className="pointer-events-none absolute inset-0 z-[25] bg-slate-900"
+      style={{ opacity: dimmed ? 0.7 : 0, willChange: 'opacity' }} />
+    <div aria-hidden="true" data-gantt-lane-outline={outlined ? '' : undefined} className="pointer-events-none absolute inset-0 z-[25]"
+      style={{ opacity: outlined ? 1 : 0, boxShadow: 'inset 0 0 0 3px rgb(110 231 183)', willChange: 'opacity' }} />
+  </div>;
 });
 
 /** A Gantt row that reads only its own dragged id and insertion position, so other rows stay memoized while the drop target moves. */

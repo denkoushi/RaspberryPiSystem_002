@@ -282,10 +282,10 @@ it.each(['grinding', 'cutting'] as const)('reuses drag feedback on tile selectio
   fireEvent.click(tile);
   const marker = screen.getByTestId('planning-gantt-insertion');
   expect(sourceLane).toContainElement(marker);
-  expect(sourceLane.style.outline).toBe('');
-  expect(otherLane.style.outline).toBe('');
+  expect(sourceLane.querySelector(':scope > [data-gantt-lane-outline]')).toBeNull();
+  expect(otherLane.querySelector(':scope > [data-gantt-lane-outline]')).toBeNull();
   const blockedLane = document.querySelector('[data-gantt-lane-resource="306"]');
-  expect(blockedLane).toHaveStyle({ opacity: '0.3' });
+  expect(blockedLane!.querySelector(':scope > [data-gantt-lane-dim]')).toHaveStyle({ opacity: '0.7' });
   expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
   expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
   hit = [sourceLane.querySelector('[data-gantt-track]')!, sourceLane];
@@ -297,7 +297,7 @@ it.each(['grinding', 'cutting'] as const)('reuses drag feedback on tile selectio
   fireEvent.click(screen.getByRole('button', { name: '選択を外す' }));
   expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
   expect(screen.queryByTestId('planning-gantt-drag-arrow')).not.toBeInTheDocument();
-  expect(blockedLane).toHaveStyle({ opacity: '' });
+  expect(blockedLane!.querySelector(':scope > [data-gantt-lane-dim]')).toBeNull();
 });
 
 it.each(['grinding', 'cutting'] as const)('draws only repeated parts in distinct colors and persists the toolbar toggle (%s)', category => {

@@ -2037,8 +2037,8 @@ describe('forward PlanningBoardGanttView', () => {
     const x = parseFloat(target.style.left);
     fireEvent.pointerDown(bar, { clientX: x, clientY: 0, button: 0 });
     fireEvent.pointerMove(bar, { clientX: x, clientY: y });
-    expect(lane).toHaveStyle({ outline: '3px solid rgb(110 231 183)', outlineOffset: '-3px' });
-    expect(forbidden).toHaveStyle({ opacity: '0.3' });
+    expect(lane.querySelector(':scope > [data-gantt-lane-outline]')).toHaveStyle({ opacity: '1' });
+    expect(forbidden.querySelector(':scope > [data-gantt-lane-dim]')).toHaveStyle({ opacity: '0.7' });
     expect(bar).toHaveStyle({ outline: '3px dashed rgb(251 191 36)', backgroundColor: 'rgb(15 23 42)' });
     expect(bar.style.transform).toBe('');
     expect(bar).toHaveClass('touch-pan-y');
@@ -2052,8 +2052,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(items[0], '306', items[2], 'before');
     expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
-    expect(forbidden.style.opacity).toBe('');
-    expect(lane.style.outline).toBe('');
+    expect(forbidden.querySelector(':scope > [data-gantt-lane-dim]')).toBeNull();
+    expect(lane.querySelector(':scope > [data-gantt-lane-outline]')).toBeNull();
   });
   it.each(['forbidden', 'outside', 'empty', 'cancel', 'blur'] as const)('handles a cross-lane drop on %s', (destination) => {
     const values = forwardProps();
