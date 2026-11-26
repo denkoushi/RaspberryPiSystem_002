@@ -2520,6 +2520,34 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
     expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
   });
+  it('follows the cursor to the next bar at once while the queue is open', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    hoverBarAndWaitForQueue(bar);
+    fireEvent.pointerLeave(bar, { pointerType: 'mouse' });
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
+    expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
+    expect(screen.getByTestId('planning-forward-queue-card-a')).not.toHaveClass('outline-amber-400');
+  });
+  it('follows the cursor across a gap between bars and waits 2000ms again after a long gap', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    const a = screen.getByTestId('planning-gantt-bar-a');
+    const b = screen.getByTestId('planning-gantt-bar-b');
+    hoverBarAndWaitForQueue(a);
+    fireEvent.pointerLeave(a, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(600));
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    fireEvent.pointerEnter(b, { pointerType: 'mouse' });
+    expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
+    fireEvent.pointerLeave(b, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(1400));
+    fireEvent.pointerEnter(a, { pointerType: 'mouse' });
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByTestId('planning-forward-queue-card-a')).toHaveClass('outline-amber-400');
+  });
   it('still waits 2000ms after a scroll when no queue was open', () => {
     vi.useFakeTimers();
     render(<PlanningBoardGanttView {...forwardProps()} />);
@@ -2579,14 +2607,6 @@ describe('forward PlanningBoardGanttView', () => {
     expect(panel).not.toHaveAttribute('data-pinned', 'true');
     const nextBar = screen.getByTestId('planning-gantt-bar-b');
     fireEvent.pointerEnter(nextBar, { pointerType: 'mouse' });
-    act(() => vi.advanceTimersByTime(299));
-    expect(panel).toBeInTheDocument();
-    expect(screen.getByTestId('planning-forward-queue-card-a')).toHaveClass('outline-amber-400');
-    act(() => vi.advanceTimersByTime(1));
-    expect(panel).not.toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1699));
-    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1));
     const nextPanel = screen.getByRole('region', { name: /の次にやる順/ });
     expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
     expect(screen.getByTestId('planning-forward-queue-card-a')).not.toHaveClass('outline-amber-400');
