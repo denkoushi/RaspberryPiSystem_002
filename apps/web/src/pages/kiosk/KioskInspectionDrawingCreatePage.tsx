@@ -348,11 +348,9 @@ export function KioskInspectionDrawingCreatePage() {
     enabled: mode === 'guidedTrial',
     points,
     onPointsChange: setPoints,
-    selectedPointId,
     onSelectPointId: setSelectedPointId,
     hasDrawingReady: Boolean(canvasImageUrl),
-    onZoomLevel: setZoomLevel,
-    canvasZoom: zoom
+    onZoomLevel: setZoomLevel
   });
 
   const saveBlockedByPreview =

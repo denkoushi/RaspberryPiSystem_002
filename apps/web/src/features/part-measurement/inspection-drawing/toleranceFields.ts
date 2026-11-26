@@ -88,7 +88,7 @@ export function inferDecimalPlacesFromToleranceRaw(fields: ToleranceRawFields): 
   return Math.min(6, Math.max(0, maxPlaces));
 }
 
-function decimalPlacesInRaw(raw: string): number {
+export function decimalPlacesInRaw(raw: string): number {
   const trimmed = raw.trim().replace(/,/g, '');
   if (!trimmed) return 0;
   const dot = trimmed.indexOf('.');

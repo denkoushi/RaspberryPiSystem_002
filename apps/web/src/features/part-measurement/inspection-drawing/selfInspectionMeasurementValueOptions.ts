@@ -1,4 +1,5 @@
 import { toleranceBoundsFromPoint } from './markerNumbering';
+import { decimalPlacesInRaw } from './toleranceFields';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -8,13 +9,7 @@ export type MeasurementValueOptionResult =
   | { mode: 'free_only'; reason?: string }
   | { mode: 'dropdown_and_free'; options: string[]; stepLabel: string };
 
-export function decimalPlacesInRaw(raw: string): number {
-  const trimmed = raw.trim().replace(/,/g, '');
-  if (!trimmed) return 0;
-  const dot = trimmed.indexOf('.');
-  if (dot < 0) return 0;
-  return trimmed.length - dot - 1;
-}
+export { decimalPlacesInRaw } from './toleranceFields';
 
 function inferStepDecimalPlaces(point: InspectionDrawingPoint, lower: number, upper: number): number {
   let places = Math.max(

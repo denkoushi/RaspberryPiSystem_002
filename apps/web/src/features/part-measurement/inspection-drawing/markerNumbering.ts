@@ -136,7 +136,7 @@ export function templateItemToDrawingPoint(
   };
 }
 
-function parseOptionalNumber(raw: string | null | undefined): number | null {
+export function parseOptionalNumber(raw: string | null | undefined): number | null {
   if (raw == null || String(raw).trim() === '') return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
