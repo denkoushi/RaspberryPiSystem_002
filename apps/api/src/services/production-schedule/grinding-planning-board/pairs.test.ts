@@ -170,14 +170,14 @@ it('ranks pair suggestions by the number of distinct matching serial numbers', a
   expect(query.values).toEqual(expect.arrayContaining([firstPartCode, '305', '581', '589']));
 });
 
-it('puts the closest part name first when serial counts tie', async () => {
+it('puts the closest part name first even when another part shares more serials', async () => {
   mocks.raw.mockResolvedValue([
-    { partName: 'カバー', partCode: 'cover', seibanCount: 6, selectedName: firstPartName },
-    { partName: secondPartName, partCode: secondPartCode, seibanCount: 6, selectedName: firstPartName }
+    { partName: 'カバー', partCode: 'cover', seibanCount: 146, selectedName: firstPartName },
+    { partName: secondPartName, partCode: secondPartCode, seibanCount: 145, selectedName: firstPartName }
   ]);
   expect((await getPlanningPairSuggestions(firstPartCode)).suggestions).toEqual([
-    { partName: secondPartName, partCode: secondPartCode, seibanCount: 6 },
-    { partName: 'カバー', partCode: 'cover', seibanCount: 6 }
+    { partName: secondPartName, partCode: secondPartCode, seibanCount: 145 },
+    { partName: 'カバー', partCode: 'cover', seibanCount: 146 }
   ]);
 });
 

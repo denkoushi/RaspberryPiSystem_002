@@ -1,3 +1,6 @@
+-- Name-only pairs cannot be mapped to one part code, so they are re-registered by part code.
+DELETE FROM "ProductionScheduleGrindingPlanningBoardPair";
+
 DROP INDEX "PSGrindingPlanningPair_site_names_key";
 
 ALTER TABLE "ProductionScheduleGrindingPlanningBoardPair"

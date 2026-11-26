@@ -109,14 +109,14 @@ export async function getPlanningPairSuggestions(partCode: string) {
     WHERE other.part_code NOT IN ('', ${partCode}) AND other.part_name <> ''
     GROUP BY other.part_code
   `);
-  // Equal counts are common when other parts share every serial; prefer the name closest to the selected one.
+  // Other parts can share as many serials as the real partner (some serials skip grinding one side), so the closest name wins first.
   const sharedPrefix = (name: string, selected = '') => {
     let length = 0;
     while (length < name.length && name[length] === selected[length]) length += 1;
     return length;
   };
   const suggestions = rows.map(({ selectedName, ...part }) => ({ part, prefix: sharedPrefix(part.partName, selectedName ?? '') }))
-    .sort((a, b) => b.part.seibanCount - a.part.seibanCount || b.prefix - a.prefix ||
+    .sort((a, b) => b.prefix - a.prefix || b.part.seibanCount - a.part.seibanCount ||
       a.part.partName.localeCompare(b.part.partName, 'ja') || a.part.partCode.localeCompare(b.part.partCode))
     .map(({ part }) => part);
   return { suggestions };
