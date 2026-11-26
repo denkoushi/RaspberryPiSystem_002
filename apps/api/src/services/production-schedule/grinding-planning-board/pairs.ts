@@ -13,7 +13,7 @@ type PairPart = { partCode: string; partName: string };
 type CountedPairPart = PairPart & { seibanCount: number };
 const PAIR_STATUS_NAME_TERMS = ['足', '脚', 'スタンド'] as const;
 
-const grindingRows = Prisma.sql`
+const grindingRows = () => Prisma.sql`
   WITH grinding_rows AS (
     SELECT BTRIM("rowData"->>'FSEIBAN', ${STRING_TRIM_CHARACTERS}) AS fseiban,
       BTRIM("rowData"->>'FKOJUN', ${STRING_TRIM_CHARACTERS}) AS process_order,
@@ -49,7 +49,7 @@ export async function createPlanningPair(siteKey: string, pair: Omit<PlanningPai
         throw new ApiError(409, 'すでに組に入っている品番です', undefined, 'PLANNING_PAIR_PART_IN_USE');
       }
       const present = await tx.$queryRaw<PairPart[]>(Prisma.sql`
-        ${grindingRows}
+        ${grindingRows()}
         SELECT DISTINCT part_code AS "partCode", part_name AS "partName"
         FROM grinding_rows
         WHERE (part_code, part_name) IN ((${firstPartCode}, ${firstPartName}), (${secondPartCode}, ${secondPartName}))
@@ -74,7 +74,7 @@ export async function deletePlanningPair(siteKey: string, id: string) {
 
 export async function getPlanningPairCandidates() {
   const parts = await prisma.$queryRaw<PairPart[]>(Prisma.sql`
-    ${grindingRows}
+    ${grindingRows()}
     SELECT DISTINCT part_name AS "partName", part_code AS "partCode"
     FROM grinding_rows
     WHERE part_code <> '' AND part_name <> ''
@@ -85,7 +85,7 @@ export async function getPlanningPairCandidates() {
 
 export async function getPlanningPairStatus() {
   const parts = await prisma.$queryRaw<CountedPairPart[]>(Prisma.sql`
-    ${grindingRows}
+    ${grindingRows()}
     SELECT part_name AS "partName", part_code AS "partCode",
       COUNT(DISTINCT fseiban) FILTER (WHERE fseiban NOT IN ('', '********'))::int AS "seibanCount"
     FROM grinding_rows
@@ -98,7 +98,7 @@ export async function getPlanningPairStatus() {
 
 export async function getPlanningPairSuggestions(partCode: string) {
   const rows = await prisma.$queryRaw<(CountedPairPart & { selectedName?: string | null })[]>(Prisma.sql`
-    ${grindingRows}, selected AS (
+    ${grindingRows()}, selected AS (
       SELECT DISTINCT fseiban, process_order FROM grinding_rows
       WHERE part_code = ${partCode} AND fseiban NOT IN ('', '********') AND process_order <> ''
     )
