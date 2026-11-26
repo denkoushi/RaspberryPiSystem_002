@@ -273,9 +273,10 @@ export function KioskInspectionDrawingCreatePage() {
     visualSource === 'pickExisting' && selectedVisualTemplateId?.trim()
       ? selectedVisualTemplateId
       : null;
+  // 保存済みテンプレートと、それを雛形にした新規は人が確定した丸数字なので AI 案を重ねない。
   const placement = useInspectionDrawingPlacementProposals({
     visualTemplateId: visualTemplateIdForOcr, processGroup, clientKey, points, onPointsChange: setPoints,
-    enabled: Boolean(canvasImageUrl) && !contentReadOnly && mode !== 'guidedTrial',
+    enabled: Boolean(canvasImageUrl) && !contentReadOnly && mode !== 'guidedTrial' && !isEditing && !sourceTemplateDraft,
     onSelectPoint: setSelectedPointId, onPlaceMode: () => setMode('place')
   });
   const visualOcrPending =

@@ -292,6 +292,17 @@ describe('KioskInspectionDrawingCreatePage', () => {
     expect(apiMocks.placementProposals).toHaveBeenLastCalledWith('visual-1', 'grinding', 'test-client-key');
   });
 
+  it('does not request AI proposals for a saved template or a copy of one', async () => {
+    await renderPage(editPath);
+    expect(apiMocks.getTemplate).toHaveBeenCalledWith('template-1', 'test-client-key');
+    expect(apiMocks.placementProposals).not.toHaveBeenCalled();
+    cleanup();
+
+    await renderPage(`${createPath}?sourceTemplateId=template-1`);
+    expect(apiMocks.getTemplate).toHaveBeenLastCalledWith('template-1', 'test-client-key');
+    expect(apiMocks.placementProposals).not.toHaveBeenCalled();
+  });
+
   it('loads an edit route into locked metadata, editable fields and the selected marker', async () => {
     await renderPage(editPath);
 
