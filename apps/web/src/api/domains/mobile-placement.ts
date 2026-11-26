@@ -1,13 +1,13 @@
 import { api } from '../http';
 
 import type { ProductionScheduleListResponse } from './production-schedule';
+import type { MachineFactory } from './tools';
 import type { RegisteredShelfEntryDto } from '../../features/mobile-placement/registeredShelves/types';
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
 /** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
 export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;
 
-export type ResourceFactory = 'MISHIMA' | 'SENDAI';
-export type ResourceShelfAssignment = { resourceCd: string; factory: ResourceFactory; resourceNames: string[]; shelfCodes: string[] };
+export type ResourceShelfAssignment = { resourceCd: string; factory: MachineFactory; resourceNames: string[]; shelfCodes: string[] };
 
 export async function getMobilePlacementResourceShelves() {
   const { data } = await api.get<{ resources: ResourceShelfAssignment[] }>('/mobile-placement/resource-shelves');

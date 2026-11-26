@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { getMobilePlacementResourceShelves, replaceMobilePlacementResourceShelves } from '../../../../api/domains/mobile-placement';
+import { machineFactoryLabels } from '../../../../api/domains/tools';
 import { Dialog } from '../../../../components/ui/Dialog';
 import { useLocalStorage } from '../../../../hooks/useLocalStorage';
 import { invButton, invButtonPrimary, invSeg, invTitle } from '../../../kiosk/inventory/inventoryUi';
@@ -13,11 +14,12 @@ import { refreshRegisteredShelvesAfterAssignment } from '../../shelfListCache';
 import { hp } from '../../ui/haizenPhoneTokens';
 import { useRegisteredShelves } from '../../useRegisteredShelves';
 
-import type { ResourceFactory, ResourceShelfAssignment } from '../../../../api/domains/mobile-placement';
+import type { ResourceShelfAssignment } from '../../../../api/domains/mobile-placement';
+import type { MachineFactory } from '../../../../api/domains/tools';
 import type { RegisteredShelfEntryDto } from '../../registeredShelves';
 
 const resourceShelvesKey = [...mobilePlacementQueryKeys.all, 'resource-shelves'] as const;
-const factories: [ResourceFactory, string][] = [['MISHIMA', '三島工場'], ['SENDAI', '仙台工場']];
+const factories: MachineFactory[] = ['MISHIMA', 'SENDAI'];
 
 function useResourceShelfSettings(kiosk: boolean) {
   const client = useQueryClient();
@@ -28,8 +30,8 @@ function useResourceShelfSettings(kiosk: boolean) {
     queryFn: () => kiosk ? getMobilePlacementResourceShelves() : mobileRequest(getMobilePlacementResourceShelves),
     networkMode: 'always', retry: false
   });
-  const [storedFactory, setFactory] = useLocalStorage<ResourceFactory>('mobile-placement-resource-shelf-factory', 'MISHIMA');
-  const factory: ResourceFactory = storedFactory === 'SENDAI' ? 'SENDAI' : 'MISHIMA';
+  const [storedFactory, setFactory] = useLocalStorage<MachineFactory>('mobile-placement-resource-shelf-factory', 'MISHIMA');
+  const factory: MachineFactory = storedFactory === 'SENDAI' ? 'SENDAI' : 'MISHIMA';
   const resources = (query.data?.resources ?? []).filter((resource) => resource.factory === factory);
   const [resourceCd, setResourceCd] = useState<string | null>(null);
   const [draft, setDraft] = useState<string[] | null>(null);
@@ -64,7 +66,7 @@ function useResourceShelfSettings(kiosk: boolean) {
   }
   return {
     resources, selected, codes, groups, select, factory,
-    selectFactory: (value: ResourceFactory) => { select(null); setFactory(value); },
+    selectFactory: (value: MachineFactory) => { select(null); setFactory(value); },
     toggle: (code: string) => { save.reset(); setDraft(codes.includes(code) ? codes.filter((value) => value !== code) : [...codes, code]); },
     save: () => { if (selected) save.mutate({ resourceCd: selected.resourceCd, shelfCodes: codes }); },
     busy: save.isPending, saved: save.isSuccess, saveError: save.isError,
@@ -78,8 +80,8 @@ type Settings = ReturnType<typeof useResourceShelfSettings>;
 
 function FactorySwitch({ settings: s, kiosk = false }: { settings: Settings; kiosk?: boolean }) {
   return <div className="flex shrink-0 gap-1.5">
-    {factories.map(([value, label]) => <button key={value} type="button" aria-pressed={s.factory === value} disabled={s.busy}
-      className={kiosk ? invSeg(s.factory === value) : hp.segment} onClick={() => s.selectFactory(value)}>{label}</button>)}
+    {factories.map((value) => <button key={value} type="button" aria-pressed={s.factory === value} disabled={s.busy}
+      className={kiosk ? invSeg(s.factory === value) : hp.segment} onClick={() => s.selectFactory(value)}>{machineFactoryLabels[value]}</button>)}
   </div>;
 }
 

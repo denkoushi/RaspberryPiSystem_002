@@ -19,8 +19,11 @@ export async function getEmployees() {
   return data.employees;
 }
 
+export type MachineFactory = 'MISHIMA' | 'SENDAI';
+export const machineFactoryLabels: Record<MachineFactory, string> = { MISHIMA: '三島工場', SENDAI: '仙台工場' };
+
 export interface Machine {
-  factory: 'MISHIMA' | 'SENDAI';
+  factory: MachineFactory;
   nfcTags?: { id: string; uid: string }[];
   id: string;
   equipmentManagementNumber: string;

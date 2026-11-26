@@ -2,7 +2,9 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
 
-import { listResourceMastersWithFactory, type ResourceFactory } from './machine-master-query.service.js';
+import { type MachineFactory } from '../tools/machine-factory.js';
+
+import { listResourceMastersWithFactory } from './machine-master-query.service.js';
 import { listRegisteredShelvesFromShelfMaster } from './mobile-placement-shelf-master.service.js';
 
 export async function getResourceShelfAssignments() {
@@ -14,7 +16,7 @@ export async function getResourceShelfAssignments() {
     })
   ]);
   const namesByResource = new Map<string, string[]>();
-  const factoryByResource = new Map<string, ResourceFactory>();
+  const factoryByResource = new Map<string, MachineFactory>();
   for (const { resourceCd, resourceName, factory } of machines) {
     factoryByResource.set(resourceCd, factory);
     const name = resourceName.trim();
