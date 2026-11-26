@@ -39,10 +39,12 @@ export async function getResourceShelfAssignments() {
     shelvesByName.set(name, codes);
   }
   const resources = [...namesByResource].sort(([a], [b]) => a.localeCompare(b)).map(([resourceCd, resourceNames]) => {
-    const assigned = saved.get(resourceCd) ?? new Set(resourceNames.flatMap((name) =>
-      [...(shelvesByName.get(normalizeMachineNameForCompare(name)) ?? [])]));
+    const factory = factoryByResource.get(resourceCd) ?? 'MISHIMA';
+    // Shelves are named after Mishima machines, so only Mishima resources fall back to a name match.
+    const assigned = saved.get(resourceCd) ?? new Set(factory === 'MISHIMA' ? resourceNames.flatMap((name) =>
+      [...(shelvesByName.get(normalizeMachineNameForCompare(name)) ?? [])]) : []);
     saved.set(resourceCd, assigned);
-    return { resourceCd, factory: factoryByResource.get(resourceCd) ?? 'MISHIMA', resourceNames, shelfCodes: [...assigned].filter((code) => resourceCdsByShelf.has(code)).sort() };
+    return { resourceCd, factory, resourceNames, shelfCodes: [...assigned].filter((code) => resourceCdsByShelf.has(code)).sort() };
   });
   for (const [resourceCd, codes] of saved) {
     for (const code of codes) resourceCdsByShelf.get(code)?.push(resourceCd);

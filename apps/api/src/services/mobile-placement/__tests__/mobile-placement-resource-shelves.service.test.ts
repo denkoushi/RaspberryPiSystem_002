@@ -23,7 +23,8 @@ beforeEach(() => {
   mocks.listShelves.mockResolvedValue([north, south, legacy]);
   mocks.listMachines.mockResolvedValue({ machines: [
     { resourceCd: '025', resourceName: 'mh', factory: 'MISHIMA' }, { resourceCd: '025', resourceName: 'ＡＰ', factory: 'MISHIMA' },
-    { resourceCd: '026', resourceName: 'MH', factory: 'MISHIMA' }, { resourceCd: '027', resourceName: 'MH', factory: 'SENDAI' }
+    { resourceCd: '026', resourceName: 'MH', factory: 'MISHIMA' }, { resourceCd: '027', resourceName: 'MH', factory: 'SENDAI' },
+    { resourceCd: '028', resourceName: 'ＡＰ', factory: 'SENDAI' }
   ] });
   mocks.links.findMany.mockResolvedValue([
     { resourceCd: '026', shelf: null }, { resourceCd: '027', shelf: null }, { resourceCd: '027', shelf: legacy }
@@ -36,7 +37,8 @@ describe('resource shelf assignments', () => {
       resources: [
         { resourceCd: '025', factory: 'MISHIMA', resourceNames: ['mh', 'ＡＰ'], shelfCodes: ['AP 南', 'Ｍｈ 北'] },
         { resourceCd: '026', factory: 'MISHIMA', resourceNames: ['MH'], shelfCodes: [] },
-        { resourceCd: '027', factory: 'SENDAI', resourceNames: ['MH'], shelfCodes: ['西-北-01'] }
+        { resourceCd: '027', factory: 'SENDAI', resourceNames: ['MH'], shelfCodes: ['西-北-01'] },
+        { resourceCd: '028', factory: 'SENDAI', resourceNames: ['ＡＰ'], shelfCodes: [] }
       ],
       shelves: [{ ...north, resourceCds: ['025'] }, { ...south, resourceCds: ['025'] }, { ...legacy, resourceCds: ['027'] }]
     });

@@ -107,7 +107,7 @@ function ShelfGroups({ settings: s, kiosk = false }: { settings: Settings; kiosk
   if (!s.selected) return null;
   if (!s.groups.size) return <p>棚がありません</p>;
   return [...s.groups].map(([machineName, shelves]) => <section key={machineName ?? ''} className={kiosk ? 'flex items-start gap-2' : undefined}>
-    <h3 className={`font-mono text-sm font-bold ${kiosk ? 'w-40 shrink-0 truncate pt-2 text-inv-muted' : `mb-1 ${hp.muted}`}`}>{machineName ?? 'その他'}</h3>
+    <h3 className={`font-mono text-sm font-bold ${kiosk ? 'w-40 shrink-0 break-words pt-2 leading-tight text-inv-muted' : `mb-1 ${hp.muted}`}`}>{machineName ?? 'その他'}</h3>
     <div className={kiosk ? 'flex min-w-0 flex-1 flex-wrap gap-1.5' : 'grid grid-cols-2 gap-2'}>
       {shelves.map((shelf) => {
         const selected = s.codes.includes(shelf.shelfCodeRaw);
