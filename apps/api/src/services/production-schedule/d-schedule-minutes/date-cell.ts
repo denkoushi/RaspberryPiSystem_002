@@ -3,6 +3,14 @@ import type ExcelJS from 'exceljs';
 // Merged cells with an empty master throw when ExcelJS reads the follower's text.
 export const cellText = (cell: ExcelJS.Cell): string => cell.master.text;
 
+// ExcelJS renders native date cells as "Fri Feb 07 2025 00:00:00 GMT+0000 (...)"; show them as calendar dates.
+export function displayText(cell: ExcelJS.Cell): string {
+  const value = cell.master.value;
+  const date = value instanceof Date ? value
+    : value && typeof value === 'object' && 'result' in value && value.result instanceof Date ? value.result : null;
+  return date && Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : cellText(cell);
+}
+
 export const normalize = (text: string): string => text.normalize('NFKC').trim();
 
 export function calendarDate(year: number, month: number, day: number): string | null {
