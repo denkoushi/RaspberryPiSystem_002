@@ -18,6 +18,7 @@ import {
   initialActualSlipOcrFeedback,
   type ActualSlipOcrFeedback
 } from './actual-slip-ocr-feedback';
+import { playHaizenSound } from './haizen/haizenSounds';
 import { scanFseibanNative } from './haizenNative';
 import { snapNativeLocalFirst, verifyLocalFirst } from './local-data/localFirstLookup';
 import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
@@ -74,6 +75,7 @@ export function useMobilePlacementPageState() {
   const onScanSuccess = useCallback(
     (text: string) => {
       const v = text.trim();
+      if (v) playHaizenSound('decide');
       switch (scanField) {
         case 'shelf':
           setShelfCode(v);
@@ -120,6 +122,7 @@ export function useMobilePlacementPageState() {
     const preview = buildOcrPreview(res.ocrPreviewSafe ?? res.ocrText);
     const mo = res.manufacturingOrder10 ?? null;
     const fs = res.fseiban ?? null;
+    if (mo || fs) playHaizenSound('decide');
     if (mo) {
       setActualOrder(mo);
     } else if (fs) {
@@ -209,9 +212,11 @@ export function useMobilePlacementPageState() {
       const res = await verifyLocalFirst(input, () => verifyMobilePlacementSlipMatch(input));
       setSlipDetails(res);
       setSlipResult(res.ok ? 'ok' : res.reason === 'order_not_found' || res.reason === 'transfer_not_found' || res.reason === 'part_required' ? 'not-found' : 'ng');
+      if (res.ok || res.reason !== 'part_required') playHaizenSound(res.ok ? 'ok' : 'ng');
       await verifyRecorder.record(input, res).catch(() => console.warn('Verify record could not be saved'));
     } catch {
       setSlipResult('error');
+      playHaizenSound('ng');
       await verifyRecorder.record(input, 'error').catch(() => console.warn('Verify record could not be saved'));
     } finally {
       setSlipVerifying(false);
