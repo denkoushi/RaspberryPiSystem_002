@@ -34,7 +34,9 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; inFlight.current?.abort(); }; }, []);
   const read = useCallback(async (signal: AbortSignal) => latest.current.fetcher(signal), []);
+  const commits = useRef(0);
   const commit = useCallback((data: unknown) => {
+    commits.current += 1;
     if (mounted.current) { setResult({ data: data as T, isError: false, error: null, scopeKey }); latest.current.publishRead(gate.generation()); }
   }, [scopeKey, gate]);
   useLayoutEffect(() => {
@@ -45,13 +47,14 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
   const refetch = useCallback(async (options?: { cancelRefetch?: boolean }): Promise<Result<T>> => {
     if (!gate.canWrite()) return { data: undefined, isError: true, error: new Error('Read only') };
     if (options?.cancelRefetch === false && inFlight.current) return { data: undefined, isError: true, error: new Error('Read in progress') };
-    const generation = gate.generation();
+    const generation = gate.generation(); const commitsAtStart = commits.current;
     inFlight.current?.abort();
     const abort = new AbortController(); inFlight.current = abort;
     setFetching(true);
     try {
       const data = await read(abort.signal);
-      if (abort.signal.aborted || generation !== gate.generation() || scopeKey !== activeScope.current) return { data: undefined, isError: true, error: new Error('Stale read') };
+      if (abort.signal.aborted || generation !== gate.generation() || scopeKey !== activeScope.current || commits.current !== commitsAtStart) return { data: undefined, isError: true, error: new Error('Stale read') };
+      commits.current += 1;
       const next = { data, isError: false, error: null, scopeKey }; if (mounted.current) { setResult(next); latest.current.publishRead(generation); } return next;
     } catch (error) {
       const next = { data: undefined, isError: true, error };
@@ -79,14 +82,15 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
 function useRequest() {
   const { gate, reportRead } = usePlanningBoardOffline();
   return async <T,>(path: string, signal: AbortSignal, valid: (data: T) => boolean,
-    params?: unknown, body?: unknown): Promise<T> => {
+    params?: unknown, body?: unknown, options?: { background?: boolean }): Promise<T> => {
     const generation = gate.generation(); const identity = getResolvedClientKey();
-    const config = { signal, timeout: 15_000, params, headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' } };
+    const config = { signal, timeout: 15_000, params, headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' },
+      ...(options?.background ? { kioskTelemetry: 'background' as const } : {}) };
     const response = body === undefined ? await api.get<T>(path, config) : await api.post<T>(path, body, config);
     if (signal.aborted || identity !== getResolvedClientKey() || generation !== gate.generation() || response.status < 200 || response.status >= 300 || !response.data || typeof response.data !== 'object' || !valid(response.data)) throw new Error('Invalid board response');
     const finalUrl = response.request?.responseURL as string | undefined;
     if (finalUrl && !new URL(finalUrl, window.location.origin).pathname.endsWith(path)) throw new Error('Redirected board response');
-    if (path.startsWith(base) || path === '/kiosk/production-schedule/resources' || path === '/kiosk/production-schedule/d-schedule-minutes') reportRead(generation, response.headers.date);
+    if (!options?.background && (path.startsWith(base) || path === '/kiosk/production-schedule/resources' || path === '/kiosk/production-schedule/d-schedule-minutes')) reportRead(generation, response.headers.date);
     return response.data;
   };
 }
@@ -161,10 +165,12 @@ export function useOfflineUptime(enabled: boolean) {
 }
 
 function usePlanningBoardArrivalRefresh(paused: boolean, board: {
-  scopeReady: boolean; isFetching: boolean; isAppending: boolean;
+  scopeReady: boolean; isFetching: boolean; isAppending: boolean; isAppendRunning?: () => boolean;
   refetch: (options: { cancelRefetch: false }) => Promise<{ isError: boolean }>;
 }) {
   const { gate, frozen, snapshot, subscribeFreeze } = usePlanningBoardOffline();
+  const request = useRequest();
+  const latestRequest = useRef(request); latestRequest.current = request;
   const online = snapshot.phase === 'online';
   const latestBoard = useRef(board);
   useLayoutEffect(() => { latestBoard.current = board; }, [board]);
@@ -173,25 +179,26 @@ function usePlanningBoardArrivalRefresh(paused: boolean, board: {
   useLayoutEffect(() => {
     if (paused || frozen || !online) return;
     let pending: AbortController | undefined;
+    // Only a revision requested before the board's first load can be its baseline; a later one may already be newer than the board.
+    let firstPoll = !previous.current;
     const unsubscribe = subscribeFreeze(() => pending?.abort());
     const poll = async () => {
       if (pending || refreshing.current || !gate.canWrite()) return;
       const identity = getResolvedClientKey();
-      const generation = gate.generation();
       const abort = new AbortController(); pending = abort;
+      const baselineAllowed = firstPoll && (latestBoard.current.isFetching || !latestBoard.current.scopeReady);
+      firstPoll = false;
       try {
-        const { data } = await api.get<{ revision: string }>(`${base}/arrival-revision`, {
-          signal: abort.signal, timeout: 15_000, kioskTelemetry: 'background',
-          headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' }
-        });
-        if (abort.signal.aborted || generation !== gate.generation() || !gate.canWrite() ||
-            identity !== getResolvedClientKey() || typeof data?.revision !== 'string') return;
-        if (!previous.current || previous.current.identity !== identity) {
+        const data = await latestRequest.current<{ revision: string }>(`${base}/arrival-revision`, abort.signal,
+          (value) => typeof value.revision === 'string', undefined, undefined, { background: true });
+        if (!gate.canWrite()) return;
+        const known = previous.current?.identity === identity ? previous.current : undefined;
+        if (!known && baselineAllowed) {
           previous.current = { identity, revision: data.revision };
           return;
         }
         const currentBoard = latestBoard.current;
-        if (previous.current.revision === data.revision || !currentBoard.scopeReady || currentBoard.isFetching || currentBoard.isAppending) return;
+        if (known?.revision === data.revision || !currentBoard.scopeReady || currentBoard.isFetching || currentBoard.isAppending || currentBoard.isAppendRunning?.()) return;
         refreshing.current = true;
         try {
           const result = await currentBoard.refetch({ cancelRefetch: false });

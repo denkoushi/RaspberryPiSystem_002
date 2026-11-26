@@ -90,6 +90,8 @@ export type KioskGrindingPlanningBoardProgressiveResult = {
   hasStableData: boolean;
   scopeReady: boolean;
   isAppending: boolean;
+  /** True while later pages are still being read, including silent same-scope refreshes. */
+  isAppendRunning?: () => boolean;
   isComplete: boolean;
   appendError: unknown;
 };
@@ -134,6 +136,8 @@ export function useKioskGrindingPlanningBoardProgressive(
   const [isComplete, setIsComplete] = useState(false);
   const [appendError, setAppendError] = useState<unknown>(null);
   const runIdRef = useRef(0);
+  const appendRunningRef = useRef<number | null>(null);
+  const isAppendRunning = useCallback(() => appendRunningRef.current != null, []);
   const syncedSignatureRef = useRef<string | null>(null);
   const staleRefetchCountRef = useRef(0);
   const stableParams = useMemo(
@@ -255,6 +259,7 @@ export function useKioskGrindingPlanningBoardProgressive(
     }
 
     setIsAppending(!keepComplete);
+    appendRunningRef.current = runId;
     void (async () => {
       try {
         while (!cancelled && runId === runIdRef.current && cursor != null) {
@@ -306,11 +311,13 @@ export function useKioskGrindingPlanningBoardProgressive(
           setSettlement({ paramsKey, updatedAt: query.dataUpdatedAt, data: displayedRef.current?.data, isError: true, error: failure });
         }
       } finally {
+        if (appendRunningRef.current === runId) appendRunningRef.current = null;
         if (!cancelled && runId === runIdRef.current) setIsAppending(false);
       }
     })();
     return () => {
       cancelled = true;
+      if (appendRunningRef.current === runId) appendRunningRef.current = null;
       syncedSignatureRef.current = null;
       if (runId === runIdRef.current) setIsAppending(false);
     };
@@ -335,6 +342,7 @@ export function useKioskGrindingPlanningBoardProgressive(
     hasStableData,
     scopeReady,
     isAppending,
+    isAppendRunning,
     isComplete: scopeReady && isComplete,
     appendError,
   };
