@@ -6,6 +6,7 @@ import { buildFkojunstMailStatusCompletedScalarSql } from '../completion/fkojuns
 import {
   FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS,
   FKOJUNST_RESOURCE_SWAP_LOAD_STATUS_CODES,
+  FKOJUNST_RESOURCE_SWAP_MULTI_WINNER_OWN_STATUS,
   FKOJUNST_RESOURCE_SWAP_OWN_BLOCKING_STATUS,
 } from '../completion/fkojunst-resource-swap-completion.policy.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
@@ -56,17 +57,29 @@ function winnerCompletionCtes(excludedResourceCds: string[]): Prisma.Sql {
       GROUP BY "productNo", "fkojun"
       HAVING COUNT(*) = 1
     ),
+    "swapStatuses" AS (
+      SELECT "productNo", "fkojun", "resourceCd", "statusCode", "sourceUpdatedAt", FALSE AS "matched"
+      FROM "ProductionScheduleFkojunstResourceSwapEvidence"
+      WHERE "sourceCsvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
+      UNION ALL
+      SELECT "productNo", "fkojun", "resourceCd", "ownStatusCode", "ownUpdatedAt", TRUE
+      FROM "winners" WHERE "ownStatusCode" IS NOT NULL
+        AND "resourceCd" <> ALL(${excludedResourceCds}::text[])
+    ),
     "eligibleResourceSwaps" AS (
-      SELECT "w"."id", MIN("e"."statusCode") AS "statusCode", MIN("e"."resourceCd") AS "resourceCd"
-      FROM "singleWinnerProcesses" "single"
-      JOIN "winners" "w" USING ("productNo", "fkojun")
-      JOIN "ProductionScheduleFkojunstResourceSwapEvidence" "e"
-        ON "e"."sourceCsvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
-        AND "e"."productNo" = "w"."productNo" AND "e"."fkojun" = "w"."fkojun"
+      SELECT "w"."id", "purpose"."completion", MIN("e"."statusCode") AS "statusCode", MIN("e"."resourceCd") AS "resourceCd"
+      FROM "winners" "w"
+      LEFT JOIN "singleWinnerProcesses" "single" USING ("productNo", "fkojun")
+      CROSS JOIN (VALUES (TRUE), (FALSE)) AS "purpose"("completion")
+      JOIN "swapStatuses" "e"
+        ON "e"."productNo" = "w"."productNo" AND "e"."fkojun" = "w"."fkojun"
         AND "e"."resourceCd" <> "w"."resourceCd"
-      WHERE "w"."resourceCd" <> ''
+      WHERE "w"."productNo" <> '' AND "w"."fkojun" <> '' AND "w"."resourceCd" <> ''
         AND "w"."resourceCd" <> ALL(${excludedResourceCds}::text[])
-      GROUP BY "w"."id"
+        -- R の完了判定では、日程と一致した状態も別資源の候補に含める。
+        AND (("purpose"."completion" AND "w"."ownStatusCode" = ${FKOJUNST_RESOURCE_SWAP_MULTI_WINNER_OWN_STATUS})
+          OR ("single"."productNo" IS NOT NULL AND NOT "e"."matched"))
+      GROUP BY "w"."id", "purpose"."completion"
       -- 非 C、除外資源、FUPDTEDT 不明も別資源の件数には含める。
       HAVING COUNT(*) = 1 AND BOOL_AND(
         "e"."resourceCd" <> ALL(${excludedResourceCds}::text[])
@@ -82,14 +95,15 @@ function winnerCompletionCtes(excludedResourceCds: string[]): Prisma.Sql {
       SELECT "w"."id", "w"."mailStatusComplete",
         COALESCE("swap"."statusCode" = ${FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS}, FALSE) AS "resourceSwapComplete",
         CASE WHEN NOT "w"."mailStatusComplete"
-          AND "swap"."statusCode" = ANY(${[...FKOJUNST_RESOURCE_SWAP_LOAD_STATUS_CODES]}::text[])
+          AND "load"."statusCode" = ANY(${[...FKOJUNST_RESOURCE_SWAP_LOAD_STATUS_CODES]}::text[])
           AND EXISTS (
             SELECT 1 FROM "ProductionScheduleResourceMaster" "master"
-            WHERE UPPER(BTRIM("master"."resourceCd")) = "swap"."resourceCd"
+            WHERE UPPER(BTRIM("master"."resourceCd")) = "load"."resourceCd"
           )
-          THEN "swap"."resourceCd" END AS "loadResourceCd"
+          THEN "load"."resourceCd" END AS "loadResourceCd"
       FROM "winners" "w"
-      LEFT JOIN "eligibleResourceSwaps" "swap" ON "swap"."id" = "w"."id"
+      LEFT JOIN "eligibleResourceSwaps" "swap" ON "swap"."id" = "w"."id" AND "swap"."completion"
+      LEFT JOIN "eligibleResourceSwaps" "load" ON "load"."id" = "w"."id" AND NOT "load"."completion"
       UNION ALL
       ${existingResourceSwapStatesSql()}
         AND NOT EXISTS (SELECT 1 FROM "winners" "w" WHERE "w"."id" = "ext"."csvDashboardRowId")
