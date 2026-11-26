@@ -2394,7 +2394,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.pointerDown(bar, { pointerId: 42, clientX: x, clientY: 20, button: 0 });
     fireEvent.pointerMove(bar, { pointerId: 42, clientX: x, clientY: 120 });
     if (scenario === 'unlisted resource' || scenario === 'different category') {
-      expect(target.closest('[data-gantt-lane]')).toHaveStyle({ opacity: '0.3' });
+      expect(target.closest('[data-gantt-lane]')!.querySelector(':scope > [data-gantt-lane-dim]')).toHaveStyle({ opacity: '0.7' });
       expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
       fireEvent.pointerUp(bar, { pointerId: 42, clientX: x, clientY: 120 });
       expect(mocks.resourceMove).not.toHaveBeenCalled();
