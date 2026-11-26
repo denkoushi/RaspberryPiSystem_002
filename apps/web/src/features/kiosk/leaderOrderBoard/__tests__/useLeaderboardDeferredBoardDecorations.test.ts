@@ -1,4 +1,3 @@
-import { focusManager } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -96,10 +95,7 @@ describe('buildLeaderboardDecorationFetchBatches', () => {
 });
 
 const postDecorations = vi.hoisted(() => vi.fn());
-const getArrivalRevision = vi.hoisted(() => vi.fn());
 vi.mock('../../../../api/client', () => ({
-  api: { get: getArrivalRevision },
-  getResolvedClientKey: () => 'client-1',
   postKioskProductionScheduleLeaderboardDecorations: postDecorations
 }));
 
@@ -130,56 +126,7 @@ const initialOptions = {
 };
 
 describe('useLeaderboardDeferredBoardDecorations worker', () => {
-  beforeEach(() => {
-    postDecorations.mockReset();
-    getArrivalRevision.mockReset();
-  });
-
-  it('refreshes decorations only when the arrival revision changes and the worker is idle', async () => {
-    vi.useFakeTimers();
-    focusManager.setFocused(true);
-    let revision = 'first';
-    const refresh = deferred<ProductionScheduleLeaderboardDecorationsResponse>();
-    getArrivalRevision.mockImplementation(async () => ({ data: { revision } }));
-    postDecorations.mockResolvedValue(decorations(['r-1']))
-      .mockResolvedValueOnce(decorations(['r-1']))
-      .mockReturnValueOnce(refresh.promise);
-    const hook = renderHook(useLeaderboardDeferredBoardDecorations, { initialProps: initialOptions });
-    const tick = () => act(() => vi.advanceTimersByTimeAsync(15_000));
-    try {
-      await act(async () => {});
-      expect(getArrivalRevision).toHaveBeenCalledOnce();
-      expect(postDecorations).toHaveBeenCalledOnce();
-      await tick();
-      expect(postDecorations).toHaveBeenCalledOnce();
-
-      revision = 'second';
-      await tick();
-      expect(postDecorations).toHaveBeenCalledTimes(2);
-      expect(postDecorations).toHaveBeenLastCalledWith({ rowIds: ['r-1'] });
-
-      revision = 'third';
-      await tick();
-      expect(postDecorations).toHaveBeenCalledTimes(2);
-      await act(async () => refresh.resolve(decorations(['r-1'])));
-      await tick();
-      expect(postDecorations).toHaveBeenCalledTimes(3);
-      await tick();
-      expect(postDecorations).toHaveBeenCalledTimes(3);
-
-      const pollCount = getArrivalRevision.mock.calls.length;
-      focusManager.setFocused(false);
-      await tick();
-      hook.rerender({ ...initialOptions, pauseRefetch: true });
-      focusManager.setFocused(true);
-      await tick();
-      expect(getArrivalRevision).toHaveBeenCalledTimes(pollCount);
-    } finally {
-      hook.unmount();
-      focusManager.setFocused(undefined);
-      vi.useRealTimers();
-    }
-  });
+  beforeEach(() => { postDecorations.mockReset(); });
 
   it('accepts in-flight priority/background results across appends and fetches each row only once', async () => {
     const priority = deferred<ProductionScheduleLeaderboardDecorationsResponse>();

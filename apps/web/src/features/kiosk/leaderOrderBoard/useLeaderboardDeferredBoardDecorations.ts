@@ -1,9 +1,6 @@
-import { focusManager } from '@tanstack/react-query';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  api,
-  getResolvedClientKey,
   postKioskProductionScheduleLeaderboardDecorations,
   type LeaderboardBoardResourceSliceResponse,
   type ProductionScheduleRow,
@@ -26,7 +23,6 @@ import {
 const LEADER_BOARD_DECORATION_PRIORITY_ROWS_PER_RESOURCE = 8;
 const LEADER_BOARD_DECORATION_BACKGROUND_BATCH_SIZE = 80;
 const LEADER_BOARD_DECORATION_BACKGROUND_DELAY_MS = 80;
-const ARRIVAL_REVISION_POLL_MS = 15_000;
 
 function getLeaderboardRowResourceCd(row: Pick<ProductionScheduleRow, 'rowData'>): string {
   const data = (row.rowData ?? {}) as Record<string, unknown>;
@@ -160,8 +156,6 @@ export function useLeaderboardDeferredBoardDecorations(options: {
   const paramsKeyRef = useRef<string | null>(null);
   const fetchRunIdRef = useRef(0);
   const workerRunningRef = useRef(false);
-  const decorationRequestsInFlight = useRef(0);
-  const lastArrivalRevision = useRef<{ clientKey: ReturnType<typeof getResolvedClientKey>; revision: string } | undefined>(undefined);
   const cancelWorkerRef = useRef<() => void>(() => {});
   const attemptedProgressByRowIdRef = useRef<Map<string, string>>(new Map());
 
@@ -191,46 +185,6 @@ export function useLeaderboardDeferredBoardDecorations(options: {
     );
     setDecorationFetchEpoch((n) => n + 1);
   }, []);
-
-  useLayoutEffect(() => {
-    if (!scheduleEnabled || pauseRefetch) return;
-    let pending: AbortController | undefined;
-
-    const poll = async () => {
-      if (pending || !focusManager.isFocused()) return;
-      const clientKey = getResolvedClientKey();
-      const request = new AbortController();
-      pending = request;
-      try {
-        const { data } = await api.get<{ revision: string }>(
-          '/kiosk/production-schedule/grinding-planning-board/arrival-revision',
-          {
-            signal: request.signal, timeout: ARRIVAL_REVISION_POLL_MS, kioskTelemetry: 'background',
-            headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' }
-          }
-        );
-        if (request.signal.aborted || !focusManager.isFocused() ||
-            clientKey !== getResolvedClientKey() || typeof data?.revision !== 'string') return;
-
-        const previous = lastArrivalRevision.current;
-        if (previous && previous.clientKey === clientKey) {
-          if (previous.revision === data.revision || workerRunningRef.current || decorationRequestsInFlight.current > 0) return;
-          const rows = displayBoardRef.current?.rows;
-          if (!rows?.length) return;
-          markDecorationRowsStale(rows.map(getLeaderboardRowId));
-        }
-        lastArrivalRevision.current = { clientKey, revision: data.revision };
-      } catch {
-        // Retry the revision check on the next poll.
-      } finally {
-        pending = undefined;
-      }
-    };
-
-    void poll();
-    const timer = setInterval(() => { void poll(); }, ARRIVAL_REVISION_POLL_MS);
-    return () => { clearInterval(timer); pending?.abort(); };
-  }, [activeDeviceScopeKey, markDecorationRowsStale, pauseRefetch, scheduleEnabled]);
 
   const rowProgressKey = useMemo(() => {
     const rows = displayBoard?.rows ?? [];
@@ -323,13 +277,12 @@ export function useLeaderboardDeferredBoardDecorations(options: {
       for (const rowId of rowIds) {
         attemptedProgressByRowIdRef.current.set(rowId, buildLeaderboardRowDecorationProgressToken(rowsById.get(rowId)!));
       }
-      decorationRequestsInFlight.current += 1;
       const response = await postKioskProductionScheduleLeaderboardDecorations({
         rowIds: [...rowIds],
         ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
           ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
           : {})
-      }).finally(() => { decorationRequestsInFlight.current -= 1; });
+      });
       if (cancelled || runId !== fetchRunIdRef.current) return false;
       rememberFetchedRows(rowIds);
       setAccumulated((prev) => mergeLeaderboardDecorationsIntoAccumulator(prev, response));
