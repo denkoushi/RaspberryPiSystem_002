@@ -20,6 +20,7 @@ export type InspectionDrawingSourceTemplateDraft = {
   sourceProcessGroup: PartMeasurementProcessGroup;
   sourceResourceCd: string;
   sourceFkojun?: string;
+  sourceVisualTemplateId?: string | null;
 };
 
 export type InspectionDrawingCreateDraftForm = {
@@ -310,9 +311,38 @@ export function templateToCreateDraft(template: PartMeasurementTemplateDto): Ins
       sourceFhincd: template.fhincd,
       sourceProcessGroup: processGroup,
       sourceResourceCd: template.resourceCd,
-      sourceFkojun: template.fkojun
+      sourceFkojun: template.fkojun,
+      sourceVisualTemplateId: template.visualTemplateId?.trim() || null
     }
   };
+}
+
+/**
+ * 人が確定したテンプレート(編集中のもの、雛形の元)と同じ図面・同じ工程を開いているか。
+ * このときは AI 案を重ねない。図面か工程を変えれば AI 案を出す。
+ */
+export function isConfirmedInspectionDrawing(params: {
+  isEditing: boolean;
+  template: Pick<PartMeasurementTemplateDto, 'visualTemplateId' | 'processGroup'> | null;
+  sourceDraft: InspectionDrawingSourceTemplateDraft | null;
+  visualTemplateId: string | null;
+  processGroup: PartMeasurementProcessGroup;
+}): boolean {
+  if (params.isEditing && !params.template) return true;
+  const confirmed = params.isEditing && params.template
+    ? {
+        visualTemplateId: params.template.visualTemplateId?.trim() || null,
+        processGroup: params.template.processGroup === 'grinding' ? 'grinding' : 'cutting'
+      }
+    : params.sourceDraft
+      ? { visualTemplateId: params.sourceDraft.sourceVisualTemplateId ?? null, processGroup: params.sourceDraft.sourceProcessGroup }
+      : null;
+  return (
+    confirmed !== null &&
+    confirmed.visualTemplateId !== null &&
+    confirmed.visualTemplateId === params.visualTemplateId &&
+    confirmed.processGroup === params.processGroup
+  );
 }
 
 export function resolveInspectionDrawingCreateKeyCollision(params: {

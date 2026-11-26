@@ -34,6 +34,7 @@ export {
   suggestInspectionDrawingTemplateName,
   templateBusinessKeysEqual,
   templateItemsToDraftDrawingPoints,
+  isConfirmedInspectionDrawing,
   templateToCreateDraft,
   type InspectionDrawingCreateDraftForm,
   type InspectionDrawingCreateDirtySnapshot,

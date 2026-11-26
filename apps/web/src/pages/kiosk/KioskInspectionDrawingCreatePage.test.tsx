@@ -292,15 +292,21 @@ describe('KioskInspectionDrawingCreatePage', () => {
     expect(apiMocks.placementProposals).toHaveBeenLastCalledWith('visual-1', 'grinding', 'test-client-key');
   });
 
-  it('does not request AI proposals for a saved template or a copy of one', async () => {
+  it('does not request AI proposals for a saved template', async () => {
     await renderPage(editPath);
     expect(apiMocks.getTemplate).toHaveBeenCalledWith('template-1', 'test-client-key');
     expect(apiMocks.placementProposals).not.toHaveBeenCalled();
-    cleanup();
+  });
 
+  it('requests AI proposals for a copied template only after the process changes', async () => {
     await renderPage(`${createPath}?sourceTemplateId=template-1`);
-    expect(apiMocks.getTemplate).toHaveBeenLastCalledWith('template-1', 'test-client-key');
+    expect(apiMocks.getTemplate).toHaveBeenCalledWith('template-1', 'test-client-key');
     expect(apiMocks.placementProposals).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '研削' }));
+    });
+    expect(apiMocks.placementProposals).toHaveBeenLastCalledWith('visual-1', 'grinding', 'test-client-key');
   });
 
   it('loads an edit route into locked metadata, editable fields and the selected marker', async () => {

@@ -58,6 +58,7 @@ import {
   resolveInspectionDrawingCreateSaveBlockReason,
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
+  isConfirmedInspectionDrawing,
   templateToCreateDraft,
   useInspectionDrawingUnsavedChangesGuard
 } from '../../features/part-measurement/inspection-drawing';
@@ -273,10 +274,12 @@ export function KioskInspectionDrawingCreatePage() {
     visualSource === 'pickExisting' && selectedVisualTemplateId?.trim()
       ? selectedVisualTemplateId
       : null;
-  // 保存済みテンプレートと、それを雛形にした新規は人が確定した丸数字なので AI 案を重ねない。
+  const showsConfirmedDrawing = isConfirmedInspectionDrawing({
+    isEditing, template, sourceDraft: sourceTemplateDraft, visualTemplateId: visualTemplateIdForOcr, processGroup
+  });
   const placement = useInspectionDrawingPlacementProposals({
     visualTemplateId: visualTemplateIdForOcr, processGroup, clientKey, points, onPointsChange: setPoints,
-    enabled: Boolean(canvasImageUrl) && !contentReadOnly && mode !== 'guidedTrial' && !isEditing && !sourceTemplateDraft,
+    enabled: Boolean(canvasImageUrl) && !contentReadOnly && mode !== 'guidedTrial' && !showsConfirmedDrawing,
     onSelectPoint: setSelectedPointId, onPlaceMode: () => setMode('place')
   });
   const visualOcrPending =
