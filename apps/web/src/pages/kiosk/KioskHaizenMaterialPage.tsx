@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useHaizenMaterialArrival, useHaizenOverview, useHaizenShelves, useHaizenUnplacedParts } from '../../api/hooks/haizen-overview';
 import { MaterialArrivalBadge } from '../../components/kiosk/MaterialArrivalBadge';
 import { buildHaizenDueRows, buildHaizenUnplacedRows, materialArrivalKey } from '../../features/kiosk/haizen/haizenDueRows';
-import { timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
+import { formatHaizenClock, formatHaizenPlacedAt, timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
 import { TrailIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { invButton, invButtonGhost, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
@@ -12,8 +12,6 @@ import { normalizeMachineName } from '../../features/kiosk/productionSchedule/ma
 import type { HaizenOverviewRow } from '../../api/domains/mobile-placement';
 
 const emptyRows: HaizenOverviewRow[] = [];
-const time = (value: number | string) => new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
-const placedTime = (value: string) => `${new Date(value).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })} ${time(value)}`;
 const columns = ['照合', '材料', '棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '納期', '置いた日時', '足取り'];
 
 export function KioskHaizenMaterialPage() {
@@ -40,7 +38,7 @@ export function KioskHaizenMaterialPage() {
       <Link to="/kiosk/inventory/haizen" className={invButtonGhost}>‹ 配膳の場所へ</Link>
       <h1 className={`${invTitle} shrink-0`}>納期と材料</h1>
       <span className="min-w-0 flex-1" />
-      <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{updatedAt ? `${time(updatedAt)} 更新` : '読込中…'}</span>
+      <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{updatedAt ? `${formatHaizenClock(updatedAt)} 更新` : '読込中…'}</span>
     </div>
     {failed && <div role="alert" className="flex items-center gap-3 text-inv-red">配膳情報を更新できません。{!unavailable && '前回取得した情報を表示しています。'}<button type="button" className={invButton} onClick={() => { void overview.refetch(); void master.refetch(); void unplaced.refetch(); }}>再読込</button></div>}
     {material.isError && <div role="alert" className="flex items-center gap-3 text-inv-red">材料の入荷状況を取得できません。<button type="button" className={invButton} onClick={() => void material.refetch()}>再読込</button></div>}
@@ -64,7 +62,7 @@ export function KioskHaizenMaterialPage() {
               <td className="min-w-[12em] px-3.5 py-1 text-[22px] font-black">{row.fhinmei || '品名未登録'}</td>
               {([['fseiban', row.fseiban], ['fhincd', row.fhincd], ['machineName', normalizeMachineName(row.machineName)], ['order', row.manufacturingOrderBarcodeRaw], ['branch', row.branchNo === null ? '—' : row.branchNo === 0 ? 'なし' : String(row.branchNo)]] as const).map(([kind, value]) => <td key={kind} className={`whitespace-nowrap px-3.5 py-1 font-mono text-[19px] font-bold ${sameSeiban && (kind === 'fseiban' || kind === 'machineName') ? 'text-transparent' : ''}`}>{value || '—'}</td>)}
               <td className={`whitespace-nowrap px-3.5 py-1 font-mono text-[19px] font-bold ${sameSeiban ? 'text-transparent' : ''}`}>{row.dueDate ? <time dateTime={row.dueDate}>{row.dueDate}</time> : '—'}</td>
-              <td className="whitespace-nowrap px-3.5 py-1 text-right text-sm text-inv-muted">{row.unplaced ? '—' : <><strong className="mr-2 text-xl text-inv-text">{timeSincePlaced(row.updatedAt, now)}</strong><time dateTime={row.updatedAt}>{placedTime(row.updatedAt)}</time></>}</td>
+              <td className="whitespace-nowrap px-3.5 py-1 text-right text-sm text-inv-muted">{row.unplaced ? '—' : <><strong className="mr-2 text-xl text-inv-text">{timeSincePlaced(row.updatedAt, now)}</strong><time dateTime={row.updatedAt}>{formatHaizenPlacedAt(row.updatedAt)}</time></>}</td>
               <td className="px-3.5 py-1">{!row.unplaced && <Link className={`${invButtonGhost} h-[30px] px-3 text-[13px]`} to={`/kiosk/inventory/haizen/trail?order=${encodeURIComponent(row.manufacturingOrderBarcodeRaw)}`} onClick={event => event.stopPropagation()}><TrailIcon />足取り</Link>}</td>
             </tr>;
           })}</tbody>
