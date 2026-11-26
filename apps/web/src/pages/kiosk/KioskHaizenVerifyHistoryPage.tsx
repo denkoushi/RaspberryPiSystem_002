@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { useHaizenShelves } from '../../api/hooks/haizen-overview';
 import { useHaizenVerifyRecords } from '../../api/hooks/haizen-records';
-import { timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
+import { formatHaizenClock, timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
 import { effectiveVerifyResult, RecheckBadge, verifyResults } from '../../features/kiosk/haizen/haizenVerifyResult';
 import { TrailIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { invButton, invButtonGhost, invCard, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
@@ -13,10 +13,9 @@ import { ResourceShelfKioskDialog } from '../../features/mobile-placement/shelfM
 
 import type { HaizenVerifyRecord } from '../../features/kiosk/haizen/haizenRecordTypes';
 
-const time = (value: number | string) => new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
-const dateTime = (value: string) => `${new Date(value).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })} ${time(value)}`;
+const dateTime = (value: string) => `${new Date(value).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })} ${formatHaizenClock(value)}`;
 const results = verifyResults;
-const recheckTime = (value: string) => { const d = new Date(value); return `${d.getMonth() + 1}/${d.getDate()} ${time(value)}`; };
+const recheckTime = (value: string) => { const d = new Date(value); return `${d.getMonth() + 1}/${d.getDate()} ${formatHaizenClock(value)}`; };
 
 export function KioskHaizenVerifyHistoryPage() {
   const [days, setDays] = useState<1 | 7 | 30>(7);
@@ -48,7 +47,7 @@ export function KioskHaizenVerifyHistoryPage() {
         <button type="button" aria-label="1字消す" className={`${invButton} w-14 px-0 text-lg`} onClick={() => setText(text.slice(0, -1))}>⌫</button>
         <button type="button" aria-label="全部消す" className={`${invButton} w-14 px-0 text-lg`} onClick={() => setText('')}>C</button>
       </div>
-      <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{records.dataUpdatedAt ? `${time(records.dataUpdatedAt)} 更新` : '読込中…'}</span>
+      <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{records.dataUpdatedAt ? `${formatHaizenClock(records.dataUpdatedAt)} 更新` : '読込中…'}</span>
     </div>
     <div className="flex shrink-0 flex-wrap gap-2">
       <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto whitespace-nowrap">

@@ -3,7 +3,9 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom';
 
 import { useDeleteHaizenPlacement, useHaizenOverview, useHaizenShelves, useHaizenUnplacedParts } from '../../api/hooks/haizen-overview';
-import { matchesHaizenSearch, normalizeHaizenSearch, parseHaizenSpeech, searchKinds, timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
+import { buildHaizenDueRows, buildHaizenUnplacedRows, formatHaizenBranch, haizenNewest } from '../../features/kiosk/haizen/haizenDueRows';
+import { HaizenListTableRow } from '../../features/kiosk/haizen/HaizenListTableRow';
+import { formatHaizenClock, formatHaizenPlacedAt, matchesHaizenSearch, normalizeHaizenSearch, parseHaizenSpeech, searchKinds, timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
 import { HaizenShelfHoverCard } from '../../features/kiosk/haizen/HaizenShelfHoverCard';
 import { HaizenShelfPhoto } from '../../features/kiosk/haizen/HaizenShelfPhoto';
 import { useHaizenVoiceSearch } from '../../features/kiosk/haizen/useHaizenVoiceSearch';
@@ -13,18 +15,16 @@ import { ASCENDING_DIGIT_KEYS } from '../../features/kiosk/KioskDigitTenkey';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 import type { HaizenOverviewRow, MobilePlacementRegisteredShelfEntry } from '../../api/domains/mobile-placement';
+import type { HaizenListRow } from '../../features/kiosk/haizen/haizenDueRows';
 import type { HaizenSearch } from '../../features/kiosk/haizen/haizenSearch';
 import type { InventoryThumbnailSize } from '../../features/kiosk/inventory/InventoryItemGrid';
 
-type HaizenListRow = HaizenOverviewRow & { unplaced?: boolean };
 const emptyRows: HaizenOverviewRow[] = [];
 const gridSizes = {
   small: 'grid-cols-[repeat(auto-fill,minmax(170px,1fr))]',
   medium: 'grid-cols-[repeat(auto-fill,minmax(250px,1fr))]',
   large: 'grid-cols-[repeat(auto-fill,minmax(360px,1fr))]'
 };
-const time = (value: number | string) => new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
-const placedTime = (value: string) => `${new Date(value).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })} ${time(value)}`;
 
 const UNREGISTERED_SHELF_LABEL = '棚マスタ未登録';
 
@@ -89,28 +89,12 @@ export function KioskHaizenPage() {
   const hitIds = new Set(hits.map(row => `${row.source}:${row.id}`));
   const hitShelves = new Set(hits.map(row => row.shelfCodeRaw));
   const visibleShelves = shelves.filter(shelf => !query || hitShelves.has(shelf.shelfCodeRaw));
-  const newest = (a: HaizenOverviewRow, b: HaizenOverviewRow) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt) || a.id.localeCompare(b.id);
-  const unplacedRows: HaizenListRow[] = includeUnplaced ? (unplaced.data ?? []).map(part => ({
-    ...part, id: `${part.fseiban}:${part.productNo}`, source: 'branch', unplaced: true,
-    manufacturingOrderBarcodeRaw: part.productNo, shelfCodeRaw: '', branchNo: null, updatedAt: '', sendOutDate: null
-  })) : [];
-  const dueRows: HaizenListRow[] = [...rows, ...unplacedRows];
-  const groupDates = new Map<string | null, string | null>();
-  for (const row of dueRows) {
-    const date = groupDates.get(row.fseiban);
-    if (!groupDates.has(row.fseiban) || (row.dueDate && (!date || row.dueDate < date))) groupDates.set(row.fseiban, row.dueDate);
-  }
+  const unplacedRows: HaizenListRow[] = includeUnplaced ? buildHaizenUnplacedRows(unplaced.data ?? []) : [];
   const listRows: HaizenListRow[] = (listOrder === 'shelf'
     ? shelves.flatMap(shelf => grouped.byShelf.get(shelf.shelfCodeRaw) ?? [])
     : listOrder === 'due'
-      ? dueRows.sort((a, b) => {
-        const aDate = groupDates.get(a.fseiban), bDate = groupDates.get(b.fseiban);
-        const dateOrder = aDate === bDate ? 0 : !aDate ? 1 : !bDate ? -1 : aDate.localeCompare(bDate);
-        const groupOrder = dateOrder || (a.fseiban ?? '').localeCompare(b.fseiban ?? '');
-        const rank = (row: HaizenListRow) => row.unplaced ? (row.verified ? 1 : 0) : 2;
-        return groupOrder || rank(a) - rank(b) || (a.unplaced && b.unplaced ? a.manufacturingOrderBarcodeRaw.localeCompare(b.manufacturingOrderBarcodeRaw) : newest(a, b));
-      })
-      : [...rows].sort(newest)
+      ? buildHaizenDueRows(rows, unplacedRows)
+      : [...rows].sort(haizenNewest)
   ).filter(row => !query || matchesHaizenSearch(row, query));
   const unplacedHits = query ? unplacedRows.filter(row => matchesHaizenSearch(row, query)) : [];
   const selected = shelves.find(shelf => shelf.shelfCodeRaw === selectedCode);
@@ -176,11 +160,12 @@ export function KioskHaizenPage() {
           {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-11 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => setViewMode(view)}><ViewIcon size={24} /></button>)}
         </div>
       </>}
-      <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{updatedAt ? `${time(updatedAt)} 更新` : '読込中…'}</span>
+      <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{updatedAt ? `${formatHaizenClock(updatedAt)} 更新` : '読込中…'}</span>
     </div>
     <nav aria-label="ほかの画面" className="flex shrink-0 gap-2">
       <Link to="/kiosk/inventory/haizen/verify-history" className={invButtonGhost}><VerifyLogIcon />照合の記録</Link>
       <Link to="/kiosk/inventory/haizen/trail" className={invButtonGhost}><TrailIcon />足取り</Link>
+      <Link to="/kiosk/inventory/haizen/materials" className={invButtonGhost}>納期と材料</Link>
     </nav>
     {voice.error && <p role="alert" className="text-inv-red">{voice.error}。番号を入力してください。</p>}
     {(overview.isError || master.isError || (includeUnplaced && unplaced.isError)) && <div role="alert" className="flex items-center gap-3 text-inv-red">配膳情報を更新できません。{!unavailable && '前回取得した情報を表示しています。'}<button type="button" className={invButton} onClick={() => { void overview.refetch(); void master.refetch(); if (includeUnplaced) void unplaced.refetch(); }}>再読込</button></div>}
@@ -199,13 +184,13 @@ export function KioskHaizenPage() {
           {items.length === 0 && <p className="py-12 text-center text-inv-muted">空き — この棚には何も置かれていません</p>}
           {items.map(row => {
             const siblings = [...new Set((grouped.byOrder.get(row.manufacturingOrderBarcodeRaw) ?? []).filter(other => other.branchNo !== row.branchNo && other.shelfCodeRaw !== row.shelfCodeRaw).map(other => other.shelfCodeRaw))];
-            return <article key={`${row.source}:${row.id}`} aria-label={`${row.fhinmei || '品名未登録'} 分配${row.branchNo === 0 ? 'なし' : row.branchNo ?? '—'}`} className={`${invCard} grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-4 gap-y-2 bg-inv-s2 px-4 py-3 ${hitIds.has(`${row.source}:${row.id}`) ? 'border-2 border-inv-cyan' : ''}`}>
+            return <article key={`${row.source}:${row.id}`} aria-label={`${row.fhinmei || '品名未登録'} 分配${formatHaizenBranch(row.branchNo)}`} className={`${invCard} grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-4 gap-y-2 bg-inv-s2 px-4 py-3 ${hitIds.has(`${row.source}:${row.id}`) ? 'border-2 border-inv-cyan' : ''}`}>
               <h3 className="break-words text-[22px] font-black">{row.fhinmei || '品名未登録'}</h3>
-              <div className="text-right text-sm tabular-nums text-inv-muted"><strong className="text-2xl text-inv-text">{timeSincePlaced(row.updatedAt, now)}</strong><br /><time dateTime={row.updatedAt}>{placedTime(row.updatedAt)}</time></div>
+              <div className="text-right text-sm tabular-nums text-inv-muted"><strong className="text-2xl text-inv-text">{timeSincePlaced(row.updatedAt, now)}</strong><br /><time dateTime={row.updatedAt}>{formatHaizenPlacedAt(row.updatedAt)}</time></div>
               <Link className={`${invButton} h-12`} to={`/kiosk/inventory/haizen/trail?order=${encodeURIComponent(row.manufacturingOrderBarcodeRaw)}`}><TrailIcon />足取り</Link>
               <button type="button" aria-label="消す" disabled={deletion.isPending} className="flex h-12 w-12 items-center justify-center rounded-xl border border-inv-line2 bg-inv-s1 text-xl text-inv-muted hover:border-inv-red hover:text-inv-red disabled:opacity-40" onClick={() => setConfirmId(`${row.source}:${row.id}`)}>🗑</button>
               <dl className="col-span-full flex flex-wrap gap-x-5 gap-y-2">
-                {([['fseiban', '製番', row.fseiban], ['fhincd', '品番', row.fhincd], ['machineName', '機種名', normalizeMachineName(row.machineName)], ['order', '製造オーダー', row.manufacturingOrderBarcodeRaw], ['branch', '分配', row.branchNo === null ? '—' : row.branchNo === 0 ? 'なし' : String(row.branchNo)]] as const).map(([kind, label, value]) => <div key={kind} className="flex items-baseline gap-2"><dt className="text-sm text-inv-muted">{label}</dt><dd className="break-all font-mono text-lg font-bold">{hitIds.has(`${row.source}:${row.id}`) && query?.kind === kind ? <mark className="rounded bg-inv-cyan px-1 text-inv-cyan-ink">{value || '—'}</mark> : value || '—'}</dd></div>)}
+                {([['fseiban', '製番', row.fseiban], ['fhincd', '品番', row.fhincd], ['machineName', '機種名', normalizeMachineName(row.machineName)], ['order', '製造オーダー', row.manufacturingOrderBarcodeRaw], ['branch', '分配', formatHaizenBranch(row.branchNo)]] as const).map(([kind, label, value]) => <div key={kind} className="flex items-baseline gap-2"><dt className="text-sm text-inv-muted">{label}</dt><dd className="break-all font-mono text-lg font-bold">{hitIds.has(`${row.source}:${row.id}`) && query?.kind === kind ? <mark className="rounded bg-inv-cyan px-1 text-inv-cyan-ink">{value || '—'}</mark> : value || '—'}</dd></div>)}
               </dl>
               {siblings.length > 0 && <div className="col-span-full flex flex-wrap items-center gap-2 text-sm text-inv-muted">分けて置いた残りは{siblings.map(code => <button type="button" key={code} className={invButtonGhost} onClick={() => openShelf(code)}>{shelves.find(shelf => shelf.shelfCodeRaw === code)?.displayLabel || code}</button>)}</div>}
               {confirmId === `${row.source}:${row.id}` && <div className="col-span-full flex flex-wrap items-center gap-3 border-t border-inv-line pt-2">
@@ -227,17 +212,7 @@ export function KioskHaizenPage() {
             const sameShelf = listOrder === 'shelf' && rowIndex > 0 && listRows[rowIndex - 1].shelfCodeRaw === row.shelfCodeRaw;
             const sameSeiban = listOrder === 'due' && rowIndex > 0 && listRows[rowIndex - 1].fseiban === row.fseiban;
             const boundary = rowIndex > 0 && ((listOrder === 'shelf' && !sameShelf) || (listOrder === 'due' && !sameSeiban));
-            return <tr key={`${row.unplaced ? 'unplaced' : row.source}:${row.id}`} onClick={row.unplaced ? undefined : () => openShelf(row.shelfCodeRaw)} className={`border-inv-line ${row.unplaced ? 'text-inv-muted' : 'cursor-pointer hover:bg-inv-cyan/10'} ${boundary ? 'border-t-2' : 'border-t'} ${query ? 'bg-inv-cyan/10' : ''}`}>
-              <td className="px-3.5 py-1"><span aria-label={row.verified ? '照合済み' : '未照合'} className={`flex h-7 w-7 items-center justify-center rounded border-2 text-lg font-bold ${row.verified ? 'border-inv-green bg-inv-green text-inv-green-ink' : 'border-dashed border-inv-muted'}`}>{row.verified ? '✓' : null}</span></td>
-              <td className="px-3.5 py-1 font-mono text-[20px] font-bold">
-                {row.unplaced ? <span className="block h-7 w-24 rounded border-2 border-dashed border-inv-amber" /> : <button type="button" aria-label={`棚 ${row.shelfCodeRaw} ${label}`} className={`rounded text-left focus-visible:text-inv-text ${sameShelf ? 'text-transparent' : ''}`} onClick={event => { event.stopPropagation(); openShelf(row.shelfCodeRaw); }}>{label}</button>}
-              </td>
-              <td className={`whitespace-nowrap px-3.5 py-1 text-[22px] font-black ${query ? 'text-inv-cyan' : ''}`}>{row.fhinmei || '品名未登録'}</td>
-              {([['fseiban', row.fseiban], ['fhincd', row.fhincd], ['machineName', normalizeMachineName(row.machineName)], ['order', row.manufacturingOrderBarcodeRaw], ['branch', row.branchNo === null ? '—' : row.branchNo === 0 ? 'なし' : String(row.branchNo)]] as const).map(([kind, value]) => <td key={kind} className={`px-3.5 py-1 font-mono text-[19px] font-bold ${sameSeiban && (kind === 'fseiban' || kind === 'machineName') ? 'text-transparent' : ''}`}>{query?.kind === kind && !(sameSeiban && (kind === 'fseiban' || kind === 'machineName')) ? <mark className="rounded bg-inv-cyan px-1 text-inv-cyan-ink">{value || '—'}</mark> : value || '—'}</td>)}
-              <td className={`whitespace-nowrap px-3.5 py-1 font-mono text-[19px] font-bold ${sameSeiban ? 'text-transparent' : ''}`}>{row.dueDate ? <time dateTime={row.dueDate}>{row.dueDate}</time> : '—'}</td>
-              <td className="whitespace-nowrap px-3.5 py-1 text-right text-sm text-inv-muted">{row.unplaced ? '—' : <><strong className="mr-2 text-xl text-inv-text">{timeSincePlaced(row.updatedAt, now)}</strong><time dateTime={row.updatedAt}>{placedTime(row.updatedAt)}</time></>}</td>
-              <td className="px-3.5 py-1">{!row.unplaced && <Link className={`${invButtonGhost} h-[30px] px-3 text-[13px]`} to={`/kiosk/inventory/haizen/trail?order=${encodeURIComponent(row.manufacturingOrderBarcodeRaw)}`} onClick={event => event.stopPropagation()}><TrailIcon />足取り</Link>}</td>
-            </tr>;
+            return <HaizenListTableRow key={`${row.unplaced ? 'unplaced' : row.source}:${row.id}`} row={row} shelfLabel={label} now={now} onOpenShelf={openShelf} boundary={boundary} sameShelf={sameShelf} sameSeiban={sameSeiban} query={query} />;
           })}</tbody>
         </table>
       </div> : <div aria-label="棚の一覧" className={`grid auto-rows-max content-start gap-3 ${gridSizes[size]}`}>

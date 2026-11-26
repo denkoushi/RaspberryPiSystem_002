@@ -1,5 +1,6 @@
 import { listHaizenUnplacedParts } from '../../services/mobile-placement/schedule-seiban-status.service.js';
 import { listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
+import { listHaizenMaterialArrival } from '../../services/mobile-placement/haizen-material-arrival.service.js';
 import { extractManufacturingOrder10 } from '../../services/mobile-placement/genpyo-slip/genpyo-mo-extract.js';
 import { buildActualSlipOcrPreviewSafe } from '../../services/mobile-placement/actual-slip-ocr-preview.js';
 import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-cache.js';
@@ -51,6 +52,10 @@ import {
   listShelfLayoutSummary
 } from '../../services/mobile-placement/shelf-layout-read.service.js';
 import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
+
+const haizenMaterialArrivalBodySchema = z.object({
+  parts: z.array(z.object({ fseiban: z.string().min(1).max(100), fhincd: z.string().min(1).max(100) })).max(6000)
+});
 
 const snapFseibanTokensBodySchema = z.object({
   tokens: z.array(z.string().min(1).max(32)).min(1).max(50),
@@ -298,6 +303,12 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   app.get('/mobile-placement/haizen-overview/unplaced-parts', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listHaizenUnplacedParts();
+  });
+
+  app.post('/mobile-placement/haizen-material-arrival', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const body = haizenMaterialArrivalBodySchema.parse(request.body);
+    return listHaizenMaterialArrival(body.parts);
   });
 
   /**

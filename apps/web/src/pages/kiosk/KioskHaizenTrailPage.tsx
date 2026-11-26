@@ -4,13 +4,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 
 import { useHaizenShelves } from '../../api/hooks/haizen-overview';
 import { useHaizenOrderTrail } from '../../api/hooks/haizen-records';
+import { formatHaizenClock } from '../../features/kiosk/haizen/haizenSearch';
 import { invButton, invButtonGhost, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
 import { ASCENDING_DIGIT_KEYS } from '../../features/kiosk/KioskDigitTenkey';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 import type { HaizenOrderTrail } from '../../features/kiosk/haizen/haizenRecordTypes';
 
-const time = (value: number | string) => new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
 const sourceColors = { 棚: 'bg-inv-amber', 照合: 'bg-inv-violet', 工程: 'bg-inv-cyan', パレット: 'bg-inv-rose', Zero2W: 'bg-inv-green', 購買: 'bg-inv-muted' };
 const tones = { done: 'border-inv-green text-inv-green', active: 'border-inv-cyan text-inv-cyan', waiting: 'border-inv-amber text-inv-amber', none: 'border-inv-faint text-inv-faint' };
 
@@ -37,7 +37,7 @@ export function KioskHaizenTrailPage() {
         <button type="button" aria-label="1字消す" className={`${invButton} w-14 px-0 text-lg`} onClick={() => setText(text.slice(0, -1))}>⌫</button>
         <button type="button" aria-label="全部消す" className={`${invButton} w-14 px-0 text-lg`} onClick={() => setText('')}>C</button>
       </div>
-      <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{records.dataUpdatedAt ? `${time(records.dataUpdatedAt)} 更新` : '読込中…'}</span>
+      <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{records.dataUpdatedAt ? `${formatHaizenClock(records.dataUpdatedAt)} 更新` : '読込中…'}</span>
     </div>
     {isManufacturingOrderNo(text) && (records.isError ? <p role="alert" className="py-12 text-center text-inv-muted">足取りを取得できません</p> : records.isPending ? <p className="py-12 text-center text-inv-muted">読込中…</p> : !trail ? <p className="py-12 text-center text-inv-muted">一致する品物はありません</p> : <div className="grid min-h-0 flex-1 items-start gap-5 overflow-y-auto lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
       <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-0">
@@ -61,7 +61,7 @@ export function KioskHaizenTrailPage() {
         {days.map(day => <div key={day}>
           <h3 className="sticky top-0 z-10 bg-inv-s1 py-3 text-sm font-bold text-inv-muted">{new Date(`${day}T00:00:00`).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })}</h3>
           {events.filter(event => event.date === day).map(event => <div key={event.id} className={`grid grid-cols-[64px_16px_1fr] items-start gap-3 px-3 py-3 ${event.loose ? 'rounded-[10px] border border-dashed border-inv-line2' : ''}`}>
-            <time dateTime={event.at ?? event.date} className="font-mono tabular-nums text-inv-muted">{event.at ? time(event.at) : '—'}</time>
+            <time dateTime={event.at ?? event.date} className="font-mono tabular-nums text-inv-muted">{event.at ? formatHaizenClock(event.at) : '—'}</time>
             <span className={`mt-1.5 h-3 w-3 rounded-full ${sourceColors[event.source]}`} />
             <div><div className="text-xl font-bold">{event.title}</div><div className="text-sm text-inv-muted">{[event.source, event.processOrder ? `工順 ${event.processOrder}` : null, event.detail].filter(Boolean).join(' ・ ')}</div></div>
           </div>)}
