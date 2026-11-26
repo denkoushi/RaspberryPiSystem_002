@@ -3,12 +3,18 @@ import type ExcelJS from 'exceljs';
 // Merged cells with an empty master throw when ExcelJS reads the follower's text.
 export const cellText = (cell: ExcelJS.Cell): string => cell.master.text;
 
+// A formula cell keeps its computed value in `result`.
+function masterValue(cell: ExcelJS.Cell): unknown {
+  const value = cell.master.value;
+  return value && typeof value === 'object' && 'result' in value ? value.result ?? null : value;
+}
+
+const isoDate = (date: Date): string | null => Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : null;
+
 // ExcelJS renders native date cells as "Fri Feb 07 2025 00:00:00 GMT+0000 (...)"; show them as calendar dates.
 export function displayText(cell: ExcelJS.Cell): string {
-  const value = cell.master.value;
-  const date = value instanceof Date ? value
-    : value && typeof value === 'object' && 'result' in value && value.result instanceof Date ? value.result : null;
-  return date && Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : cellText(cell);
+  const value = masterValue(cell);
+  return (value instanceof Date ? isoDate(value) : null) ?? cellText(cell);
 }
 
 export const normalize = (text: string): string => text.normalize('NFKC').trim();
@@ -55,8 +61,7 @@ export function formulaWithoutResult(cell: ExcelJS.Cell): boolean {
 export function readDate(cell: ExcelJS.Cell, meetingDate: string, date1904: boolean | undefined, onAmbiguous?: () => void, strict = false): {
   date: string | null; marks: string[]; memo: string | null; invalid: boolean;
 } {
-  let value = cell.master.value;
-  if (value && typeof value === 'object' && 'result' in value) value = value.result ?? null;
+  const value = masterValue(cell);
   const text = normalize(cellText(cell));
   const empty = { date: null, marks: [], memo: null, invalid: false };
   const checked = (date: string | null) => date && plausibleDate(date, meetingDate)
@@ -64,7 +69,7 @@ export function readDate(cell: ExcelJS.Cell, meetingDate: string, date1904: bool
   if (!text || text === '無し' || text === '-') return empty;
   if (!strict && /※|発注/.test(text)) return { ...empty, memo: text };
   if (value instanceof Date) {
-    return checked(Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : null);
+    return checked(isoDate(value));
   }
   if (typeof value === 'number') {
     // Excel's 1900 system includes a fictitious leap day (serial 60).
