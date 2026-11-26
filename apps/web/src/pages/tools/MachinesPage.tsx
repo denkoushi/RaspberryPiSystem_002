@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { FormEvent, Fragment, useEffect, useRef, useState } from 'react';
 
+import { machineFactoryLabels } from '../../api/domains/tools';
 import { getApiErrorMessage } from '../../api/errors';
 import { useMachineMutations, useMachines, useMachineResourceChoices } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -293,7 +294,7 @@ export function MachinesPage() {
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.name}</td>
                     <td className="px-2 py-1 font-mono text-sm text-slate-700">{machine.resourceCd ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.shortName ?? '-'}</td>
-                    <td className="px-2 py-1 text-sm text-slate-700">{machine.factory === 'SENDAI' ? '仙台工場' : '三島工場'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{machineFactoryLabels[machine.factory]}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.classification ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.operatingStatus ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.maker ?? '-'}</td>

@@ -2,19 +2,23 @@ import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
 
-import { listMachineMastersForShelfLayout } from './machine-master-query.service.js';
+import { type MachineFactory } from '../tools/machine-factory.js';
+
+import { listResourceMastersWithFactory } from './machine-master-query.service.js';
 import { listRegisteredShelvesFromShelfMaster } from './mobile-placement-shelf-master.service.js';
 
 export async function getResourceShelfAssignments() {
   const [shelves, { machines }, links] = await Promise.all([
     listRegisteredShelvesFromShelfMaster(),
-    listMachineMastersForShelfLayout(),
+    listResourceMastersWithFactory(),
     prisma.mobilePlacementResourceShelf.findMany({
       select: { resourceCd: true, shelf: { select: { shelfCodeRaw: true } } }
     })
   ]);
   const namesByResource = new Map<string, string[]>();
-  for (const { resourceCd, resourceName } of machines) {
+  const factoryByResource = new Map<string, MachineFactory>();
+  for (const { resourceCd, resourceName, factory } of machines) {
+    factoryByResource.set(resourceCd, factory);
     const name = resourceName.trim();
     const names = namesByResource.get(resourceCd) ?? [];
     if (name && !names.includes(name)) names.push(name);
@@ -37,10 +41,12 @@ export async function getResourceShelfAssignments() {
     shelvesByName.set(name, codes);
   }
   const resources = [...namesByResource].sort(([a], [b]) => a.localeCompare(b)).map(([resourceCd, resourceNames]) => {
-    const assigned = saved.get(resourceCd) ?? new Set(resourceNames.flatMap((name) =>
-      [...(shelvesByName.get(normalizeMachineNameForCompare(name)) ?? [])]));
+    const factory = factoryByResource.get(resourceCd) ?? 'MISHIMA';
+    // Shelves are named after Mishima machines, so only Mishima resources fall back to a name match.
+    const assigned = saved.get(resourceCd) ?? new Set(factory === 'MISHIMA' ? resourceNames.flatMap((name) =>
+      [...(shelvesByName.get(normalizeMachineNameForCompare(name)) ?? [])]) : []);
     saved.set(resourceCd, assigned);
-    return { resourceCd, resourceNames, shelfCodes: [...assigned].filter((code) => resourceCdsByShelf.has(code)).sort() };
+    return { resourceCd, factory, resourceNames, shelfCodes: [...assigned].filter((code) => resourceCdsByShelf.has(code)).sort() };
   });
   for (const [resourceCd, codes] of saved) {
     for (const code of codes) resourceCdsByShelf.get(code)?.push(resourceCd);
@@ -49,7 +55,7 @@ export async function getResourceShelfAssignments() {
 }
 
 export async function replaceResourceShelves(resourceCd: string, shelfCodes: string[]) {
-  const { machines } = await listMachineMastersForShelfLayout();
+  const { machines } = await listResourceMastersWithFactory();
   if (!machines.some((machine) => machine.resourceCd === resourceCd)) {
     throw new ApiError(404, '資源CDが見つかりません');
   }
