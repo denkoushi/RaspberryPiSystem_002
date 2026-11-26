@@ -2442,7 +2442,7 @@ describe('forward PlanningBoardGanttView', () => {
     expect(onArrivalChange).toHaveBeenCalledWith(items[1], true);
     const arrived = screen.getByTestId('planning-forward-queue-card-c');
     expect(arrived).toHaveTextContent('10/14(水)');
-    fireEvent.click(within(arrived).getByRole('button', { name: '取り消し' }));
+    fireEvent.click(within(arrived).getByRole('button', { name: '取消・手押1014' }));
     expect(onArrivalChange).toHaveBeenLastCalledWith(items[2], false);
   });
 
@@ -2458,7 +2458,7 @@ describe('forward PlanningBoardGanttView', () => {
     hoverBarAndWaitForQueue(screen.getByTestId('planning-gantt-bar-a'));
     const buttons = (id = 'first') => {
       const card = within(screen.getByTestId(`planning-forward-queue-card-${id}`));
-      expect(card.queryByRole('button', { name: '取り消し' })).not.toBeInTheDocument();
+      expect(card.queryByRole('button', { name: /^取消/ })).not.toBeInTheDocument();
       return [card.getByRole('button', { name: '着', exact: true }), card.getByRole('button', { name: '外', exact: true })];
     };
     expect(buttons()[0].parentElement).toHaveClass('grid', 'grid-cols-2');
