@@ -58,7 +58,7 @@ describe('photo-only shelf master', () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     const shelf = { shelfCodeRaw: 'M1 北', isStructured: true, machineName: 'M1', direction: '北' as const };
     vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [shelf] });
-    vi.mocked(http.get).mockResolvedValue({ data: { resources: [{ resourceCd: '025', resourceNames: ['M1'], shelfCodes: [] }] } });
+    vi.mocked(http.get).mockResolvedValue({ data: { resources: [{ resourceCd: '025', factory: 'MISHIMA', resourceNames: ['M1'], shelfCodes: [] }] } });
     vi.mocked(http.put).mockImplementation(async () => {
       vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [{ ...shelf, resourceCds: ['025'] }] });
       return { data: { resourceCd: '025', shelfCodes: ['M1 北'] } };
