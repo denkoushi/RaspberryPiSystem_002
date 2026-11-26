@@ -4,6 +4,7 @@ import { updateGrindingPlanningBoardResourceMove } from '../../../services/produ
 import { createPlanningTestBar, getPlanningTestBarPartCandidates, mutatePlanningTestBar } from '../../../services/production-schedule/grinding-planning-board/test-bars.js';
 import { createPlanningPair, deletePlanningPair, getPlanningPairCandidates, getPlanningPairStatus, getPlanningPairSuggestions, readPlanningPairs } from '../../../services/production-schedule/grinding-planning-board/pairs.js';
 import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
+import { readGrindingPlanningBoardArrivalRevision } from '../../../services/production-schedule/grinding-planning-board/read-arrival-revision.js';
 import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
 import type { FastifyInstance } from 'fastify';
@@ -245,6 +246,13 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
       ...(query.includePieces ? { includePieces: true } : {}),
       snapshotStore: deps.leaderboardShellSnapshotStore
     });
+  });
+
+  app.get('/kiosk/production-schedule/grinding-planning-board/arrival-revision', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request, reply) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
+    reply.header('Cache-Control', 'no-store');
+    return readGrindingPlanningBoardArrivalRevision(siteKey);
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {

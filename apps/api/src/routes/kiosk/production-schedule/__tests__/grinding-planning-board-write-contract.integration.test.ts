@@ -162,6 +162,8 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
         () => prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.deleteMany({ where: { siteKey: site } }),
         () => prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.deleteMany({ where: { siteKey: site } }),
         () => prisma.productionScheduleGrindingPlanningBoardTestBar.deleteMany({ where: { siteKey: site } }),
+        () => prisma.productionScheduleGrindingPlanningBoardArrival.deleteMany({ where: { siteKey: site } }),
+        () => prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.deleteMany({ where: { siteKey: site } }),
         () => prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: site } }),
         () => prisma.productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: site } }),
         () => prisma.productionScheduleResourceMaster.deleteMany({ where: { resourceName: site } }),
@@ -189,6 +191,35 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
     await prisma?.$disconnect();
     if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = originalDatabaseUrl;
+  });
+
+  it('changes the arrival revision on inserts, updates and deletes in both arrival tables', async () => {
+    const revision = async () => {
+      const response = await request('GET', '/arrival-revision');
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toEqual({ revision: expect.any(String) });
+      return response.json<{ revision: string }>().revision;
+    };
+    const empty = await revision();
+    const key = { csvDashboardId: dashboardId, siteKey: site, itemKey: 'row:arrival-fixture' };
+    const regular = await prisma.productionScheduleGrindingPlanningBoardArrival.create({
+      data: { ...key, arrivalDate: new Date('2026-11-25T00:00:00Z') }
+    });
+    const regularOnly = await revision();
+    expect(regularOnly).not.toBe(empty);
+    const firstProcess = await prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.create({
+      data: { ...key, state: 'arrived', recordedAt: new Date('2026-11-25T00:00:00Z') }
+    });
+    const both = await revision();
+    expect(both).not.toBe(regularOnly);
+    await prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.update({
+      where: { id: firstProcess.id }, data: { state: 'excluded' }
+    });
+    expect(await revision()).not.toBe(both);
+    await prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.delete({ where: { id: firstProcess.id } });
+    expect(await revision()).toBe(regularOnly);
+    await prisma.productionScheduleGrindingPlanningBoardArrival.delete({ where: { id: regular.id } });
+    expect(await revision()).toBe(empty);
   });
 
   it('a: rejects A\'s stale item after B saves, and GET retains B', async () => {
