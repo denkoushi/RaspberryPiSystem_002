@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { Dialog } from '../../../components/ui/Dialog';
 import { isHaizenSpeechAvailable, recognizeSpeechNative, stopSpeechNative } from '../haizenNative';
+import { sortShelvesBySetting } from '../registeredShelves';
 import { ShelfPhoto } from '../shelfPhoto/ShelfPhoto';
 import { haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
@@ -82,12 +83,13 @@ export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes,
       <rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
     </svg>
   </button>;
-  const machines = [...new Set(shelves.flatMap((s) => s.machineName ? [s.machineName] : []))].sort((a, b) => a.localeCompare(b, 'ja'));
+  const sorted = sortShelvesBySetting(shelves);
+  const machines = [...new Set(sorted.flatMap((s) => s.machineName ? [s.machineName] : []))];
   const filters = [...(previousShelfCodes.length ? [{ key: 'previous', label: '前回' }] : []), { key: 'all', label: '全部' },
     ...machines.map((name) => ({ key: `machine:${name}`, label: name }))];
-  const filtered = speechFilter ? shelves.filter((s) => speechFilter.codes.includes(s.shelfCodeRaw)) : (compact ? shelves : filter === 'previous'
-    ? previousShelfCodes.flatMap((code) => shelves.filter((s) => s.shelfCodeRaw === code))
-    : shelves.filter((s) => filter === 'all' || `machine:${s.machineName}` === filter));
+  const filtered = speechFilter ? sorted.filter((s) => speechFilter.codes.includes(s.shelfCodeRaw)) : (compact ? sorted : filter === 'previous'
+    ? previousShelfCodes.flatMap((code) => sorted.filter((s) => s.shelfCodeRaw === code))
+    : sorted.filter((s) => filter === 'all' || `machine:${s.machineName}` === filter));
   const ordered = shelfCounts ? [...filtered].sort((a, b) => (shelfCounts[b.shelfCodeRaw] ?? 0) - (shelfCounts[a.shelfCodeRaw] ?? 0)) : filtered;
   const groups = new Map<string | null, RegisteredShelfEntryDto[]>();
   for (const shelf of ordered) {

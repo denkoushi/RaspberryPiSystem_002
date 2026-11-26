@@ -46,6 +46,7 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
       displayLabel: true,
       tier: true,
       macroZoneId: true,
+      sortOrder: true,
       photo: { select: { updatedAt: true } }
     },
     orderBy: { shelfCodeRaw: 'asc' }
@@ -62,9 +63,27 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
       displayLabel: r.displayLabel,
       photoUpdatedAt: r.photo?.updatedAt.toISOString() ?? null,
       macroZoneId: r.macroZoneId,
+      sortOrder: r.sortOrder,
       ...(r.tier != null ? { tier: r.tier } : parsed.tier != null ? { tier: parsed.tier } : {}),
       ...parsed
     };
+  });
+}
+
+/** スマホの棚一覧の並び順を丸ごと入れ替える。渡した順に 0,1,2… を振り、渡さなかった棚は未設定に戻す。 */
+export async function replaceShelfOrder(shelfCodes: string[]): Promise<{ shelfCodes: string[] }> {
+  const codes = [...new Set(shelfCodes)];
+  return prisma.$transaction(async (tx) => {
+    const shelves = await tx.mobilePlacementShelf.findMany({
+      where: { shelfCodeRaw: { in: codes } }, select: { id: true, shelfCodeRaw: true }
+    });
+    const idByCode = new Map(shelves.map(({ id, shelfCodeRaw }) => [shelfCodeRaw, id]));
+    const ordered = codes.filter((code) => idByCode.has(code));
+    await tx.mobilePlacementShelf.updateMany({ data: { sortOrder: null } });
+    for (const [index, code] of ordered.entries()) {
+      await tx.mobilePlacementShelf.update({ where: { id: idByCode.get(code)! }, data: { sortOrder: index } });
+    }
+    return { shelfCodes: ordered };
   });
 }
 

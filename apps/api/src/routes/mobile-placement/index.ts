@@ -27,7 +27,8 @@ import {
 import {
   deleteMobilePlacementShelf,
   listRegisteredShelvesFromShelfMaster,
-  registerMobilePlacementShelf
+  registerMobilePlacementShelf,
+  replaceShelfOrder
 } from '../../services/mobile-placement/mobile-placement-shelf-master.service.js';
 import { getResourceShelfAssignments, replaceResourceShelves } from '../../services/mobile-placement/mobile-placement-resource-shelves.service.js';
 import {
@@ -195,6 +196,12 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const { resourceCd } = z.object({ resourceCd: z.string().trim().min(1).max(20) }).parse(request.params);
     const { shelfCodes } = z.object({ shelfCodes: z.array(z.string().min(1).max(200)).max(1000) }).parse(request.body);
     return replaceResourceShelves(resourceCd, shelfCodes);
+  });
+
+  app.put('/mobile-placement/shelf-order', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodes } = z.object({ shelfCodes: z.array(z.string().min(1).max(200)).max(1000) }).parse(request.body);
+    return replaceShelfOrder(shelfCodes);
   });
 
   app.get('/mobile-placement/client-capabilities', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {

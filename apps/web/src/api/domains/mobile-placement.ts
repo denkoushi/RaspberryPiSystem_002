@@ -20,6 +20,11 @@ export async function replaceMobilePlacementResourceShelves(resourceCd: string, 
   return data;
 }
 
+export async function replaceMobilePlacementShelfOrder(shelfCodes: string[]) {
+  const { data } = await api.put<{ shelfCodes: string[] }>('/mobile-placement/shelf-order', { shelfCodes });
+  return data;
+}
+
 export async function getMobilePlacementRegisteredShelves() {
   const { data } = await api.get<{ shelves: RegisteredShelfEntryDto[] }>('/mobile-placement/registered-shelves');
   return data;
