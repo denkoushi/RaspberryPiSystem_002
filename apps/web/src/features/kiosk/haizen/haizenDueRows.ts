@@ -29,3 +29,6 @@ export function buildHaizenDueRows(rows: readonly HaizenOverviewRow[], unplacedR
     return groupOrder || rank(a) - rank(b) || (a.unplaced && b.unplaced ? a.manufacturingOrderBarcodeRaw.localeCompare(b.manufacturingOrderBarcodeRaw) : haizenNewest(a, b));
   });
 }
+
+/** 分配の表記。未設定は「—」、0 は「なし」。 */
+export const formatHaizenBranch = (branchNo: number | null | undefined) => branchNo == null ? '—' : branchNo === 0 ? 'なし' : String(branchNo);

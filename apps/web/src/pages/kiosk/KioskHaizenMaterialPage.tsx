@@ -4,10 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useHaizenMaterialArrival, useHaizenOverview, useHaizenShelves, useHaizenUnplacedParts } from '../../api/hooks/haizen-overview';
 import { MaterialArrivalBadge } from '../../components/kiosk/MaterialArrivalBadge';
 import { buildHaizenDueRows, buildHaizenUnplacedRows, materialArrivalKey } from '../../features/kiosk/haizen/haizenDueRows';
-import { formatHaizenClock, formatHaizenPlacedAt, timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
-import { TrailIcon } from '../../features/kiosk/inventory/InventoryIcons';
+import { HaizenListTableRow } from '../../features/kiosk/haizen/HaizenListTableRow';
+import { formatHaizenClock } from '../../features/kiosk/haizen/haizenSearch';
 import { invButton, invButtonGhost, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
-import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 import type { HaizenOverviewRow } from '../../api/domains/mobile-placement';
 
@@ -31,6 +30,7 @@ export function KioskHaizenMaterialPage() {
   const shelfLabels = useMemo(() => new Map((master.data?.shelves ?? []).map(shelf => [shelf.shelfCodeRaw, shelf.displayLabel])), [master.data]);
   const updatedAt = Math.min(overview.dataUpdatedAt, master.dataUpdatedAt);
   const now = Date.now();
+  const openShelf = (shelf: string) => navigate('/kiosk/inventory/haizen', { state: { shelf } });
   const unavailable = !overview.data || !master.data || (!unplaced.data && !unplaced.isError);
   const failed = overview.isError || master.isError || unplaced.isError;
   return <section className={`${invSurface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-inv-cyan`}>
@@ -52,19 +52,8 @@ export function KioskHaizenMaterialPage() {
             const label = shelfLabels.get(row.shelfCodeRaw) || row.shelfCodeRaw;
             const sameSeiban = rowIndex > 0 && listRows[rowIndex - 1].fseiban === row.fseiban;
             const arrival = row.fseiban && row.fhincd ? materialByPart.get(materialArrivalKey(row.fseiban, row.fhincd)) : undefined;
-            const open = row.unplaced ? undefined : () => navigate('/kiosk/inventory/haizen', { state: { shelf: row.shelfCodeRaw } });
-            return <tr key={`${row.unplaced ? 'unplaced' : row.source}:${row.id}`} onClick={open} className={`border-inv-line ${row.unplaced ? 'text-inv-muted' : 'cursor-pointer hover:bg-inv-cyan/10'} ${rowIndex > 0 && !sameSeiban ? 'border-t-2' : 'border-t'}`}>
-              <td className="px-3.5 py-1"><span aria-label={row.verified ? '照合済み' : '未照合'} className={`flex h-7 w-7 items-center justify-center rounded border-2 text-lg font-bold ${row.verified ? 'border-inv-green bg-inv-green text-inv-green-ink' : 'border-dashed border-inv-muted'}`}>{row.verified ? '✓' : null}</span></td>
-              <td className="px-3.5 py-1"><MaterialArrivalBadge status={arrival?.status} basis={arrival?.basis} className="px-2 py-1 text-[15px]" /></td>
-              <td className="whitespace-nowrap px-3.5 py-1 font-mono text-[20px] font-bold">
-                {row.unplaced ? <span className="block h-7 w-24 rounded border-2 border-dashed border-inv-amber" /> : label}
-              </td>
-              <td className="min-w-[12em] px-3.5 py-1 text-[22px] font-black">{row.fhinmei || '品名未登録'}</td>
-              {([['fseiban', row.fseiban], ['fhincd', row.fhincd], ['machineName', normalizeMachineName(row.machineName)], ['order', row.manufacturingOrderBarcodeRaw], ['branch', row.branchNo === null ? '—' : row.branchNo === 0 ? 'なし' : String(row.branchNo)]] as const).map(([kind, value]) => <td key={kind} className={`whitespace-nowrap px-3.5 py-1 font-mono text-[19px] font-bold ${sameSeiban && (kind === 'fseiban' || kind === 'machineName') ? 'text-transparent' : ''}`}>{value || '—'}</td>)}
-              <td className={`whitespace-nowrap px-3.5 py-1 font-mono text-[19px] font-bold ${sameSeiban ? 'text-transparent' : ''}`}>{row.dueDate ? <time dateTime={row.dueDate}>{row.dueDate}</time> : '—'}</td>
-              <td className="whitespace-nowrap px-3.5 py-1 text-right text-sm text-inv-muted">{row.unplaced ? '—' : <><strong className="mr-2 text-xl text-inv-text">{timeSincePlaced(row.updatedAt, now)}</strong><time dateTime={row.updatedAt}>{formatHaizenPlacedAt(row.updatedAt)}</time></>}</td>
-              <td className="px-3.5 py-1">{!row.unplaced && <Link className={`${invButtonGhost} h-[30px] px-3 text-[13px]`} to={`/kiosk/inventory/haizen/trail?order=${encodeURIComponent(row.manufacturingOrderBarcodeRaw)}`} onClick={event => event.stopPropagation()}><TrailIcon />足取り</Link>}</td>
-            </tr>;
+            return <HaizenListTableRow key={`${row.unplaced ? 'unplaced' : row.source}:${row.id}`} row={row} shelfLabel={label} now={now} onOpenShelf={openShelf} boundary={rowIndex > 0 && !sameSeiban} sameSeiban={sameSeiban} wrapName
+              extraCell={<td className="px-3.5 py-1"><MaterialArrivalBadge status={arrival?.status} basis={arrival?.basis} className="px-2 py-1 text-[15px]" /></td>} />;
           })}</tbody>
         </table>
       </div>}
