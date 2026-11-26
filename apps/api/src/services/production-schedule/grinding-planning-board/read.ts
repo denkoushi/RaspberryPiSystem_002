@@ -460,7 +460,7 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
     ? planningPairPartners(await perf.measure('pairs', () => readPlanningPairs(params.siteKey)))
     : new Map<string, string>();
   const isPairMember = (item: GrindingPlanningBoardItem) =>
-    !item.standardHoursMissing && item.processOrder.trim() !== '' && item.fhinmei != null && partners.has(item.fhinmei)
+    !item.standardHoursMissing && item.processOrder.trim() !== '' && partners.has(item.fhincd.trim())
     && Boolean(item.originalResourceCd && payload.resourceCategories?.[item.originalResourceCd] === 'grinding');
   const pairItems = partners.size ? payload.items.filter(isPairMember) : [];
   const splitCounterparts = payload.pairPieces?.filter(isPairMember) ?? [];

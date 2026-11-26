@@ -275,19 +275,35 @@ export async function getKioskGrindingPlanningBoardTestBarPartCandidates(resourc
   return (await api.get<GrindingPlanningBoardTestBarPartCandidatesResponse>('/kiosk/production-schedule/grinding-planning-board/test-bars/part-candidates', { params })).data;
 }
 
-export type GrindingPlanningBoardPair = { id: string; firstPartName: string; secondPartName: string };
+export type GrindingPlanningBoardPair = {
+  id: string;
+  firstPartCode: string;
+  firstPartName: string;
+  secondPartCode: string;
+  secondPartName: string;
+};
+export type GrindingPlanningBoardPairPart = { partCode: string; partName: string };
+type CountedPairPart = GrindingPlanningBoardPairPart & { seibanCount: number };
 const pairsPath = '/kiosk/production-schedule/grinding-planning-board/pairs';
 
 export async function getKioskGrindingPlanningBoardPairs() {
   return (await api.get<{ pairs: GrindingPlanningBoardPair[] }>(pairsPath)).data;
 }
 
-export async function getKioskGrindingPlanningBoardPairSuggestions(partName: string) {
-  return (await api.get<{ suggestions: { partName: string; seibanCount: number }[] }>(`${pairsPath}/suggestions`, { params: { partName } })).data;
+export async function getKioskGrindingPlanningBoardPairCandidates() {
+  return (await api.get<{ parts: GrindingPlanningBoardPairPart[] }>(`${pairsPath}/candidates`)).data;
 }
 
-export async function createKioskGrindingPlanningBoardPair(firstPartName: string, secondPartName: string) {
-  return (await api.post<{ pair: GrindingPlanningBoardPair }>(pairsPath, { firstPartName, secondPartName })).data;
+export async function getKioskGrindingPlanningBoardPairStatus() {
+  return (await api.get<{ parts: CountedPairPart[] }>(`${pairsPath}/status`)).data;
+}
+
+export async function getKioskGrindingPlanningBoardPairSuggestions(partCode: string) {
+  return (await api.get<{ suggestions: CountedPairPart[] }>(`${pairsPath}/suggestions`, { params: { partCode } })).data;
+}
+
+export async function createKioskGrindingPlanningBoardPair(pair: Omit<GrindingPlanningBoardPair, 'id'>) {
+  return (await api.post<{ pair: GrindingPlanningBoardPair }>(pairsPath, pair)).data;
 }
 
 export async function deleteKioskGrindingPlanningBoardPair(id: string) {

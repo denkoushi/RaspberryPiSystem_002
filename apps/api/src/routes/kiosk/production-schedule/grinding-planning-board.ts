@@ -2,7 +2,7 @@ import { getSameModelResourceGroupsForSite, replaceSameModelResourceGroupsForSit
 import { ApiError } from '../../../lib/errors.js';
 import { updateGrindingPlanningBoardResourceMove } from '../../../services/production-schedule/grinding-planning-board/write.js';
 import { createPlanningTestBar, getPlanningTestBarPartCandidates, mutatePlanningTestBar } from '../../../services/production-schedule/grinding-planning-board/test-bars.js';
-import { createPlanningPair, deletePlanningPair, getPlanningPairSuggestions, readPlanningPairs } from '../../../services/production-schedule/grinding-planning-board/pairs.js';
+import { createPlanningPair, deletePlanningPair, getPlanningPairCandidates, getPlanningPairStatus, getPlanningPairSuggestions, readPlanningPairs } from '../../../services/production-schedule/grinding-planning-board/pairs.js';
 import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
 import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
@@ -43,6 +43,7 @@ import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limi
 
 const scheduleSourceSchema = z.enum(['general', 'dCompany', 'both']).default('both');
 const pairPartNameSchema = z.string().refine((name) => Boolean(name.trim()) && !name.includes('\u0000') && [...name].length <= 200);
+const pairPartCodeSchema = pairPartNameSchema.transform((code) => code.trim());
 
 const querySchema = z.object({
   scheduleSource: scheduleSourceSchema,
@@ -333,16 +334,27 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
     return { pairs: await readPlanningPairs(siteKey) };
   });
+  app.get(`${pairsPath}/candidates`, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await deps.requireClientDevice(request.headers['x-client-key']);
+    return getPlanningPairCandidates();
+  });
+  app.get(`${pairsPath}/status`, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await deps.requireClientDevice(request.headers['x-client-key']);
+    return getPlanningPairStatus();
+  });
   app.get(`${pairsPath}/suggestions`, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
-    const { partName } = z.object({ partName: pairPartNameSchema }).parse(request.query);
-    return getPlanningPairSuggestions(partName);
+    const { partCode } = z.object({ partCode: pairPartCodeSchema }).parse(request.query);
+    return getPlanningPairSuggestions(partCode);
   });
   app.post(pairsPath, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
-    const { firstPartName, secondPartName } = z.object({ firstPartName: pairPartNameSchema, secondPartName: pairPartNameSchema }).parse(request.body);
-    return { pair: await createPlanningPair(siteKey, firstPartName, secondPartName) };
+    const pair = z.object({
+      firstPartCode: pairPartCodeSchema, firstPartName: pairPartNameSchema,
+      secondPartCode: pairPartCodeSchema, secondPartName: pairPartNameSchema
+    }).parse(request.body);
+    return { pair: await createPlanningPair(siteKey, pair) };
   });
   app.delete(`${pairsPath}/:id`, { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);

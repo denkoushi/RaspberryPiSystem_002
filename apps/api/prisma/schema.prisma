@@ -2126,13 +2126,15 @@ model ProductionScheduleGrindingPlanningBoardPair {
   id             String   @id(map: "PSGrindingPlanningPair_pkey") @default(uuid())
   csvDashboardId String
   siteKey        String   @db.VarChar(100)
+  firstPartCode  String   @db.VarChar(200)
   firstPartName  String   @db.VarChar(200)
+  secondPartCode String   @db.VarChar(200)
   secondPartName String   @db.VarChar(200)
   createdAt      DateTime @default(now())
 
   csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningPair_dashboard_fkey")
 
-  @@unique([csvDashboardId, siteKey, firstPartName, secondPartName], map: "PSGrindingPlanningPair_site_names_key")
+  @@unique([csvDashboardId, siteKey, firstPartCode, secondPartCode], map: "PSGrindingPlanningPair_site_codes_key")
 }
 
 /// キオスク研削順位ボード専用のサイト共有状態。既存順位ボードの順位・割当は変更しない。
@@ -2320,6 +2322,8 @@ model ProductionScheduleExternalCompletion {
   externallyCompletedFromFkojunstMailStatus     Boolean  @default(false)
   /// 同じ製造オーダ・工順の別資源の C による完了。
   externallyCompletedFromFkojunstResourceSwap   Boolean  @default(false)
+  /// 同じ製造オーダ・工順の未完了の付け替え先。負荷集計専用。
+  loadResourceCdFromFkojunstResourceSwap        String?
   /// 生産日程CSV取込の差分消失完了（2026-05-26 廃止、互換列として保持）。
   externallyCompletedFromScheduleCsvDisappeared Boolean  @default(false)
   createdAt                                     DateTime @default(now())
