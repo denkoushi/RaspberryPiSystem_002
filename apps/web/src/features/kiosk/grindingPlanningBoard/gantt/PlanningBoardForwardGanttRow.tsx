@@ -9,13 +9,13 @@ import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext'
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
-import { beginForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache } from './planningBoardForwardDrop';
+import { allowedForwardDropResources, beginForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache, placeForwardBar } from './planningBoardForwardDrop';
 import { forwardItemDetails } from './planningBoardForwardQueue';
 import { FOLDED_BAR_TOP, FOLDED_ROW_BASE_HEIGHT, NORMAL_BAR_TOP, NORMAL_ROW_BASE_HEIGHT, operationSplitGap } from './planningBoardGanttGeometry';
 import { dayLabel, dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_SINGLE_RESOURCE_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
-import { PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars } from './planningBoardLateStars';
+import { PlanningBoardLateStar, usePlanningBoardLateStars } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
 import { operationSplitColor } from './planningBoardSeibanColor';
@@ -43,8 +43,9 @@ type Props = {
   placementByPart: PlanningBoardPlacementByPart;
   seibanColors?: ReadonlyMap<string, string>;
   focusedSeiban?: string | null;
-  onToggleSeiban?: PlanningBoardToggleSeiban;
+  sendOutFocusId?: string | null;
   label?: ReactNode;
+  sendOutButton?: ReactNode;
   start: number;
   end: number;
   today?: number;
@@ -78,7 +79,7 @@ type Props = {
 
 export const GANTT_FILL_MAX_TEXT_SCALE = 1.4;
 
-export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ fillRowHeight, foldedWindow, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ fillRowHeight, foldedWindow, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, sendOutFocusId, sendOutButton, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
   lanes, draggedItemId, insertionLeft, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const { gate, frozen } = usePlanningBoardOffline();
@@ -199,7 +200,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     if (!pending.moved && distance >= 8) { pending.moved = true; onCloseQueue(); }
     if (pending.moved && !disabled && !dragDisabled && !pinMode && resourceView) {
       beginForwardDropCache();
-      pending.allowed ??= new Set(lanes.current.filter((lane) => lane.resource === pending.bar.resource || (pending.bar.item.kind !== 'test' && canMoveResource?.(pending.bar.item, lane.resource))).map((lane) => lane.resource));
+      pending.allowed ??= allowedForwardDropResources(pending.bar, lanes.current, canMoveResource);
       onDragPreview({ rowKey: row.key, bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: findDrop(event.clientX, event.clientY, pending) });
     }
   };
@@ -262,9 +263,11 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
           <b className={clsx('font-mono text-xl', day === currentDay && 'rounded bg-emerald-400 px-1 text-slate-950')}>{dayLabel(day)}</b>
           <span className="text-sm font-bold text-slate-400">{['日', '月', '火', '水', '木', '金', '土'][weekday]}</span>
         </div>}
-        <span className="whitespace-nowrap font-mono text-sm font-bold text-slate-400">{foldedWindow.working ? `${timeLabel(foldedWindow.start)}–${timeLabel(foldedWindow.end)}時` : `–${dayLabel(foldedWindow.end - 1)}`}</span>
+        <div className="flex items-center justify-between gap-1">
+          <span className="whitespace-nowrap font-mono text-sm font-bold text-slate-400">{foldedWindow.working ? `${timeLabel(foldedWindow.start)}–${timeLabel(foldedWindow.end)}時` : `–${dayLabel(foldedWindow.end - 1)}`}</span>
+          {sendOutButton}
+        </div>
       </> : label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
-      <PlanningBoardLateStarDates groups={lateStars.groups} focusedSeiban={focusedSeiban} onToggleSeiban={onToggleSeiban} />
     </div>
     <div ref={track} data-gantt-track className="relative shrink-0 overflow-hidden" style={{ width }}>
       <PlanningBoardGanttSendOutStars bars={row.bars} window={window} start={start} dayWidth={dayWidth} />
@@ -308,12 +311,13 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         const splitColor = operationSplitColor(color ?? (bar.tone === 'late' ? 'bg-rose-400' : undefined), opIndex);
         const selected = selectedItemIds.has(bar.item.itemId);
         const inChain = focusedPartKey === bar.partKey;
+        const sendOutFocused = sendOutFocusId === bar.item.itemId;
         const segments = bar.unknown && !foldedWindow ? [{ start: bar.start!, end: bar.end! }] : bar.segments ?? [];
         return <div key={bar.item.itemId}>
           {segments.map((segment, index) => {
             const segmentWidth = bar.unknown && !foldedWindow ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - operationSplitGap(bar, index === segments.length - 1));
             return <div key={index}><button type="button" data-testid={`planning-gantt-bar-${bar.item.itemId}${index ? `-segment-${index}` : ''}`}
-              data-seiban-unfocused={focusedSeiban === null ? 'bar' : undefined}
+              data-seiban-unfocused={focusedSeiban === null && !sendOutFocused ? 'bar' : undefined}
               data-gantt-pinned={normal?.orderPinned ? 'true' : undefined}
               data-gantt-late={bar.tone === 'late' && index === 0 ? 'true' : undefined}
               aria-label={test ? `${test.name} ${test.minutes}分 ${bar.resource}` : `${normal?.fhinmei || normal?.fhincd} 工順${normal?.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
@@ -325,12 +329,12 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
                 selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : inChain && 'outline outline-2 outline-offset-1 outline-white',
-                focusedSeiban !== null ? focusedSeiban === normal?.fseiban ? 'ring-[3px] ring-white ring-offset-2 ring-offset-slate-950' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
+                sendOutFocused ? 'ring-[3px] ring-white ring-offset-2 ring-offset-slate-950' : focusedSeiban !== null ? focusedSeiban === normal?.fseiban ? 'ring-[3px] ring-white ring-offset-2 ring-offset-slate-950' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
                 draggedItemId === bar.item.itemId && '[&>*]:opacity-30',
                 normal?.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
                 split && opIndex > 0 && 'border-l border-slate-950/60',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
-              style={{ top: (foldedWindow ? FOLDED_BAR_TOP : NORMAL_BAR_TOP) * verticalScale, height: 70 * verticalScale, fontSize: 11 * textScale, lineHeight: `${14 * textScale}px`, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
+              style={{ top: (foldedWindow ? FOLDED_BAR_TOP : NORMAL_BAR_TOP) * verticalScale, height: 70 * verticalScale, fontSize: 11 * textScale, lineHeight: `${14 * textScale}px`, boxShadow: normal?.orderPinned ? `${sendOutFocused || focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 borderRadius: split && !bar.item.itemId.startsWith('piece:') ? 0 : undefined,
                 clipPath: !split && bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
                 backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : test ? '#c4b5fd' : undefined,
@@ -366,8 +370,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 suppressClick.current = pending.tapCancelled || pending.longPressed;
                 clear();
                 if (pending.moved && drop && !disabled && !dragDisabled && !pinMode && resourceView && gate.attempt()) {
-                  if (drop.resource !== pending.bar.resource && pending.bar.item.kind !== 'test' && drop.bar?.item.kind !== 'test') onResourceMove?.(pending.bar.item, drop.resource, drop.bar?.item ?? null, drop.placement);
-                  else if (drop.bar) onResourceReorder?.(pending.bar.item, drop.bar.item, drop.placement);
+                  placeForwardBar(pending.bar, drop, onResourceReorder, onResourceMove);
                 }
               }}
               onPointerCancel={() => { suppressClick.current = true; clear(); }}
@@ -387,7 +390,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
             </button>{split && <span aria-hidden="true" data-gantt-unit-underline data-seiban-unfocused={focusedSeiban === null ? 'underline' : undefined} className={clsx('pointer-events-none absolute h-[3px] rounded', focusedSeiban !== null && focusedSeiban !== normal?.fseiban ? 'opacity-20' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined)}
               style={{ top: (foldedWindow ? 95 : NORMAL_BAR_TOP + 73) * verticalScale, left: (segment.start - start) * dayWidth, width: segmentWidth, background: operationSplitColor(color, 0) }} />}</div>;
           })}
-          {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={(foldedWindow ? 91 : NORMAL_BAR_TOP + 69) * verticalScale - 16} />}
+          {segments[0] && lateStars.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={(foldedWindow ? 91 : NORMAL_BAR_TOP + 69) * verticalScale - 16} />}
           {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-0 -translate-x-1/2 text-xs leading-none text-rose-400"
             style={{ left: Math.max(0, (dateToDay(bar.due) + 1 - start) * dayWidth) }}>▲</span>}
         </div>;

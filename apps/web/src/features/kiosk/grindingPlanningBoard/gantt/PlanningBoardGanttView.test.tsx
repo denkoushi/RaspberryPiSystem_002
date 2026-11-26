@@ -117,107 +117,43 @@ describe('PlanningBoardGanttView', () => {
       expect(star).toHaveClass('pointer-events-none', 'text-violet-300');
       expect(star.style.textShadow).not.toBe('');
     }
-    const dateLists = screen.getAllByTestId('planning-gantt-late-star-dates');
-    expect(dateLists).toHaveLength(mode === 'backward' ? 2 : 1);
-    for (const badges of dateLists) expect([...badges.children].map((badge) => badge.textContent?.trim())).toEqual(['★10/11 10/13']);
+    const trigger = () => screen.queryByRole('button', { name: '305 処理出しの部品 3件' });
+    expect(trigger()).toHaveTextContent('★3');
     rerender(draw(items.map((entry) => ({ ...entry, isCompleted: true }))));
     expect(screen.queryByTestId('planning-gantt-late-star')).toBeNull();
-    expect(screen.queryByTestId('planning-gantt-late-star-dates')).toBeNull();
+    expect(screen.queryByRole('button', { name: /処理出しの部品/ })).toBeNull();
   });
 
-  it('lights only one seiban from the late-star dates beside the machine name', () => {
-    const items = [item({ lslhSurface: true }), item({ itemId: 'other', fhincd: 'P2', fseiban: 'OTHER', lslhSurface: true })];
-    const extras = (fseiban: string, dates: string[]) => ({ fseiban, outsourceMarks: [], memo: null,
-      surfaceSendOutDates: dates.map((date) => ({ date, note: null })) });
-    const rows = new Map([['26-1001', extras('26-1001', ['2026-10-13', '2026-10-11'])], ['OTHER', extras('OTHER', ['2026-10-12'])]]);
+  it('toggles a non-modal send-out list and closes it with Escape or its close button', () => {
+    const items = [item({ lslhSurface: true })];
+    const rows = new Map([['26-1001', { fseiban: '26-1001', outsourceMarks: [], memo: null,
+      surfaceSendOutDates: [{ date: '2026-10-16', note: null }] }]]);
     render(<DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
-      <PlanningBoardGanttView {...props(items)} colorBySeiban
-        layout={buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
-          dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 })} />
+      <PlanningBoardGanttView {...props(items)} />
     </DScheduleMinutesContext.Provider>);
-    const dates = () => screen.getByTestId('planning-gantt-late-star-dates');
-    const button = (name: string) => within(dates()).getByRole('button', { name });
-    expect([...dates().children].map((chip) => chip.textContent)).toEqual(['★10/11 10/13', '★10/12']);
-    fireEvent.click(button('26-1001 ★10/11 10/13'));
-    expect(button('26-1001 ★10/11 10/13')).toHaveAttribute('aria-pressed', 'true');
-    expect(button('OTHER ★10/12')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-[3px]', 'ring-white', 'ring-offset-slate-950');
-    expect(screen.getByTestId('planning-gantt-bar-other')).toHaveClass('opacity-20');
-    fireEvent.click(button('OTHER ★10/12'));
-    expect(button('26-1001 ★10/11 10/13')).toHaveAttribute('aria-pressed', 'false');
-    expect(button('OTHER ★10/12')).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(button('OTHER ★10/12'));
-    expect(button('OTHER ★10/12')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('opacity-20');
-    fireEvent.click(button('26-1001 ★10/11 10/13'));
-    hoverBarAndWaitForQueue(screen.getByTestId('planning-gantt-bar-a'));
-    const focusedCard = screen.getByTestId('planning-forward-queue-card-a');
-    expect(focusedCard).toHaveClass('shadow-[0_0_0_3px_#fff]', 'outline-amber-400', 'outline-offset-[-3px]', 'border-slate-950');
-    expect(screen.getByTestId('planning-forward-queue-card-other')).not.toHaveClass('shadow-[0_0_0_3px_#fff]');
-    expect(screen.getByTestId('planning-forward-queue-card-other')).not.toHaveClass('border-rose-400');
-  });
-
-  it('groups identical late dates and cycles through each seiban before clearing focus', () => {
-    // Deliberately supply B before A: the shared badge must still cycle in seiban order.
-    const items = [item({ itemId: 'b', fhincd: 'P2', fseiban: 'B', lslhSurface: true }),
-      item({ itemId: 'a', fseiban: 'A', lslhSurface: true }),
-      item({ itemId: 'c', fhincd: 'P3', fseiban: 'C', lslhSurface: true })];
-    const rows = new Map(['A', 'B', 'C'].map((fseiban) => [fseiban, {
-      fseiban, outsourceMarks: [], memo: null,
-      surfaceSendOutDates: [{ date: fseiban === 'C' ? '2026-10-13' : '2026-10-12', note: null }]
-    }]));
-    render(<DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
-      <PlanningBoardGanttView {...props(items)} colorBySeiban
-        layout={buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
-          dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 })} />
-    </DScheduleMinutesContext.Provider>);
-    const dates = screen.getByTestId('planning-gantt-late-star-dates');
-    expect([...dates.children].map((chip) => chip.textContent)).toEqual(['★10/12', '★10/13']);
-    const shared = within(dates).getByRole('button', { name: 'A B ★10/12' });
-    const other = within(dates).getByRole('button', { name: 'C ★10/13' });
-    const bar = (id: string) => screen.getByTestId(`planning-gantt-bar-${id}`);
-    expect(screen.getAllByTestId('planning-gantt-late-star')).toHaveLength(3);
-    expect(shared).toHaveAttribute('aria-pressed', 'false');
-    for (const focused of ['a', 'b']) {
-      fireEvent.click(shared);
-      expect(shared).toHaveAttribute('aria-pressed', 'true');
-      expect(shared).toHaveClass('ring-2', 'ring-white');
-      expect(bar(focused)).toHaveClass('ring-[3px]', 'ring-white');
-      for (const id of ['a', 'b', 'c'].filter((id) => id !== focused)) {
-        expect(bar(id)).toHaveClass('opacity-20');
-        expect(bar(id)).not.toHaveClass('ring-[3px]');
-      }
-    }
-    fireEvent.click(shared);
-    expect(shared).toHaveAttribute('aria-pressed', 'false');
-    expect(shared).not.toHaveClass('ring-white');
-    for (const id of ['a', 'b', 'c']) {
-      expect(bar(id)).not.toHaveClass('ring-[3px]');
-      expect(bar(id)).not.toHaveClass('opacity-20');
-    }
-    fireEvent.click(other);
-    expect(bar('c')).toHaveClass('ring-[3px]');
-    fireEvent.click(shared);
-    expect(bar('a')).toHaveClass('ring-[3px]');
-    expect(bar('c')).toHaveClass('opacity-20');
-  });
-
-  it('keeps partially overlapping late-date sets in separate badges', () => {
-    const items = [item({ fseiban: 'A', lslhSurface: true }),
-      item({ itemId: 'b', fhincd: 'P2', fseiban: 'B', lslhSurface: true })];
-    const rows = new Map(['A', 'B'].map((fseiban) => [fseiban, {
-      fseiban, outsourceMarks: [], memo: null,
-      surfaceSendOutDates: (fseiban === 'A' ? ['2026-10-12', '2026-10-11'] : ['2026-10-12']).map((date) => ({ date, note: null }))
-    }]));
-    render(<DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
-      <PlanningBoardGanttView {...props(items)} colorBySeiban
-        layout={buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
-          dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 })} />
-    </DScheduleMinutesContext.Provider>);
-    const dates = screen.getByTestId('planning-gantt-late-star-dates');
-    expect([...dates.children].map((chip) => chip.textContent)).toEqual(['★10/11 10/12', '★10/12']);
-    expect(within(dates).getByRole('button', { name: 'A ★10/11 10/12' })).toBeInTheDocument();
-    expect(within(dates).getByRole('button', { name: 'B ★10/12' })).toBeInTheDocument();
+    const button = screen.getByRole('button', { name: '305 処理出しの部品 1件' });
+    const open = () => {
+      fireEvent.click(button);
+      const dialog = screen.getByRole('region', { name: '305 ★1' });
+      expect(dialog).not.toHaveAttribute('aria-modal', 'true');
+      expect(button).toHaveAttribute('aria-expanded', 'true');
+      expect(button).toHaveClass('ring-white');
+      return dialog;
+    };
+    const expectClosed = () => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(button).toHaveAttribute('aria-expanded', 'false');
+      expect(button).not.toHaveClass('ring-white');
+    };
+    open();
+    fireEvent.click(button);
+    expectClosed();
+    open();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expectClosed();
+    expect(button).toHaveFocus();
+    fireEvent.click(within(open()).getByRole('button', { name: '閉じる' }));
+    expectClosed();
   });
 
   it.each(['backward', 'forward'] as const)('jumps to the starred bar in the pressed machine row, not the seiban earliest bar, in %s mode', (mode) => {
@@ -243,9 +179,12 @@ describe('PlanningBoardGanttView', () => {
     const earlyRow = vi.spyOn(rowOf('early'), 'getBoundingClientRect').mockReturnValue(rect);
     const viewport = screen.getByLabelText('ガントの日付と工程');
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: vi.fn() });
-    const dates = screen.getAllByTestId('planning-gantt-late-star-dates');
-    expect(dates).toHaveLength(1);
-    fireEvent.click(within(dates[0]!).getByRole('button', { name: '26-1001 ★10/11' }));
+    fireEvent.click(screen.getByRole('button', { name: '021 処理出しの部品 1件' }));
+    fireEvent.click(within(screen.getByRole('region', { name: /★/ })).getByText('★10/11'));
+    const target = screen.getByTestId('planning-gantt-bar-star');
+    const other = screen.getByTestId('planning-gantt-bar-early');
+    expect(mode === 'forward' ? target : target.firstElementChild).toHaveClass('ring-white');
+    expect(mode === 'forward' ? other : other.firstElementChild).not.toHaveClass('ring-white');
     expect(starRow).toHaveBeenCalled();
     expect(earlyRow).not.toHaveBeenCalled();
   });

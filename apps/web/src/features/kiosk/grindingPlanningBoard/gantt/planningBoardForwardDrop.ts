@@ -2,13 +2,31 @@ import { pageZoom } from '../pageZoom';
 
 import { canReorderForwardBars } from './planningBoardForwardQueue';
 
-import type { ForwardDragPreview } from './PlanningBoardForwardGanttRow';
+import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
+import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export function forwardDropBoard(element: Element | null) {
   return element?.closest('[data-testid="planning-two-machine"]') ?? element?.closest('[data-testid="planning-board-gantt"]');
 }
+
+export function allowedForwardDropResources(bar: GanttBar, lanes: readonly ForwardDragLane[],
+  canMove?: (item: GrindingPlanningBoardItem, resource: string) => boolean) {
+  return new Set(lanes.filter((lane) => lane.resource === bar.resource ||
+    (bar.item.kind !== 'test' && canMove?.(bar.item, lane.resource))).map((lane) => lane.resource));
+}
+
+export function placeForwardBar(bar: GanttBar, drop: NonNullable<ForwardDragPreview['drop']>,
+  reorder?: ForwardReorder, move?: ForwardMove) {
+  if (drop.resource !== bar.resource && bar.item.kind !== 'test' && drop.bar?.item.kind !== 'test') {
+    move?.(bar.item, drop.resource, drop.bar?.item ?? null, drop.placement);
+  } else if (drop.bar) {
+    reorder?.(bar.item, drop.bar.item, drop.placement);
+  }
+}
+
+const DROP_OVERLAYS = '[data-later-queue], [data-forward-queue], [data-planning-send-out]';
 
 type Box = { left: number; top: number; right: number; bottom: number };
 type CachedLane = { box: Box; resource: string | undefined; rowKey: string | undefined; trackLeft: number | null };
@@ -126,7 +144,7 @@ export function findForwardDrop(clientX: number, clientY: number, source: GanttB
   let trackLeft: number | null;
   if (cached) {
     // Overlays may cover a lane but must never receive a Gantt drop. They can appear at any frame, so they are read live.
-    const overlay = Array.from(document.querySelectorAll<HTMLElement>('[data-later-queue], [data-forward-queue]'))
+    const overlay = Array.from(document.querySelectorAll<HTMLElement>(DROP_OVERLAYS))
       .some((element) => contains(visibleBox(element), clientX, clientY));
     if (overlay) return null;
     // Later lanes are descendants of earlier ones in document order, so the last match is the innermost.
@@ -137,7 +155,7 @@ export function findForwardDrop(clientX: number, clientY: number, source: GanttB
   } else {
     const hits = document.elementsFromPoint?.(clientX, clientY) ?? [];
     // Overlays may cover a lane but must never receive a Gantt drop.
-    if (hits.some((element) => element.closest('[data-later-queue], [data-forward-queue]'))) return null;
+    if (hits.some((element) => element.closest(DROP_OVERLAYS))) return null;
     const lane = hits
       .map((element) => element.closest<HTMLElement>('[data-gantt-lane]')).find((element) => element && board?.contains(element));
     targetResource = lane?.dataset.resourceCode;
