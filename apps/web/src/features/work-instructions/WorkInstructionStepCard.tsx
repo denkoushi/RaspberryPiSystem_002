@@ -4,6 +4,7 @@ import { useNearViewportOnce } from '../../hooks/useNearViewportOnce';
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
+import { workInstructionRendererAssets } from './workInstructionRendererAssets';
 import { hasWorkInstructionImage, workInstructionStepMemo } from './workInstructionViewerNavigation';
 
 import type {
@@ -48,23 +49,6 @@ function WorkInstructionImage({ imagePath, alt, className }: WorkInstructionImag
   return <img src={blobUrl} alt={alt} className={className} draggable={false} />;
 }
 
-function rendererAssets(
-  assets?: Record<string, WorkInstructionOverlayAsset>
-) {
-  if (!assets) return undefined;
-  return Object.fromEntries(
-    Object.entries(assets).map(([assetId, asset]) => [assetId, {
-      assetId: asset.assetId || assetId,
-      storageKey: asset.storageKey ?? assetId,
-      contentType: asset.contentType ?? 'image/png',
-      byteSize: asset.byteSize ?? 0,
-      sha256: asset.sha256,
-      url: asset.url,
-      relativeUrl: asset.relativeUrl
-    }])
-  );
-}
-
 function WorkInstructionOverlayImage({
   imagePath,
   alt,
@@ -93,7 +77,7 @@ function WorkInstructionOverlayImage({
       </span>
     );
   }
-  return <ImageOverlayFrame imageUrl={blobUrl} protectedImage={false} alt={alt} overlays={overlays ?? []} assets={rendererAssets(assets)} className={clsx('h-full w-full', className)} />;
+  return <ImageOverlayFrame imageUrl={blobUrl} protectedImage={false} alt={alt} overlays={overlays ?? []} assets={workInstructionRendererAssets(assets)} className={clsx('h-full w-full', className)} />;
 }
 
 function WorkInstructionThumbnail({

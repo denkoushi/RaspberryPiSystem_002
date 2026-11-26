@@ -1,13 +1,9 @@
 import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
-import { effectiveWorkInstructionMemo } from './workInstructionEditorMemo';
+import { effectiveWorkInstructionMemo, workInstructionStepKey } from './workInstructionEditorMemo';
 
 import type { WorkInstructionEditorRowDto, WorkInstructionEditorStepDto } from '../../api/domains/work-instruction-overlays';
 import type { WorkInstructionOverlayAsset } from '../../api/domains/work-instructions';
-
-function stepKey(step: WorkInstructionEditorStepDto): string {
-  return step.stepKey || `${step.sourceSystem}:${step.sourceList}:${step.sourceItemId}:${step.step}`;
-}
 
 function imageUrl(step: WorkInstructionEditorStepDto | undefined): string | null {
   if (!step) return null;
@@ -56,8 +52,8 @@ export function WorkInstructionVersionComparison({ row, selectedStepKey, assets 
   assets?: Record<string, WorkInstructionOverlayAsset>;
 }) {
   if (!row || !selectedStepKey) return null;
-  const published = row.published.steps.find((step) => stepKey(step) === selectedStepKey) ?? row.published.steps.find((step) => step.step === row.latest.steps.find((candidate) => stepKey(candidate) === selectedStepKey)?.step);
-  const latest = row.latest.steps.find((step) => stepKey(step) === selectedStepKey) ?? row.latest.steps.find((step) => step.step === published?.step);
+  const published = row.published.steps.find((step) => workInstructionStepKey(step) === selectedStepKey) ?? row.published.steps.find((step) => step.step === row.latest.steps.find((candidate) => workInstructionStepKey(candidate) === selectedStepKey)?.step);
+  const latest = row.latest.steps.find((step) => workInstructionStepKey(step) === selectedStepKey) ?? row.latest.steps.find((step) => step.step === published?.step);
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-rows-2 gap-3" data-testid="work-instruction-version-comparison">
       <VersionPane label="公開中" version={String(row.published.revisionNumber)} step={published} assets={row.published.assets} />
