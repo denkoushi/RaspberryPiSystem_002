@@ -97,6 +97,62 @@ describeDatabase('replaceAllWinnerExternalCompletionStatesFromMailSync', () => {
     });
   });
 
+  it('writes and clears unfinished swap load only when the stored state changes', async () => {
+    await fixture(async ({ tx, prefix, addRow }) => {
+      await acquireFkojunstStatusMailCriticalTransactionLock(tx);
+      const productNo = prefix.slice(-12);
+      const rowId = await addRow(prefix, productNo);
+      const resourceCd = `Z${productNo.toUpperCase()}`;
+      const evidence = { sourceCsvDashboardId: mailDashboardId, productNo, fkojun: '10' };
+      const addEvidence = (cd: string, statusCode: string, sourceUpdatedAt: Date | null) =>
+        tx.productionScheduleFkojunstResourceSwapEvidence.create({ data: { ...evidence, resourceCd: cd, statusCode, sourceUpdatedAt } });
+      const recompute = () => replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true);
+      const expectState = async (loadCd: string | null, isComplete = false, id = rowId) =>
+        expect(await readExternal(tx, id)).toMatchObject({
+          loadResourceCdFromFkojunstResourceSwap: loadCd, externallyCompletedFromFkojunstResourceSwap: isComplete,
+          isExternallyCompleted: isComplete,
+        });
+      const at = new Date('2026-11-26T00:00:00Z');
+
+      await addEvidence(resourceCd, 'P', at);
+      await recompute();
+      await expectState(null);
+      await tx.productionScheduleResourceMaster.create({
+        data: { resourceCd: ` ${resourceCd.toLowerCase()} `, resourceName: resourceCd, resourceClassCd: 'test', resourceGroupCd: 'test' },
+      });
+      expect(await recompute()).toBe(1);
+      await expectState(resourceCd);
+      expect(await recompute()).toBe(0);
+
+      await addEvidence('10', 'X', null);
+      expect(await recompute()).toBe(1);
+      await expectState(null);
+      await tx.productionScheduleFkojunstResourceSwapEvidence.deleteMany({ where: { ...evidence, resourceCd: '10' } });
+      await tx.productionScheduleFkojunstResourceSwapEvidence.updateMany({ where: evidence, data: { statusCode: 'C' } });
+      expect(await recompute()).toBe(1);
+      await expectState(null, true);
+
+      await tx.productionScheduleFkojunstResourceSwapEvidence.updateMany({ where: evidence, data: { statusCode: 'P' } });
+      expect(await recompute()).toBe(1);
+      await expectState(resourceCd);
+      await tx.productionScheduleFkojunstResourceSwapEvidence.deleteMany({ where: evidence });
+      expect(await recompute()).toBe(1);
+      await expectState(null);
+
+      await addEvidence(resourceCd, 'P', at);
+      await recompute();
+      expect(await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true, 'clear-resource-swap')).toBe(1);
+      await expectState(null);
+
+      await recompute();
+      await tx.csvDashboardRow.update({ where: { id: rowId }, data: { supersededAt: at } });
+      const replacementId = await addRow(`${prefix}-replacement`, productNo);
+      expect(await recompute()).toBe(2);
+      await expectState(null);
+      await expectState(resourceCd, false, replacementId);
+    });
+  });
+
   it('publishes and revokes swap completion, reclassifying evidence when the schedule changes', async () => {
     await fixture(async ({ tx, prefix, addRow }) => {
       await acquireFkojunstStatusMailCriticalTransactionLock(tx);

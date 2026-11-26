@@ -8,7 +8,12 @@ import {
   isProductionScheduleExcludedCuttingResourceCd,
   normalizeProductionScheduleResourceCd
 } from './policies/resource-category-policy.service.js';
+import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+
+const loadResourceCdSql = Prisma.sql`UPPER(BTRIM(COALESCE(
+  "ext"."loadResourceCdFromFkojunstResourceSwap", "CsvDashboardRow"."rowData"->>'FSIGENCD'
+)))`;
 
 type ResourceLoadRow = {
   fseiban: string;
@@ -48,7 +53,7 @@ export async function estimateResourceLoadSignals(params: {
   const rows = await prisma.$queryRaw<ResourceLoadRow[]>`
     SELECT
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
-      ("CsvDashboardRow"."rowData"->>'FSIGENCD') AS "resourceCd",
+      ${loadResourceCdSql} AS "resourceCd",
       COUNT(*)::bigint AS "processCount",
       SUM(
         CASE
@@ -61,12 +66,15 @@ export async function estimateResourceLoadSignals(params: {
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
       AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(candidates)})
-      AND COALESCE("p"."isCompleted", FALSE) = FALSE
-      AND NULLIF(TRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
-    GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN'), ("CsvDashboardRow"."rowData"->>'FSIGENCD')
+      AND NOT ${buildProductionScheduleEffectiveCompletedSql()}
+      AND NULLIF(${loadResourceCdSql}, '') IS NOT NULL
+    GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN'), ${loadResourceCdSql}
   `;
 
   const rowsBySeiban = new Map<string, ResourceLoadRow[]>();

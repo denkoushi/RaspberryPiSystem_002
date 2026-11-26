@@ -2308,6 +2308,8 @@ model ProductionScheduleExternalCompletion {
   externallyCompletedFromFkojunstMailStatus     Boolean  @default(false)
   /// 同じ製造オーダ・工順の別資源の C による完了。
   externallyCompletedFromFkojunstResourceSwap   Boolean  @default(false)
+  /// 同じ製造オーダ・工順の未完了の付け替え先。負荷集計専用。
+  loadResourceCdFromFkojunstResourceSwap        String?
   /// 生産日程CSV取込の差分消失完了（2026-05-26 廃止、互換列として保持）。
   externallyCompletedFromScheduleCsvDisappeared Boolean  @default(false)
   createdAt                                     DateTime @default(now())

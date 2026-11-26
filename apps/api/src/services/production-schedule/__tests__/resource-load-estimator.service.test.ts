@@ -38,6 +38,17 @@ describe('estimateResourceLoadSignals', () => {
     expect(mocks.policy).toHaveBeenCalledWith({ deviceScopeKey: 'kiosk-9' });
   });
 
+  it('groups unfinished load by the saved swap with the CSV resource as fallback', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+    await estimateResourceLoadSignals({ locationKey: 'loc', candidateFseibans: ['A'] });
+    const [strings, ...values] = mocks.queryRaw.mock.calls[0]!;
+    const sql = Prisma.sql(strings, ...values).sql.replace(/\s+/g, ' ');
+    const resource = 'COALESCE( "ext"."loadResourceCdFromFkojunstResourceSwap", "CsvDashboardRow"."rowData"->>\'FSIGENCD\' )';
+    expect(sql).toContain(`UPPER(BTRIM(${resource})) AS "resourceCd"`);
+    expect(sql).toContain(`GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN'), UPPER(BTRIM(${resource}))`);
+    expect(sql).toContain('OR COALESCE("ext"."isExternallyCompleted", FALSE)');
+  });
+
   it('computes concentration, bottleneck and crowded ratios across candidates', async () => {
     mocks.queryRaw.mockResolvedValue([
       row('A', 'R1', 2, 100),

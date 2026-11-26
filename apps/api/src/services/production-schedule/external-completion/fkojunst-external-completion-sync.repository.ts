@@ -5,6 +5,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { buildFkojunstMailStatusCompletedScalarSql } from '../completion/fkojunst-mail-status-completion.policy.js';
 import {
   FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS,
+  FKOJUNST_RESOURCE_SWAP_LOAD_STATUS_CODES,
   FKOJUNST_RESOURCE_SWAP_OWN_BLOCKING_STATUS,
 } from '../completion/fkojunst-resource-swap-completion.policy.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
@@ -30,13 +31,15 @@ const winnersBaseSql = () => Prisma.sql`
     AND ${buildMaxProductNoWinnerCondition('cdr')}
 `;
 
-const existingResourceSwapCompletionsSql = () => Prisma.sql`
+const existingResourceSwapStatesSql = () => Prisma.sql`
   SELECT "ext"."csvDashboardRowId" AS "id",
     "ext"."externallyCompletedFromFkojunstMailStatus" AS "mailStatusComplete",
-    FALSE AS "resourceSwapComplete"
+    FALSE AS "resourceSwapComplete",
+    NULL::text AS "loadResourceCd"
   FROM "ProductionScheduleExternalCompletion" "ext"
   WHERE "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    AND "ext"."externallyCompletedFromFkojunstResourceSwap"
+    AND ("ext"."externallyCompletedFromFkojunstResourceSwap"
+      OR "ext"."loadResourceCdFromFkojunstResourceSwap" IS NOT NULL)
 `;
 
 function winnerCompletionCtes(excludedResourceCds: string[]): Prisma.Sql {
@@ -53,8 +56,8 @@ function winnerCompletionCtes(excludedResourceCds: string[]): Prisma.Sql {
       GROUP BY "productNo", "fkojun"
       HAVING COUNT(*) = 1
     ),
-    "resourceSwapCompletions" AS (
-      SELECT "w"."id"
+    "eligibleResourceSwaps" AS (
+      SELECT "w"."id", MIN("e"."statusCode") AS "statusCode", MIN("e"."resourceCd") AS "resourceCd"
       FROM "singleWinnerProcesses" "single"
       JOIN "winners" "w" USING ("productNo", "fkojun")
       JOIN "ProductionScheduleFkojunstResourceSwapEvidence" "e"
@@ -66,8 +69,7 @@ function winnerCompletionCtes(excludedResourceCds: string[]): Prisma.Sql {
       GROUP BY "w"."id"
       -- 非 C、除外資源、FUPDTEDT 不明も別資源の件数には含める。
       HAVING COUNT(*) = 1 AND BOOL_AND(
-        "e"."statusCode" = ${FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS}
-        AND "e"."resourceCd" <> ALL(${excludedResourceCds}::text[])
+        "e"."resourceCd" <> ALL(${excludedResourceCds}::text[])
         AND "e"."sourceUpdatedAt" IS NOT NULL
         AND ("w"."ownStatusCode" IS NULL OR (
           "w"."ownStatusCode" <> ${FKOJUNST_RESOURCE_SWAP_OWN_BLOCKING_STATUS}
@@ -77,11 +79,19 @@ function winnerCompletionCtes(excludedResourceCds: string[]): Prisma.Sql {
       )
     ),
     "completionSources" AS (
-      SELECT "w"."id", "w"."mailStatusComplete", "swap"."id" IS NOT NULL AS "resourceSwapComplete"
+      SELECT "w"."id", "w"."mailStatusComplete",
+        COALESCE("swap"."statusCode" = ${FKOJUNST_RESOURCE_SWAP_COMPLETE_STATUS}, FALSE) AS "resourceSwapComplete",
+        CASE WHEN NOT "w"."mailStatusComplete"
+          AND "swap"."statusCode" = ANY(${[...FKOJUNST_RESOURCE_SWAP_LOAD_STATUS_CODES]}::text[])
+          AND EXISTS (
+            SELECT 1 FROM "ProductionScheduleResourceMaster" "master"
+            WHERE UPPER(BTRIM("master"."resourceCd")) = "swap"."resourceCd"
+          )
+          THEN "swap"."resourceCd" END AS "loadResourceCd"
       FROM "winners" "w"
-      LEFT JOIN "resourceSwapCompletions" "swap" ON "swap"."id" = "w"."id"
+      LEFT JOIN "eligibleResourceSwaps" "swap" ON "swap"."id" = "w"."id"
       UNION ALL
-      ${existingResourceSwapCompletionsSql()}
+      ${existingResourceSwapStatesSql()}
         AND NOT EXISTS (SELECT 1 FROM "winners" "w" WHERE "w"."id" = "ext"."csvDashboardRowId")
     )
   `;
@@ -89,6 +99,7 @@ function winnerCompletionCtes(excludedResourceCds: string[]): Prisma.Sql {
 
 /**
  * FKOJUNST_Status の厳密一致 C/X と、付け替え先の C を外部完了に反映する。
+ * 未完了の付け替え先も負荷集計用に保存する。手動完了は集計時に除外する。
  * 旧「メール dedupe キー消失」と生産日程CSV消滅完了は完了正本から外し、互換列は false に収束させる。
  */
 export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
@@ -97,7 +108,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
   mode: 'recompute' | 'clear-resource-swap' = 'recompute'
 ): Promise<number> {
   const completionCtes = mode === 'clear-resource-swap'
-    ? Prisma.sql`"completionSources" AS (${existingResourceSwapCompletionsSql()})`
+    ? Prisma.sql`"completionSources" AS (${existingResourceSwapStatesSql()})`
     : winnerCompletionCtes((await getResourceCategoryPolicy({ siteKey: SHARED_RESOURCE_CATEGORY_LOCATION }, executor)).cuttingExcludedResourceCds);
   const sets = await lockAllSessakuPieceSets(executor, mailCriticalLocked);
   if (sets.some((set) => set.pieces.length)) await acquireSessakuPieceBoardStateLocks(executor);
@@ -129,6 +140,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
         OR "existing"."isExternallyCompleted" IS DISTINCT FROM "c"."isExternallyCompleted"
         OR "existing"."externallyCompletedFromFkojunstMailStatus" IS DISTINCT FROM "c"."mailStatusComplete"
         OR "existing"."externallyCompletedFromFkojunstResourceSwap" IS DISTINCT FROM "c"."resourceSwapComplete"
+        OR "existing"."loadResourceCdFromFkojunstResourceSwap" IS DISTINCT FROM "c"."loadResourceCd"
         OR "existing"."externallyCompletedFromFkojunstDisappeared" IS DISTINCT FROM FALSE
         OR "existing"."externallyCompletedFromScheduleCsvDisappeared" IS DISTINCT FROM FALSE
     )
@@ -139,6 +151,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
       "externallyCompletedFromFkojunstDisappeared",
       "externallyCompletedFromFkojunstMailStatus",
       "externallyCompletedFromFkojunstResourceSwap",
+      "loadResourceCdFromFkojunstResourceSwap",
       "externallyCompletedFromScheduleCsvDisappeared",
       "createdAt",
       "updatedAt"
@@ -150,6 +163,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
       FALSE,
       "c"."mailStatusComplete",
       "c"."resourceSwapComplete",
+      "c"."loadResourceCd",
       FALSE,
       NOW(),
       NOW()
@@ -158,12 +172,14 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
       "externallyCompletedFromFkojunstDisappeared" = EXCLUDED."externallyCompletedFromFkojunstDisappeared",
       "externallyCompletedFromFkojunstMailStatus" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
       "externallyCompletedFromFkojunstResourceSwap" = EXCLUDED."externallyCompletedFromFkojunstResourceSwap",
+      "loadResourceCdFromFkojunstResourceSwap" = EXCLUDED."loadResourceCdFromFkojunstResourceSwap",
       "externallyCompletedFromScheduleCsvDisappeared" = FALSE,
       "isExternallyCompleted" = EXCLUDED."isExternallyCompleted",
       "updatedAt" = NOW()
     WHERE "ProductionScheduleExternalCompletion"."isExternallyCompleted" IS DISTINCT FROM EXCLUDED."isExternallyCompleted"
       OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstMailStatus" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstMailStatus"
       OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstResourceSwap" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstResourceSwap"
+      OR "ProductionScheduleExternalCompletion"."loadResourceCdFromFkojunstResourceSwap" IS DISTINCT FROM EXCLUDED."loadResourceCdFromFkojunstResourceSwap"
       OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstDisappeared" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstDisappeared"
       OR "ProductionScheduleExternalCompletion"."externallyCompletedFromScheduleCsvDisappeared" IS DISTINCT FROM FALSE
   `;
