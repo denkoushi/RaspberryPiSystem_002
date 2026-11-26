@@ -344,6 +344,7 @@ describe('Haizen hub', () => {
     mount(); typeSlips();
     await screen.findByRole('status', { name: '一致' });
     const all = screen.getByRole('button', { name: '全部', exact: true });
+    await waitFor(() => expect(all).toBeEnabled());
     expect(all).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toBeEnabled();
     expect(within(screen.getByRole('button', { name: '棚 研削 南' })).getByText('前回')).toBeInTheDocument();
@@ -356,10 +357,11 @@ describe('Haizen hub', () => {
     fireEvent.click(all);
     fireEvent.click(screen.getByRole('button', { name: '次を照合' }));
     typeSlips(); await screen.findByRole('status', { name: '一致' });
+    await waitFor(() => expect(screen.getByRole('button', { name: '全部', exact: true })).toBeEnabled());
     expect(screen.getByRole('button', { name: '全部', exact: true })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByRole('button', { name: '棚 旋盤 西' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '全部', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: '棚 旋盤 西' }));
+    fireEvent.click(await screen.findByRole('button', { name: '棚 旋盤 西' }));
     fireEvent.click(screen.getByRole('button', { name: '全部', exact: true }));
     expect(screen.getByRole('button', { name: '棚 旋盤 西' })).toHaveAttribute('aria-pressed', 'true');
   });
