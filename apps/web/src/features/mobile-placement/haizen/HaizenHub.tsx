@@ -155,7 +155,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
       selectedBranch?.shelfCodeRaw === activeShelfCode || (activeBranchNo === 0 ? hasNumbered : hasNone) ||
       (tab === 'verify' && flow.result !== 'ok')) return;
     playHaizenSound('decide');
-    const shelf =shelves.data?.shelves.find((s) => s.shelfCodeRaw === activeShelfCode);
+    const shelf = shelves.data?.shelves.find((s) => s.shelfCodeRaw === activeShelfCode);
     const place = (shelf && [shelf.machineName, shelf.direction, shelf.displayLabel].filter(Boolean).join(' ')) || activeShelfCode;
     const moving = Boolean(selectedBranch);
     // Saved on the phone first; the send continues in the background so a weak link never holds the button.

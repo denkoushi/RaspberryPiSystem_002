@@ -1,3 +1,5 @@
+import { playTone } from '../../../utils/audioTone';
+
 import type { InventoryCompartment, InventoryImportSummary } from '../../../api/client';
 import type { NfcEvent } from '../../../hooks/useNfcStream';
 
@@ -32,21 +34,10 @@ export function readDefaultAreas(): string[] {
 }
 export const EMPTY_IMPORTS: InventoryImportSummary[] = [];
 export const EMPTY_COMPARTMENTS: InventoryCompartment[] = [];
-let inventoryAudioContext: AudioContext | null = null;
-
 export function playInventoryTone(kind: 'success' | 'restock' | 'error') {
-  if (typeof window === 'undefined' || !window.AudioContext) return;
-  const context = inventoryAudioContext ??= new window.AudioContext();
-  if (context.state === 'suspended') void context.resume();
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  const frequency = kind === 'success' ? 880 : kind === 'restock' ? 660 : 180;
-  oscillator.frequency.value = frequency;
-  oscillator.type = kind === 'error' ? 'sawtooth' : 'sine';
-  gain.gain.setValueAtTime(0.0001, context.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
-  oscillator.connect(gain).connect(context.destination);
-  oscillator.start();
-  oscillator.stop(context.currentTime + 0.2);
+  playTone({
+    freq: kind === 'success' ? 880 : kind === 'restock' ? 660 : 180,
+    dur: 0.18, peak: 0.12, attack: 0.01,
+    type: kind === 'error' ? 'sawtooth' : 'sine'
+  });
 }

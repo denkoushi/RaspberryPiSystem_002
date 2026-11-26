@@ -24,6 +24,7 @@ import { snapNativeLocalFirst, verifyLocalFirst } from './local-data/localFirstL
 import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
 import { createSlipVerifyRecorder } from './verify-records/recordSlipVerify';
 
+import type { HaizenSound } from './haizen/haizenSounds';
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
 import type { ActualSlipOcrResponse, MobilePlacementSlipMatchResponse } from '../../api/domains/mobile-placement';
@@ -197,7 +198,8 @@ export function useMobilePlacementPageState() {
     actualOrderBarcodeRaw: actualOrder, actualFseibanRaw: actualFseiban, actualPartBarcodeRaw: actualPart
   }, clientRecordId), [verifyRecorder, transferOrder, transferPart, actualOrder, actualFseiban, actualPart]);
 
-  const runSlipVerify = useCallback(async () => {
+  /** Returns the sound for the result, so the caller can play it only while this pair is still current. */
+  const runSlipVerify = useCallback(async (): Promise<HaizenSound | null> => {
     setSlipVerifying(true);
     setSlipResult('idle');
     setSlipDetails(null);
@@ -212,12 +214,12 @@ export function useMobilePlacementPageState() {
       const res = await verifyLocalFirst(input, () => verifyMobilePlacementSlipMatch(input));
       setSlipDetails(res);
       setSlipResult(res.ok ? 'ok' : res.reason === 'order_not_found' || res.reason === 'transfer_not_found' || res.reason === 'part_required' ? 'not-found' : 'ng');
-      if (res.ok || res.reason !== 'part_required') playHaizenSound(res.ok ? 'ok' : 'ng');
       await verifyRecorder.record(input, res).catch(() => console.warn('Verify record could not be saved'));
+      return res.ok ? 'ok' : res.reason === 'part_required' ? null : 'ng';
     } catch {
       setSlipResult('error');
-      playHaizenSound('ng');
       await verifyRecorder.record(input, 'error').catch(() => console.warn('Verify record could not be saved'));
+      return 'ng';
     } finally {
       setSlipVerifying(false);
     }
