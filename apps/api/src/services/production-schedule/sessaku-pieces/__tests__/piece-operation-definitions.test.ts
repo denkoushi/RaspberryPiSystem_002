@@ -62,6 +62,14 @@ beforeEach(() => {
 });
 
 describe('operation definition replacement', () => {
+  it('preserves evidence on legacy grinding pieces during a definition change', async () => {
+    const grinding = { ...key, fsigencd: ' 581 ' };
+    set = { ...set, ...grinding, sourcePieceSetId: 'cutting' };
+    await reconcileOperationDefinitionPieces(client, { siteKey: 'site', resourceCd: '581' }, [grinding], [2]);
+    expect(records).toEqual([{ pieceId: 'p', opNo: 1 }]);
+    expect(tx.productionScheduleSessakuPieceSet.findMany).not.toHaveBeenCalled();
+    expect(mocks.quantities).not.toHaveBeenCalled();
+  });
   it('preserves source operation evidence after split bars move to the resource whose definition is replaced', async () => {
     set.pieces[0].opSplits = [{ fromOpNo: 3, sourceResourceCd: '021', leadingSourceResourceCd: '021' }];
     mocks.overrides.mockResolvedValue([

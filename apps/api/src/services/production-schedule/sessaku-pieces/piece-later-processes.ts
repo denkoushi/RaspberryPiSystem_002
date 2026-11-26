@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { readWinnerRowsByLogicalKeyFseibans, readRowDetails } from '../grinding-planning-board/source.js';
 import { isLaterProcessOrder } from '../process-order.js';
-import { readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, supportsSessakuPieceRelations, type SessakuPieceLogicalKey } from './piece-key.js';
+import { readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, isGrindingPieceKey, supportsSessakuPieceRelations, type SessakuPieceLogicalKey } from './piece-key.js';
 
 export type LaterProcess = { key: SessakuPieceLogicalKey; rowId?: string; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean; externallyCompleted: boolean; previousCompleted: boolean | null };
 
@@ -28,11 +28,13 @@ export async function readLaterProcesses(tx: Prisma.TransactionClient, key: Sess
       externallyCompleted: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
       previousCompleted: detail?.productionScheduleProgress?.isCompleted ?? null };
   };
+  // Keep legacy links visible for completion and FK checks while cleanup is pending.
   const result = set ? (await readLinked([set])).map(toLaterProcess) : [];
   if (!discoverUnsplit) return result;
   let adopted: NonNullable<typeof set>[] = [];
   for (const row of rows) {
     const candidate = sessakuPieceKeyFromRow(row.rowData);
+    if (isGrindingPieceKey(candidate)) continue;
     if (result.some((process) => encodeSessakuPieceKey(process.key) === encodeSessakuPieceKey(candidate))) continue;
     const laterSet = sets.get(encodeSessakuPieceKey(candidate)) ?? null;
     const detail = details.get(row.id);
@@ -62,4 +64,13 @@ export function assertLaterProcessesEditable(later: LaterProcess[]) {
   if (later.some(({ set, completed, hasWinner }) => hasWinner && (completed || set?.pieces.some((piece) => piece.isCompleted)))) {
     throw new ApiError(409, '後工程の片が完了しています', undefined, 'LATER_PROCESS_PIECE_COMPLETED');
   }
+}
+
+export function nonGrindingLaterProcesses(later: LaterProcess[], removedSourceIds: string[] = []) {
+  // Until background cleanup removes a legacy grinding link, its referenced cutting piece must survive.
+  if (later.some(({ key, set }) => isGrindingPieceKey(key)
+    && set?.pieces.some((piece) => piece.sourcePieceId && removedSourceIds.includes(piece.sourcePieceId)))) {
+    throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'PIECE_REFERENCED');
+  }
+  return later.filter(({ key }) => !isGrindingPieceKey(key));
 }

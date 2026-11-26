@@ -35,6 +35,9 @@ The local worktree initially lacked dependencies. Offline installation with the 
 - Decision: Keep completed quantity evidence; if cutting shrink would delete a referenced completed later piece, retain the cutting structure with the existing COMPLETED_QUANTITY_EXCEEDS_PLAN warning.
   Rationale: Quantity imports must not silently discard completed work or break the source FK.
   Date/Author: 2026-11-07 / Codex.
+- Decision: Exclude grinding by the original resource code from later-piece propagation and restore existing linked grinding rows in the API scheduler.
+  Rationale: Each set is restored in a short transaction using full-merge placement rules. Sets with completion, arrival or operation evidence are retained and counted in the log.
+  Date/Author: 2026-11-26 / Codex.
 
 ## Context and Orientation
 

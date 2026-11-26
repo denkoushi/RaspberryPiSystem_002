@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { dueManagementLearningEventRepository } from '../due-management-learning-event.repository.js';
 import { releaseOrderAssignmentAtLocation } from '../order-assignment/order-assignment-release.repository.js';
-import { findSessakuPieceWinner, readSessakuPieceSet, type SessakuPieceLogicalKey } from './piece-key.js';
+import { findSessakuPieceWinner, isGrindingPieceKey, readSessakuPieceSet, type SessakuPieceLogicalKey } from './piece-key.js';
 
 export function aggregateSessakuPieceCompletion(pieces: readonly { isCompleted: boolean; quantity: number }[], externalCompleted: boolean, plannedQuantity: number | null = null): boolean {
   if (!pieces.length) return false;
@@ -18,6 +18,7 @@ export async function reconcileSessakuPieceProgress(tx: Prisma.TransactionClient
 } } = {}) {
   // Split/merge already read these facts under the same logical and parent-row locks.
   const set = options.source ? options.source.set : await readSessakuPieceSet(tx, key);
+  if (set && !set.pieces.length && isGrindingPieceKey(key)) return null;
   const winner = options.source ? { id: options.source.rowId } : await findSessakuPieceWinner(tx, key);
   if (!set || !winner || (!set.pieces.length && !options.emptyIsIncomplete)) return null;
   const [external, previous, supplement] = options.source ? [

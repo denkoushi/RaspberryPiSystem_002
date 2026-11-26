@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { encodeSessakuPieceKey, supportsSessakuPieceRelations, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
+import { encodeSessakuPieceKey, isGrindingPieceKey, supportsSessakuPieceRelations, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError, DomainHttpError } from '../../../lib/errors.js';
@@ -129,7 +129,7 @@ export async function readLaterPieceAuditSnapshots(tx: Prisma.TransactionClient,
       AND: { OR: [{ id: { in: before.flatMap((part) => part.sets.map((set) => set.setId)) } }, { sourcePieceSetId: { not: null } }, { pieces: { some: { sourcePieceId: { not: null } } } }] } },
     include: { pieces: { orderBy: { position: 'asc' } } }, orderBy: { id: 'asc' }
   });
-  return parts.map((key) => ({ key, sets: sets.filter((set) => set.fseiban === key.fseiban && set.fhincd === key.fhincd)
+  return parts.map((key) => ({ key, sets: sets.filter((set) => !isGrindingPieceKey(set) && set.fseiban === key.fseiban && set.fhincd === key.fhincd)
     .map((set) => ({ setId: set.id, pieces: set.pieces.map(({ id, sourcePieceId, quantity, isCompleted }) => ({ id, sourcePieceId, quantity, isCompleted })) })) }));
 }
 

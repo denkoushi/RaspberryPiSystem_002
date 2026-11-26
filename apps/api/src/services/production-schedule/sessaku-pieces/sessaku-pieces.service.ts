@@ -10,7 +10,7 @@ import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-b
 import { isUnitSplitEnabled } from './unit-split-policy.js';
 import { getGrindingPlanningBoardResourceMinutes, resourcePartOpMinutesSchema } from '../grinding-planning-board-resource-minutes.service.js';
 import { sessakuPieceCompletionSchema } from './sessaku-pieces.schemas.js';
-import { readLaterProcesses, assertLaterProcessesEditable, type LaterProcess } from './piece-later-processes.js';
+import { readLaterProcesses, assertLaterProcessesEditable, nonGrindingLaterProcesses, type LaterProcess } from './piece-later-processes.js';
 import { runSessakuPieceOperation, readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, pieceTimingStage, type PieceAuditContext, type PieceOperationTiming } from './piece-audit.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
 import { randomUUID } from 'node:crypto';
@@ -122,7 +122,7 @@ async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key:
   }
   return { targetFseiban: key.fseiban, resourceCds: [...resources].filter((value): value is string => value != null), inboundKeys: [...inboundKeys.values()] };
 }
-async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], later: LaterProcess[], audit?: PieceAuditContext, dueSource?: 'excel' | 'scaw') {
+export async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], later: LaterProcess[], audit?: PieceAuditContext, dueSource?: 'excel' | 'scaw') {
   const batch = autoUnitSplitBatch.getStore();
   if (batch?.before) {
     // An override-only site can see a different extra seiban on each lot. Re-project that
@@ -173,7 +173,7 @@ async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], 
   if (batch) { batch.before = before; batch.initialBefore = copyBatchProjections(before); batch.states = states; batch.source = source; batch.ranks = siteRanks; }
   return before;
 }
-async function saveSiteVersions(tx: Prisma.TransactionClient, before: Map<string, Awaited<ReturnType<typeof projection>>>, once = false) {
+export async function saveSiteVersions(tx: Prisma.TransactionClient, before: Map<string, Awaited<ReturnType<typeof projection>>>, once = false) {
   // Automatic batches invalidate each changed site once; manual operations preserve their existing increments.
   for (const [siteKey, state] of before) if (state.stateVersionIncrements) {
     await tx.productionScheduleGrindingPlanningBoardState.update({ where: { csvDashboardId_siteKey: {
@@ -182,6 +182,7 @@ async function saveSiteVersions(tx: Prisma.TransactionClient, before: Map<string
   }
 }
 async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], removedSourceIds: string[]) {
+  later = nonGrindingLaterProcesses(later, removedSourceIds);
   const references = later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId && removedSourceIds.includes(piece.sourcePieceId)) ?? []);
   const ids = references.filter((piece) => !piece.isCompleted).map((piece) => piece.id);
   const completedIds = references.filter((piece) => piece.isCompleted).map((piece) => piece.id);
@@ -514,7 +515,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
       return added;
     });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`), params.audit);
-    await timed(params.audit, 'propagationMs', async () => replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit));
+    await timed(params.audit, 'propagationMs', async () => replaceLaterPieces(tx, nonGrindingLaterProcesses(c.later), await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit));
     if (!autoUnitSplitBatch.getStore()) {
       await flushSiteItems(tx, before, params.audit);
       await timed(params.audit, 'siteVersionMs', () => saveSiteVersions(tx, before));
@@ -550,7 +551,7 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     if (!all) await tx.productionScheduleSessakuPiece.create({ data: { id, pieceSetId: c.set.id, position: Math.min(...selected.map((p) => p.position)), quantity: selected.reduce((n, p) => n + p.quantity, 0) } });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 }, quantityWarning: null, autoUnitSplitHeldAt: new Date() } });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, params.pieceIds.map((p) => `piece:${p}`), [all ? params.parentItemId : `piece:${id}`], params.audit);
-    await timed(params.audit, 'propagationMs', async () => replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit));
+    await timed(params.audit, 'propagationMs', async () => replaceLaterPieces(tx, nonGrindingLaterProcesses(c.later), await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit));
     await flushSiteItems(tx, before, params.audit);
     await timed(params.audit, 'siteVersionMs', () => saveSiteVersions(tx, before));
   });

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ query: vi.fn(), split: vi.fn(), info: vi.fn(), warn: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn(), split: vi.fn(), restore: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.query } }));
 vi.mock('../../../../lib/logger.js', () => ({ logger: { info: mocks.info, warn: mocks.warn } }));
 vi.mock('../auto-unit-split.service.js', () => ({ AUTO_UNIT_SPLIT_BUDGET_MS: 20000, autoSplitSessakuUnits: mocks.split }));
+vi.mock('../piece-grinding-restore.js', () => ({ restoreGrindingLaterPieceSets: mocks.restore }));
 import { createSessakuAutoUnitSplitScheduler, wakeSessakuAutoUnitSplit } from '../auto-unit-split.scheduler.js';
 
 describe('sessaku background splitting', () => {
@@ -11,6 +12,7 @@ describe('sessaku background splitting', () => {
     vi.resetAllMocks(); vi.useFakeTimers(); vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
     mocks.query.mockResolvedValue([{ siteKey: '' }, { siteKey: 'site-a' }, { siteKey: 'site-b' }]);
     mocks.split.mockResolvedValue({ splitCount: 0, skippedCount: 0, hasMore: false });
+    mocks.restore.mockResolvedValue({ restoredCount: 0, retainedCount: 0, failedCount: 0 });
     scheduler = createSessakuAutoUnitSplitScheduler();
   });
   afterEach(async () => { await scheduler.stop(); vi.useRealTimers(); vi.unstubAllEnvs(); });
@@ -99,10 +101,17 @@ describe('sessaku background splitting', () => {
     expect(mocks.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'sessaku_piece.auto_unit_split_background_pacing', retryAfterMs: 300000 }), expect.any(String));
   });
-  it('does nothing when creation is disabled or no scheduler is running', async () => {
+  it('restores in paged rounds and logs the sweep when creation is disabled', async () => {
     wakeSessakuAutoUnitSplit(); await vi.advanceTimersByTimeAsync(60000);
+    expect(mocks.restore).not.toHaveBeenCalled();
+    mocks.restore.mockResolvedValueOnce({ restoredCount: 4, retainedCount: 1, failedCount: 0, nextCursor: 'page-1' })
+      .mockResolvedValueOnce({ restoredCount: 1, retainedCount: 1, failedCount: 0 });
     vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'false'); scheduler.start();
-    wakeSessakuAutoUnitSplit(); await vi.advanceTimersByTimeAsync(60000);
+    wakeSessakuAutoUnitSplit(); await vi.advanceTimersByTimeAsync(31000);
+    expect(mocks.restore.mock.calls).toEqual([[undefined], ['page-1']]);
+    expect(mocks.info).toHaveBeenCalledWith({
+      event: 'sessaku_piece.grinding_restore_sweep', restoredCount: 5, retainedCount: 2, failedCount: 0
+    }, expect.any(String));
     expect(mocks.query).not.toHaveBeenCalled(); expect(mocks.split).not.toHaveBeenCalled();
   });
 });

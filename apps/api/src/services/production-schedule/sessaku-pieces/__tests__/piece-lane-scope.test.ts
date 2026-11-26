@@ -9,7 +9,8 @@ import { splitSessakuPieces, mergeSessakuPieces } from '../sessaku-pieces.servic
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { $transaction: vi.fn() } }));
 vi.mock('../../grinding-planning-board/state.js', () => ({ ensurePlanningBoardState: vi.fn(), stateOrder: (state: { seibanOrder: string[] }) => state.seibanOrder }));
 vi.mock('../../grinding-planning-board/source.js', () => ({ readOverrides: vi.fn(), readRanks: vi.fn(), readRowDetails: vi.fn(), readWinnerRowsByFseibans: vi.fn(), readWinnerRowsByLogicalKeyFseibans: vi.fn() }));
-vi.mock('../../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: vi.fn(), isProductionScheduleCuttingResourceCd: () => true }));
+vi.mock('../../policies/resource-category-policy.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../policies/resource-category-policy.service.js')>(), getResourceCategoryPolicy: vi.fn(), isProductionScheduleCuttingResourceCd: () => true }));
 vi.mock('../../fkojunst-status-mail-critical-lock.js', () => ({ acquireFkojunstStatusMailCriticalTransactionLock: vi.fn() }));
 vi.mock('../../order-assignment/production-schedule-parent-row-lock.service.js', () => ({ acquireProductionScheduleParentRowLockInTransaction: vi.fn() }));
 vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../piece-key.js')>(),

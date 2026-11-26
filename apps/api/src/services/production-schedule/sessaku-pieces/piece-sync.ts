@@ -2,7 +2,7 @@ import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-st
 import { ApiError } from '../../../lib/errors.js';
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceSetsByKeys, sessakuPieceKeyFromRow, type SessakuPieceLogicalKey } from './piece-key.js';
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, findSessakuPieceWinner, isGrindingPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceSetsByKeys, sessakuPieceKeyFromRow, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
@@ -21,6 +21,7 @@ export async function lockSessakuPieceSourceRows(tx: Prisma.TransactionClient, r
 }
 export async function synchronizeSessakuPieceSources(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[], externalChangedKeys: ReadonlySet<string> = new Set()) {
   for (const key of keys) {
+    if (isGrindingPieceKey(key)) continue;
     const set = await readSessakuPieceSet(tx, key);
     if (!set || !set.pieces.length && !set.sourcePieceSetId) continue;
     const winner = await findSessakuPieceWinner(tx, key);
