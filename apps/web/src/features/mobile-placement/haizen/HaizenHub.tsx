@@ -18,6 +18,7 @@ import { HaizenIcon } from './HaizenIcon';
 import { HaizenSheet } from './HaizenSheet';
 import { HaizenShelfPhotoList, HaizenShelfPhotoPicker } from './HaizenShelfPhotoPicker';
 import { HaizenSlipButton } from './HaizenSlipButton';
+import { playHaizenSound, unlockHaizenSound } from './haizenSounds';
 import { createHaizenClientRecordId } from './offline/haizenOfflineQueueStore';
 import { useHaizenOfflineQueue } from './offline/useHaizenOfflineQueue';
 import { formatScheduleDate, scheduleDateColor, scheduleDetailPath } from './scheduleDisplay';
@@ -153,6 +154,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     if (!activeNumber?.trim() || activeBranchNo === null || !activeShelfCode.trim() ||
       selectedBranch?.shelfCodeRaw === activeShelfCode || (activeBranchNo === 0 ? hasNumbered : hasNone) ||
       (tab === 'verify' && flow.result !== 'ok')) return;
+    playHaizenSound('decide');
     const shelf = shelves.data?.shelves.find((s) => s.shelfCodeRaw === activeShelfCode);
     const place = (shelf && [shelf.machineName, shelf.direction, shelf.displayLabel].filter(Boolean).join(' ')) || activeShelfCode;
     const moving = Boolean(selectedBranch);
@@ -226,7 +228,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const resultTitle = flow.result === 'ok' ? '一致' : flow.result === 'ng' ? '不一致' : flow.result === 'not-found' ? (slipDetails?.reason === 'part_required' ? 'あと1つ' : '未登録') : '照合できませんでした';
   const resultColor = flow.result === 'ok' ? colors.ok : flow.result === 'ng' ? colors.ng : colors.shelf;
 
-  return <div style={haizenPhoneStyle} className={`fixed inset-0 z-40 flex h-dvh flex-col ${hp.surface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]`}>
+  return <div style={haizenPhoneStyle} onPointerDown={unlockHaizenSound} onClickCapture={(e) => { if ((e.target as Element).closest('button')) playHaizenSound('tap'); }} className={`fixed inset-0 z-40 flex h-dvh flex-col ${hp.surface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]`}>
     <div className="relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col">
       <main className="relative flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-3.5">
         {tab === 'verify' ? <>
@@ -356,6 +358,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     <BarcodeScanModal onFrameCaptured={captureFrame} open={mp.scanField !== null} formats={mp.scanFormats} engine="auto-native" {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
       onSuccess={(text) => {
         if (tab === 'place' && (mp.scanField === 'transferOrder' || mp.scanField === 'placePurchaseOrder')) {
+          if (text.trim()) playHaizenSound('decide');
           readPlaceSlip(mp.scanField === 'placePurchaseOrder' ? 'po' : 'mo', text, retakeSelection.current); mp.setScanField(null);
         } else mp.onScanSuccess(text);
       }} onAbort={() => { retakeSelection.current = null; mp.setScanField(null); }} />
