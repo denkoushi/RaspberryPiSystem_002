@@ -2114,13 +2114,15 @@ model ProductionScheduleGrindingPlanningBoardPair {
   id             String   @id(map: "PSGrindingPlanningPair_pkey") @default(uuid())
   csvDashboardId String
   siteKey        String   @db.VarChar(100)
+  firstPartCode  String   @db.VarChar(200)
   firstPartName  String   @db.VarChar(200)
+  secondPartCode String   @db.VarChar(200)
   secondPartName String   @db.VarChar(200)
   createdAt      DateTime @default(now())
 
   csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningPair_dashboard_fkey")
 
-  @@unique([csvDashboardId, siteKey, firstPartName, secondPartName], map: "PSGrindingPlanningPair_site_names_key")
+  @@unique([csvDashboardId, siteKey, firstPartCode, secondPartCode], map: "PSGrindingPlanningPair_site_codes_key")
 }
 
 /// キオスク研削順位ボード専用のサイト共有状態。既存順位ボードの順位・割当は変更しない。
