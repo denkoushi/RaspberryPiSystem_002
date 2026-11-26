@@ -27,6 +27,8 @@ export type RegisteredShelfEntry = {
   displayLabel?: string | null;
   photoUpdatedAt?: string | null;
   macroZoneId?: string | null;
+  /** スマホの棚一覧の表示順（未設定は null） */
+  sortOrder?: number | null;
 };
 
 /**

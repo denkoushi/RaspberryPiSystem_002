@@ -82,4 +82,23 @@ describe('photo-only shelf master', () => {
       shelves: [{ ...shelf, resourceCds: ['025'] }]
     });
   });
+  it('reorders machines with the up button and saves the order for every shelf', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    const a = { shelfCodeRaw: 'A 北', isStructured: true, machineName: 'A', direction: '北' as const };
+    const b = { shelfCodeRaw: 'B 北', isStructured: true, machineName: 'B', direction: '北' as const };
+    vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [a, b] });
+    vi.mocked(http.put).mockImplementation(async () => {
+      vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [{ ...a, sortOrder: 1 }, { ...b, sortOrder: 0 }] });
+      return { data: { shelfCodes: ['B 北', 'A 北'] } };
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '並び順' }));
+    expect(await screen.findByRole('button', { name: 'A を上へ' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'B を上へ' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(http.put).toHaveBeenCalledExactlyOnceWith('/mobile-placement/shelf-order', { shelfCodes: ['B 北', 'A 北'] }));
+    expect(await screen.findByRole('status')).toHaveTextContent('並び順を保存しました');
+    expect(screen.queryByRole('heading', { name: '並び順' })).toBeNull();
+  });
 });

@@ -10,13 +10,13 @@ import { mobileRequest } from '../../connectivity';
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { HaizenShelfPhotoTile } from '../../haizen/HaizenShelfPhotoPicker';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
+import { groupShelvesByMachine } from '../../registeredShelves';
 import { refreshRegisteredShelvesAfterAssignment } from '../../shelfListCache';
 import { hp } from '../../ui/haizenPhoneTokens';
 import { useRegisteredShelves } from '../../useRegisteredShelves';
 
 import type { ResourceShelfAssignment } from '../../../../api/domains/mobile-placement';
 import type { MachineFactory } from '../../../../api/domains/tools';
-import type { RegisteredShelfEntryDto } from '../../registeredShelves';
 
 const resourceShelvesKey = [...mobilePlacementQueryKeys.all, 'resource-shelves'] as const;
 const factories: MachineFactory[] = ['MISHIMA', 'SENDAI'];
@@ -58,12 +58,7 @@ function useResourceShelfSettings(kiosk: boolean) {
     }
   });
   const select = (cd: string | null) => { save.reset(); setResourceCd(cd); setDraft(null); };
-  const groups = new Map<string | undefined, RegisteredShelfEntryDto[]>();
-  for (const shelf of shelves.data?.shelves ?? []) {
-    const group = groups.get(shelf.machineName) ?? [];
-    group.push(shelf);
-    groups.set(shelf.machineName, group);
-  }
+  const groups = groupShelvesByMachine(shelves.data?.shelves ?? []);
   return {
     resources, selected, codes, groups, select, factory,
     selectFactory: (value: MachineFactory) => { select(null); setFactory(value); },

@@ -770,6 +770,8 @@ model MobilePlacementShelf {
   tier                    Int?
   /// マクロ区画 ID（nw..se）
   macroZoneId             String?
+  /// スマホの棚一覧の表示順（NULL は未設定）
+  sortOrder               Int?
   createdAt               DateTime                      @default(now())
   createdByClientDeviceId String?
   createdBy               ClientDevice?                 @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
