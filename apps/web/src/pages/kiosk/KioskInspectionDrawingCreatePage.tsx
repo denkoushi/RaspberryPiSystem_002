@@ -59,6 +59,7 @@ import {
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
   isConfirmedInspectionDrawing,
+  normalizeInspectionDrawingProcessGroup,
   templateToCreateDraft,
   useInspectionDrawingUnsavedChangesGuard
 } from '../../features/part-measurement/inspection-drawing';
@@ -514,8 +515,7 @@ export function KioskInspectionDrawingCreatePage() {
 
   const applyLoadedTemplate = useCallback(
     (loaded: PartMeasurementTemplateDto) => {
-      const loadedProcessGroup: PartMeasurementProcessGroup =
-        loaded.processGroup === 'grinding' ? 'grinding' : 'cutting';
+      const loadedProcessGroup = normalizeInspectionDrawingProcessGroup(loaded.processGroup);
       const loadedPoints = loaded.items.map((item) => templateItemToDrawingPoint(item));
       const loadedSelfInspectionFixedCount = mapTemplateFixedCountToFormString(
         loaded.selfInspectionMode,
