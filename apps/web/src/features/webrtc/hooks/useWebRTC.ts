@@ -35,7 +35,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   // デバッグログ用：最新stateを参照するためのref（Hook依存関係の警告回避）
   const callStateRef = useRef<CallState>('idle');
   const currentCallIdRef = useRef<string | null>(null);
-  const hasIncomingRef = useRef(false);
   
   // call関数のエラーハンドリング用：エラーレスポンスを待機するためのPromise
   const callErrorPromiseRef = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
@@ -51,8 +50,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const isNegotiatingRef = useRef(false);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
   const startCallRef = useRef<((callId: string, withVideo?: boolean) => Promise<void>) | null>(null);
-  const pcConnectionStartTimeRef = useRef<number | null>(null);
-  const pcIceConnectionStartTimeRef = useRef<number | null>(null);
   const disconnectedRestartTimerRef = useRef<number | null>(null);
 
   const toUiStream = useCallback((stream: MediaStream | null): MediaStream | null => {
@@ -95,8 +92,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     setIncomingCallInfo(null);
     setLocalStream(null);
     setRemoteStream(null);
-    pcConnectionStartTimeRef.current = null;
-    pcIceConnectionStartTimeRef.current = null;
     // call関数のエラーハンドリング用：エラーレスポンス待機を解除
     if (callErrorPromiseRef.current) {
       callErrorPromiseRef.current.resolve();
@@ -320,11 +315,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     // 接続状態の監視
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      const now = Date.now();
       if (state === 'connected') {
-        if (!pcConnectionStartTimeRef.current) {
-          pcConnectionStartTimeRef.current = now;
-        }
         setCallState('connected');
       }
       if (state === 'failed' || state === 'disconnected') {
@@ -338,9 +329,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     pc.oniceconnectionstatechange = () => {
       const ice = pc.iceConnectionState;
       if (ice === 'connected' || ice === 'completed') {
-        if (!pcIceConnectionStartTimeRef.current) {
-          pcIceConnectionStartTimeRef.current = Date.now();
-        }
         return;
       }
       if (ice === 'failed' || ice === 'disconnected') {
@@ -612,7 +600,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   useEffect(() => {
     callStateRef.current = callState;
     currentCallIdRef.current = currentCallId;
-    hasIncomingRef.current = Boolean(incomingCallInfo);
   }, [callState, currentCallId, incomingCallInfo]);
 
   return {

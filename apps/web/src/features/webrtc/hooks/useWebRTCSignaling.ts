@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { DEFAULT_CLIENT_KEY, getResolvedClientKey } from '../../../api/client';
+import { getResolvedClientKey } from '../../../api/client';
 import { publishSignaling, registerSignalingSender } from '../signalingBus';
 import { playRingtone } from '../utils/ringtone';
 
@@ -83,9 +83,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
     }
 
     const clientKey = getResolvedClientKey();
-    const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
-    const macDefaultKey = 'client-key-mac-kiosk1';
-    void (clientKey === DEFAULT_CLIENT_KEY ? 'default' : isMac && clientKey === macDefaultKey ? 'mac_default' : 'custom');
 
     if (!clientKey) {
       console.warn('WebRTC signaling: clientKey not found');
