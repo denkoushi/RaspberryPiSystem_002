@@ -55,6 +55,7 @@ const expectedRoutes = [
   ['inventory_haizen', '在庫＞配膳の場所', '/kiosk/inventory/haizen'],
   ['inventory_haizen_verify_history', '在庫＞照合の記録', '/kiosk/inventory/haizen/verify-history'],
   ['inventory_haizen_trail', '在庫＞足取り', '/kiosk/inventory/haizen/trail'],
+  ['inventory_haizen_materials', '在庫＞納期と材料', '/kiosk/inventory/haizen/materials'],
   ['assembly_check_sheets', '組立＞組立チェックシート', '/kiosk/assembly/check-sheets'],
   ['assembly_manuals', '組立＞要領書 見る', '/kiosk/assembly/manuals'],
   ['assembly_training', '組立＞締付トルク訓練', '/kiosk/assembly/training'],
