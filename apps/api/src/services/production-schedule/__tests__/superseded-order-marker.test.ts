@@ -175,7 +175,7 @@ describe('refreshSupersededProductionScheduleRows', () => {
     expect(result).toMatchObject({ marked: 0, cleared: 1, supersededNow: 0 });
     expect(queryRaw).toHaveBeenCalledTimes(3);
     expect(queryRaw.mock.calls[1][0].sql).toContain('SELECT EXISTS');
-    expect(queryRaw.mock.calls[2][0].sql).toContain('SET "supersededAt" = NULL');
+    expect(queryRaw.mock.calls[2][0].sql).toContain('SET "supersededAt" = CASE');
   });
 
 
