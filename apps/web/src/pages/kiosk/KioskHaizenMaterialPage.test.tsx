@@ -59,20 +59,21 @@ describe('KioskHaizenMaterialPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-02 棚名2' }));
     await screen.findByText('配膳の場所の画面');
   });
-  it('renders before the shelf master or unplaced parts, then fills badges without waiting for the shelf master', async () => {
+  it('waits for unplaced parts so progress is not overstated, then fills badges without waiting for the shelf master', async () => {
     let resolveUnplaced!: (parts: typeof part[]) => void;
     let resolveMaterial!: (result: { items: HaizenMaterialArrivalItem[] }) => void;
     vi.mocked(getMobilePlacementRegisteredShelves).mockReturnValue(new Promise(() => {}));
     vi.mocked(getHaizenUnplacedParts).mockReturnValue(new Promise(resolve => { resolveUnplaced = resolve; }));
     vi.mocked(getHaizenMaterialArrival).mockReturnValue(new Promise(resolve => { resolveMaterial = resolve; }));
     mount();
-    const heading = await screen.findByRole('button', { name: /BA1/ });
-    fireEvent.click(heading);
-    expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '棚 西-北-02 西-北-02' })).toBeInTheDocument();
+    await screen.findByText('配膳情報を読み込んでいます…');
+    expect(screen.queryByRole('button', { name: /BA1/ })).not.toBeInTheDocument();
     expect(getHaizenMaterialArrival).not.toHaveBeenCalled();
     resolveUnplaced([part]);
-    await screen.findByText('未配置部品');
+    const heading = await screen.findByRole('button', { name: /BA1/ });
+    fireEvent.click(heading);
+    expect(screen.getByRole('button', { name: '棚 西-北-02 西-北-02' })).toBeInTheDocument();
+    expect(screen.getByText('未配置部品')).toBeInTheDocument();
     expect(screen.queryByText('材料未入荷')).not.toBeInTheDocument();
     expect(screen.queryByText('材料未着あり')).not.toBeInTheDocument();
     await waitFor(() => expect(getHaizenMaterialArrival).toHaveBeenCalledTimes(1));

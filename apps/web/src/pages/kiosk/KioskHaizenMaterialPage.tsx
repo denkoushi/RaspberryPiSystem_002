@@ -48,7 +48,7 @@ export function KioskHaizenMaterialPage() {
   const updatedAt = Math.min(overview.dataUpdatedAt || Infinity, unplaced.dataUpdatedAt || Infinity);
   const now = Date.now();
   const openShelf = (shelf: string) => navigate('/kiosk/inventory/haizen', { state: { shelf } });
-  const unavailable = (scheduleSource !== 'both' && !view.data) || (!overview.data && !unplaced.data) || (groups.length === 0 && loadingRows);
+  const unavailable = !overview.data || !unplaced.data || !view.data;
   const failed = overview.isError || master.isError || unplaced.isError || view.isError;
   const loading = loadingRows || view.isPending || master.isPending;
   const toggleSeiban = (fseiban: string | null) => setOpenSeibans(previous => {
