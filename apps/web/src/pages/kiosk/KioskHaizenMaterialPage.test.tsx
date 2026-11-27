@@ -14,7 +14,9 @@ vi.mock('../../api/domains/mobile-placement', () => ({ getHaizenMaterialArrival:
 const base = { verified: false, dueDate: null, sendOutDate: null, source: 'branch' as const, manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1', fhincd: 'K1', fhinmei: 'ブラケット', machineName: null, branchNo: 1 };
 const rows = [
   { ...base, id: '1', shelfCodeRaw: '西-北-01', dueDate: '2026-11-10', fhinmei: '後の部品', updatedAt: '2026-10-21T01:00:00Z', fseiban: 'LATE' },
-  { ...base, id: '2', shelfCodeRaw: '西-北-02', dueDate: '2026-11-07', fhinmei: '先の部品', updatedAt: '2026-10-22T01:00:00Z', verified: true }
+  { ...base, id: '2', shelfCodeRaw: '西-北-02', dueDate: '2026-11-07', fhinmei: '先の部品', updatedAt: '2026-10-22T01:00:00Z', verified: true },
+  { ...base, id: '3', shelfCodeRaw: '西-北-02', fhincd: 'K2', fhinmei: '二つ目の部品', updatedAt: '2026-10-23T01:00:00Z', verified: true },
+  { ...base, id: '4', shelfCodeRaw: '西-北-01', fhincd: 'K3', fhinmei: '三つ目の部品', updatedAt: '2026-10-24T01:00:00Z', verified: true }
 ];
 const part = { fseiban: 'BA1', productNo: '100', fhincd: 'UP1', fhinmei: '未配置部品', verified: false, machineName: 'ｒｖ－１２ａ', dueDate: '2026-11-07' };
 const arrival: HaizenMaterialArrivalItem = { fseiban: 'BA1', fhincd: 'K1', status: 'ordered', basis: 'material' };
@@ -32,7 +34,7 @@ beforeEach(() => {
   vi.mocked(getHaizenOverview).mockResolvedValue({ rows, truncated: false });
   vi.mocked(getHaizenUnplacedParts).mockResolvedValue([part]);
   vi.mocked(getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [{ shelfCodeRaw: '西-北-02', displayLabel: '棚名2', isStructured: true }, { shelfCodeRaw: '西-北-01', displayLabel: '棚名1', isStructured: true }] });
-  vi.mocked(getHaizenMaterialArrival).mockResolvedValue({ items: [arrival] });
+  vi.mocked(getHaizenMaterialArrival).mockResolvedValue({ items: [arrival, { ...arrival, fhincd: 'K2', status: 'partial' }, { ...arrival, fhincd: 'K3', status: 'unordered' }] });
   vi.mocked(getHaizenMaterialView).mockImplementation(async source => ({
     seibanOrder: ['LATE', 'BA1'], excludedFseibans: source === 'general' ? ['LATE'] : source === 'dCompany' ? ['BA1'] : []
   }));
@@ -42,13 +44,16 @@ afterEach(() => { cleanup(); client.clear(); });
 describe('KioskHaizenMaterialPage', () => {
   it('starts collapsed in board order with normalized machine, due date and progress, and opens the selected shelf', async () => {
     mount();
-    const heading = await screen.findByRole('button', { name: /BA1 RV-12A 納期 11\/7\(土\) 照合済み 1\/2 配膳済み 1\/2/ });
+    const heading = await screen.findByRole('button', { name: /BA1 RV-12A 納期 11\/7\(土\) 照合 3\/4 配膳 3\/4/ });
     const late = screen.getByRole('button', { name: /LATE/ });
     await waitFor(() => expect(late.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy());
     expect(heading).toHaveAttribute('aria-expanded', 'false');
     expect(late).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    expect([...heading.querySelectorAll<HTMLSpanElement>('span[style]')].map(bar => bar.style.width)).toEqual(['50%', '50%']);
+    const chips = await screen.findAllByRole('button', { name: /点$/ });
+    expect(chips.map(chip => chip.getAttribute('aria-label'))).toEqual(['棚 西-北-01 棚名1 1点', '棚 西-北-01 棚名1 1点', '棚 西-北-02 棚名2 2点']);
+    expect(screen.getByText('未配置 1')).toBeInTheDocument();
+    expect(await screen.findByText('材料未入荷 1')).toBeInTheDocument();
     fireEvent.click(heading);
     expect(heading).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('未配置部品')).toBeInTheDocument();
@@ -56,7 +61,7 @@ describe('KioskHaizenMaterialPage', () => {
     fireEvent.click(heading);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     fireEvent.click(heading);
-    fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-02 棚名2' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: '棚 西-北-02 棚名2' }))[0]);
     await screen.findByText('配膳の場所の画面');
   });
   it('waits for unplaced parts so progress is not overstated, then fills badges without waiting for the shelf master', async () => {
@@ -72,16 +77,15 @@ describe('KioskHaizenMaterialPage', () => {
     resolveUnplaced([part]);
     const heading = await screen.findByRole('button', { name: /BA1/ });
     fireEvent.click(heading);
-    expect(screen.getByRole('button', { name: '棚 西-北-02 西-北-02' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '棚 西-北-02 西-北-02' })).toHaveLength(2);
     expect(screen.getByText('未配置部品')).toBeInTheDocument();
     expect(screen.queryByText('材料未入荷')).not.toBeInTheDocument();
-    expect(screen.queryByText('材料未着あり')).not.toBeInTheDocument();
+    expect(screen.queryByText('材料未入荷 1')).not.toBeInTheDocument();
     await waitFor(() => expect(getHaizenMaterialArrival).toHaveBeenCalledTimes(1));
     expect(getHaizenMaterialArrival).toHaveBeenCalledWith(expect.arrayContaining([{ fseiban: 'BA1', fhincd: 'K1' }]));
     resolveMaterial({ items: [arrival] });
     await screen.findByText('材料未入荷');
-    fireEvent.click(heading);
-    expect(screen.getByText('材料未着あり')).toBeInTheDocument();
+    expect(screen.getByText('材料未入荷 1')).toBeInTheDocument();
   });
   it('switches all three sources and restores the kiosk selection without changing the board storage', async () => {
     const savedBoardSource = JSON.stringify({ schemaVersion: 1, scheduleSource: 'general' });
@@ -105,6 +109,13 @@ describe('KioskHaizenMaterialPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '両方' }));
     await screen.findByRole('button', { name: /BA1/ });
     expect(screen.getByRole('button', { name: /LATE/ })).toBeInTheDocument();
+  });
+  it('opens a shelf from the collapsed row without expanding it', async () => {
+    mount();
+    const heading = await screen.findByRole('button', { name: /BA1/ });
+    fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-02 棚名2 2点' }));
+    await screen.findByText('配膳の場所の画面');
+    expect(heading).not.toBeInTheDocument();
   });
   it('keeps the table when the material lookup fails', async () => {
     vi.mocked(getHaizenMaterialArrival).mockRejectedValue(new Error('boom'));
