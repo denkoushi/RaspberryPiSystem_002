@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Prisma, type AssemblyProcedureTextFeedbackSource } from '@prisma/client';
 import { env } from '../../config/env.js';
+import { toJstDate } from '../../lib/jst-date.js';
 import { prisma } from '../../lib/prisma.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
@@ -84,7 +85,7 @@ export async function recordLearningSnapshot(
     vocabularyBuiltAt: vocabularyResult === 'updated' ? now : latest?.vocabularyBuiltAt ?? null,
     vocabularyDocuments: vocabularyResult === 'updated' ? documents.length : latest?.vocabularyDocuments ?? null,
   };
-  const day = new Date(new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10) + 'T00:00:00Z');
+  const day = toJstDate(now);
   const { dictationLearning, ...dictationScores } = dictation ?? {};
   const evaluation = dictation && { ...dictationScores, dictationLearning: dictationLearning ?? Prisma.DbNull };
   if (!dryRun) await prisma.assemblyProcedureLearningSnapshot.upsert({

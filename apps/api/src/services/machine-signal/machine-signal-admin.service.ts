@@ -1,3 +1,4 @@
+import { toJstDate } from '../../lib/jst-date.js';
 import { prisma } from '../../lib/prisma.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import {
@@ -6,7 +7,6 @@ import {
 } from '../imports/machine-signal-import-schedule.policy.js';
 
 const DAY_MS = 86_400_000;
-const JST_OFFSET_MS = 9 * 3_600_000;
 export const MACHINE_SIGNAL_COVERAGE_DAYS = 60;
 
 export type MachineSignalAdminOverviewDto = {
@@ -22,7 +22,7 @@ const toDateKey = (date: Date) => date.toISOString().slice(0, 10);
 
 /** 管理画面の上段に出す、取り込みの状況。 */
 export async function getMachineSignalAdminOverview(now: Date = new Date()): Promise<MachineSignalAdminOverviewDto> {
-  const today = new Date(`${toDateKey(new Date(now.getTime() + JST_OFFSET_MS))}T00:00:00.000Z`);
+  const today = toJstDate(now);
   const start = new Date(today.getTime() - (MACHINE_SIGNAL_COVERAGE_DAYS - 1) * DAY_MS);
   const [latest, grouped, config] = await Promise.all([
     prisma.machineSignalDailyReport.findFirst({ orderBy: { reportDate: 'desc' }, select: { reportDate: true } }),

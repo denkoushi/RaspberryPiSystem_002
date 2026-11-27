@@ -17,4 +17,3 @@ CREATE TABLE "DepartmentMasterEntry" (
 );
 
 CREATE UNIQUE INDEX "DepartmentMasterEntry_code_validFrom_key" ON "DepartmentMasterEntry"("code", "validFrom");
-CREATE INDEX "DepartmentMasterEntry_code_idx" ON "DepartmentMasterEntry"("code");

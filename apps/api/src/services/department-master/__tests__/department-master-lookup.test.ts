@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const findMany = vi.fn();
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { departmentMasterEntry: { findMany } } }));
 
-const { findDepartmentMasterEntries, toJstDate } = await import('../department-master-lookup.js');
+const { findDepartmentMasterEntries } = await import('../department-master-lookup.js');
+const { toJstDate } = await import('../../../lib/jst-date.js');
 
 describe('findDepartmentMasterEntries', () => {
   beforeEach(() => findMany.mockReset());

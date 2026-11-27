@@ -53,6 +53,10 @@ describe('parseDepartmentMasterRows', () => {
   it('rejects duplicate (code, validFrom)', () => {
     expect(() => parseDepartmentMasterRows([header, row(), row()])).toThrow('重複');
   });
+  it('rejects overlapping periods of the same code', () => {
+    expect(() => parseDepartmentMasterRows([header, row({ 10: '45000', 5: '45099' }), row({ 10: '45050', 5: '45200' })])).toThrow('重なっています');
+    expect(parseDepartmentMasterRows([header, row({ 10: '45000', 5: '45049' }), row({ 10: '45050', 5: '45200' })])).toHaveLength(2);
+  });
   it('rejects zero data rows and bad values', () => {
     expect(() => parseDepartmentMasterRows([header])).toThrow('0件');
     expect(() => parseDepartmentMasterRows([header, row({ 10: 'x' })])).toThrow('FVALIDYMD');
