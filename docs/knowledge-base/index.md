@@ -267,6 +267,7 @@ update-frequency: high
 | [KB-455](./KB-455-assembly-text-rewrite-background-fill.md) | 要領書エディタ「文字を書き換える」の消し跡を背景になじませる | 🔄 実機確認待ち |
 | [KB-456](./KB-456-fkojunst-completion-on-swapped-resource.md) | 製番ボードで、別の資源に完了(C)が付いた工程が未完了のまま残る(付け替えの調査と案) | ✅ 方針決定(ADR-20261125) |
 | [KB-457](./KB-457-power-automate-query-coverage.md) | Power Automate の取り込みクエリが届けるデータの範囲(購買の品番絞り込み、工順STに出ない資源) | ✅ 調査完了 |
+| [KB-458](./KB-458-planning-board-test-bar-lock-table-exhausted.md) | 製番ボードの＋(差し込み)が「保存できませんでした」になる(DB の鍵の上限あふれ) | ✅ 修正済み |
 | [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 
 ### フロントエンド関連

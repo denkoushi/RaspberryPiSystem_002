@@ -92,11 +92,8 @@ async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 
       const state = await lockState(tx, siteKey);
       assertBoardRevision(sourceRevision, state);
       const rows = await readWinnerRowsByFseibans(tx, stateOrder(state));
-      const sortedIds = rows.map((row) => row.id).sort((a, b) => a.localeCompare(b));
-      if (sortedIds.length) {
-        await acquireProductionScheduleParentRowLocksInTransaction(tx, sortedIds);
-        await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(${sortedIds}::text[]) ORDER BY "id" FOR UPDATE`;
-      }
+      // The state lock serializes override writers. Row locks are taken per lane in saveLane:
+      // locking every board row (10k+) exhausts PostgreSQL's shared lock table.
       const current = await resolveCurrentProjectionInTransaction({ client: tx, siteKey, dueSource, sourceRowIds: rows.map((row) => row.id), itemIds: [], policy,
         includeAllOverrides: true, preloaded: { state, rows, overrides: await readOverrides(tx, siteKey) } });
       return action(tx, current, await readPlanningTestBars(tx, siteKey));
@@ -113,7 +110,15 @@ function assertReference(reference: GrindingPlanningBoardItemReference, item: Gr
   if (item.isCompleted) throw new ApiError(409, '完了済みの棒は並べ替えできません', undefined, 'COMPLETED_ITEM');
   return item;
 }
+async function lockLaneRows(tx: Prisma.TransactionClient, lane: readonly GrindingPlanningBoardBar[]) {
+  const ids = [...new Set(lane.flatMap((item) => item.kind === 'test' ? [] : [item.sourceRowId]))].sort((a, b) => a.localeCompare(b));
+  if (!ids.length) return;
+  await acquireProductionScheduleParentRowLocksInTransaction(tx, ids);
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
+  if (locked.length !== ids.length) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+}
 async function saveLane(tx: Prisma.TransactionClient, siteKey: string, current: CurrentProjection, lane: readonly GrindingPlanningBoardBar[]) {
+  await lockLaneRows(tx, lane);
   const ranks = new Map<string | null, number>();
   for (const item of lane) {
     const band = planningBarBand(item);
