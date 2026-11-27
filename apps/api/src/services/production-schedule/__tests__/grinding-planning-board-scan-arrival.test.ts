@@ -7,11 +7,12 @@ const mocks = vi.hoisted(() => ({
     productionScheduleGrindingPlanningBoardArrival: { findFirst: vi.fn(), create: vi.fn() },
     productionScheduleGrindingPlanningBoardFirstProcessArrival: { upsert: vi.fn() }
   },
-  lookup: vi.fn(), rows: vi.fn(), discover: vi.fn(), projection: vi.fn(), pieces: vi.fn(),
+  lookup: vi.fn(), bySeiban: vi.fn(), purchases: vi.fn(), rows: vi.fn(), discover: vi.fn(), projection: vi.fn(), pieces: vi.fn(),
   pieceLocks: vi.fn(), stateLock: vi.fn(), parentLock: vi.fn(), ensureState: vi.fn(), enrich: vi.fn(), policy: vi.fn()
 }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.tx }));
-vi.mock('../production-schedule-lookup.service.js', () => ({ listScheduleRowsByProductNo: mocks.lookup }));
+vi.mock('../production-schedule-lookup.service.js', () => ({ listScheduleRowsByProductNo: mocks.lookup, listScheduleRowsByFseiban: mocks.bySeiban }));
+vi.mock('../../purchase-order-lookup/purchase-order-lookup-query.service.js', () => ({ findPurchaseOrderLookupRows: mocks.purchases }));
 vi.mock('../policies/resource-category-policy.service.js', async importOriginal => ({
   ...await importOriginal<typeof import('../policies/resource-category-policy.service.js')>(), getResourceCategoryPolicy: mocks.policy
 }));
@@ -137,5 +138,31 @@ describe('grinding arrival scans', () => {
       seibanOrder: ['S'], category: 'grinding', isResourceInCategory: cd => cd === 'G1' });
     mocks.projection.mockResolvedValue({ byItemId: new Map(projection.allItems.map(i => [i.itemId, i])) });
     expect(await run()).toMatchObject({ resolutionStatus: 'RESOLVED', arrival: { itemId: buildGrindingPlanningBoardRowItemId(rows[1]!.rowData) } });
+  });
+
+  it('resolves a purchase order number through its seiban and part code', async () => {
+    mocks.lookup.mockResolvedValue([]);
+    mocks.purchases.mockResolvedValue([{ seiban: 'S ', purchasePartCodeRaw: 'part', purchasePartCodeNormalized: 'PART' }]);
+    mocks.bySeiban.mockResolvedValue([
+      { rowId: 'r', productNo: '12345', fhincd: 'PART', fsigencd: 'G1' },
+      { rowId: 'x', productNo: '99999', fhincd: 'OTHER', fsigencd: 'G1' }
+    ]);
+    const result = await applyGrindingPlanningBoardScanArrival({ ...input, manufacturingOrderBarcodeRaw: '0005554987' });
+    expect(result).toMatchObject({ resolutionStatus: 'RESOLVED', arrival: { itemId: 'r', productNo: '0005554987' } });
+    expect(mocks.purchases).toHaveBeenCalledWith('0005554987');
+    expect(mocks.bySeiban).toHaveBeenCalledWith('S');
+    expect(mocks.rows).toHaveBeenCalledWith(mocks.tx, ['r']);
+  });
+
+  it('leaves a purchase order number with several seibans unresolved', async () => {
+    mocks.lookup.mockResolvedValue([]);
+    mocks.purchases.mockResolvedValue([
+      { seiban: 'S', purchasePartCodeRaw: 'PART', purchasePartCodeNormalized: 'PART' },
+      { seiban: 'T', purchasePartCodeRaw: 'PART', purchasePartCodeNormalized: 'PART' }
+    ]);
+    const result = await applyGrindingPlanningBoardScanArrival({ ...input, manufacturingOrderBarcodeRaw: '0005554987' });
+    expect(result).toMatchObject({ resolutionStatus: 'UNRESOLVED' });
+    expect(mocks.bySeiban).not.toHaveBeenCalled();
+    expect(arrival.create).not.toHaveBeenCalled();
   });
 });

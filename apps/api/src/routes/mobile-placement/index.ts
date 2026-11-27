@@ -471,6 +471,10 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = edgeScanBodySchema.parse(request.body);
+    // The current shelf-scanner agent posts here, so the grinding mode must branch here as well as on haizen-scans.
+    if (clientDevice.haizenEdgeEnabled && clientDevice.haizenScanMode === 'grinding_arrival') {
+      return applyGrindingPlanningBoardScanArrival({ clientDevice, manufacturingOrderBarcodeRaw: body.orderNumber });
+    }
     const identity = resolveCredentialIdentity(clientDevice);
     return registerEdgeScan({ ...body, clientDeviceId: identity.clientDeviceId });
   });
