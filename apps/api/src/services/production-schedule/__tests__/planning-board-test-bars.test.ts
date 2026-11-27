@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { ProductionScheduleGrindingPlanningBoardTestBar } from '@prisma/client';
+import { buildGrindingPlanningBoardRowItemId, buildGrindingPlanningBoardLogicalKey } from '../grinding-planning-board-projection.js';
 
 const mocks = vi.hoisted(() => ({ categoryResource: vi.fn(() => true), master: vi.fn(), transaction: vi.fn(), winnerRows: vi.fn(), executeRaw: vi.fn(), queryRaw: vi.fn(), current: vi.fn(), save: vi.fn(), project: vi.fn(),
+  details: vi.fn(), completionFlags: vi.fn(), overrides: vi.fn(), pieceSets: vi.fn(),
   table: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findUniqueOrThrow: vi.fn() },
   state: { findUniqueOrThrow: vi.fn(), update: vi.fn() } }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
@@ -13,13 +15,27 @@ vi.mock('../grinding-planning-board/state.js', () => ({
   ensurePlanningBoardState: vi.fn(), lockState: async () => ({ id: 'board', seibanOrder: ['lot'] }),
   assertBoardRevision: vi.fn(), stateOrder: () => ['lot'], boardRevision: () => 'r2'
 }));
-vi.mock('../grinding-planning-board/source.js', () => ({ readMasterResourceCds: mocks.master, readWinnerRowsByFseibans: mocks.winnerRows, readOverrides: async () => new Map() }));
+vi.mock('../grinding-planning-board/source.js', () => ({
+  readMasterResourceCds: mocks.master, readWinnerRowsByFseibans: mocks.winnerRows, readOverrides: mocks.overrides,
+  readRowDetails: mocks.details, readRowCompletionFlags: mocks.completionFlags, readRanks: async () => ({ rows: new Map() })
+}));
 vi.mock('../grinding-planning-board/write.js', () => ({
   resolveCurrentProjectionInTransaction: mocks.current, writeOverrideIfChanged: mocks.save, projectCurrentItems: mocks.project
 }));
-vi.mock('../grinding-planning-board/shared.js', () => ({ assertItemRevision: vi.fn(), isCategoryResource: mocks.categoryResource, STRING_TRIM_CHARACTERS: ' ' }));
-vi.mock('../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: async () => ({}), normalizeProductionScheduleResourceCd: (cd: string) => cd }));
-vi.mock('../sessaku-pieces/piece-key.js', () => ({ acquireSessakuPieceLogicalLocks: vi.fn() }));
+vi.mock('../grinding-planning-board/shared.js', async (original) => ({
+  ...await original<typeof import('../grinding-planning-board/shared.js')>(),
+  assertItemRevision: vi.fn(), isCategoryResource: mocks.categoryResource, STRING_TRIM_CHARACTERS: ' '
+}));
+vi.mock('../policies/resource-category-policy.service.js', () => ({
+  getResourceCategoryPolicy: async () => ({ cuttingExcludedResourceCds: [] }), normalizeProductionScheduleResourceCd: (cd: string) => cd
+}));
+vi.mock('../sessaku-pieces/piece-key.js', async (original) => ({
+  ...await original<typeof import('../sessaku-pieces/piece-key.js')>(),
+  acquireSessakuPieceLogicalLocks: vi.fn(), readSessakuPieceSets: mocks.pieceSets
+}));
+vi.mock('../grinding-planning-board-resource-minutes.service.js', () => ({
+  getGrindingPlanningBoardResourceMinutes: async () => ({ values: [] })
+}));
 vi.mock('../grinding-planning-board/schedule-source.js', async (original) => ({
   ...await original<typeof import('../grinding-planning-board/schedule-source.js')>(), readScheduleSourceExcludedFseibans: async () => []
 }));
@@ -42,6 +58,8 @@ beforeEach(() => {
   mocks.categoryResource.mockReturnValue(true);
   mocks.master.mockResolvedValue(new Set(['761']));
   mocks.winnerRows.mockResolvedValue([]);
+  mocks.overrides.mockResolvedValue(new Map());
+  mocks.pieceSets.mockResolvedValue(new Map());
   mocks.queryRaw.mockImplementation(async (_sql, _dashboardId?: string, ids?: string[]) => (ids ?? []).map((id) => ({ id })));
   items = [normal('a1', 1, band), normal('a2', 2, band), normal('n1', 1), normal('n2', 2), normal('n3', 3)];
   rows = []; overrides = new Map();
@@ -105,6 +123,34 @@ it('locks only the parent rows of the saved lane, however many rows the board ha
   expect(lockedIds).toEqual(laneRows);
   expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.queryRaw.mock.invocationCallOrder.at(-1)!);
   expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.save.mock.invocationCallOrder[0]!);
+});
+
+it('hydrates details only for lane parents, including rows and operation ranges moved into the lane', async () => {
+  const { resolveCurrentProjectionInTransaction, projectCurrentItems } = await vi.importActual<typeof import('../grinding-planning-board/write.js')>('../grinding-planning-board/write.js');
+  mocks.current.mockImplementationOnce(resolveCurrentProjectionInTransaction);
+  mocks.project.mockImplementationOnce(projectCurrentItems);
+  const winner = (id: string, resource: string, part = id) => ({ id, rowData: { FSEIBAN: 'lot', FHINCD: part, FSIGENCD: resource, FKOJUN: id } });
+  const inside = winner('inside', '761');
+  const inbound = winner('inbound', '762');
+  const outbound = winner('outbound', '761', 'inside');
+  const split = winner('split', '762');
+  mocks.winnerRows.mockResolvedValue([inside, inbound, outbound, split, winner('other', '763')]);
+  mocks.overrides.mockResolvedValue(new Map([
+    [buildGrindingPlanningBoardRowItemId(inbound.rowData), { overrideResourceCd: '761' }],
+    [buildGrindingPlanningBoardRowItemId(outbound.rowData), { overrideResourceCd: '762' }],
+    ['pieceops:p:2', { overrideResourceCd: '761' }]
+  ]));
+  mocks.pieceSets.mockResolvedValue(new Map([[buildGrindingPlanningBoardLogicalKey(split.rowData), {
+    pieces: [{ id: 'p', position: 1, quantity: 1, opSplits: [{ fromOpNo: 2, sourceResourceCd: '762' }] }]
+  }]]));
+  mocks.details.mockImplementation(async (_tx, rowIds: string[]) => new Map(rowIds.map((id) => [id, { orderSupplements: [], rowNotes: [] }])));
+  mocks.completionFlags.mockResolvedValue(new Map([['outbound', true]]));
+
+  const result = await createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30 });
+  expect(mocks.details).toHaveBeenCalledExactlyOnceWith(expect.anything(), ['inside', 'inbound', 'split']);
+  expect(mocks.completionFlags).toHaveBeenCalledExactlyOnceWith(expect.anything(), ['outbound']);
+  expect(new Set(result.items.map((item) => item.itemId))).toEqual(new Set([buildGrindingPlanningBoardRowItemId(inside.rowData), buildGrindingPlanningBoardRowItemId(inbound.rowData), 'pieceops:p:2']));
+  expect(result.items.find((item) => item.sourceRowId === 'inside')?.progress).toMatchObject({ completed: 1, total: 2 });
 });
 
 it('rejects the save when a lane parent row has disappeared', async () => {
@@ -194,7 +240,7 @@ describe('test bar part names', () => {
     expect(sql.sql).toContain('FROM parts LEFT JOIN machine_stock USING ("partName")');
     expect(sql.sql).toContain('(machine_stock."partName" IS NOT NULL) AS "machineStock"');
     expect(sql.sql).toContain('ORDER BY "machineStock" DESC, parts."partName"');
-    expect(mocks.categoryResource).toHaveBeenCalledWith('761', 'all', {});
+    expect(mocks.categoryResource).toHaveBeenCalledWith('761', 'all', { cuttingExcludedResourceCds: [] });
   });
   it('returns an empty candidate list when there are no nonempty names', async () => {
     mocks.queryRaw.mockResolvedValue([]);

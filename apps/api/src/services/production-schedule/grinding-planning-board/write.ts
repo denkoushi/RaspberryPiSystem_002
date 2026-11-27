@@ -19,7 +19,7 @@ import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balan
 import { isGrindingPlanningBoardSpecialDueKind, resolveGrindingPlanningBoardSpecialDueExpiresAt } from '../grinding-planning-board-special-due.js';
 import { assertItemRevision, MAX_ALTERNATE_RANK, asRowData, isCategoryResource, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
 import { lockPlanningSourceRows } from './source-row-lock.js';
-import { readMasterResourceCds, readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds } from './source.js';
+import { readMasterResourceCds, readOverrides, readRanks, readRowCompletionFlags, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, readStateUncheckedFseibans, stateUncheckedFseibans, stateOrder } from './state.js';
 
 export async function readLivePieceKeys(client: Prisma.TransactionClient, rowIds: readonly string[]): Promise<SessakuPieceLogicalKey[]> {
@@ -28,11 +28,11 @@ export async function readLivePieceKeys(client: Prisma.TransactionClient, rowIds
   return [...sets.values()].filter((set) => set.pieces.length);
 }
 
-export async function resolveCurrentProjectionInTransaction(params: { dueSource?: 'excel' | 'scaw'; allowPieceParent?: boolean; client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; includeAllOverrides?: boolean; preloaded?: { rows: WinnerRow[]; state: PlanningState; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride> } }): Promise<CurrentProjection> {
+export async function resolveCurrentProjectionInTransaction(params: { dueSource?: 'excel' | 'scaw'; allowPieceParent?: boolean; client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; includeAllOverrides?: boolean; preloaded?: { rows: WinnerRow[]; state: PlanningState; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; pieceSets?: Awaited<ReturnType<typeof readSessakuPieceSets>>; progressScope?: readonly WinnerRow[] } }): Promise<CurrentProjection> {
   assertWritablePlanningItemIds([...params.itemIds, ...params.sourceRowIds]);
   const state = params.preloaded?.state ?? await readState(params.client, params.siteKey);
   const rows = params.preloaded?.rows ?? await readWinnerRowsByIds(params.client, params.sourceRowIds);
-  const pieceSets = await readSessakuPieceSets(params.client, rows);
+  const pieceSets = params.preloaded?.pieceSets ?? await readSessakuPieceSets(params.client, rows);
   const resourceMinutes = await getGrindingPlanningBoardResourceMinutes({ siteKey: params.siteKey }, params.client);
   if (!params.allowPieceParent) for (const row of rows) {
     if (params.itemIds.includes(buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)))
@@ -49,14 +49,17 @@ export async function resolveCurrentProjectionInTransaction(params: { dueSource?
     params.includeAllOverrides ? undefined : [...new Set([...params.itemIds, ...parentItemIds])]
   );
   const masterResourceCds = await readMasterResourceCds(params.client);
-  const progressRows: GrindingPlanningBoardProgressRow[] = rows.flatMap((row) => {
+  const progressScope = params.preloaded?.progressScope ?? [];
+  const completionFlags = progressScope.length ? await readRowCompletionFlags(params.client, progressScope.map((row) => row.id)) : undefined;
+  const progressRows: GrindingPlanningBoardProgressRow[] = (progressScope.length ? [...rows, ...progressScope] : rows).flatMap((row) => {
     const detail = details.get(row.id);
-    if (!detail) return [];
+    const isCompleted = detail ? Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) : completionFlags?.get(row.id);
+    if (isCompleted == null) return [];
     const data = asRowData(row.rowData);
     const fhincd = valueAsString(data, 'FHINCD').trim().toUpperCase();
     const resourceCd = normalizeProductionScheduleResourceCd(valueAsString(data, 'FSIGENCD'));
     if (fhincd.startsWith('MH') || fhincd.startsWith('SH') || (resourceCd != null && params.policy.cuttingExcludedResourceCds.includes(resourceCd))) return [];
-    return [{ rowId: row.id, fseiban: valueAsString(data, 'FSEIBAN'), productNo: valueAsString(data, 'ProductNo'), fhincd: valueAsString(data, 'FHINCD'), isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) }];
+    return [{ rowId: row.id, fseiban: valueAsString(data, 'FSEIBAN'), productNo: valueAsString(data, 'ProductNo'), fhincd: valueAsString(data, 'FHINCD'), isCompleted }];
   });
   const common = { dueSource: params.dueSource, resourceMinutes, rows, details, ranks, overrides, pieceSets, includePieces: !params.allowPieceParent || params.itemIds.some((id) => sessakuPieceIdFromItemId(id) != null), progressRows, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
   const grinding = projectGrindingPlanningBoard({ ...common, category: 'grinding' });

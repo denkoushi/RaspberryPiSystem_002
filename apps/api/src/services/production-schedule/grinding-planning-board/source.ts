@@ -120,6 +120,19 @@ export async function readRowDetails(client: DbClient, rowIds: readonly string[]
   return details;
 }
 
+export async function readRowCompletionFlags(client: DbClient, rowIds: readonly string[]) {
+  const flags = new Map<string, boolean>();
+  for (const chunk of chunkLeaderboardRowIdsForHydrate(rowIds)) {
+    const rows = await client.csvDashboardRow.findMany({
+      where: { id: { in: chunk }, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true, productionScheduleProgress: { select: { isCompleted: true } },
+        productionScheduleExternalCompletion: { select: { isExternallyCompleted: true } } }
+    });
+    for (const row of rows) flags.set(row.id, Boolean(row.productionScheduleProgress?.isCompleted || row.productionScheduleExternalCompletion?.isExternallyCompleted));
+  }
+  return flags;
+}
+
 export async function readRanks(client: DbClient, rowIds: readonly string[], siteKey: string, records?: readonly RankRow[]): Promise<GrindingPlanningBoardProjectionRanks> {
   const rows: RankRow[] = records?.filter((row) => row.siteKey === siteKey || row.location === siteKey) ?? [];
   for (const chunk of records ? [] : chunkLeaderboardRowIdsForHydrate([...new Set(rowIds)])) {
