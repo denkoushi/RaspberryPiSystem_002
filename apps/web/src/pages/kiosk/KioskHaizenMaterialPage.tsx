@@ -70,7 +70,7 @@ export function KioskHaizenMaterialPage() {
           const expanded = openSeibans.has(fseiban);
           const waitingMaterial = rows.filter(row => {
             const arrival = row.fseiban && row.fhincd ? materialByPart.get(materialArrivalKey(row.fseiban, row.fhincd)) : undefined;
-            return arrival?.basis === 'material' && arrival.status !== 'received';
+            return arrival?.basis === 'material' && arrival.status === 'ordered';
           }).length;
           const shelves = new Map<string, number>();
           for (const row of rows) if (!row.unplaced) shelves.set(row.shelfCodeRaw, (shelves.get(row.shelfCodeRaw) ?? 0) + 1);
@@ -88,10 +88,10 @@ export function KioskHaizenMaterialPage() {
               <HaizenCount label="配膳" count={placed} total={rows.length} />
             </button>
             <span className="flex min-w-0 flex-wrap gap-1.5 px-4 lg:px-0">
-              {[...shelves].map(([shelf, count]) => <button key={shelf} type="button" className="h-9 whitespace-nowrap rounded-lg border border-inv-line2 bg-inv-s2 px-2.5 text-[15px] font-semibold hover:bg-inv-s3" onClick={() => openShelf(shelf)}>
+              {[...shelves].sort(([a], [b]) => (shelfLabels.get(a) || a).localeCompare(shelfLabels.get(b) || b, 'ja')).map(([shelf, count]) => <button key={shelf} type="button" aria-label={`棚 ${shelf} ${shelfLabels.get(shelf) || shelf} ${count}点`} className="h-11 whitespace-nowrap rounded-lg border border-inv-line2 bg-inv-s2 px-2.5 text-[15px] font-semibold hover:bg-inv-s3" onClick={() => openShelf(shelf)}>
                 {shelfLabels.get(shelf) || shelf}<span className="ml-1.5 text-inv-muted">{count}</span>
               </button>)}
-              {unplacedCount > 0 && <span className="inline-flex h-9 items-center whitespace-nowrap rounded-lg border border-dashed border-inv-line2 px-2.5 text-[15px] text-inv-muted">未配置 {unplacedCount}</span>}
+              {unplacedCount > 0 && <span className="inline-flex h-11 items-center whitespace-nowrap rounded-lg border border-dashed border-inv-line2 px-2.5 text-[15px] text-inv-muted">未配置 {unplacedCount}</span>}
             </span>
             <span className="whitespace-nowrap px-4 text-[15px] font-bold text-inv-amber lg:pl-0">{waitingMaterial > 0 && `材料未入荷 ${waitingMaterial}`}</span>
             {expanded && <div className="overflow-x-auto lg:col-span-3">
