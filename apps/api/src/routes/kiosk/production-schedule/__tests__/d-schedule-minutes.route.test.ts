@@ -28,7 +28,7 @@ describe('D schedule minutes kiosk read', () => {
         where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, orderBy: { fseiban: 'asc' },
         select: { fseiban: true, outsourceMarks: true, surfaceSendOutDates: true, memo: true }
       });
-      for (const kind of ['D_COMPANY', 'INTERNAL']) expect(findFirst).toHaveBeenCalledWith({ where: { kind, status: 'SUCCESS' }, orderBy: [{ meetingDate: 'desc' }, { receivedAt: 'desc' }], select: { receivedAt: true } });
+      for (const kind of ['D_COMPANY', 'INTERNAL']) expect(findFirst).toHaveBeenCalledWith({ where: { kind, status: { in: ['APPLIED', 'SUCCESS'] } }, orderBy: [{ meetingDate: 'desc' }, { receivedAt: 'desc' }], select: { receivedAt: true } });
       expect(response.json()).toEqual({ latestReceivedAt: { D_COMPANY: '2026-11-25T23:42:00.000Z', INTERNAL: null }, rows: [{ ...row, surfaceSendOutDates: [{ date: '2026-11-10', note: 'CT以外' }] }] });
       expect(response.headers['cache-control']).toBe('no-store');
     } finally { await app.close(); }

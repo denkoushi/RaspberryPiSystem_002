@@ -10,7 +10,7 @@ export async function registerProductionScheduleDScheduleMinutesRoute(app: Fasti
   app.get('/kiosk/production-schedule/d-schedule-minutes', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request, reply) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
     const latestReceivedAt = (kind: DScheduleMinutesKind) => prisma.productionScheduleDScheduleMinutesImportRun.findFirst({
-      where: { kind, status: 'SUCCESS' }, orderBy: [{ meetingDate: 'desc' }, { receivedAt: 'desc' }], select: { receivedAt: true }
+      where: { kind, status: { in: ['APPLIED', 'SUCCESS'] } }, orderBy: [{ meetingDate: 'desc' }, { receivedAt: 'desc' }], select: { receivedAt: true }
     });
     const [rows, dCompany, internal] = await Promise.all([
       prisma.productionScheduleDScheduleMinutes.findMany({
