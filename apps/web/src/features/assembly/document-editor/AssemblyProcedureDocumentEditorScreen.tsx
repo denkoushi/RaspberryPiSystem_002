@@ -4,6 +4,7 @@ import { countProcedureMaterials, findAssemblyProcedureTextCandidates } from '..
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useMediaQuery } from '../../../hooks/useMediaQuery';
+import { useStoredFlag } from '../../../hooks/useStoredFlag';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { useShelfResources } from '../procedure-manuals/procedure-material-shelf-search';
 import { ProcedureMaterialShelfDialog } from '../procedure-manuals/ProcedureMaterialShelfDialog';
@@ -34,6 +35,7 @@ import type { AssemblyProcedureDocumentPageDto } from '../types';
 import type { AssemblyProcedureImageOverlayElement } from '@raspi-system/shared-types';
 
 const twoPageStorageKey = 'assembly-document-editor-two-page';
+const partsPaneStoredValues = { on: 'open', off: 'closed' };
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
@@ -59,35 +61,14 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     if (!cleanView) setSelectedOverlayId(null);
     setCleanViewRequested(!cleanView);
   }, [cleanView, setSelectedOverlayId]);
-  const [voiceInputEnabled, setVoiceInputEnabled] = useState(() => {
-    try { return localStorage.getItem('assembly-document-editor-voice-input') === 'on'; }
-    catch { return false; }
-  });
-  const toggleVoiceInput = useCallback(() => {
-    const enabled = !voiceInputEnabled;
-    setVoiceInputEnabled(enabled);
-    try { localStorage.setItem('assembly-document-editor-voice-input', enabled ? 'on' : 'off'); }
-    catch { /* The editor remains usable when local storage is unavailable. */ }
-  }, [voiceInputEnabled]);
-  const [partsPaneOpen, setPartsPaneOpen] = useState(() => {
-    try { return localStorage.getItem('assembly-document-editor-parts-pane') !== 'closed'; }
-    catch { return true; }
-  });
+  const [voiceInputEnabled, toggleVoiceInput] = useStoredFlag('assembly-document-editor-voice-input', false);
+  const [partsPaneOpen, togglePartsPane] = useStoredFlag('assembly-document-editor-parts-pane', true, partsPaneStoredValues);
   const narrowEditor = useMediaQuery('(max-width: 1099px)');
-  const [twoPageEnabled, setTwoPageEnabled] = useState(() => {
-    try { return localStorage.getItem(twoPageStorageKey) !== 'off'; }
-    catch { return true; }
-  });
+  const [twoPageEnabled, toggleTwoPageEnabled] = useStoredFlag(twoPageStorageKey, true);
   const [hiddenOverlayIds, setHiddenOverlayIds] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     setHiddenOverlayIds(current => current.size ? new Set() : current);
   }, [controller.selectedPageIndex, controller.document?.id]);
-  const togglePartsPane = () => {
-    const open = !partsPaneOpen;
-    setPartsPaneOpen(open);
-    try { localStorage.setItem('assembly-document-editor-parts-pane', open ? 'open' : 'closed'); }
-    catch { /* The editor remains usable when local storage is unavailable. */ }
-  };
   const toggleHidden = useCallback((id: string) => {
     const hidden = hiddenOverlayIds.has(id);
     setHiddenOverlayIds(current => {
@@ -191,11 +172,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   }
   const toggleTwoPage = useCallback(() => {
     if (overlayInteractionActive.current) return;
-    const enabled = !twoPageEnabled;
-    setTwoPageEnabled(enabled);
-    try { localStorage.setItem(twoPageStorageKey, enabled ? 'on' : 'off'); }
-    catch { /* The editor remains usable when local storage is unavailable. */ }
-  }, [twoPageEnabled]);
+    toggleTwoPageEnabled();
+  }, [toggleTwoPageEnabled]);
   const visibleElements = useMemo(() => controller.layoutSuggestions.previewElements ??
     (controller.layoutSuggestions.locked ? controller.selectedPageElements :
       controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id))),
