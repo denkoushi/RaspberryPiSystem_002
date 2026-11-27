@@ -6958,3 +6958,22 @@ model ProductionScheduleRowSeen {
   lastSeenAt DateTime
   updatedAt  DateTime @updatedAt
 }
+
+model DepartmentMasterEntry {
+  id              String    @id @default(uuid())
+  code            String
+  kanaName        String?
+  name            String
+  unitType        String
+  parentCode      String?
+  isSupplier      Boolean
+  isCustomer      Boolean
+  validFrom       DateTime  @db.Date
+  validTo         DateTime  @db.Date
+  sourceEnteredAt DateTime?
+  sourceUpdatedAt DateTime?
+  importedAt      DateTime  @default(now())
+
+  @@unique([code, validFrom])
+  @@index([code])
+}

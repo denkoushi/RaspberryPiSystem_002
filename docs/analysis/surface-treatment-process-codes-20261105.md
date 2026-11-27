@@ -83,3 +83,14 @@ GROUP BY 1, 2 HAVING count(DISTINCT reg.fhincd) >= 3
 ORDER BY 1, 3 DESC;
 COMMIT;
 ```
+
+## Update (2026-11-27): FKOTEICD is a department / partner code
+
+- `FKOTEICD` is not a process type. It is a code from the core system's department master (`FBUSHOCD`), which holds in-house machines and sections (`FBUSHOTYP=M`), management sections (`A`), people (`P`), and partner companies (`C`) in one code space.
+- The two LSLH codes are the head office and a separate factory of the same partner company (both `C`). This answers the open question above.
+- The master is stored in the `DepartmentMasterEntry` table, one row per code and validity period (people get a new row when their contract changes; periods do not overlap; `validTo` is inclusive). Look up names with `findDepartmentMasterEntries(codes, at)` in `apps/api/src/services/department-master/`.
+- The master data itself is not in this repository (it contains partner and personal names). Import the xlsx export on Pi5; the import replaces the whole table in one transaction:
+  1. Copy the file into the active API container (`docker cp <file> <active api container>:/tmp/department-master.xlsx`).
+  2. `scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/import-department-master.js /tmp/department-master.xlsx --dry-run` and check the counts.
+  3. Run the same command without `--dry-run`, then remove the copied file from the container.
+- Later processes after LSLH (e.g. the regrind after the part comes back) are excluded from the send-out list (`afterLslhSurface`).
