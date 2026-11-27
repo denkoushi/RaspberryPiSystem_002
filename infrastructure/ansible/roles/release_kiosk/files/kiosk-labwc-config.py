@@ -42,15 +42,15 @@ SHORTCUT_BLOCK = re.compile(
 )
 # The panel's window list can lose the browser after the HDMI output goes away
 # and comes back (monitor power saving), so the browser needs a close key that
-# works without the panel or keyboard focus. The service's MainPID is Chromium
-# itself (kiosk-launch.sh execs it) and Restart=always brings it back in 5s.
+# works without the panel or keyboard focus. kiosk-launch.sh execs Chromium,
+# so the browser process started by kiosk-browser.service is the only
+# "chromium" whose parent is PID 1; its helpers are children of it. pkill runs
+# as the GUI user and can signal only that user's processes. Restart=always
+# brings the browser back in 5s. No "$": labwc may expand variables itself.
 CLOSE_BROWSER_BEGIN = "<!-- BEGIN ANSIBLE MANAGED: kiosk-close-browser -->"
 CLOSE_BROWSER_END = "<!-- END ANSIBLE MANAGED: kiosk-close-browser -->"
 CLOSE_BROWSER_KEY = "C-A-r"
-CLOSE_BROWSER_COMMAND = (
-    "sh -c 'pid=$(systemctl show -p MainPID --value kiosk-browser.service); "
-    "[ \"${pid:-0}\" -gt 1 ] || exit 0; kill -TERM \"$pid\"'"
-)
+CLOSE_BROWSER_COMMAND = "pkill -TERM -x -P 1 chromium"
 CLOSE_BROWSER_BLOCK = (
     CLOSE_BROWSER_BEGIN
     + '\n    <keybind key="' + CLOSE_BROWSER_KEY + '">'

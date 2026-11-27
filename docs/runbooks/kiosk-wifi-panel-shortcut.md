@@ -51,7 +51,7 @@ systemd が 3 秒後に再起動する。Wayland ソケットはユーザーの 
 モニターの省電力で HDMI 出力が消えて戻ると、それ以前から開いていたブラウザがパネルの窓一覧に出なくなることがある
 (kensaku-stonebase01 で毎朝の出力の入れ替わりと一致、2026-11-27 調査)。パネルに頼らず閉じられるよう、
 標準 release は rc.xml に `Ctrl+Alt+R` を足す(印 `kiosk-close-browser`)。押すと
-`kiosk-browser.service` の MainPID(Chromium 本体)に TERM を送り、5 秒後に自動で立ち上がる。
+親が PID 1 の Chromium(`kiosk-browser.service` が起動した本体)に `pkill` で TERM を送り、5 秒後に自動で立ち上がる。
 フォーカスの有無に関係なく効く。画面のユーザーに sudo は不要。
 
 ## ロールバック
