@@ -27,7 +27,7 @@ import { getPlanningTestBarPartCandidates, createPlanningTestBar, mutatePlanning
 
 const band = { kind: 'today' as const, expiresAt: '2026-11-12T00:00:00.000Z' };
 const normal = (itemId: string, alternateRank: number, specialDue: GrindingPlanningBoardItem['specialDue'] = null) => ({
-  kind: 'row', itemId, itemRevision: itemId, fseiban: 'lot', productNo: '', fhincd: '', processOrder: '1', effectiveResourceCd: '761', originalResourceCd: '761',
+  kind: 'row', itemId, itemRevision: itemId, sourceRowId: `row-${itemId}`, fseiban: 'lot', productNo: '', fhincd: '', processOrder: '1', effectiveResourceCd: '761', originalResourceCd: '761',
   isCompleted: false, alternateRank, specialDue
 } as GrindingPlanningBoardItem);
 let items: GrindingPlanningBoardItem[];
@@ -42,6 +42,7 @@ beforeEach(() => {
   mocks.categoryResource.mockReturnValue(true);
   mocks.master.mockResolvedValue(new Set(['761']));
   mocks.winnerRows.mockResolvedValue([]);
+  mocks.queryRaw.mockImplementation(async (_sql, _dashboardId?: string, ids?: string[]) => (ids ?? []).map((id) => ({ id })));
   items = [normal('a1', 1, band), normal('a2', 2, band), normal('n1', 1), normal('n2', 2), normal('n3', 3)];
   rows = []; overrides = new Map();
   mocks.state.findUniqueOrThrow.mockResolvedValue({}); mocks.state.update.mockResolvedValue({});
@@ -90,22 +91,33 @@ describe('test bar special due bands', () => {
   });
 });
 
-it('locks the same sorted parent rows in two round trips regardless of board size, and skips empty boards', async () => {
-  for (const count of [0, 1, 400]) {
-    const ids = Array.from({ length: count }, (_, index) => `row-${String(index).padStart(4, '0')}`).reverse();
-    mocks.winnerRows.mockResolvedValue(ids.map((id) => ({ id })));
-    mocks.executeRaw.mockClear(); mocks.queryRaw.mockClear();
-    await createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30 });
-    expect(mocks.executeRaw).toHaveBeenCalledTimes(count ? 1 : 0);
-    expect(mocks.queryRaw).toHaveBeenCalledTimes(count ? 1 : 0);
-    if (count) {
-      const [sql, lockedIds] = mocks.queryRaw.mock.calls[0];
-      expect(sql.join('?')).toBe('SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(?::text[]) ORDER BY "id" FOR UPDATE');
-      expect(lockedIds).toEqual([...ids].sort((a, b) => a.localeCompare(b)));
-      expect(mocks.executeRaw.mock.calls[0][1]).toHaveLength(count);
-      expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.queryRaw.mock.invocationCallOrder[0]);
-    }
-  }
+it('locks only the parent rows of the saved lane, however many rows the board has', async () => {
+  // 10k+ board rows used to be advisory-locked one by one and exhausted the shared lock table.
+  mocks.winnerRows.mockResolvedValue(Array.from({ length: 12000 }, (_, index) => ({ id: `board-${index}` })));
+  items = [...items, normal('n1-piece', 4), { ...normal('other', 1), effectiveResourceCd: '762', originalResourceCd: '762' }];
+  items[items.length - 2] = { ...items[items.length - 2]!, sourceRowId: 'row-n1' };
+  await createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30 });
+  const laneRows = ['row-a1', 'row-a2', 'row-n1', 'row-n2', 'row-n3'];
+  expect(mocks.executeRaw).toHaveBeenCalledTimes(1);
+  expect(mocks.executeRaw.mock.calls[0][1]).toHaveLength(laneRows.length);
+  const [sql, , lockedIds] = mocks.queryRaw.mock.calls.at(-1)!;
+  expect(sql.join('?')).toBe('SELECT "id" FROM "CsvDashboardRow" WHERE "csvDashboardId" = ? AND "id" = ANY(?::text[]) ORDER BY "id" FOR UPDATE');
+  expect(lockedIds).toEqual(laneRows);
+  expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.queryRaw.mock.invocationCallOrder.at(-1)!);
+  expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.save.mock.invocationCallOrder[0]!);
+});
+
+it('rejects the save when a lane parent row has disappeared', async () => {
+  mocks.queryRaw.mockImplementation(async (_sql, _dashboardId?: string, ids?: string[]) => (ids ?? []).slice(1).map((id) => ({ id })));
+  await expect(createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30 })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it('takes no row locks when a test bar is deleted without rewriting a lane', async () => {
+  await createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30 });
+  mocks.executeRaw.mockClear(); mocks.queryRaw.mockClear();
+  await mutatePlanningTestBar({ ...request, id: rows[0]!.id, expectedVersion: rows[0]!.version, action: 'delete' });
+  expect(mocks.executeRaw).not.toHaveBeenCalled(); expect(mocks.queryRaw).not.toHaveBeenCalled();
 });
 
 

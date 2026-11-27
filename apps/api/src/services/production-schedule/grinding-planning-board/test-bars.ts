@@ -6,11 +6,11 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
-import { acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireSessakuPieceLogicalLocks } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
 import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, type CurrentProjection, type DbClient } from './shared.js';
+import { lockPlanningSourceRows } from './source-row-lock.js';
 import { readMasterResourceCds, readOverrides, readWinnerRowsByFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, lockState, stateOrder } from './state.js';
 import { projectCurrentItems, resolveCurrentProjectionInTransaction, writeOverrideIfChanged } from './write.js';
@@ -92,11 +92,8 @@ async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 
       const state = await lockState(tx, siteKey);
       assertBoardRevision(sourceRevision, state);
       const rows = await readWinnerRowsByFseibans(tx, stateOrder(state));
-      const sortedIds = rows.map((row) => row.id).sort((a, b) => a.localeCompare(b));
-      if (sortedIds.length) {
-        await acquireProductionScheduleParentRowLocksInTransaction(tx, sortedIds);
-        await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(${sortedIds}::text[]) ORDER BY "id" FOR UPDATE`;
-      }
+      // The state lock serializes override writers. Row locks are taken per lane in saveLane:
+      // locking every board row (10k+) exhausts PostgreSQL's shared lock table.
       const current = await resolveCurrentProjectionInTransaction({ client: tx, siteKey, dueSource, sourceRowIds: rows.map((row) => row.id), itemIds: [], policy,
         includeAllOverrides: true, preloaded: { state, rows, overrides: await readOverrides(tx, siteKey) } });
       return action(tx, current, await readPlanningTestBars(tx, siteKey));
@@ -114,6 +111,7 @@ function assertReference(reference: GrindingPlanningBoardItemReference, item: Gr
   return item;
 }
 async function saveLane(tx: Prisma.TransactionClient, siteKey: string, current: CurrentProjection, lane: readonly GrindingPlanningBoardBar[]) {
+  await lockPlanningSourceRows(tx, [...new Set(lane.flatMap((item) => item.kind === 'test' ? [] : [item.sourceRowId]))].sort());
   const ranks = new Map<string | null, number>();
   for (const item of lane) {
     const band = planningBarBand(item);
