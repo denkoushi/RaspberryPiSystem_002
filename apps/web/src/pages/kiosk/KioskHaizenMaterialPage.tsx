@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { useHaizenMaterialArrival, useHaizenMaterialView, useHaizenOverview, useHaizenShelves, useHaizenUnplacedParts } from '../../api/hooks/haizen-overview';
@@ -10,34 +10,17 @@ import { formatHaizenClock } from '../../features/kiosk/haizen/haizenSearch';
 import { invButton, invButtonGhost, invPanel, invSeg, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { useStoredToggleSet } from '../../hooks/useStoredToggleSet';
 
 export const PICKED_SEIBANS_STORAGE_KEY = 'kiosk-haizen-material-picked-seibans';
 
-function loadPickedSeibans() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(PICKED_SEIBANS_STORAGE_KEY) ?? 'null');
-    if (saved?.schemaVersion === 1 && Array.isArray(saved.fseibans)) return new Set<string>(saved.fseibans.filter((value: unknown) => typeof value === 'string'));
-  } catch {
-    // A kiosk may prohibit local storage.
-  }
-  return new Set<string>();
-}
-
-function usePickedSeibans() {
-  const [picked, setPicked] = useState(loadPickedSeibans);
-  const togglePicked = useCallback((fseiban: string) => setPicked(previous => {
-    const next = new Set(previous);
-    if (next.has(fseiban)) next.delete(fseiban);
-    else next.add(fseiban);
-    try {
-      window.localStorage.setItem(PICKED_SEIBANS_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, fseibans: [...next] }));
-    } catch {
-      // Keep the picks for this session even when storage is unavailable.
-    }
-    return next;
-  }), []);
-  return { picked, togglePicked };
-}
+const pickedSeibanOptions = {
+  parse: (stored: unknown) => {
+    const saved = stored as { schemaVersion?: unknown; fseibans?: unknown } | null;
+    return saved?.schemaVersion === 1 && Array.isArray(saved.fseibans) ? saved.fseibans.filter((value): value is string => typeof value === 'string') : [];
+  },
+  serialize: (fseibans: readonly string[]) => ({ schemaVersion: 1, fseibans })
+};
 
 const columns = ['照合', '材料', '棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '納期', '置いた日時', '足取り'];
 
@@ -49,7 +32,7 @@ export function KioskHaizenMaterialPage() {
   const navigate = useNavigate();
   const { scheduleSource, changeScheduleSource } = usePlanningBoardScheduleSource('kiosk-haizen-material-schedule-source');
   const [openSeibans, setOpenSeibans] = useState(new Set<string | null>());
-  const { picked, togglePicked } = usePickedSeibans();
+  const { values: picked, toggle: togglePicked } = useStoredToggleSet(PICKED_SEIBANS_STORAGE_KEY, pickedSeibanOptions);
   const overview = useHaizenOverview();
   const master = useHaizenShelves();
   const unplaced = useHaizenUnplacedParts(true);
