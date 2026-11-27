@@ -67,7 +67,6 @@ export function Dialog({
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   const ariaAttributes = useMemo(() => {
@@ -159,7 +158,6 @@ export function Dialog({
 
   return createPortal(
     <div
-      ref={overlayRef}
       className={clsx(
         'fixed inset-0 flex items-start justify-center overflow-y-auto bg-black/60 p-4',
         overlayZIndex == null ? 'z-50' : null,
