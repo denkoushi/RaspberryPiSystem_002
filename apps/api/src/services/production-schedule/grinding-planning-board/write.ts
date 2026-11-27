@@ -12,12 +12,12 @@ import { prisma } from '../../../lib/prisma.js';
 import { getResourceCategoryPolicy, isProductionScheduleGrindingResourceCd, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
-import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
+import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, isGrindingPlanningBoardRowCompleted, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
 import type { GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection-input.types.js';
 import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from '../load-balancing/load-balancing-settings.service.js';
 import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balancing/work-calendar-policy.js';
 import { isGrindingPlanningBoardSpecialDueKind, resolveGrindingPlanningBoardSpecialDueExpiresAt } from '../grinding-planning-board-special-due.js';
-import { assertItemRevision, MAX_ALTERNATE_RANK, asRowData, isCategoryResource, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
+import { assertItemRevision, MAX_ALTERNATE_RANK, asRowData, isCategoryResource, normalizeUniqueFseibans, resourceOrderLaneCd, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
 import { lockPlanningSourceRows } from './source-row-lock.js';
 import { readMasterResourceCds, readOverrides, readRanks, readRowCompletionFlags, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, readStateUncheckedFseibans, stateUncheckedFseibans, stateOrder } from './state.js';
@@ -53,7 +53,7 @@ export async function resolveCurrentProjectionInTransaction(params: { dueSource?
   const completionFlags = progressScope.length ? await readRowCompletionFlags(params.client, progressScope.map((row) => row.id)) : undefined;
   const progressRows: GrindingPlanningBoardProgressRow[] = (progressScope.length ? [...rows, ...progressScope] : rows).flatMap((row) => {
     const detail = details.get(row.id);
-    const isCompleted = detail ? Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) : completionFlags?.get(row.id);
+    const isCompleted = detail ? isGrindingPlanningBoardRowCompleted(detail) : completionFlags?.get(row.id);
     if (isCompleted == null) return [];
     const data = asRowData(row.rowData);
     const fhincd = valueAsString(data, 'FHINCD').trim().toUpperCase();
@@ -454,7 +454,7 @@ export async function updateGrindingPlanningBoardResourceMove(params: { siteKey:
 async function saveGrindingPlanningBoardResourceOrderBulk(params: { siteKey: string } & GrindingPlanningBoardResourceOrderBulkRequest,
   move?: GrindingPlanningBoardResourceMoveRequest['move']): Promise<GrindingPlanningBoardResourceOrderResponse> {
   assertWritablePlanningItemIds(params.items.map((item) => item.itemId));
-  if (!move && (params.items.some((item) => item.itemId.startsWith('test:')) || await hasPlanningTestBars(params.siteKey, params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd)))) return reorderPlanningTestBarLane(params);
+  if (!move && (params.items.some((item) => item.itemId.startsWith('test:')) || await hasPlanningTestBars(params.siteKey, resourceOrderLaneCd(params.resourceCd)))) return reorderPlanningTestBarLane(params);
   const itemIds = params.items.map((item) => item.itemId);
   if (itemIds.length < 1 || itemIds.length > GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT || new Set(itemIds).size !== itemIds.length) {
     throw new ApiError(400, `1〜${GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT}件の重複しないアイテムを指定してください`, undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
@@ -467,7 +467,7 @@ async function saveGrindingPlanningBoardResourceOrderBulk(params: { siteKey: str
   const pieceKeys = params.scheduleSource && params.scheduleSource !== 'both'
     ? [...movePieceKeys, ...await prisma.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: stateOrder(await getOrCreateState(params.siteKey, [], prisma)) }, pieces: { some: {} } } })]
     : await readLivePieceKeys(prisma, [...sourceRows.values()]);
-  const resource = params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd);
+  const resource = resourceOrderLaneCd(params.resourceCd);
   const excluded = new Set(await readScheduleSourceExcludedFseibans(params.scheduleSource));
   try {
     const result = await prisma.$transaction(async (client) => {

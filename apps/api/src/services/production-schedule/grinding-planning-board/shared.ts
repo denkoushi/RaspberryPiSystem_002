@@ -5,7 +5,7 @@ import type { GrindingPlanningBoardScheduleSource, GrindingPlanningBoardResource
 import { PLANNING_BOARD_MAX_DUE_OFFSET_DAYS } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
-import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd, isProductionScheduleGrindingResourceCd } from '../policies/resource-category-policy.service.js';
+import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd, isProductionScheduleGrindingResourceCd, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS, PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from '../row-resolver/constants.js';
 import { buildGrindingPlanningBoardLogicalKey as buildProjectionLogicalKey, buildGrindingPlanningBoardRowItemId } from '../grinding-planning-board-projection.js';
 import type { GrindingPlanningBoardProjectionRanks, GrindingPlanningBoardProgressRow, GrindingPlanningBoardProjectionRow, GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection-input.types.js';
@@ -232,4 +232,9 @@ export const grindingPlanningBoardDueSourceSchema = z.enum(['excel', 'scaw']).de
 
 export function assertItemRevision(expected: string, item: GrindingPlanningBoardItem, expectedVersion?: number): void {
   if (expected !== item.itemRevision || (expectedVersion != null && expectedVersion !== item.version)) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+}
+
+/** The resource-order lane named in a request: `未設定` is the lane without a resource. */
+export function resourceOrderLaneCd(resourceCd: string): string | null {
+  return resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(resourceCd);
 }

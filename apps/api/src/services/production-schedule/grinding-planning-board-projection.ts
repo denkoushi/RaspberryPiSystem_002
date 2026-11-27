@@ -74,7 +74,7 @@ function parseRequiredMinutes(data: GrindingPlanningBoardRowData): number | null
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-function isCompleted(detail: GrindingPlanningBoardProjectionRowDetail): boolean {
+export function isGrindingPlanningBoardRowCompleted(detail: { productionScheduleProgress?: { isCompleted: boolean } | null; productionScheduleExternalCompletion?: { isExternallyCompleted: boolean } | null }): boolean {
   return Boolean(
     detail.productionScheduleProgress?.isCompleted ||
       detail.productionScheduleExternalCompletion?.isExternallyCompleted
@@ -107,7 +107,7 @@ export function buildGrindingPlanningBoardRowItemIdFromKey(scheduleRowKey: strin
   return `row:${Buffer.from(scheduleRowKey, 'utf8').toString('base64url')}`;
 }
 
-function buildPartKey(fseiban: string, productNo: string, fhincd: string): string {
+export function buildPartKey(fseiban: string, productNo: string, fhincd: string): string {
   return [fseiban.trim(), fhincd.trim(), productNo.trim()].join('\0');
 }
 
@@ -324,7 +324,7 @@ function buildProgressRowsFromSource(
         fseiban: rowValue(row.rowData, 'FSEIBAN'),
         productNo: rowValue(row.rowData, 'ProductNo'),
         fhincd: rowValue(row.rowData, 'FHINCD'),
-        isCompleted: isCompleted(detail)
+        isCompleted: isGrindingPlanningBoardRowCompleted(detail)
       }
     ];
   });
@@ -346,7 +346,7 @@ function buildItems(
 
     const sourceMinutes = parseRequiredMinutes(data);
     const sourceQuantity = detail.orderSupplements[0]?.plannedQuantity ?? null;
-    const rowCompleted = isCompleted(detail);
+    const rowCompleted = isGrindingPlanningBoardRowCompleted(detail);
     const completionSource = detail.productionScheduleExternalCompletion?.isExternallyCompleted
       ? 'import' : detail.productionScheduleProgress?.isCompleted ? 'manual' : null;
     const scheduleRowKey = buildGrindingPlanningBoardLogicalKey(data);

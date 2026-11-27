@@ -5,11 +5,11 @@ import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlann
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { buildGrindingPlanningBoardRowItemIdFromKey, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
+import { buildPartKey, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
-import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSets, sessakuPieceItemIds, sessakuPieceKeyFromRow } from '../sessaku-pieces/piece-key.js';
+import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSets, sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
-import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, type CurrentProjection, type DbClient } from './shared.js';
+import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, resourceOrderLaneCd, type CurrentProjection, type DbClient } from './shared.js';
 import { lockPlanningSourceRows } from './source-row-lock.js';
 import { readMasterResourceCds, readOverrides, readWinnerRowsByFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, lockState, stateOrder } from './state.js';
@@ -104,13 +104,13 @@ async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 
         let inferredResource = tests.testBars.find((item) => item.itemId === referenceIds[0])?.resourceCd;
         const candidates = winners.map((row) => {
           const logicalKey = sessakuPieceKeyFromRow(row.rowData);
-          const partKey = [logicalKey.fseiban, logicalKey.fhincd, logicalKey.productNo].map((value) => value.trim()).join('\0');
+          const partKey = buildPartKey(logicalKey.fseiban, logicalKey.productNo, logicalKey.fhincd);
           const original = logicalKey.fsigencd.trim();
           const resources = new Set<string>();
           let referenced = false;
           if (isCategoryResource(original, 'all', policy)) {
             const key = encodeSessakuPieceKey(logicalKey);
-            const parentId = buildGrindingPlanningBoardRowItemIdFromKey(key);
+            const parentId = sessakuPieceParentItemId(logicalKey);
             const pieces = pieceSets.get(key)?.pieces;
             for (const itemId of pieces?.length ? pieces.flatMap(sessakuPieceItemIds) : [parentId]) {
               // A piece's own override replaces the whole inherited override, even with a null resource.
@@ -236,7 +236,7 @@ export async function reorderPlanningTestBarLane(params: (GrindingPlanningBoardR
   return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, tests, readLane) => {
     const requests = 'items' in params ? params.items : [params, { itemId: params.targetItemId, itemRevision: params.targetItemRevision, overrideVersion: params.targetOverrideVersion }];
     if (!requests.length || requests.length > GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT || new Set(requests.map((item) => item.itemId)).size !== requests.length) throw new ApiError(400, '重複しない棒を指定してください', undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
-    const requestedResource = 'resourceCd' in params ? params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd) : undefined;
+    const requestedResource = 'resourceCd' in params ? resourceOrderLaneCd(params.resourceCd) : undefined;
     const current = await readLane(requestedResource, requests.map((item) => item.itemId));
     const byId = new Map<string, GrindingPlanningBoardBar>([...current.byItemId.values(), ...tests.testBars].map((item) => [item.itemId, item]));
     const members = requests.map((reference) => assertReference(reference, byId.get(reference.itemId)));
