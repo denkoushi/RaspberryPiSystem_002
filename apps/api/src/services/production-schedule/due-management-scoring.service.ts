@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { toJstDate } from '../../lib/jst-date.js';
 import { prisma } from '../../lib/prisma.js';
 import { loadActualHoursReadContext } from './actual-hours/actual-hours-read-context.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
@@ -24,7 +25,6 @@ import type {
 import { estimateResourceLoadSignals } from './resource-load-estimator.service.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 const buildDueConfiguredSeibanSet = (
   summaries: Array<{
@@ -53,10 +53,7 @@ const buildDueScopedCandidates = (params: {
   return normalizeFseibanList(baseCandidates.filter((fseiban) => dueConfiguredSet.has(fseiban)));
 };
 
-const toJstDayStart = (value: Date): number => {
-  const jstDate = new Date(value.getTime() + JST_OFFSET_MS);
-  return Date.UTC(jstDate.getUTCFullYear(), jstDate.getUTCMonth(), jstDate.getUTCDate());
-};
+const toJstDayStart = (value: Date): number => toJstDate(value).getTime();
 
 const computeDaysUntilDue = (dueDate: Date | null): number | null => {
   if (!dueDate) return null;

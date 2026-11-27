@@ -1,19 +1,12 @@
+import { toJstDate } from '../../lib/jst-date.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { listDueManagementGlobalRank } from './due-management-global-rank.service.js';
 import { normalizeFseibanList } from './fseiban-list.js';
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const getJstDate = (offsetDays = 0): Date => {
-  const now = new Date();
-  const jstNow = new Date(now.getTime() + JST_OFFSET_MS + offsetDays * DAY_MS);
-  const year = jstNow.getUTCFullYear();
-  const month = `${jstNow.getUTCMonth() + 1}`.padStart(2, '0');
-  const day = `${jstNow.getUTCDate()}`.padStart(2, '0');
-  return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
-};
+const getJstDate = (offsetDays = 0): Date => toJstDate(new Date(Date.now() + offsetDays * DAY_MS));
 
 type CarryoverItem = {
   fseiban: string;
