@@ -1,5 +1,7 @@
 import JSZip from 'jszip';
 import { JST_OFFSET_MS } from '../../lib/jst-date.js';
+import { columnLettersToNumber } from '../../lib/spreadsheet-column.js';
+import { assertZipExpansionWithinBudget } from '../../lib/zip-expansion-budget.js';
 
 export const DEPARTMENT_MASTER_HEADERS = [
   'FBUSHOCD',
@@ -63,7 +65,7 @@ const SHARED_STRING_PATTERN = /<(?:[\w-]+:)?si\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?s
 /** 列の文字(A, B, ..., AA)を 0 始まりの位置にする。 */
 function columnIndex(reference: string): number | undefined {
   const letters = /^([A-Z]+)\d*$/.exec(reference)?.[1];
-  return letters ? [...letters].reduce((index, letter) => index * 26 + letter.charCodeAt(0) - 64, 0) - 1 : undefined;
+  return letters ? columnLettersToNumber(letters) - 1 : undefined;
 }
 
 export function parseSharedStrings(xml: string): string[] {
@@ -103,6 +105,7 @@ export function parseSheetXmlToRows(xml: string, sharedStrings: readonly string[
 }
 
 export async function readXlsxFirstSheetRows(buffer: Buffer): Promise<string[][]> {
+  assertZipExpansionWithinBudget(buffer);
   const zip = await JSZip.loadAsync(buffer);
   const sheetPath = zip.file('xl/worksheets/sheet1.xml')
     ? 'xl/worksheets/sheet1.xml'

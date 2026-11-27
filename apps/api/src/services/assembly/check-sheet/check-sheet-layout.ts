@@ -1,13 +1,14 @@
 import ExcelJS from 'exceljs';
 import type { AssemblyCheckSheetLayout } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
+import { columnLettersToNumber } from '../../../lib/spreadsheet-column.js';
 import { assertZipExpansionWithinBudget } from '../../../lib/zip-expansion-budget.js';
 
 function parseRange(address: string) {
   const [start, end = start] = address.replace(/\$/g, '').split(':');
   const position = (cell: string) => {
     const match = /^([A-Z]+)(\d+)$/.exec(cell)!;
-    return { row: Number(match[2]), col: [...match[1]].reduce((n, char) => n * 26 + char.charCodeAt(0) - 64, 0) };
+    return { row: Number(match[2]), col: columnLettersToNumber(match[1]) };
   };
   const first = position(start); const last = position(end);
   return { top: first.row, left: first.col, bottom: last.row, right: last.col };

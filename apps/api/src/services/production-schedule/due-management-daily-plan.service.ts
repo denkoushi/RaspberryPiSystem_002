@@ -1,3 +1,4 @@
+import { toJstDate } from '../../lib/jst-date.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { buildDueManagementDailyPlanSeed } from './due-management-carryover.service.js';
@@ -6,16 +7,7 @@ import { listDueManagementGlobalRank, mergeDueManagementGlobalRank } from './due
 import { resolveRankingScopePolicy } from './due-management-ranking-scope-policy.service.js';
 import { normalizeFseibanList } from './fseiban-list.js';
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-const getTodayPlanDate = (): Date => {
-  const now = new Date();
-  const jstNow = new Date(now.getTime() + JST_OFFSET_MS);
-  const year = jstNow.getUTCFullYear();
-  const month = `${jstNow.getUTCMonth() + 1}`.padStart(2, '0');
-  const day = `${jstNow.getUTCDate()}`.padStart(2, '0');
-  return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
-};
+const getTodayPlanDate = (): Date => toJstDate(new Date());
 
 const toDateKey = (date: Date): string => date.toISOString().slice(0, 10);
 
