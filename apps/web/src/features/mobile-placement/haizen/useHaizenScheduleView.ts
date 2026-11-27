@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { isScheduleSource } from '../../kiosk/grindingPlanningBoard/usePlanningBoardScheduleSource';
+
 import type { ScheduleSeibanView } from '../../../api/domains/schedule-seibans';
 
 const KEY = 'haizen-schedule-view';
@@ -8,7 +10,7 @@ const DEFAULT_VIEW: ScheduleSeibanView = { source: 'both', range: 'all' };
 function loadView(): ScheduleSeibanView {
   try {
     const saved = JSON.parse(window.localStorage.getItem(KEY) ?? 'null');
-    if (saved?.schemaVersion === 1 && ['general', 'dCompany', 'both'].includes(saved.source)
+    if (saved?.schemaVersion === 1 && isScheduleSource(saved.source)
       && ['all', 'aroundMonth', 'excludeOlderThanHalfYear'].includes(saved.range)) {
       return { source: saved.source, range: saved.range };
     }

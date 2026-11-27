@@ -11,7 +11,8 @@ import type {
   GrindingPlanningBoardResourceMinutesResponse,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardLoad,
-  GrindingPlanningBoardLoadResponse
+  GrindingPlanningBoardLoadResponse,
+  GrindingPlanningBoardScheduleSource
 } from '@raspi-system/shared-types';
 
 import { ApiError } from '../../lib/errors.js';
@@ -57,7 +58,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   category: GrindingPlanningBoardCategory;
   isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => boolean;
   cache?: {
-    scheduleSource?: 'general' | 'dCompany' | 'both';
+    scheduleSource?: GrindingPlanningBoardScheduleSource;
     generationToken: string;
     readGenerationToken: () => Promise<string>;
     performance: GrindingPlanningBoardPerformance;

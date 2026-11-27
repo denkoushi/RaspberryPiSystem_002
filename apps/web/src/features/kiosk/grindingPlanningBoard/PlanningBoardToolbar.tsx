@@ -13,6 +13,7 @@ import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResource
 import { planningBoardPair } from './planningBoardTwoMachine';
 import { usePersistedPlanningBoardFillHeight } from './usePersistedPlanningBoardFillHeight';
 import { usePersistedPlanningBoardPieceLinks } from './usePersistedPlanningBoardPieceLinks';
+import { SCHEDULE_SOURCE_OPTIONS } from './usePlanningBoardScheduleSource';
 import { usePlanningBoardToolbarWheel } from './usePlanningBoardToolbarWheel';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
@@ -264,7 +265,7 @@ export function PlanningBoardToolbar({
       </button>
       <PlanningBoardDropdown ariaLabel="区分" value={scheduleSource}
         closedLabel={scheduleSource === 'both' ? '一般・D社' : scheduleSource === 'general' ? '一般' : 'D社'}
-        options={[{ value: 'general', label: '一般' }, { value: 'dCompany', label: 'D社' }, { value: 'both', label: '両方' }]}
+        options={SCHEDULE_SOURCE_OPTIONS}
         disabled={scopeDisabled} onChange={(value) => onScheduleSourceChange?.(value)} />
       <PlanningBoardDropdown ariaLabel="工程" value={category}
         closedLabel={category === 'all' ? '切削・研削' : category === 'cutting' ? '切削' : '研削'}

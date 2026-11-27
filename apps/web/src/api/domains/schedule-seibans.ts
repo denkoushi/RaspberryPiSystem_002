@@ -1,5 +1,7 @@
 import { api } from '../http';
 
+import type { GrindingPlanningBoardScheduleSource } from '@raspi-system/shared-types';
+
 export type SchedulePartState = 'shelf' | 'verified' | 'pending' | 'done';
 export type ScheduleSeibanPart = {
   productNo: string;
@@ -22,7 +24,7 @@ export type ScheduleSeiban = {
 export type ScheduleSeibanDetail = ScheduleSeiban & { parts: ScheduleSeibanPart[] };
 
 export type ScheduleSeibanView = {
-  source: 'general' | 'dCompany' | 'both';
+  source: GrindingPlanningBoardScheduleSource;
   range: 'all' | 'aroundMonth' | 'excludeOlderThanHalfYear';
 };
 

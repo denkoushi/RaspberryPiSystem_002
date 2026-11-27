@@ -10,7 +10,7 @@ import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardRes
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT } from '@raspi-system/shared-types';
+import { GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT, GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES } from '@raspi-system/shared-types';
 import type { GrindingPlanningBoardProcessChipsRequest, GrindingPlanningBoardProcessChipsResponse } from '@raspi-system/shared-types';
 
 import { buildLeaderboardPartFooterChipLookupKey } from '../../../services/production-schedule/leaderboard/leaderboard-part-footer-chip-key.js';
@@ -42,7 +42,7 @@ import {
 import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shared.js';
 import { TERMINAL_ROUTE_RATE_LIMIT } from '../../../lib/terminal-route-rate-limit.js';
 
-const scheduleSourceSchema = z.enum(['general', 'dCompany', 'both']).default('both');
+const scheduleSourceSchema = z.enum(GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES).default('both');
 const pairPartNameSchema = z.string().refine((name) => Boolean(name.trim()) && !name.includes('\u0000') && [...name].length <= 200);
 const pairPartCodeSchema = pairPartNameSchema.transform((code) => code.trim());
 
