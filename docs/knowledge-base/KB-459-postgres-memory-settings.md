@@ -9,7 +9,7 @@ category: knowledge-base
 
 # KB-459: Pi5 の Postgres のメモリ設定を見直す
 
-- Status: 設定を変更(このKBと同じ PR)。本番反映待ち(db の作り直しは別の作業)
+- Status: 本番反映済み(2026-11-28 08:46 JST、db の止まった時間は約13秒)。効果の確認は翌日
 - Date: 2026-11-28
 - Data: 本番 DB の読み取りのみ(`statement_timeout` 付き)
 
@@ -63,3 +63,11 @@ docker compose -f infrastructure/docker/docker-compose.server.yml -f /tmp/db-def
 ## 注意
 
 - 3 を行うまでは、ほかの手順で `db` を `up` すると(例: `scripts/server/pi5-replication.sh apply`)、予定外の時間に新しい設定で再起動する。
+
+## 本番の反映の記録(2026-11-28)
+
+- PR のマージ前に、ユーザーの許可を得て、同じ `command` を一時ファイル `/tmp/db-mem.yml` で重ねて `db` だけを作り直した(Pi5 の checkout は `5022d3e5d`)。マージ後の compose と中身が同じなので、マージ後に作り直しは起きない。
+- 作り直す前(08:45): 累計 79,978 回・269,228,062,506 バイト。08:21 からの24分で 193 回・約 705MB あふれていた。
+- 作り直した後: `shared_buffers=1GB`、`work_mem=16MB`、`log_temp_files=10MB`。API の health は 200。止まっていた約13秒の間だけ、API に DB へつながらないエラーが出た。空きメモリは約 4.8GB。
+- 翌日の同じ時刻に、1日あたりのあふれを前と比べる。
+
