@@ -16,6 +16,7 @@ import { KioskPowerMenuModal } from './KioskPowerMenuModal';
 import { KioskSignagePreviewModal } from './KioskSignagePreviewModal';
 import { PowerDebounceOverlay } from './PowerDebounceOverlay';
 
+import type { PowerAction } from './powerAction';
 import type { KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
@@ -23,8 +24,6 @@ type ClientStatus = {
   temperature: number | null;
   cpuUsage: number;
 };
-
-type PowerAction = 'reboot' | 'poweroff';
 
 type KioskHeaderProps = {
   clientKey: string;
