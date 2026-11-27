@@ -13,6 +13,8 @@ import { normalizePurchaseFhinCdForMatching } from '../purchase-order-lookup/pur
 import { normalizeSlipToken } from './mobile-placement-slip-match.js';
 import { readScheduleDates } from './schedule-dates.js';
 
+import type { GrindingPlanningBoardScheduleSource } from '@raspi-system/shared-types';
+
 export type SchedulePartState = 'done' | 'shelf' | 'verified' | 'pending';
 export type ScheduleSeibanPart = {
   productNo: string; fhincd: string; fhinmei: string; state: SchedulePartState;
@@ -25,7 +27,7 @@ export type ScheduleSeibanSummary = {
 };
 export type ScheduleSeibanDetail = ScheduleSeibanSummary & { parts: ScheduleSeibanPart[] };
 export type ScheduleSeibanView = {
-  source: 'general' | 'dCompany' | 'both';
+  source: GrindingPlanningBoardScheduleSource;
   range: 'all' | 'aroundMonth' | 'excludeOlderThanHalfYear';
 };
 const LIST_LIMIT = 200;

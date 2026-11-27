@@ -21,7 +21,7 @@ import type { FeedbackKind, OrderPreview, ResourceOrderHistory, ResourceOrderSna
 import type { PlanningBoardAllocation } from './types';
 import type { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
 import type { useUpdateKioskGrindingPlanningBoardPins, useUpdateKioskGrindingPlanningBoardResourceMove, useUpdateKioskGrindingPlanningBoardResourceOrderBulk } from '../../../api/hooks';
-import type { GrindingPlanningBoardBar, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardResponse, GrindingPlanningBoardScheduleSource, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 type Options = {
@@ -37,7 +37,7 @@ type Options = {
   category: GrindingPlanningBoardCategory;
   data: Omit<GrindingPlanningBoardResponse, 'snapshotId' | 'nextCursor'> | undefined;
   registeredFseibans: string[];
-  scheduleSource?: 'general' | 'dCompany' | 'both';
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
   bulkReady: boolean;
   rankMutationReady: boolean;
   writeBlocked: boolean;
