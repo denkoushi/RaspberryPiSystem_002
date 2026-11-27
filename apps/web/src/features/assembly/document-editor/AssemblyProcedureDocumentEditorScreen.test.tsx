@@ -1235,13 +1235,13 @@ describe('要領書を読んだ感想', () => {
     expect(screen.getByRole('region', { name: '読んだ感想' }).querySelector<HTMLElement>('[data-feedback-body]')!.style.fontSize).toBe('14px');
   });
 
-  it('感想ごとの役に立った・外れを付け、押されている方をもう一度押すと消す', () => {
+  it('公開済みでも、感想ごとの役に立った・外れを付け、押されている方をもう一度押すと消す', () => {
     feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
       id: 'feedback-1', ratings: [{ section: 'missing', itemIndex: 1, verdict: 'miss' }],
       revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
       questions: ['どこを測る？'], missing: ['a', 'b'], unclear: [], ideas: [],
     } } });
-    renderScreen(makeController());
+    renderScreen(makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true }));
     fireEvent.click(screen.getByRole('button', { name: '読んだ感想' }));
     const items = within(screen.getByRole('region', { name: '読んだ感想' })).getAllByRole('listitem');
     fireEvent.click(within(items[0]).getByRole('button', { name: '役に立った' }));
