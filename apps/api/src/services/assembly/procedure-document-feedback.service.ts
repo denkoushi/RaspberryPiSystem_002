@@ -1,14 +1,13 @@
 import { procedureDocumentFeedbackResponseSchema, type ProcedureDocumentFeedbackResponse } from '@raspi-system/shared-types';
-import sharp from 'sharp';
 
 import { env } from '../../config/env.js';
 import { DomainHttpError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { stripJsonFence } from '../../lib/strip-json-fence.js';
-import { getAssemblyProcedureAssetStorage } from '../assembly-procedure-assets/index.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
+import { readAssemblyProcedureAssetAsJpeg } from './procedure-asset-jpeg.js';
 import { PROCEDURE_DOCUMENT_FEEDBACK_REFERENCE } from './procedure-document-feedback.reference.js';
 import type { Employee } from '@prisma/client';
 
@@ -134,10 +133,7 @@ async function generateFeedback(candidate: Candidate, employees: Parameters<type
     for (const [index, photo] of photos.entries()) {
       const heading = `${photo.pageIndex + 1}ページ目の写真 ${index + 1}`;
       try {
-        let imageBytes = await getAssemblyProcedureAssetStorage().read(photo.asset);
-        if ((await sharp(imageBytes).metadata()).format !== 'jpeg') {
-          imageBytes = await sharp(imageBytes).rotate().jpeg().toBuffer();
-        }
+        const imageBytes = await readAssemblyProcedureAssetAsJpeg(photo.asset);
         signal.throwIfAborted();
         const result = await inference.createVisionCompletionPort().complete({
           userText: PHOTO_PROMPT, imageBytes, mimeType: 'image/jpeg', maxTokens: 500, temperature: 0, signal,
