@@ -1,3 +1,4 @@
+import { getProcedureDocumentFeedback } from '../../services/assembly/procedure-document-feedback.service.js';
 import { videosForPage, type ProcedureVideoPageLink } from '../../services/assembly/procedure-video.service.js';
 import { serializeAssemblyProcedureAssets, serializeLastProcedureManualApproval, type ProcedureAssetWithOriginal, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
 import type { MultipartFile } from '@fastify/multipart';
@@ -183,6 +184,11 @@ export function registerAssemblyProcedureDocumentRoutes(
     const doc = await procedureService.getById(params.id, { includeInactive: true });
     if (!doc) throw new DomainHttpError(404, '手順書が見つかりません');
     return { document: serializeProcedureDocument(doc) };
+  });
+
+  app.get('/assembly/procedure-documents/:id/feedback', { preHandler: allowView }, async (request) => {
+    const { id } = idParamSchema.parse(request.params);
+    return getProcedureDocumentFeedback(id);
   });
 
   app.post('/assembly/procedure-documents', { preHandler: allowWriteKiosk }, async (request) => {

@@ -1,4 +1,4 @@
-import { procedureLayoutSuggestionRequestSchema, procedureLayoutSuggestionResponseSchema } from '@raspi-system/shared-types';
+import { procedureDocumentFeedbackResponseSchema, procedureLayoutSuggestionRequestSchema, procedureLayoutSuggestionResponseSchema } from '@raspi-system/shared-types';
 
 import { api } from '../../http';
 
@@ -30,6 +30,11 @@ export async function getAssemblyProcedureDocument(id: string) {
     `/assembly/procedure-documents/${encodeURIComponent(id)}`
   );
   return data.document;
+}
+
+export async function getAssemblyProcedureDocumentFeedback(id: string, signal: AbortSignal) {
+  const { data } = await api.get(`/assembly/procedure-documents/${encodeURIComponent(id)}/feedback`, { signal });
+  return procedureDocumentFeedbackResponseSchema.parse(data).feedback;
 }
 
 export async function createAssemblyProcedureDocumentRevision(id: string, accessPassword: string) {

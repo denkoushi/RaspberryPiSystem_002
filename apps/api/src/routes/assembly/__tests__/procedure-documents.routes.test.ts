@@ -89,6 +89,35 @@ describe('assembly procedure document routes', () => {
     expect(procedureService.rename).toHaveBeenCalledWith(documentId, '変更後', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
   });
 
+  it('returns the series feedback from an older revision through the viewer guard', async () => {
+    const root = '00000000-0000-4000-8000-000000000002';
+    const findDocument = vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique')
+      .mockResolvedValue({ revisionMetadata: { revisionRootId: root } } as never);
+    const sections = { questions: ['どこを測る？'], missing: [], unclear: [], ideas: [] };
+    const findFeedback = vi.spyOn(prisma.assemblyProcedureDocumentFeedback, 'findFirst')
+      .mockResolvedValue({ revisionNumber: 1, createdAt: now, ...sections } as never);
+    const allowView = vi.fn(async () => undefined);
+
+    app = Fastify();
+    registerAssemblyProcedureDocumentRoutes(app, { allowView, allowWriteKiosk: async () => undefined } as AssemblyProcedureDocumentRouteOptions);
+    const url = `/assembly/procedure-documents/${documentId}/feedback`;
+    const response = await app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ feedback: { revisionNumber: 1, createdAt: now.toISOString(), ...sections } });
+    expect(allowView).toHaveBeenCalledOnce();
+    expect(findDocument).toHaveBeenCalledWith(expect.objectContaining({ where: { id: documentId } }));
+    expect(findFeedback).toHaveBeenCalledWith(expect.objectContaining({
+      where: { revisionRootId: root },
+      orderBy: [{ sourceUpdatedAt: 'desc' }, { revisionNumber: 'desc' }],
+    }));
+
+    findDocument.mockResolvedValue({ revisionMetadata: null } as never);
+    findFeedback.mockResolvedValue(null);
+    const noFeedback = await app.inject({ method: 'GET', url });
+    expect(noFeedback.json()).toEqual({ feedback: null });
+    expect(findFeedback).toHaveBeenLastCalledWith(expect.objectContaining({ where: { revisionRootId: documentId } }));
+  });
+
   it('returns not found for an unknown document without changing the service contract', async () => {
     const procedureService = {
       list: vi.fn().mockResolvedValue([]),

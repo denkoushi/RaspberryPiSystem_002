@@ -24,6 +24,7 @@ import { ingestTuningEnvShape } from './env/ingest-tuning.js';
 import { kioskFlagsEnvShape } from './env/kiosk-flags.js';
 import { localLlmEnvShape } from './env/local-llm.js';
 import { networkEnvShape } from './env/network.js';
+import { procedureDocumentFeedbackEnvShape } from './env/procedure-document-feedback.js';
 import { procedureVideoEnvShape } from './env/procedure-video.js';
 import { procedureMaterialEnvShape } from './env/procedure-material.js';
 import { photoToolEnvShape } from './env/photo-tool.js';
@@ -53,6 +54,7 @@ const envSchema = z
     ASSEMBLY_PROCEDURE_MAIL_DOMAIN: procedureManualMailDomainSchema,
     ...procedureMaterialEnvShape,
     ...procedureVideoEnvShape,
+    ...procedureDocumentFeedbackEnvShape,
   })
   .superRefine((value, ctx) => {
     const businessHermesFields = [
