@@ -2,6 +2,7 @@ import { readScheduleRowPresence } from '../schedule-row-presence.service.js';
 import { readMissingStandardHoursBoardRows, type MissingStandardHoursBoardRow } from '../missing-standard-hours-process.js';
 import { readPlanningTestBars } from './test-bars.js';
 import { isLaterProcessOrder } from '../process-order.js';
+import { findDepartmentMasterEntries } from '../../department-master/department-master-lookup.js';
 import { findWaitingPlanningPairItemIds, planningPairPartners, readPlanningPairs } from './pairs.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
 import { readScheduleSourceExcludedFseibans, withScheduleSourceWhere } from './schedule-source.js';
@@ -279,17 +280,37 @@ function isAfterEverySurfaceProcess(processOrder: string, surfaceOrders: readonl
   return Boolean(surfaceOrders?.length) && surfaceOrders!.every((surface) => isLaterProcessOrder(processOrder, surface));
 }
 
+type SurfaceStep = { processOrder: string; code: string | null };
+
+/** The first LSLH step after this process: where the part is sent out to. */
+function nextSurfaceStep(processOrder: string, steps: readonly SurfaceStep[] | undefined): SurfaceStep | undefined {
+  return steps?.filter((step) => isLaterProcessOrder(step.processOrder, processOrder))
+    .reduce<SurfaceStep | undefined>((first, step) => !first || isLaterProcessOrder(first.processOrder, step.processOrder) ? step : first, undefined);
+}
+
+function surfaceFields(
+  processOrder: string,
+  steps: readonly SurfaceStep[] | undefined,
+  destinations: ReadonlyMap<string, { name: string }>
+): Pick<GrindingPlanningBoardItem, 'afterLslhSurface' | 'sendOutDestinationName'> {
+  if (isAfterEverySurfaceProcess(processOrder, steps?.map((step) => step.processOrder))) return { afterLslhSurface: true };
+  const code = nextSurfaceStep(processOrder, steps)?.code;
+  const name = code ? destinations.get(code)?.name : undefined;
+  return name ? { sendOutDestinationName: name } : {};
+}
+
 async function findLslhSurface(items: readonly GrindingPlanningBoardItem[]) {
-  if (!items.length) return { productNos: new Set<string>(), fhincds: new Set<string>(), processOrdersByProductNo: new Map<string, string[]>() };
+  if (!items.length) return { productNos: new Set<string>(), fhincds: new Set<string>(), stepsByProductNo: new Map<string, SurfaceStep[]>() };
   const productNos = [...new Set(items.map((item) => item.productNo.trim()).filter(Boolean))];
   const fhincds = [...new Set(items.map((item) => item.fhincd))];
-  const matches = await prisma.$queryRaw<Array<{ productNo: string | null; fhincd: string | null; processOrder: string | null }>>(Prisma.sql`
-    SELECT DISTINCT BTRIM(r."rowData"->>'FSEZONO') AS "productNo", NULL::text AS "fhincd", BTRIM(r."rowData"->>'FKOJUN') AS "processOrder"
+  const matches = await prisma.$queryRaw<Array<{ productNo: string | null; fhincd: string | null; processOrder: string | null; code?: string | null }>>(Prisma.sql`
+    SELECT DISTINCT BTRIM(r."rowData"->>'FSEZONO') AS "productNo", NULL::text AS "fhincd", BTRIM(r."rowData"->>'FKOJUN') AS "processOrder",
+      BTRIM(r."rowData"->>'FKOTEICD') AS "code"
     FROM "CsvDashboardRow" r
     WHERE ${LSLH_SURFACE_INDEX_PREDICATE}
       AND BTRIM(r."rowData"->>'FSEZONO') IN (${Prisma.join(productNos.length ? productNos : [''])})
     UNION ALL
-    SELECT NULL::text AS "productNo", p."fhincd", NULL::text AS "processOrder"
+    SELECT NULL::text AS "productNo", p."fhincd", NULL::text AS "processOrder", NULL::text AS "code"
     FROM "ProductionSchedulePartProcessingType" p
     WHERE p."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND p."processingType" = 'LSLH'
@@ -298,10 +319,12 @@ async function findLslhSurface(items: readonly GrindingPlanningBoardItem[]) {
   return {
     productNos: new Set(matches.flatMap((row) => row.productNo == null ? [] : [row.productNo])),
     fhincds: new Set(matches.flatMap((row) => row.fhincd == null ? [] : [row.fhincd])),
-    processOrdersByProductNo: matches.reduce((orders, row) => {
-      if (row.productNo != null && row.processOrder) orders.set(row.productNo, [...orders.get(row.productNo) ?? [], row.processOrder]);
-      return orders;
-    }, new Map<string, string[]>())
+    stepsByProductNo: matches.reduce((steps, row) => {
+      if (row.productNo != null && row.processOrder) {
+        steps.set(row.productNo, [...steps.get(row.productNo) ?? [], { processOrder: row.processOrder, code: row.code ?? null }]);
+      }
+      return steps;
+    }, new Map<string, SurfaceStep[]>())
   };
 }
 
@@ -374,6 +397,8 @@ async function readPlanningItemsWithArrival(page: readonly GrindingPlanningBoard
   }
   const arrivalById = new Map(arrivalRows.map((row) => [row.id, row]));
   const lslhSurface = await perf.measure('lslhSurface', () => findLslhSurface(page));
+  const destinationCodes = [...new Set([...lslhSurface.stepsByProductNo.values()].flat().flatMap((step) => step.code ? [step.code] : []))];
+  const destinations = destinationCodes.length ? await findDepartmentMasterEntries(destinationCodes, new Date()) : new Map<string, { name: string }>();
   return page.map((item) => {
     const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
     const placement = placementByProductNo.get(item.productNo.trim());
@@ -404,7 +429,7 @@ async function readPlanningItemsWithArrival(page: readonly GrindingPlanningBoard
       isFirstProcess,
       firstProcessState,
       lslhSurface: lslhSurface.productNos.has(item.productNo.trim()) || lslhSurface.fhincds.has(item.fhincd),
-      ...(isAfterEverySurfaceProcess(item.processOrder, lslhSurface.processOrdersByProductNo.get(item.productNo.trim())) ? { afterLslhSurface: true } : {}),
+      ...surfaceFields(item.processOrder, lslhSurface.stepsByProductNo.get(item.productNo.trim()), destinations),
       arrived,
       manualArrivalDate,
       ...(arrival ? { materialArrivalStatus: arrival.status,
