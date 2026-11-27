@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { countProcedureMaterials, findAssemblyProcedureTextCandidates } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { useMediaQuery } from '../../../hooks/useMediaQuery';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { useShelfResources } from '../procedure-manuals/procedure-material-shelf-search';
 import { ProcedureMaterialShelfDialog } from '../procedure-manuals/ProcedureMaterialShelfDialog';
@@ -33,13 +34,6 @@ import type { AssemblyProcedureDocumentPageDto } from '../types';
 import type { AssemblyProcedureImageOverlayElement } from '@raspi-system/shared-types';
 
 const twoPageStorageKey = 'assembly-document-editor-two-page';
-const narrowEditorQuery = '(max-width: 1099px)';
-function subscribeToEditorWidth(onChange: () => void) {
-  const media = window.matchMedia?.(narrowEditorQuery);
-  media?.addEventListener('change', onChange);
-  return () => media?.removeEventListener('change', onChange);
-}
-const isNarrowEditor = () => window.matchMedia?.(narrowEditorQuery).matches ?? false;
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
@@ -79,7 +73,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     try { return localStorage.getItem('assembly-document-editor-parts-pane') !== 'closed'; }
     catch { return true; }
   });
-  const narrowEditor = useSyncExternalStore(subscribeToEditorWidth, isNarrowEditor, () => false);
+  const narrowEditor = useMediaQuery('(max-width: 1099px)');
   const [twoPageEnabled, setTwoPageEnabled] = useState(() => {
     try { return localStorage.getItem(twoPageStorageKey) !== 'off'; }
     catch { return true; }
