@@ -31,7 +31,9 @@ category: knowledge-base
 
 - 全行への鍵をやめ、実際に順位を書き直す資源CDの列(`saveLane` に渡す列)の元行だけに、勧告ロック → `FOR UPDATE` の順で鍵をかける。消えていた行があれば 409(`STALE_PLANNING_BOARD_ITEM`)。
 - 上書き(override)の読み書きは、これまでどおり盤の状態行の `FOR UPDATE`(`lockState`)で直列化される。資源CDの並べ替え(`write.ts` の resource order)と同じ鍵のかけ方。
-- 1列は最大 2,000 件(`GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT`)なので、鍵の数は上限の内に収まる。
+- 1列の件数に上限は無い(`GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT` は並べ替えの要求の件数だけを縛る)。鍵がかかるのは＋で差し込める資源CD(研削 `STATIC_GRINDING_RESOURCE_CDS` と、除外されていない切削)の列だけで、2026-11-27 の第2工場では最大が 587 の約770行。切削の部品の論理ロック(最大 約3,300)と足しても約4,100で、上限(約6,400)の内に収まる。
+- 行の多い 10(約4,700行)と MSZ(約2,800行)は切削の除外(`cuttingExcludedResourceCds`)なので＋で差し込めず、この経路では鍵がかからない。除外を外すとあふれる恐れがあるので、そのときは列の鍵を見直す。
+- 差し込みの無い列の並べ替え(`write.ts` の資源CDの並べ替え)も列の全行に鍵をかける。除外の資源CDが製番ボードに出る場合は同じあふれが起こりうる(この PR では触らない)。
 
 ## Not changed / watch
 
