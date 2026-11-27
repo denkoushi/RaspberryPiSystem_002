@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { JST_OFFSET_MS } from '../../lib/jst-date.js';
 
 export const DEPARTMENT_MASTER_HEADERS = [
   'FBUSHOCD',
@@ -30,7 +31,6 @@ export type DepartmentMasterImportRow = {
 
 const DAY_MS = 86_400_000;
 const SERIAL_EPOCH_MS = Date.UTC(1899, 11, 30);
-const JST_OFFSET_MS = 9 * 3_600_000;
 
 /** Excel のシリアル値(整数)を、UTC 0時の日付にする(2 → 1900-01-01)。 */
 export function serialToDate(serial: number): Date {
@@ -177,7 +177,22 @@ export function parseDepartmentMasterRows(table: readonly (readonly string[])[])
   if (result.length === 0) {
     throw new Error('データ行が0件です');
   }
+  assertNoOverlappingPeriods(result);
   return result;
+}
+
+/** 同じコードの有効期間が重なると、ある日の名前が1つに決まらないので取り込まない。 */
+function assertNoOverlappingPeriods(rows: readonly DepartmentMasterImportRow[]): void {
+  const byCode = new Map<string, DepartmentMasterImportRow[]>();
+  for (const row of rows) byCode.set(row.code, [...byCode.get(row.code) ?? [], row]);
+  for (const [code, periods] of byCode) {
+    const sorted = [...periods].sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+    for (let index = 1; index < sorted.length; index += 1) {
+      if (sorted[index]!.validFrom.getTime() <= sorted[index - 1]!.validTo.getTime()) {
+        throw new Error(`コード ${code} の有効期間が重なっています`);
+      }
+    }
+  }
 }
 
 export async function readDepartmentMasterXlsx(buffer: Buffer): Promise<DepartmentMasterImportRow[]> {

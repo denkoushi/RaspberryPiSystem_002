@@ -6975,5 +6975,4 @@ model DepartmentMasterEntry {
   importedAt      DateTime  @default(now())
 
   @@unique([code, validFrom])
-  @@index([code])
 }
