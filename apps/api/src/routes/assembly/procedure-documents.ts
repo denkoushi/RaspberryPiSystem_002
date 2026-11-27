@@ -1,9 +1,9 @@
-import { getProcedureDocumentFeedback, setProcedureDocumentFeedbackTarget } from '../../services/assembly/procedure-document-feedback.service.js';
+import { getProcedureDocumentFeedback, setProcedureDocumentFeedbackRating, setProcedureDocumentFeedbackTarget } from '../../services/assembly/procedure-document-feedback.service.js';
 import { videosForPage, type ProcedureVideoPageLink } from '../../services/assembly/procedure-video.service.js';
 import { serializeAssemblyProcedureAssets, serializeLastProcedureManualApproval, type ProcedureAssetWithOriginal, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
 import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { procedureDocumentFeedbackTargetRequestSchema } from '@raspi-system/shared-types';
+import { procedureDocumentFeedbackRatingRequestSchema, procedureDocumentFeedbackTargetRequestSchema } from '@raspi-system/shared-types';
 import { z } from 'zod';
 import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 
@@ -196,6 +196,11 @@ export function registerAssemblyProcedureDocumentRoutes(
     const { id } = idParamSchema.parse(request.params);
     const { nightlyTarget } = procedureDocumentFeedbackTargetRequestSchema.parse(request.body);
     return setProcedureDocumentFeedbackTarget(id, nightlyTarget);
+  });
+
+  app.put('/assembly/procedure-documents/:id/feedback-rating', { preHandler: allowWriteKiosk }, async (request) => {
+    const { id } = idParamSchema.parse(request.params);
+    return setProcedureDocumentFeedbackRating(id, procedureDocumentFeedbackRatingRequestSchema.parse(request.body));
   });
 
   app.post('/assembly/procedure-documents', { preHandler: allowWriteKiosk }, async (request) => {

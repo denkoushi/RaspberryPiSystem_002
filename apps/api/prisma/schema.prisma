@@ -3762,11 +3762,27 @@ model AssemblyProcedureDocumentFeedback {
   missing         Json
   unclear         Json
   ideas           Json
+  modelInput      String?
+  promptVersion   String?
   createdAt       DateTime                  @default(now())
   document        AssemblyProcedureDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  ratings         AssemblyProcedureDocumentFeedbackRating[]
 
   @@unique([documentId, sourceUpdatedAt], map: "AssemblyProcedureDocumentFeedback_document_source_key")
   @@index([revisionRootId, sourceUpdatedAt, revisionNumber], map: "AssemblyProcedureDocumentFeedback_root_source_idx")
+}
+
+/// 感想1つにつき評価は1つ。みんなで付ける。
+model AssemblyProcedureDocumentFeedbackRating {
+  feedbackId String
+  section    String
+  itemIndex  Int
+  verdict    String
+  createdAt  DateTime                          @default(now())
+  updatedAt  DateTime                          @updatedAt
+  feedback   AssemblyProcedureDocumentFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  @@id([feedbackId, section, itemIndex])
 }
 
 /// 行がある系列は、夜に AI が読む対象から外す。行が無ければ読む。

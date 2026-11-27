@@ -13,9 +13,11 @@ import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types
 
 const feedbackQuery = vi.hoisted(() => vi.fn());
 const feedbackTargetMutate = vi.hoisted(() => vi.fn());
+const feedbackRatingMutate = vi.hoisted(() => vi.fn());
 vi.mock('../../../api/hooks/assembly-procedure-documents', () => ({
   useAssemblyProcedureDocumentFeedback: (id: string | undefined) => feedbackQuery(id) ?? {},
   useSetAssemblyProcedureDocumentFeedbackTarget: () => ({ mutate: feedbackTargetMutate, isPending: false }),
+  useSetAssemblyProcedureDocumentFeedbackRating: () => ({ mutate: feedbackRatingMutate, isPending: false }),
 }));
 
 const approvalMocks = vi.hoisted(() => ({ listDocuments: vi.fn(), getDocument: vi.fn(), realCanvas: false, count: vi.fn(async () => 0), read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
@@ -1159,10 +1161,11 @@ it('rebuilds clean view on page selection and exits on a page without text', () 
 
 describe('要領書を読んだ感想', () => {
   beforeEach(() => { localStorage.clear(); });
-  afterEach(() => { feedbackQuery.mockReset(); feedbackTargetMutate.mockReset(); });
+  afterEach(() => { feedbackQuery.mockReset(); feedbackTargetMutate.mockReset(); feedbackRatingMutate.mockReset(); });
 
   it('日付と4つの分類を右欄に表示し、同じボタンで閉じる', () => {
     feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      id: 'feedback-1', ratings: [],
       revisionNumber: 2, createdAt: '2026-11-26T17:50:00Z',
       questions: ['どこに治具を当てる？'],
       missing: ['測定回数があると助かる'],
@@ -1182,7 +1185,7 @@ describe('要領書を読んだ感想', () => {
       .toEqual(['素朴な質問', '足りないかも', '分かりにくいかも', 'こうしたらいいかも']);
     expect(within(panel).getAllByRole('listitem').map(item => item.textContent))
       .toEqual(['どこに治具を当てる？', '測定回数があると助かる', '写真の右と左で迷う', '原点に矢印を置くと分かりそう']);
-    expect(within(panel).getAllByRole('button').map(item => item.getAttribute('aria-label'))).toEqual(['文字を小さく', '文字を大きく']);
+    expect(within(panel).getAllByRole('button').map(item => item.getAttribute('aria-label'))).toEqual(['文字を小さく', '文字を大きく', ...Array(4).fill(['役に立った', '外れ']).flat()]);
 
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'false');
@@ -1191,6 +1194,7 @@ describe('要領書を読んだ感想', () => {
 
   it('－と＋で感想の文字を段階的に変え、最小と最大で止め、開き直しても残す', () => {
     feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      id: 'feedback-1', ratings: [],
       revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
       questions: ['どこを測る？'], missing: [], unclear: [], ideas: [],
     } } });
@@ -1222,12 +1226,30 @@ describe('要領書を読んだ感想', () => {
   it('保存された文字サイズが読めない値なら既定のサイズで出す', () => {
     localStorage.setItem('assembly-document-feedback-font-size', '999');
     feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      id: 'feedback-1', ratings: [],
       revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
       questions: ['どこを測る？'], missing: [], unclear: [], ideas: [],
     } } });
     renderScreen(makeController());
     fireEvent.click(screen.getByRole('button', { name: '読んだ感想' }));
     expect(screen.getByRole('region', { name: '読んだ感想' }).querySelector<HTMLElement>('[data-feedback-body]')!.style.fontSize).toBe('14px');
+  });
+
+  it('感想ごとの役に立った・外れを付け、押されている方をもう一度押すと消す', () => {
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      id: 'feedback-1', ratings: [{ section: 'missing', itemIndex: 1, verdict: 'miss' }],
+      revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
+      questions: ['どこを測る？'], missing: ['a', 'b'], unclear: [], ideas: [],
+    } } });
+    renderScreen(makeController());
+    fireEvent.click(screen.getByRole('button', { name: '読んだ感想' }));
+    const items = within(screen.getByRole('region', { name: '読んだ感想' })).getAllByRole('listitem');
+    fireEvent.click(within(items[0]).getByRole('button', { name: '役に立った' }));
+    expect(feedbackRatingMutate).toHaveBeenLastCalledWith({ feedbackId: 'feedback-1', section: 'questions', itemIndex: 0, verdict: 'useful' });
+    const miss = within(items[2]).getByRole('button', { name: '外れ' });
+    expect(miss).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(miss);
+    expect(feedbackRatingMutate).toHaveBeenLastCalledWith({ feedbackId: 'feedback-1', section: 'missing', itemIndex: 1, verdict: null });
   });
 
   it('夜に読むボタンを押すと、今と逆の値で切り替える', () => {
@@ -1240,6 +1262,7 @@ describe('要領書を読んだ感想', () => {
 
   it('感想と整えるを同時に表示しない', () => {
     feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      id: 'feedback-1', ratings: [],
       revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
       questions: ['どこを測る？'], missing: [], unclear: [], ideas: [],
     } } });

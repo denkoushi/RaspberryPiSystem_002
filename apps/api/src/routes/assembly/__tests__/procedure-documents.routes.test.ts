@@ -93,7 +93,7 @@ describe('assembly procedure document routes', () => {
       .mockResolvedValue({ revisionMetadata: { revisionRootId: root } } as never);
     const sections = { questions: ['どこを測る？'], missing: [], unclear: [], ideas: [] };
     const findFeedback = vi.spyOn(prisma.assemblyProcedureDocumentFeedback, 'findFirst')
-      .mockResolvedValue({ revisionNumber: 1, createdAt: now, ...sections } as never);
+      .mockResolvedValue({ id: 'feedback-1', ratings: [{ section: 'questions', itemIndex: 0, verdict: 'useful' }], revisionNumber: 1, createdAt: now, ...sections } as never);
     vi.spyOn(prisma.assemblyProcedureDocumentFeedbackOptOut, 'findUnique').mockResolvedValue(null);
     const allowView = vi.fn(async () => undefined);
 
@@ -102,7 +102,7 @@ describe('assembly procedure document routes', () => {
     const url = `/assembly/procedure-documents/${documentId}/feedback`;
     const response = await app.inject({ method: 'GET', url });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ feedback: { revisionNumber: 1, createdAt: now.toISOString(), ...sections }, nightlyTarget: true });
+    expect(response.json()).toEqual({ feedback: { id: 'feedback-1', ratings: [{ section: 'questions', itemIndex: 0, verdict: 'useful' }], revisionNumber: 1, createdAt: now.toISOString(), ...sections }, nightlyTarget: true });
     expect(allowView).toHaveBeenCalledOnce();
     expect(findDocument).toHaveBeenCalledWith(expect.objectContaining({ where: { id: documentId } }));
     expect(findFeedback).toHaveBeenCalledWith(expect.objectContaining({
@@ -131,6 +131,27 @@ describe('assembly procedure document routes', () => {
     expect(response.json()).toEqual({ feedback: null, nightlyTarget: false });
     expect(allowWriteKiosk).toHaveBeenCalledOnce();
     expect(createOptOut).toHaveBeenCalledWith({ data: { revisionRootId: documentId }, skipDuplicates: true });
+  });
+
+  it('rates a reading feedback item through the write guard', async () => {
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ revisionMetadata: null } as never);
+    const sections = { questions: ['どこを測る？'], missing: [], unclear: [], ideas: [] };
+    vi.spyOn(prisma.assemblyProcedureDocumentFeedback, 'findFirst')
+      .mockResolvedValue({ id: 'feedback-1', ratings: [{ section: 'questions', itemIndex: 0, verdict: 'miss' }], revisionNumber: 1, createdAt: now, ...sections } as never);
+    vi.spyOn(prisma.assemblyProcedureDocumentFeedbackOptOut, 'findUnique').mockResolvedValue(null);
+    const upsert = vi.spyOn(prisma.assemblyProcedureDocumentFeedbackRating, 'upsert').mockResolvedValue({} as never);
+    const allowWriteKiosk = vi.fn(async () => undefined);
+
+    app = Fastify();
+    registerAssemblyProcedureDocumentRoutes(app, { allowView: async () => undefined, allowWriteKiosk } as AssemblyProcedureDocumentRouteOptions);
+    const response = await app.inject({
+      method: 'PUT', url: `/assembly/procedure-documents/${documentId}/feedback-rating`,
+      payload: { feedbackId: 'feedback-1', section: 'questions', itemIndex: 0, verdict: 'miss' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().feedback.ratings).toEqual([{ section: 'questions', itemIndex: 0, verdict: 'miss' }]);
+    expect(allowWriteKiosk).toHaveBeenCalledOnce();
+    expect(upsert).toHaveBeenCalledOnce();
   });
 
   it('returns not found for an unknown document without changing the service contract', async () => {
