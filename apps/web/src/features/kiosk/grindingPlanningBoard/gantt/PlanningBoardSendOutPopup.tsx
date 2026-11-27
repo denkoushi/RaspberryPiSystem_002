@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { normalizeMachineName } from '../../productionSchedule/machineName';
 import {
   progressOverviewProcessChipClassName, progressOverviewResourceAriaLabel, progressOverviewResourceTooltip
 } from '../../productionSchedule/progressOverviewPresentation';
@@ -39,7 +40,7 @@ type Pending = {
   id: string; pointerId: number; x: number; y: number; allowed?: ReadonlySet<string>;
 };
 
-const columns = ['', '処理日', '予定', '製番', '製造オーダ番号', '品番', '品名', '数量', '着', '工順', '納期'];
+const columns = ['', '処理日', '予定', '製番', '機種名', '製造オーダ番号', '品番', '品名', '数量', '着', '工順', '納期'];
 
 export type SendOutPopupPosition = { left: number; top: number };
 
@@ -180,6 +181,7 @@ export function PlanningBoardSendOutPopup({ label, resource, rows, today, chipsB
               {bar.start == null ? '' : dayLabel(Math.floor(bar.start))}
             </td>
             <td className="font-mono">{item.fseiban}</td>
+            <td>{normalizeMachineName(item.machineName)}</td>
             <td className="font-mono">{item.productNo}</td>
             <td className="font-mono">{item.fhincd}</td>
             <td>{item.fhinmei}</td>

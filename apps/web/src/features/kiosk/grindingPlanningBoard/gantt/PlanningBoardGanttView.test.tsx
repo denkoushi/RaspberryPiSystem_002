@@ -145,7 +145,9 @@ describe('PlanningBoardGanttView', () => {
       expect(button).toHaveAttribute('aria-expanded', 'false');
       expect(button).not.toHaveClass('ring-white');
     };
-    open();
+    const table = within(open());
+    expect(table.getByRole('columnheader', { name: '機種名' })).toBeInTheDocument();
+    expect(table.getByRole('cell', { name: '機種' })).toBeInTheDocument();
     fireEvent.click(button);
     expectClosed();
     open();
