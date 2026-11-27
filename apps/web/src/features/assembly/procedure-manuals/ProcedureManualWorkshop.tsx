@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { listProcedureManualCommon, discardAssemblyProcedureDocumentRevision, deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, countProcedureMaterials, countProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
+import { listProcedureManualCommon, discardAssemblyProcedureDocumentRevision, deleteAssemblyProcedureDocument, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, countProcedureMaterials, countProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { IconActionTooltip } from '../../../components/ui/IconActionTooltip';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
-import { KioskPinDialog, kioskPinErrorResult } from '../../kiosk/KioskPinDialog';
-import { kioskAssemblyManualsPath, kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from '../assemblyRoutes';
+import { kioskAssemblyManualsWorkshopPath, kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
-import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected, procedureManualSymbolAction as symbolAction } from './procedure-manual-button-styles';
@@ -102,14 +100,7 @@ export function ProcedureManualWorkshop() {
       previousVersion.current = version;
     }
   }, [version]);
-  const [accessGranted, setAccessGranted] = useState(() => Boolean(readProcedureEditorAccess()));
-  const checkAccess = useCallback(() => {
-    const granted = Boolean(readProcedureEditorAccess());
-    setAccessGranted(granted);
-    return granted;
-  }, []);
   const beforeMutation = () => {
-    if (!checkAccess()) return false;
     clearManualLists();
     return true;
   };
@@ -120,11 +111,6 @@ export function ProcedureManualWorkshop() {
     next.delete('process');
     setParams(next, { replace: true });
   };
-  useEffect(() => {
-    checkAccess();
-    // Access is sessionStorage-based: monitor this tab, not other tabs' sessions.
-    return subscribeProcedureEditorAccess(checkAccess);
-  }, [checkAccess]);
   useEffect(() => {
     let cancelled = false;
     const sequence = commonSequence.current;
@@ -245,7 +231,7 @@ export function ProcedureManualWorkshop() {
         context: { modelCode: item.modelCode, modelCodeKey: item.modelCodeKey, processId: item.processId, processName: rowProcessName(item), mode: 'fix' } }
     });
   };
-  const fix = (item: ProcedureManualAssignmentOverviewItemDto) => { if (checkAccess()) openEditor(item); };
+  const fix = (item: ProcedureManualAssignmentOverviewItemDto) => openEditor(item);
   const view = async (item: ProcedureManualAssignmentOverviewItemDto) => {
     setPreviewLoading(true); setError(null);
     try {
@@ -262,7 +248,6 @@ export function ProcedureManualWorkshop() {
     finally { setPreviewLoading(false); }
   };
   const remove = async (item: ProcedureManualAssignmentOverviewItemDto, deleteDocument = false) => {
-    if (!checkAccess()) return;
     setBusy(true); setError(null); setOperationMessage(null);
     let unassigned = false;
     try {
@@ -279,7 +264,7 @@ export function ProcedureManualWorkshop() {
         }))
       });
       unassigned = true;
-      if (deleteDocument && checkAccess()) await deleteAssemblyProcedureDocument(item.documentId, readProcedureEditorAccess()?.pin ?? '');
+      if (deleteDocument) await deleteAssemblyProcedureDocument(item.documentId, '');
       setVersion(value => value + 1);
     } catch (e) {
       if (unassigned && deleteDocument) {
@@ -290,19 +275,19 @@ export function ProcedureManualWorkshop() {
     finally { setBusy(false); }
   };
   const discardRevision = async (item: ProcedureManualAssignmentOverviewItemDto) => {
-    if (busy || !item.draftRevision || item.draftRevision.editLease || !checkAccess()) return;
+    if (busy || !item.draftRevision || item.draftRevision.editLease) return;
     setBusy(true); setOperationMessage(null);
     try {
       await discardAssemblyProcedureDocumentRevision({
         id: item.draftRevision.documentId,
-        accessPassword: readProcedureEditorAccess()?.pin ?? '',
+        accessPassword: '',
         expectedEditVersion: item.draftRevision.editVersion
       });
     } catch (cause) { setOperationMessage(readAssemblyApiErrorMessage(cause, '改版を破棄できません')); }
     finally { setBusy(false); setVersion(value => value + 1); }
   };
   const confirmDiscard = (item: ProcedureManualAssignmentOverviewItemDto) => {
-    if (!busy && item.draftRevision && !item.draftRevision.editLease && checkAccess()) setDiscarding(item);
+    if (!busy && item.draftRevision && !item.draftRevision.editLease) setDiscarding(item);
   };
   const splitRowName = (item: ProcedureManualAssignmentOverviewItemDto) => {
     const fullName = item.label || item.title;
@@ -339,18 +324,18 @@ export function ProcedureManualWorkshop() {
     </header>
     <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
       <ProcedureManualFilterPane topActions={(isCommon ? process?.subjectKind === 'COMMON' : modelCodeKey && process) ? <>
-        <button className={`${primaryAction} h-14 shrink-0`} disabled={busy || (isCommon && (previewLoading || categoryBusy))} onClick={() => { if (checkAccess()) { clearManualLists(); setBlankOpen(true); } }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
-        {!isCommon ? <button aria-label="既存の要領書を割り当てる" className={`${action} h-14 shrink-0`} disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存を割り当てる</button> : null}
+        <button className={`${primaryAction} h-14 shrink-0`} disabled={busy || (isCommon && (previewLoading || categoryBusy))} onClick={() => { clearManualLists(); setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
+        {!isCommon ? <button aria-label="既存の要領書を割り当てる" className={`${action} h-14 shrink-0`} disabled={busy || overviewLoading} onClick={() => setAssignmentOpen(true)}>＋ 既存を割り当てる</button> : null}
       </> : null} allowKindChangeWithProcess subjectKind={subjectKind} onKindChange={kind => { if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); setKanaRow(''); select('', '', kind); } }} processes={processes} items={items} models={candidates} partSearchCandidates={partCandidates} modelCodeKey={modelCodeKey} processId={processId}
         search={search} digitQuery={digitQuery} onSearchChange={setSearch} onDigitQueryChange={setDigitQuery}
         onModelSelect={key => select(key === modelCodeKey ? '' : key, processId)} onProcessSelect={selectProcess}
-        categoryEditor={accessGranted ? { choices: commonCatalog.categories, onChanged: refreshCommon, beforeMutation, onDeleted: clearDeletedCategory, onBusyChange: setCategoryBusy, disabled: categoryBusy } : undefined}
+        categoryEditor={{ choices: commonCatalog.categories, onChanged: refreshCommon, beforeMutation, onDeleted: clearDeletedCategory, onBusyChange: setCategoryBusy, disabled: categoryBusy }}
         kanaRow={kanaRow} onKanaRowChange={setKanaRow} loading={isCommon ? overviewLoading : searchLoading} error={searchError} hasMore={hasMore} />
       <section aria-label="要領書一覧" className={isCommon ? 'flex min-h-0 min-w-0 flex-col' : 'grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3'}>
         {isCommon ? <ProcedureManualCommonList items={filteredItems} processes={processes} categoryId={processId} kanaRow={kanaRow} busy={busy || previewLoading}
           onView={item => void view(item)} onFix={fix} onDiscard={confirmDiscard}
-          onRename={item => { if (checkAccess()) { setOperationMessage(null); setCommonRenaming(item); } }}
-          onRemove={(item, deleteDocument) => { if (checkAccess()) { if (deleteDocument) setDeleting(item); else setRemoving(item); } }} /> : <>
+          onRename={item => { setOperationMessage(null); setCommonRenaming(item); }}
+          onRemove={(item, deleteDocument) => { if (deleteDocument) setDeleting(item); else setRemoving(item); }} /> : <>
           <div className="mb-1.5 flex min-h-[52px] min-w-max items-center gap-3">
             <h2 aria-label={`${modelCodeKey || (subjectKind === 'PART' ? '全部品' : '全機種')} › ${process ? shortName(process) : '全工程'}`} className="flex items-center gap-2 text-[22px] font-black">
               <span className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[#344252] pl-3 ${modelCodeKey ? '' : 'border-dashed pr-3 text-[#9fadb9]'}`}>
@@ -393,11 +378,11 @@ export function ProcedureManualWorkshop() {
             <div role="cell" className="flex gap-1">
               {actions.view ? <IconActionTooltip label="見る" disabled={previewLoading}><button aria-label="見る" className={`${symbolAction} !border-[#344252] !text-[#eef3f6]`} disabled={previewLoading} onClick={() => void view(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></button></IconActionTooltip> : null}
               {actions.fix ? <IconActionTooltip label="直す" disabled={busy}><button aria-label="直す" className={`${symbolAction} !border-[#3ba776] !text-[#3ba776]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button></IconActionTooltip> : null}
-              {actions.rename ? <IconActionTooltip label="名前を変える" disabled={busy || Boolean(item.draftRevision?.editLease)}><button aria-label="名前を変える" className={symbolAction} disabled={busy || Boolean(item.draftRevision?.editLease)} onClick={() => { if (checkAccess()) { setOperationMessage(null); setRenaming(item); } }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7V5h12v2M10 5v14M7 19h6M16 13h5M18.5 13v6M17 19h3" /></svg></button></IconActionTooltip> : null}
-              {actions.reattach ? <IconActionTooltip label="部品を付け直す" disabled={busy}><button aria-label="部品を付け直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => { if (checkAccess()) { setOperationMessage(null); setReattaching(item); } }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.4" /></svg></button></IconActionTooltip> : null}
+              {actions.rename ? <IconActionTooltip label="名前を変える" disabled={busy || Boolean(item.draftRevision?.editLease)}><button aria-label="名前を変える" className={symbolAction} disabled={busy || Boolean(item.draftRevision?.editLease)} onClick={() => { setOperationMessage(null); setRenaming(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7V5h12v2M10 5v14M7 19h6M16 13h5M18.5 13v6M17 19h3" /></svg></button></IconActionTooltip> : null}
+              {actions.reattach ? <IconActionTooltip label="部品を付け直す" disabled={busy}><button aria-label="部品を付け直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => { setOperationMessage(null); setReattaching(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.4" /></svg></button></IconActionTooltip> : null}
               {actions.use ? <IconActionTooltip label="使う"><Link aria-label="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link></IconActionTooltip> : null}
               {actions.discard && item.draftRevision ? <IconActionTooltip label="改版を破棄" disabled={busy || Boolean(item.draftRevision.editLease)}><button aria-label="改版を破棄" className={symbolAction} disabled={busy || Boolean(item.draftRevision.editLease)} onClick={() => confirmDiscard(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : null}
-              {canDelete(item) ? <IconActionTooltip label="削除" disabled={busy}><button aria-label="削除" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setDeleting(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : <IconActionTooltip label="外す" disabled={busy}><button aria-label="外す" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setRemoving(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg></button></IconActionTooltip>}
+              {canDelete(item) ? <IconActionTooltip label="削除" disabled={busy}><button aria-label="削除" className={symbolAction} disabled={busy} onClick={() => setDeleting(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : <IconActionTooltip label="外す" disabled={busy}><button aria-label="外す" className={symbolAction} disabled={busy} onClick={() => setRemoving(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg></button></IconActionTooltip>}
             </div>
           </div>; })}
           </div>
@@ -408,24 +393,15 @@ export function ProcedureManualWorkshop() {
         {operationMessage ? <p role="alert" className="text-amber-300">{operationMessage}</p> : null}
       </section>
     </div>
-    {!accessGranted ? <KioskPinDialog validHours={PROCEDURE_EDITOR_ACCESS_HOURS} backLabel="見るへ戻る" onBack={() => navigate(kioskAssemblyManualsPath())} onSubmit={async pin => {
-      let result;
-      try { result = await verifyAssemblyTemplateAccessPassword({ password: pin }); }
-      catch (error) { return kioskPinErrorResult(error); }
-      if (!result.success) return false;
-      saveProcedureEditorAccess(pin);
-      setAccessGranted(true);
-      return true;
-    }} /> : null}
-    {accessGranted && blankOpen && isCommon ? <ProcedureManualCommonDialog catalog={commonCatalog} items={items.filter(item => item.subjectKind === 'COMMON' || processes.find(row => row.id === item.processId)?.subjectKind === 'COMMON')} categoryId={processId} beforeMutation={beforeMutation} onClose={() => setBlankOpen(false)} onChanged={refreshCommon} onFix={fix} /> : null}
-    {accessGranted && blankOpen && !isCommon ? <ProcedureManualBlankDialog subjectKind={subjectKind === 'PART' ? 'PART' : 'MODEL'} beforeMutation={() => { if (!checkAccess()) return false; clearManualLists(); return true; }} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
-    {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
-    {accessGranted && reattaching ? <ProcedureManualReattachPartDialog item={reattaching} processes={processes} currentPartName={partCandidates.find(row => row.partNumberKey === reattaching.modelCodeKey)?.partName}
-      beforeMutation={checkAccess} onClose={() => setReattaching(null)} onChanged={() => setVersion(value => value + 1)}
+    {blankOpen && isCommon ? <ProcedureManualCommonDialog catalog={commonCatalog} items={items.filter(item => item.subjectKind === 'COMMON' || processes.find(row => row.id === item.processId)?.subjectKind === 'COMMON')} categoryId={processId} beforeMutation={beforeMutation} onClose={() => setBlankOpen(false)} onChanged={refreshCommon} onFix={fix} /> : null}
+    {blankOpen && !isCommon ? <ProcedureManualBlankDialog subjectKind={subjectKind === 'PART' ? 'PART' : 'MODEL'} beforeMutation={() => { clearManualLists(); return true; }} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
+    {assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={() => true} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
+    {reattaching ? <ProcedureManualReattachPartDialog item={reattaching} processes={processes} currentPartName={partCandidates.find(row => row.partNumberKey === reattaching.modelCodeKey)?.partName}
+      beforeMutation={() => true} onClose={() => setReattaching(null)} onChanged={() => setVersion(value => value + 1)}
       onSaved={(key, id, message) => { setReattaching(null); select(key, id); setVersion(value => value + 1); setOperationMessage(message); }} /> : null}
-    {accessGranted && isCommon && commonRenaming ? <ProcedureManualCommonRenameDialog item={commonRenaming} catalog={commonCatalog} onClose={() => setCommonRenaming(null)}
+    {isCommon && commonRenaming ? <ProcedureManualCommonRenameDialog item={commonRenaming} catalog={commonCatalog} onClose={() => setCommonRenaming(null)}
       onSaved={() => { setCommonRenaming(null); void refreshCommon(); }} /> : null}
-    {accessGranted && renaming ? <ProcedureManualRenameDialog item={renaming} name={splitRowName(renaming)} onClose={() => setRenaming(null)}
+    {renaming ? <ProcedureManualRenameDialog item={renaming} name={splitRowName(renaming)} onClose={() => setRenaming(null)}
       onSaved={() => { setRenaming(null); setVersion(value => value + 1); }} /> : null}
     {materialOpen ? <ProcedureMaterialShelfDialog resources={shelfResources} onClose={() => { clearManualLists(); setMaterialOpen(false); }} onCreatedDocument={(documentId) => {
       clearManualLists();

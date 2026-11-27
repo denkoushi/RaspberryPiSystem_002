@@ -2,15 +2,12 @@ import { useCallback, useRef, useState } from 'react';
 
 import {
   approvePublishAssemblyProcedureDocument,
-  createAssemblyProcedureDocumentRevision,
   getAssemblyProcedureDocument,
   publishAssemblyProcedureDocument,
-  saveAssemblyProcedureDocumentOverlays,
-  verifyAssemblyTemplateAccessPassword
+  saveAssemblyProcedureDocumentOverlays
 } from '../../../api/client';
 import { kioskPinErrorResult, type KioskPinSubmitResult } from '../../kiosk/KioskPinDialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
-import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import {
   canPublishAssemblyProcedureDocument,
@@ -48,9 +45,6 @@ export type AssemblyProcedureDocumentRevisionCommandSession = {
   conflictEditVersion: number | null;
   holderToken?: string | null;
   onEditLeaseError?: (error: unknown) => boolean;
-  hasAuthenticated?: boolean;
-  revokeAccess?: () => void;
-  setAccessGranted: StateSetter<boolean>;
   setBaselineSnapshot: StateSetter<string | null>;
   setBusy: StateSetter<boolean>;
   setConflict: StateSetter<boolean>;
@@ -75,61 +69,6 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     (documentId: string) => getAssemblyProcedureDocument(documentId),
     []
   );
-
-  const verifyEditorPassword = useCallback(async (pin: string): Promise<KioskPinSubmitResult> => {
-    const {
-      busy,
-      document,
-      setPasswordInput,
-      setAccessGranted,
-      setBaselineSnapshot,
-      setBusy,
-      setConflict,
-      setConflictEditVersion,
-      setDocument,
-      setMessage,
-      dispatch
-    } = session;
-    if (!pin.trim()) return 'mismatch';
-    if (!document || busy) return 'network';
-    setBusy(true);
-    setConflict(false);
-    setConflictEditVersion(null);
-    try {
-      const result = await verifyAssemblyTemplateAccessPassword({ password: pin });
-      if (!result.success) return 'mismatch';
-      const editableDocument = await createAssemblyProcedureDocumentRevision(document.id, pin);
-      const nextElements = selectDocumentOverlayElements(editableDocument);
-      setMessage(null);
-      setDocument(editableDocument);
-      if (editableDocument.id === document.id && document.status === 'draft' && session.hasAuthenticated) {
-        // Reauthentication keeps this document's edits and undo history.
-        if ((editableDocument.editVersion ?? 0) !== (document.editVersion ?? 0)) {
-          setConflict(true);
-          setConflictEditVersion(editableDocument.editVersion ?? 0);
-          (session.setErrorMessage ?? setMessage)(DOCUMENT_EDITOR_CONFLICT_MESSAGES.save);
-        }
-      } else {
-        dispatch({ type: 'replace', elements: nextElements });
-        setBaselineSnapshot(overlayDraftSnapshot(nextElements));
-      }
-      saveProcedureEditorAccess(pin);
-      setPasswordInput(pin);
-      setAccessGranted(true);
-      return true;
-    } catch (error: unknown) {
-      if (session.revokeAccess) session.revokeAccess();
-      else {
-        if (session.isDirty) session.recovery.saveImmediately?.({ baseUpdatedAt: document.updatedAt, editVersion: document.editVersion ?? 0 });
-        clearProcedureEditorAccess();
-        setAccessGranted(false);
-      }
-      (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '認証または改版の作成に失敗しました。'));
-      return kioskPinErrorResult(error);
-    } finally {
-      setBusy(false);
-    }
-  }, [session]);
 
   const save = useCallback(async (flushedElements?: AssemblyProcedureOverlayElement[]) => {
     const {
@@ -289,14 +228,13 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     }
   }, [session]);
 
-  const publish = useCallback(async (approval?: { reviewerTagUid: string; comment?: string }): Promise<boolean | void> => {
+  const publish = useCallback(async (approval?: { reviewerTagUid: string; comment?: string }, accessPassword?: string): Promise<boolean | KioskPinSubmitResult | void> => {
     const {
       busy,
       document,
       elements,
       isDirty,
       onNavigateAfterPublish,
-      passwordInput,
       readOnly,
       recovery,
       setBaselineSnapshot,
@@ -320,7 +258,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       }) : await publishAssemblyProcedureDocument({
         ...(session.holderToken ? { holderToken: session.holderToken } : {}),
         id: document.id,
-        accessPassword: passwordInput,
+        accessPassword: accessPassword ?? '',
         expectedEditVersion: document.editVersion ?? 0
       });
       setDocument(published);
@@ -330,6 +268,10 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       onNavigateAfterPublish?.(published);
       return true;
     } catch (error: unknown) {
+      if (accessPassword !== undefined) {
+        const pinResult = kioskPinErrorResult(error);
+        if (pinResult === 'mismatch' || pinResult === 'rate-limited') return pinResult;
+      }
       if (session.onEditLeaseError?.(error)) return;
       const conflict = readDocumentEditorConflict(error);
       if (conflict) {
@@ -348,7 +290,6 @@ export function useAssemblyProcedureDocumentRevisionCommands(
   return {
     saving,
     loadDocument,
-    verifyEditorPassword,
     save,
     retryConflictSave,
     reloadConflict,

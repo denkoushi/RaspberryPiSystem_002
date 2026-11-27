@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision, sharpenAssemblyProcedureOverlayImage } from '../../../api/client';
 import { DEFAULT_UNSAVED_NAVIGATION_MESSAGE, useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
-import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 import {
   createDuplicateOverlayAction, createOverlayForRange,
@@ -139,31 +138,15 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   });
   const expiryRecovery = useRef({ isDirty, document, saveRecoveryImmediately });
   expiryRecovery.current = { isDirty, document, saveRecoveryImmediately };
-  const revokeAccess = useCallback(() => {
-    const flushed = flushInlineText();
-    const current = expiryRecovery.current;
-    if (current.isDirty || flushed) current.saveRecoveryImmediately({ baseUpdatedAt: current.document?.updatedAt ?? null, editVersion: current.document?.editVersion ?? 0 }, flushed);
-    dispatch({ type: 'endDrag' });
-    clearProcedureEditorAccess();
-    setAccessGranted(false);
-    setPasswordInput('');
-  }, [flushInlineText]);
   const handleLeaseError = editLease.handleError;
   const onEditLeaseError = useCallback((error: unknown) => {
     const status = isAxiosError(error) ? error.response?.status : undefined;
     if (status === 401 || status === 403) {
-      revokeAccess();
-      setErrorMessage('認証の期限が切れました。');
+      setErrorMessage(readAssemblyApiErrorMessage(error, '認証の期限が切れました。'));
       return true;
     }
     return handleLeaseError(error);
-  }, [handleLeaseError, revokeAccess, setErrorMessage]);
-  useEffect(() => subscribeProcedureEditorAccess(() => {
-    if (!readProcedureEditorAccess()) {
-      revokeAccess();
-      setErrorMessage('認証の期限が切れました。');
-    }
-  }), [revokeAccess, setErrorMessage]);
+  }, [handleLeaseError, setErrorMessage]);
   const baseReadOnly = !accessGranted || document?.status !== 'draft' || (!editLease.mine && !editLease.unavailable);
   const layoutSuggestions = useAssemblyProcedureLayoutSuggestions({
     documentId: document?.id ?? null,
@@ -201,7 +184,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const revisionSession = useMemo(() => ({
     appliedCaptionElementIds: layoutSuggestions.appliedCaptionElementIds,
     document,
-    hasAuthenticated: baselineSnapshot != null,
     elements,
     passwordInput,
     setPasswordInput,
@@ -211,8 +193,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     conflictEditVersion,
     onEditLeaseError,
     holderToken: editLease.holderToken,
-    setAccessGranted,
-    revokeAccess,
     setBaselineSnapshot,
     setBusy,
     setConflict,
@@ -230,11 +210,9 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     layoutSuggestions.appliedCaptionElementIds,
     setBusy,
     busy,
-    baselineSnapshot,
     conflictEditVersion,
     document,
     onEditLeaseError,
-    revokeAccess,
     editLease.holderToken,
     elements,
     input.onNavigateAfterPublish,
@@ -322,22 +300,16 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
         if (cancelled) return;
         setDocument(next);
         setSelectedPageIndex(next.pages[0]?.pageIndex ?? 0);
-        const access = readProcedureEditorAccess();
-        if (!access) return;
         try {
-          const editable = await createAssemblyProcedureDocumentRevision(next.id, access.pin);
+          const editable = await createAssemblyProcedureDocumentRevision(next.id, '');
           if (cancelled) return;
-          const currentAccess = readProcedureEditorAccess();
-          if (!currentAccess || currentAccess.expiresAt !== access.expiresAt || currentAccess.clientKey !== access.clientKey || currentAccess.pin !== access.pin) throw new Error('認証の期限が切れました。');
           const nextElements = selectDocumentOverlayElements(editable);
-          setPasswordInput(access.pin);
           setDocument(editable);
           dispatch({ type: 'replace', elements: nextElements });
           setBaselineSnapshot(overlayDraftSnapshot(nextElements));
           setAccessGranted(true);
         } catch (error) {
           if (cancelled) return;
-          revokeAccess();
           setErrorMessage(readAssemblyApiErrorMessage(error, '認証または改版の作成に失敗しました。'));
         }
       })
@@ -350,7 +322,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     return () => {
       cancelled = true;
     };
-  }, [input.documentId, loadDocument, revokeAccess, setMessage, setErrorMessage]);
+  }, [input.documentId, loadDocument, setMessage, setErrorMessage]);
 
   const restoreRecovery = useCallback(() => {
     for (const placement of recovery.pending?.materialPlacements ?? []) pendingMaterials.current.set(placement.elementId, placement);
@@ -566,7 +538,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     retryConflictSave: revisionCommands.retryConflictSave,
     passwordInput,
     setPasswordInput,
-    verifyEditorPassword: revisionCommands.verifyEditorPassword,
     selectedPageIndex,
     setSelectedPageIndex: setSelectedPage,
     selectedPage,

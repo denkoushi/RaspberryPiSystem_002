@@ -4,13 +4,14 @@ import { resolveProcedureManualApprover } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 import { useArmedNfcRead } from '../../kiosk/inventory/setup/useArmedNfcRead';
+import { KioskPinDialog, type KioskPinSubmitResult } from '../../kiosk/KioskPinDialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 type Approval = { reviewerTagUid: string; comment?: string };
 type Props = {
   busy: boolean;
   error: string | null;
-  onPublish: (approval?: Approval) => Promise<boolean | void>;
+  onPublish: (approval?: Approval, accessPassword?: string) => Promise<boolean | KioskPinSubmitResult | void>;
   onClose: () => void;
 };
 
@@ -21,6 +22,7 @@ export function AssemblyProcedureDocumentPublishDialog({ busy, error, onPublish,
   const [verifying, setVerifying] = useState(false);
   const [publishFailed, setPublishFailed] = useState(false);
   const [tagError, setTagError] = useState<string | null>(null);
+  const [pinOpen, setPinOpen] = useState(false);
   const generation = useRef(0);
   const read = useArmedNfcRead(method === 'tag' && !reviewer && !verifying && !busy);
 
@@ -42,12 +44,21 @@ export function AssemblyProcedureDocumentPublishDialog({ busy, error, onPublish,
   };
   const submit = async () => {
     if (busy || verifying || (method === 'tag' && !reviewer)) return;
+    if (method === 'password') { setPublishFailed(false); setPinOpen(true); return; }
     setPublishFailed(false);
     const result = await onPublish(method === 'tag' && reviewer
       ? { reviewerTagUid: reviewer.tagUid, ...(comment.trim() ? { comment: comment.trim() } : {}) }
       : undefined);
     if (result !== false) onClose();
     else setPublishFailed(true);
+  };
+  const submitPin = async (pin: string): Promise<KioskPinSubmitResult> => {
+    const result = await onPublish(undefined, pin);
+    if (result === 'mismatch' || result === 'rate-limited') return result;
+    if (result === false || result === undefined) setPublishFailed(true);
+    if (result === true) onClose();
+    else setPinOpen(false);
+    return true;
   };
   return <Dialog isOpen title="手順書を公開" onClose={busy ? () => undefined : onClose}
     description="公開すると、この内容が使用側に反映されます。公開後に編集する場合は、新しい改版を作成します。">
@@ -68,5 +79,6 @@ export function AssemblyProcedureDocumentPublishDialog({ busy, error, onPublish,
       <Button variant="ghost" disabled={busy} onClick={onClose}>キャンセル</Button>
       <Button data-kiosk-sop-target="assembly-document-editor-publish-confirm" className="min-h-11" disabled={busy || verifying || (method === 'tag' && !reviewer)} onClick={() => void submit()}>{method === 'tag' ? '承認して公開する' : '公開する'}</Button>
     </div>
+    {pinOpen ? <KioskPinDialog onBack={() => setPinOpen(false)} onSubmit={submitPin} /> : null}
   </Dialog>;
 }

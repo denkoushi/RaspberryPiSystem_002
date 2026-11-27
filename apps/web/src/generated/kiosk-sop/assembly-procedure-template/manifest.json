@@ -1,11 +1,10 @@
 {
   "artifacts": {
-    "manual.html": "170f5b008cfbd8c01f2f2fc23bc1d49321a6c4b361bc6fe7d6c1c5dd2af464d3",
-    "screens/assembly-document-editor-auth.png": "a09e45d9c349adb50fab414983651d694687b31e9950af9d8b28f236fc243565",
+    "manual.html": "a2c4d7fbe2fc962334cc441f1c05b4e9da78cc4ce22a1bdb6ffda3384dc38b59",
     "screens/assembly-document-editor-conflict.png": "8d43abf942a5810708984e59dfa7fb833f07affc333fa8bfd6672eeb06a9e401",
     "screens/assembly-document-editor-image-properties.png": "c6d79638c5ea3d4e5b5802befbbc1539b4a1735625a8d8e3ed98b8cfee42eae7",
     "screens/assembly-document-editor-publish.png": "08cf6aef7cd6b97e134487d60f9d8f91779db83a1a3955380530bae953161e66",
-    "screens/assembly-document-editor-range.png": "0b2f0695cfd1d32e8a65eed98399024b0cc83fbe8e0daefdd8b6b5ebe6ad2692",
+    "screens/assembly-document-editor-range.png": "c616dc1e5a3c26202e40ec2b08730cc65d533b83225357117e371d90d091bd03",
     "screens/assembly-document-editor-shape-properties.png": "90948709377146406cdddf989495748c7ff731e8ee3229630daa456e01c49896",
     "screens/assembly-document-editor-text-properties.png": "fa43e67344b79ab838649fddf9f0ea7b59783eaa20a705e5e3fcd6a9f180945f",
     "screens/assembly-document-editor-types.png": "d250f17518ecf710a6d1d1c8df1c70911fb532d922d2da65962c8a4b593c9599",
@@ -19,59 +18,28 @@
     "screens/assembly-template-markers.png": "a95b658bbc185665a64bb96a86ee2a889c97bf0643ee3ea56ff1f3857f5df8ca",
     "screens/assembly-template-procedure.png": "a95b658bbc185665a64bb96a86ee2a889c97bf0643ee3ea56ff1f3857f5df8ca",
     "screens/assembly-template-save.png": "2bbd66beebfebac3cce4db8ee19456a63f7454eb3d571cccb3fafe8e5c0758b5",
-    "sheets/assembly-document-editor-auth.png": "f226e19d7ed92cea1cd6929c75f3a8316485c0752e59fbedbef5e9d4376585e9",
-    "sheets/assembly-document-editor-conflict.png": "3d240c91aae3b0fafa4999010b981b232a2d7afd817b235d78d5241eef303af5",
-    "sheets/assembly-document-editor-image-properties.png": "e6c27f06d898bf235a9fb4da50f31c93eac6b7d1634eb354923899707e10e8af",
-    "sheets/assembly-document-editor-publish.png": "d14ac1e58e0ed017c0a85f5e46c6a4bb8b465514624dd19059ebcd9b0a4ec376",
-    "sheets/assembly-document-editor-range.png": "1fa642af91e7de45a92e1d58bb40e55580c5310dee805b0c6728c66d881f65bf",
-    "sheets/assembly-document-editor-shape-properties.png": "c13094c5946b9f833f252accc4825886d641b36438abe4e0bca896ee7f02f90b",
-    "sheets/assembly-document-editor-text-properties.png": "25c7112ad8cec7d4677c78634a626395ffac42cdb97b95c1e626fed05a07902e",
-    "sheets/assembly-document-editor-types.png": "5c61601b03a8fc7f953c358a9e2386ead4b2ad2243897a290e8bd41d4f207e3d",
-    "sheets/assembly-file-register.png": "237dfc295e526a4b7a6affc63d34b38fa15f91dcf450601be14d3b2bce75d343",
-    "sheets/assembly-gmail-publish.png": "b947ead6e420217acd263a424951f600d0aa361edcb337222f92e824a9f2eb30",
-    "sheets/assembly-overview.png": "47e9638acd0aedd5b0208c4d5594e71fa7e96e08a9046a53914e41df3046aa29",
-    "sheets/assembly-procedure-edit.png": "d22cb053b543864271323719ae5dc41898af503c49b3a8a476e9b6b0028a34e7",
-    "sheets/assembly-revision.png": "81e6a9dbf23da2b0037489efd172fc56d2c10d3a84b787e181a88913cc3e42d1",
-    "sheets/assembly-template-auth-basics.png": "91b619ec6bcb3e6a9f560c2a187cfa7989946f07afa27e7cf2687ba052426c14",
-    "sheets/assembly-template-documents.png": "09dd9bdee0572b00a5e26d9c23ba0178995d88381776234d7e02571dadee15ee",
-    "sheets/assembly-template-markers.png": "239c8fcee2e9512a48ff0828e18f33e1bb58758eb26a8a3f7e753330d84971b2",
-    "sheets/assembly-template-procedure.png": "a426a7a6e265b7ac3564ab518b9bf1b1377ff5567894db94c68fde1e83745fed",
-    "sheets/assembly-template-save.png": "23cc9017030ff3b6784d91b25e13c59b4f19eb89406883ffa2007bfb36bb2297"
+    "sheets/assembly-document-editor-conflict.png": "6c7fe13049e79c9360369dadc7c6f0dd0413be2c00250238712f0e99422ce404",
+    "sheets/assembly-document-editor-image-properties.png": "42428564143d8eec751f4847a587e74a5b9dee83652727e8e58719a7fd6f4a75",
+    "sheets/assembly-document-editor-publish.png": "efd338b75352cbf6c753353b7b493546fc36cbbc9ce20c647a4b78e5c9f1a957",
+    "sheets/assembly-document-editor-range.png": "bec3546795f7552f197e83fb92eb18e8a4518a8df9677ab79a039d6603f9b058",
+    "sheets/assembly-document-editor-shape-properties.png": "6f20ec0d93fc40a5278e2c4dda56afd72c9a0e2479b47142f853a9ac5caf2601",
+    "sheets/assembly-document-editor-text-properties.png": "738dd4818b975fec0603e4b9ae2f5b97dbffc90f2ef6a2543082e049f53eac0a",
+    "sheets/assembly-document-editor-types.png": "0c9154c40170db852a72dd8c7366bb8a625e1599245294d191c29bbf1a82d2ab",
+    "sheets/assembly-file-register.png": "cbd7e4c8ce81c22ae551e3d5739f690993c4f5d9d6dc6bbe72fc095cc9e95ecc",
+    "sheets/assembly-gmail-publish.png": "0cda7e02466b215930d5bfe5828a9fc4fc7ffb2fc4668eea4c4fc16ad793634e",
+    "sheets/assembly-overview.png": "399ed3e5a06730fba419d346c52a57d764a310eecff9e781efb711f0c7b4532e",
+    "sheets/assembly-procedure-edit.png": "4441f2067ded5d2f34477c4006c14f9652ed34c7dd440b041da2a877f0db1ec8",
+    "sheets/assembly-revision.png": "b528dd2c0b7db834a3f886428f3b4408992fc7a23398fb24d03791992d0d298a",
+    "sheets/assembly-template-auth-basics.png": "40bad66ac78a1c727bc5eae014fcf2d66e1d142ace879890aab6ff93e8852397",
+    "sheets/assembly-template-documents.png": "9fda4d4aa75b0e450928267e077fbaf4a17283e854c30c914a927271f310d7c6",
+    "sheets/assembly-template-markers.png": "693f61247ddc2305e1b9e5894773d64115120f0747e2867369804c08fa2d8455",
+    "sheets/assembly-template-procedure.png": "2b3c5c6773f6fe5058fd701d3a4f6c23ee1fff0443cf816e911f6531dbde8c3d",
+    "sheets/assembly-template-save.png": "0e1d94c65ccaec44b69d3fb0d8b1a3708cd4b7a85335b00c8f0c17b02e561365"
   },
   "browserVersion": "156.0.8078.80",
-  "definitionSha256": "367103be5051aa4a61b4421fb692e6bf4b896d24d0ff5966f88f601d71e3c01e",
+  "definitionSha256": "91024cb783dc5cdf7cc625346de78e35f11758f34fe8ab9642cb9057dd741b88",
   "generatorVersion": "1.3.0",
   "geometry": {
-    "assembly-document-editor-auth": [
-      {
-        "id": "document-editor-password",
-        "semantics": {
-          "ariaLabel": null,
-          "role": null,
-          "tagName": "div",
-          "text": "7 8 9 4 5 6 1 2 3 0 ⌫"
-        },
-        "target": {
-          "x": 0.6837481698389458,
-          "y": 0.6979166666666666
-        },
-        "targetId": "assembly-document-editor-password"
-      },
-      {
-        "id": "document-editor-authenticate",
-        "semantics": {
-          "ariaLabel": null,
-          "role": null,
-          "tagName": "button",
-          "text": "OK"
-        },
-        "target": {
-          "x": 0.5527658308931186,
-          "y": 0.7786458333333334
-        },
-        "targetId": "assembly-document-editor-authenticate"
-      }
-    ],
     "assembly-document-editor-conflict": [
       {
         "id": "document-editor-conflict-retry",
@@ -513,7 +481,7 @@
       }
     ]
   },
-  "htmlSha256": "170f5b008cfbd8c01f2f2fc23bc1d49321a6c4b361bc6fe7d6c1c5dd2af464d3",
+  "htmlSha256": "a2c4d7fbe2fc962334cc441f1c05b4e9da78cc4ce22a1bdb6ffda3384dc38b59",
   "schemaVersion": 1,
-  "sourceSha256": "7b2399a1bd3382b6007ecee2e29d8e2c5f5e681e732ed96bf2b09e4dbfc8fe0d"
+  "sourceSha256": "182f25d9a5b6c968b9702a36f5690ee48447ef06b3c11aadff882b03b879864a"
 }

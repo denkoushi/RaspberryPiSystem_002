@@ -263,7 +263,7 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
         id: documentId, name: 'delete-page-integration', imageRelativePath: '/imported-0.png', status: 'DRAFT',
         pages: { create: [0, 1, 2].map(pageIndex => ({ pageIndex, imageRelativePath: `/imported-${pageIndex}.png` })) }
       } });
-      await revisionService.createRevision(documentId, ACCESS_PASSWORD);
+      await revisionService.createRevision(documentId);
       await prisma.assemblyProcedureAsset.create({ data: { id: assetId, kind: 'OVERLAY_IMAGE', storageKey: `delete-page-${assetId}`, sha256: 'a'.repeat(64), byteSize: 1, contentType: 'image/png' } });
       await prisma.procedureVideo.create({ data: { id: videoId, title: 'delete-page-test', gmailDedupeKey: videoId, receivedAt: new Date(), sourceFileName: 'test.mp4', sourceContentType: 'video/mp4', sourceByteSize: 1 } });
       for (const pageIndex of [0, 1, 2]) {
@@ -352,7 +352,7 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
         }
       });
 
-      const v2 = await revisionService.createRevision(legacyId, ACCESS_PASSWORD);
+      const v2 = await revisionService.createRevision(legacyId);
       fixture.documentIds.push(v2.id);
       expect(v2.id).not.toBe(legacyId);
       expect(v2.status).toBe('DRAFT');
@@ -376,7 +376,7 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
         editVersion: 0
       });
 
-      const repeatedDraft = await revisionService.createRevision(v2.id, ACCESS_PASSWORD);
+      const repeatedDraft = await revisionService.createRevision(v2.id);
       expect(repeatedDraft.id).toBe(v2.id);
       expect(await prisma.assemblyProcedureDocument.count({ where: { id: v2.id } })).toBe(1);
       expect(await prisma.assemblyProcedureDocumentRevision.count({ where: { revisionRootId: legacyId } })).toBe(2);
@@ -421,7 +421,7 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
       });
       expect(templateBeforeV3.procedureDocumentId).toBe(legacyId);
 
-      const v3 = await revisionService.createRevision(v2.id, ACCESS_PASSWORD);
+      const v3 = await revisionService.createRevision(v2.id);
       fixture.documentIds.push(v3.id);
       expect(v3.status).toBe('DRAFT');
       expect(v3.revisionMetadata).toMatchObject({
@@ -475,7 +475,7 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
         xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.05
       } });
 
-      const revision = await revisionService.createRevision(documentId, ACCESS_PASSWORD);
+      const revision = await revisionService.createRevision(documentId);
       documentIds.push(revision.id);
       expect(revision.overlayElements).toEqual([expect.objectContaining({
         id: expect.stringMatching(/^text-erase-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/),

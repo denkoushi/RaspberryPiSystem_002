@@ -92,7 +92,6 @@ const sheets = new Set([
   'assembly-template-procedure',
   'assembly-template-markers',
   'assembly-template-save',
-  'assembly-document-editor-auth',
   'assembly-document-editor-range',
   'assembly-document-editor-types',
   'assembly-document-editor-text-properties',
@@ -235,10 +234,7 @@ async function prepareSheet(page, sheetId) {
     await page.locator('[data-kiosk-sop-target="assembly-gmail-confirm"]').waitFor({ state: 'visible' });
     return;
   }
-  if (sheetId === 'assembly-document-editor-auth') return;
   if (sheetId.startsWith('assembly-document-editor-')) {
-    const tenkey = page.locator('[data-kiosk-sop-target="assembly-document-editor-password"]');
-    for (const digit of '0000') await tenkey.getByRole('button', { name: digit, exact: true }).click();
     await page.locator('[data-kiosk-sop-target="assembly-document-editor-range-add"]').waitFor({ state: 'visible' });
 
     const selectRange = async () => {
@@ -338,7 +334,7 @@ const adapter = Object.freeze({
       await page.getByRole('link', { name: 'テンプレート', exact: true }).click();
     }
     const target = sheetId.startsWith('assembly-document-editor-')
-      ? 'assembly-document-editor-authenticate'
+      ? 'assembly-document-editor-range-add'
       : sheetId.startsWith('assembly-template-')
       ? 'assembly-editor-authenticate'
       : sheetId === 'assembly-revision'

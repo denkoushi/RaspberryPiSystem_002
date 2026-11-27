@@ -356,8 +356,8 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     { preHandler: options.allowWriteKiosk },
     async (request) => {
       const params = idParamsSchema.parse(request.params);
-      const body = createRevisionBodySchema.parse(request.body ?? {});
-      const document = await service.createRevision(params.id, body.accessPassword, await resolveAssemblyProcedureEditWriter(request));
+      createRevisionBodySchema.parse(request.body ?? {});
+      const document = await service.createRevision(params.id);
       return { document: serializeAssemblyProcedureDocumentRevision(document) };
     }
   );
