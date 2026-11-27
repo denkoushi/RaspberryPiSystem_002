@@ -40,7 +40,7 @@ type Pending = {
   id: string; pointerId: number; x: number; y: number; allowed?: ReadonlySet<string>;
 };
 
-const columns = ['', '処理日', '予定', '製番', '機種名', '製造オーダ番号', '品番', '品名', '数量', '着', '工順', '納期'];
+const columns = ['', '処理日', '予定', '製番', '機種名', '製造オーダ番号', '品番', '品名', '処理先', '数量', '着', '工順', '納期'];
 
 export type SendOutPopupPosition = { left: number; top: number };
 
@@ -195,6 +195,7 @@ export function PlanningBoardSendOutPopup({ label, resource, rows, today, chipsB
             <td className="font-mono">{item.productNo}</td>
             <td className="font-mono">{item.fhincd}</td>
             <td>{item.fhinmei}</td>
+            <td>{item.sendOutDestinationName}</td>
             <td className="font-mono">{item.kind === 'piece' ? item.quantity : item.plannedQuantity}</td>
             <td className="font-bold text-emerald-300">{item.arrived && '着'}</td>
             <td><div className="flex gap-[3px]">

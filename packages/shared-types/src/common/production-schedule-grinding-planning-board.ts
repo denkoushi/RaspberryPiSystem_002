@@ -138,6 +138,8 @@ export interface GrindingPlanningBoardItem {
   lslhSurface: boolean;
   /** LSLH の工程より後の工程（戻ってからの再研削など）。処理出しの対象にしない。 */
   afterLslhSurface?: boolean;
+  /** 次の LSLH の工程の処理先（部署マスタの名前）。 */
+  sendOutDestinationName?: string;
   arrived?: boolean;
   waitingForPair?: boolean;
   isFirstProcess?: boolean;

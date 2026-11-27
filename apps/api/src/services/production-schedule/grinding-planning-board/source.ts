@@ -1,4 +1,4 @@
-import type { SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
+import { resolveSessakuPieceItemKeys, sessakuPieceIdFromItemId, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL } from '../d-schedule-minutes/board-due.sql.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
@@ -6,10 +6,10 @@ import { chunkLeaderboardRowIdsForHydrate } from '../leaderboard/leaderboard-dis
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { isSendaiResourceGroupCd } from '../resource-master.service.js';
-import { isGrindingPlanningBoardRowCompleted } from '../grinding-planning-board-projection.js';
+import { buildPartKey, isGrindingPlanningBoardRowCompleted } from '../grinding-planning-board-projection.js';
 import type { GrindingPlanningBoardProjectionRanks } from '../grinding-planning-board-projection-input.types.js';
 import { buildMaxProductNoLogicalKeyPartitionExprs, buildMaxProductNoWinnerCondition, buildMaxProductNoWinnerSelectionOrderBySql } from '../row-resolver/index.js';
-import { STRING_TRIM_CHARACTERS, isCategoryResource, type DbClient, type RankRow, type RowDetail, type WinnerRow } from './shared.js';
+import { STRING_TRIM_CHARACTERS, decodeRowItemId, isCategoryResource, type DbClient, type RankRow, type RowDetail, type WinnerRow } from './shared.js';
 
 export async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]): Promise<WinnerRow[]> {
   const ids = [...new Set(rowIds)];
@@ -26,13 +26,12 @@ export async function readWinnerRowsByIds(client: DbClient, rowIds: readonly str
 
 /**
  * Winners among rows matching `fseibanFilter`, ranked only inside that subset.
- * Equivalent to the dashboard-wide winner set because FSEIBAN is the first
- * column of the winner PARTITION BY: a filter that depends only on the row's
- * FSEIBAN keeps each partition either fully in or fully out, so ROW_NUMBER
- * inside every kept partition is unchanged. Avoids materializing all winners
- * of the dashboard (~100k rows) on every call.
+ * Filters must keep or drop whole winner partitions so ROW_NUMBER inside each
+ * kept partition stays unchanged.
  */
-async function readWinnerRowsByFseibanFilter(client: DbClient, fseibanFilter: Prisma.Sql): Promise<WinnerRow[]> {
+async function readWinnerRowsByFseibanFilter(client: DbClient, fseibanFilter: Prisma.Sql, progressOnly = false): Promise<WinnerRow[]> {
+  const rowData = progressOnly ? Prisma.sql`jsonb_build_object('FSEIBAN', "rowData"->>'FSEIBAN', 'ProductNo', "rowData"->>'ProductNo',
+    'FHINCD', "rowData"->>'FHINCD', 'FSIGENCD', "rowData"->>'FSIGENCD')` : Prisma.sql`"rowData"`;
   return client.$queryRaw<WinnerRow[]>(Prisma.sql`
     WITH "ranked" AS (
       SELECT "r"."id", "r"."rowData", "r"."updatedAt",
@@ -44,12 +43,12 @@ async function readWinnerRowsByFseibanFilter(client: DbClient, fseibanFilter: Pr
       WHERE "r"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND ${fseibanFilter}
     )
-    SELECT "id", "rowData", "updatedAt" FROM "ranked" WHERE "rn" = 1
+    SELECT "id", ${rowData} AS "rowData", "updatedAt" FROM "ranked" WHERE "rn" = 1
   `);
 }
 
 export type SessakuLaneSourceScope = {
-  targetFseiban: string;
+  targetFseiban?: string;
   resourceCds: readonly string[];
   inboundKeys: readonly SessakuPieceLogicalKey[];
 };
@@ -59,14 +58,21 @@ export async function readWinnerRowsByFseibans(client: DbClient, fseibans: reado
   if (values.length === 0) return [];
   let scope = Prisma.sql`TRUE`;
   if (laneScope) {
-    // Match String.trim() in the projection, including tabs and Unicode whitespace.
-    const inbound = laneScope.inboundKeys.length ? Prisma.sql`(
+    // A test-bar lane uses the full winner partition; piece replacement keeps its existing four-column scope.
+    const { inboundKeys, targetFseiban } = laneScope;
+    let inbound = Prisma.sql`FALSE`;
+    if (inboundKeys.length) inbound = targetFseiban === undefined ? Prisma.sql`
+      (${Prisma.raw(buildMaxProductNoLogicalKeyPartitionExprs('r'))}) IN (
+        SELECT fseiban, fhincd, fsigencd, fkojun, BTRIM("productNo")
+        FROM jsonb_to_recordset(${JSON.stringify(inboundKeys)}::jsonb)
+          AS keys(fseiban text, fhincd text, fsigencd text, fkojun text, "productNo" text)
+      )` : Prisma.sql`(
       COALESCE("r"."rowData"->>'FSEIBAN', ''), COALESCE("r"."rowData"->>'FHINCD', ''),
       COALESCE("r"."rowData"->>'FSIGENCD', ''), COALESCE("r"."rowData"->>'FKOJUN', '')
-    ) IN (${Prisma.join(laneScope.inboundKeys.map((key) => Prisma.sql`(${key.fseiban}, ${key.fhincd}, ${key.fsigencd}, ${key.fkojun})`))})` : Prisma.sql`FALSE`;
+    ) IN (${Prisma.join(inboundKeys.map((key) => Prisma.sql`(${key.fseiban}, ${key.fhincd}, ${key.fsigencd}, ${key.fkojun})`))})`;
     // Each predicate depends only on logical-key columns, so it keeps entire winner partitions.
-    // Include the target seiban and overridden inbound parents even when their original lane differs.
-    scope = Prisma.sql`("r"."rowData"->>'FSEIBAN' = ${laneScope.targetFseiban}
+    // Match String.trim() in the projection, including tabs and Unicode whitespace.
+    scope = Prisma.sql`("r"."rowData"->>'FSEIBAN' = ${targetFseiban ?? null}
       OR BTRIM("r"."rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ANY(${[...laneScope.resourceCds]}::text[])
       OR ${inbound})`;
   }
@@ -81,6 +87,40 @@ export async function readWinnerRowsByFseibans(client: DbClient, fseibans: reado
     return readWinnerRowsByFseibanFilter(tx, filter);
   };
   return '$transaction' in client ? client.$transaction(read) : read(client);
+}
+
+export async function readLaneCandidateKeys(client: DbClient, siteKey: string, resourceCd: string | null | undefined, referenceIds: readonly string[]) {
+  const inbound = resourceCd == null ? [] : await client.$queryRaw<Array<{ itemKey: string }>>(Prisma.sql`
+    SELECT "itemKey" FROM "ProductionScheduleGrindingPlanningBoardOverride"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${siteKey}
+      AND BTRIM("overrideResourceCd", ${STRING_TRIM_CHARACTERS}) = ${resourceCd}
+  `);
+  // IDs containing strings PostgreSQL cannot store are stale references, just like missing IDs.
+  const isDatabaseText = (value: string) => !value.includes('\0') && !/[\uD800-\uDFFF]/u.test(value);
+  const ids = [...new Set([...referenceIds.filter(isDatabaseText), ...inbound.map(({ itemKey }) => itemKey)])];
+  const pieces = await resolveSessakuPieceItemKeys(client, ids.filter((id) => sessakuPieceIdFromItemId(id)), { allowMissing: true });
+  const keys = [...pieces.values()];
+  for (const id of ids) {
+    const encoded = decodeRowItemId(id);
+    if (!encoded) continue;
+    const parts = JSON.parse(encoded) as string[];
+    const [fseiban, fhincd, fsigencd, fkojun, productNo] = parts;
+    if (productNo !== undefined && parts.every(isDatabaseText)) keys.push({ fseiban, fhincd, fsigencd, fkojun, productNo });
+  }
+  return keys;
+}
+
+export async function readWinnerProgressRows(client: DbClient, fseibans: readonly string[], keys: readonly SessakuPieceLogicalKey[]) {
+  if (!keys.length) return [];
+  // JS trim preserves the equivalence of ProductNo values in each winner partition.
+  const parts = [...new Set(keys.map(({ fseiban, productNo, fhincd }) => buildPartKey(fseiban, productNo, fhincd)))].map((key) => key.split('\0'));
+  return readWinnerRowsByFseibanFilter(client, Prisma.sql`
+    "r"."rowData"->>'FSEIBAN' = ANY(${[...fseibans]}::text[])
+    AND (BTRIM(COALESCE("r"."rowData"->>'FSEIBAN', ''), ${STRING_TRIM_CHARACTERS}), BTRIM(COALESCE("r"."rowData"->>'FHINCD', ''), ${STRING_TRIM_CHARACTERS}),
+      BTRIM(COALESCE("r"."rowData"->>'ProductNo', ''), ${STRING_TRIM_CHARACTERS}))
+    IN (SELECT * FROM unnest(${parts.map(([fseiban]) => fseiban)}::text[], ${parts.map(([, fhincd]) => fhincd)}::text[],
+      ${parts.map(([, , productNo]) => productNo)}::text[]))
+  `, true);
 }
 
 /** Matches the logical-key identity (`COALESCE(raw, '')`) exactly, unlike the trimmed FSEIBAN lookup. */
