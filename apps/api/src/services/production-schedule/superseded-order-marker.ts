@@ -132,22 +132,34 @@ export function statusByKeyFromDedupedMailRows(
   return map;
 }
 
-type ScheduleRow = SupersedeCandidateRow & { marked: boolean };
+type ScheduleRow = SupersedeCandidateRow & { marked: boolean; resourceDropped: boolean };
 
-/** 実際に状態が変わった行 id を返す(mark なら NULL → 値になった行)。 */
+/** 工程状態 X による印が変わった行 id を返す。 */
 async function updateInChunks(client: TxClient, ids: readonly string[], mode: 'mark' | 'clear'): Promise<string[]> {
   const changed: string[] = [];
   for (const batchIds of chunk(ids, UPDATE_CHUNK_SIZE)) {
     // updatedAt も進める(見える行の集合が変わるので、世代を見ているキャッシュを無効にする)
     const updated = await client.$queryRaw<Array<{ id: string }>>(
       mode === 'mark'
-        ? Prisma.sql`UPDATE "CsvDashboardRow" SET "supersededAt" = NOW(), "updatedAt" = NOW()
+        ? Prisma.sql`UPDATE "CsvDashboardRow"
+            SET "supersededAt" = COALESCE("supersededAt", NOW()),
+                "supersededReason" = (CASE WHEN "supersededReason" = 'DROPPED_RESOURCE'
+                  THEN 'ORDER_STATUS_X_AND_DROPPED_RESOURCE' ELSE 'ORDER_STATUS_X'
+                END)::"CsvDashboardRowSupersededReason",
+                "updatedAt" = NOW()
             WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-              AND "id" = ANY(${batchIds}::text[]) AND "supersededAt" IS NULL
+              AND "id" = ANY(${batchIds}::text[])
+              AND ("supersededAt" IS NULL OR "supersededReason" = 'DROPPED_RESOURCE')
             RETURNING "id"`
-        : Prisma.sql`UPDATE "CsvDashboardRow" SET "supersededAt" = NULL, "updatedAt" = NOW()
+        : Prisma.sql`UPDATE "CsvDashboardRow"
+            SET "supersededAt" = CASE WHEN "supersededReason" = 'ORDER_STATUS_X_AND_DROPPED_RESOURCE'
+                  THEN "supersededAt" END,
+                "supersededReason" = CASE WHEN "supersededReason" = 'ORDER_STATUS_X_AND_DROPPED_RESOURCE'
+                  THEN 'DROPPED_RESOURCE'::"CsvDashboardRowSupersededReason" END,
+                "updatedAt" = NOW()
             WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
               AND "id" = ANY(${batchIds}::text[]) AND "supersededAt" IS NOT NULL
+              AND "supersededReason" IS DISTINCT FROM 'DROPPED_RESOURCE'
             RETURNING "id"`
     );
     for (const row of updated) changed.push(row.id);
@@ -177,7 +189,8 @@ export async function refreshSupersededProductionScheduleRows(
         COALESCE("rowData"->>'FSIGENCD', '') AS "fsigencd",
         COALESCE("rowData"->>'FKOJUN', '') AS "fkojun",
         COALESCE("rowData"->>'ProductNo', '') AS "productNo",
-        ("supersededAt" IS NOT NULL) AS "marked"
+        ("supersededAt" IS NOT NULL AND "supersededReason" IS DISTINCT FROM 'DROPPED_RESOURCE') AS "marked",
+        COALESCE("supersededReason" IN ('DROPPED_RESOURCE', 'ORDER_STATUS_X_AND_DROPPED_RESOURCE'), FALSE) AS "resourceDropped"
       FROM "CsvDashboardRow"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     `);
@@ -191,7 +204,7 @@ export async function refreshSupersededProductionScheduleRows(
         where: Prisma.sql`BTRIM(r."rowData"->>'FSEZONO') = ANY(${productNos}::text[])`,
       });
       if (sourceRows.length === 0 && !(await hasVisibleFkojunstStatusMailSourceRows(tx))) {
-        return { total: rows.length, marked: 0, cleared: 0, supersededNow: rows.filter((row) => row.marked).length, carriedOver: null };
+        return { total: rows.length, marked: 0, cleared: 0, supersededNow: rows.filter((row) => row.marked || row.resourceDropped).length, carriedOver: null };
       }
       const { normalizedRows } = collectFkojunstMailNormalizedRowsFromSourceRows(sourceRows);
       statusByKey = statusByKeyFromDedupedMailRows(dedupeFkojunstMailRowsByLatest(normalizedRows));
@@ -199,15 +212,17 @@ export async function refreshSupersededProductionScheduleRows(
 
     const shouldMark = computeSupersededGroupRowIds(groups, statusByKey);
     const toMark = rows.filter((row) => shouldMark.has(row.id) && !row.marked).map((row) => row.id);
-    const toClear = rows.filter((row) => !shouldMark.has(row.id) && row.marked).map((row) => row.id);
+    const toClear = rows.filter((row) => !shouldMark.has(row.id) && row.marked);
 
-    const pairs = await lockSupersededOrderCarryOverPairs(tx, toMark, toClear);
+    const becomingVisible = toClear.filter((row) => !row.resourceDropped).map((row) => row.id);
+    const pairs = await lockSupersededOrderCarryOverPairs(tx, toMark, becomingVisible);
     const newlyMarked = new Set(await updateInChunks(tx, toMark, 'mark'));
-    const cleared = await updateInChunks(tx, toClear, 'clear');
+    const cleared = await updateInChunks(tx, toClear.map((row) => row.id), 'clear');
     const carriedOver = newlyMarked.size > 0
       ? await carryOverSupersededOrderData(tx, pairs.filter((pair) => newlyMarked.has(pair.oldId)))
       : null;
-    return { total: rows.length, marked: newlyMarked.size, cleared: cleared.length, supersededNow: shouldMark.size, carriedOver };
+    const supersededNow = rows.filter((row) => row.resourceDropped || shouldMark.has(row.id)).length;
+    return { total: rows.length, marked: newlyMarked.size, cleared: cleared.length, supersededNow, carriedOver };
   };
 
   return '$transaction' in client ? client.$transaction(refresh, TRANSACTION_OPTIONS) : refresh(client);

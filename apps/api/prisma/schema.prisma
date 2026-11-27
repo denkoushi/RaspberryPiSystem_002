@@ -1685,6 +1685,12 @@ model ProductionSchedulePartNameLookupState {
   builtAt DateTime
 }
 
+enum CsvDashboardRowSupersededReason {
+  ORDER_STATUS_X
+  DROPPED_RESOURCE
+  ORDER_STATUS_X_AND_DROPPED_RESOURCE
+}
+
 model CsvDashboardRow {
   id                                   String                                @id @default(uuid())
   csvDashboardId                       String
@@ -1698,8 +1704,10 @@ model CsvDashboardRow {
   sourceIngestRunStartedAt             DateTime?
   createdAt                            DateTime                              @default(now())
   updatedAt                            DateTime?                             @updatedAt
-  /// 生産日程で、振り直しにより古くなった製造オーダー番号の印(その工程の工程状態が X で、同じ4列キーに X でない別番号がある)。印の付いた行は winner 条件で見えない。
+  /// 生産日程の非表示印。印の付いた行は winner 条件で見えない。
   supersededAt                         DateTime?
+  /// 既存の印で理由が未設定の場合は工程状態 X として扱う。
+  supersededReason                     CsvDashboardRowSupersededReason?
   orderAssignments                     ProductionScheduleOrderAssignment[]
   orderSplits                          ProductionScheduleOrderSplit[]
   rowNotes                             ProductionScheduleRowNote[]
@@ -6949,4 +6957,22 @@ model ProductionScheduleRowSeen {
   dataHash   String   @id
   lastSeenAt DateTime
   updatedAt  DateTime @updatedAt
+}
+
+model DepartmentMasterEntry {
+  id              String    @id @default(uuid())
+  code            String
+  kanaName        String?
+  name            String
+  unitType        String
+  parentCode      String?
+  isSupplier      Boolean
+  isCustomer      Boolean
+  validFrom       DateTime  @db.Date
+  validTo         DateTime  @db.Date
+  sourceEnteredAt DateTime?
+  sourceUpdatedAt DateTime?
+  importedAt      DateTime  @default(now())
+
+  @@unique([code, validFrom])
 }

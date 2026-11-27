@@ -19,6 +19,7 @@ import {
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
 } from '../production-schedule/constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../production-schedule/fkojunst-status-mail-critical-lock.js';
+import { refreshDroppedProductionScheduleResources } from '../production-schedule/dropped-resource-marker.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { ProgressSyncFromCsvService } from '../production-schedule/progress-sync-from-csv.service.js';
 import { ProgressSyncEligibilityPolicy } from '../production-schedule/progress-sync-eligibility.policy.js';
@@ -391,6 +392,12 @@ export class CsvDashboardIngestor {
           if (isFkojunstStatusMailDashboard) {
             await acquireFkojunstStatusMailCriticalTransactionLock(tx);
             await applyFkojunstDeferredRowUpdatesInTransaction(tx, deferredExistingRowUpdates);
+          }
+
+          if (isProductionScheduleDashboard && messageId) {
+            // DB更新を省略した行も、今回届いた資源として扱う。
+            // 管理画面の手動アップロード(messageId なし)は絞った CSV のこともあるので照合しない。
+            await refreshDroppedProductionScheduleResources(tx, normalizedRows, ingestRun.startedAt);
           }
 
           await tx.csvDashboardIngestRun.update({

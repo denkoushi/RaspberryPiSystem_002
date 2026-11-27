@@ -2,6 +2,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { readWinnerRowsByLogicalKeyFseibans, readRowDetails } from '../grinding-planning-board/source.js';
+import { isGrindingPlanningBoardRowCompleted } from '../grinding-planning-board-projection.js';
 import { isLaterProcessOrder } from '../process-order.js';
 import { readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, isGrindingPieceKey, piecesReferencing, supportsSessakuPieceRelations, type SessakuPieceLogicalKey } from './piece-key.js';
 
@@ -24,7 +25,7 @@ export async function readLaterProcesses(tx: Prisma.TransactionClient, key: Sess
     const row = rows.find((row) => encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)) === encodeSessakuPieceKey(laterSet));
     const detail = row ? details.get(row.id) : undefined;
     return { key: laterSet, rowId: row?.id, set: laterSet, hasWinner: Boolean(row), plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
-      completed: detail?.productionScheduleProgress?.isCompleted === true || detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
+      completed: detail ? isGrindingPlanningBoardRowCompleted(detail) : false,
       externallyCompleted: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
       previousCompleted: detail?.productionScheduleProgress?.isCompleted ?? null };
   };
@@ -38,7 +39,7 @@ export async function readLaterProcesses(tx: Prisma.TransactionClient, key: Sess
     if (result.some((process) => encodeSessakuPieceKey(process.key) === encodeSessakuPieceKey(candidate))) continue;
     const laterSet = sets.get(encodeSessakuPieceKey(candidate)) ?? null;
     const detail = details.get(row.id);
-    if (laterSet?.sourcePieceSetId || laterSet?.pieces.length || detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) continue;
+    if (laterSet?.sourcePieceSetId || laterSet?.pieces.length || (detail && isGrindingPlanningBoardRowCompleted(detail))) continue;
     result.push({ key: candidate, rowId: row.id, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false, hasWinner: true,
       externallyCompleted: false, previousCompleted: detail?.productionScheduleProgress?.isCompleted ?? null });
     if (laterSet) adopted.push(laterSet);

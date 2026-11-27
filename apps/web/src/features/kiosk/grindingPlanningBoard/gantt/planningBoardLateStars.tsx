@@ -10,7 +10,7 @@ type SendOutDates = ReadonlyMap<string, { surfaceSendOutDates: readonly { date: 
 export type SendOutRow = { bar: NormalGanttBar; sendOutDay: number };
 
 function isSurfaceSendOutBar(bar: GanttBar): bar is NormalGanttBar {
-  return isNormalGanttBar(bar) && bar.item.lslhSurface && !bar.item.isCompleted && bar.tone !== 'completed';
+  return isNormalGanttBar(bar) && bar.item.lslhSurface && !bar.item.afterLslhSurface && !bar.item.isCompleted && bar.tone !== 'completed';
 }
 
 export function planningBoardSendOutRows(bars: readonly GanttBar[], rows: SendOutDates): SendOutRow[] {
