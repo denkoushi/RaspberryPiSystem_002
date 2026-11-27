@@ -10,7 +10,6 @@ export type DepartmentMasterEntry = {
   isCustomer: boolean;
 };
 
-
 export async function findDepartmentMasterEntries(
   codes: readonly string[],
   at: Date
