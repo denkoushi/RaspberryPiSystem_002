@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add the kiosk window rule without reserializing the user's labwc XML."""
+"""Add the kiosk window rule and keys without reserializing the user's labwc XML."""
 
 from __future__ import annotations
 
@@ -38,6 +38,31 @@ MANAGED_TITLEBAR = re.compile(
 SHORTCUT_BLOCK = re.compile(
     r"<!--\s*BEGIN ANSIBLE MANAGED: show-kiosk-panel\s*-->.*?"
     r"<!--\s*END ANSIBLE MANAGED: show-kiosk-panel\s*-->",
+    re.DOTALL,
+)
+# The panel's window list can lose the browser after the HDMI output goes away
+# and comes back (monitor power saving), so the browser needs a close key that
+# works without the panel or keyboard focus. kiosk-launch.sh execs Chromium,
+# so the browser process started by kiosk-browser.service is the only
+# "chromium" whose parent is PID 1; its helpers are children of it. pkill runs
+# as the GUI user and can signal only that user's processes. Restart=always
+# brings the browser back in 5s. No "$": labwc may expand variables itself.
+CLOSE_BROWSER_BEGIN = "<!-- BEGIN ANSIBLE MANAGED: kiosk-close-browser -->"
+CLOSE_BROWSER_END = "<!-- END ANSIBLE MANAGED: kiosk-close-browser -->"
+CLOSE_BROWSER_KEY = "C-A-r"
+CLOSE_BROWSER_COMMAND = "pkill -TERM -x -P 1 chromium"
+CLOSE_BROWSER_BLOCK = (
+    CLOSE_BROWSER_BEGIN
+    + '\n    <keybind key="' + CLOSE_BROWSER_KEY + '">'
+    + '\n      <action name="Execute">'
+    + "\n        <command>" + CLOSE_BROWSER_COMMAND + "</command>"
+    + "\n      </action>"
+    + "\n    </keybind>"
+    + "\n    " + CLOSE_BROWSER_END
+)
+MANAGED_CLOSE_BROWSER = re.compile(
+    r"<!--\s*BEGIN ANSIBLE MANAGED: kiosk-close-browser\s*-->.*?"
+    r"<!--\s*END ANSIBLE MANAGED: kiosk-close-browser\s*-->",
     re.DOTALL,
 )
 # Comments and quoted attributes must not be mistaken for structural tags.
@@ -87,39 +112,39 @@ def insert_child(text: str, section: tuple[re.Match, re.Match], content: str) ->
     return text[: opening.end()] + "\n    " + content + text[opening.end() :]
 
 
-def update_config(text: str) -> str:
+def add_to_section(text: str, name: str, content: str, new_section: str | None = None) -> str:
+    """Insert content into a direct root child, creating the child when absent."""
     root_close, children = root_sections(text)
+    if name in children:
+        return insert_child(text, children[name], content)
+    section = new_section or "<" + name + ">\n    " + content + "\n  </" + name + ">"
+    return text[: root_close.start()] + "\n  " + section + "\n" + text[root_close.start() :]
+
+
+def update_config(text: str) -> str:
+    root_close, _ = root_sections(text)
     trailing = text[root_close.end() :]
     misplaced = SHORTCUT_BLOCK.findall(trailing)
     if misplaced:
         # Remove only the misplaced managed block; other trailing text still
         # undergoes XML validation and is never silently discarded.
         text = text[: root_close.end()] + SHORTCUT_BLOCK.sub("", trailing)
-        shortcut = "\n    ".join(misplaced)
-        if "keyboard" in children:
-            text = insert_child(text, children["keyboard"], shortcut)
-        else:
-            text = (
-                text[: root_close.start()]
-                + "\n  <keyboard>\n    " + shortcut + "\n  </keyboard>\n"
-                + text[root_close.start() :]
-            )
+        text = add_to_section(text, "keyboard", "\n    ".join(misplaced))
 
-    root_close, children = root_sections(text)
+    root_close, _ = root_sections(text)
     if TITLEBAR_MARKER in text[: root_close.start()]:
         # Earlier releases wrote a rule that never matched; rewrite it in place.
         text = MANAGED_TITLEBAR.sub(
             lambda match: match.group(1) + "\n    ".join(KIOSK_WINDOW_RULES) + match.group(2), text, count=1
         )
     else:
-        if "windowRules" in children:
-            text = insert_child(text, children["windowRules"], TITLEBAR_RULE)
-        else:
-            text = (
-                text[: root_close.start()]
-                + "\n  " + TITLEBAR_BLOCK + "\n"
-                + text[root_close.start() :]
-            )
+        text = add_to_section(text, "windowRules", TITLEBAR_RULE, TITLEBAR_BLOCK)
+
+    root_close, _ = root_sections(text)
+    if MANAGED_CLOSE_BROWSER.search(text[: root_close.start()]):
+        text = MANAGED_CLOSE_BROWSER.sub(lambda _: CLOSE_BROWSER_BLOCK, text, count=1)
+    else:
+        text = add_to_section(text, "keyboard", CLOSE_BROWSER_BLOCK)
     ET.fromstring(text)
     return text
 

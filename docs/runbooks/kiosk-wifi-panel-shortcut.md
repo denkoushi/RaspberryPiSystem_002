@@ -46,6 +46,14 @@ journalctl -u kiosk-hotcorner -n 50 --no-pager
 systemd が 3 秒後に再起動する。Wayland ソケットはユーザーの runtime directory
 内で探索する。コーナー、ショートカット、ページクリック、Wi-Fi 入力中の維持を実機で確認する。
 
+## ブラウザを閉じるキー
+
+モニターの省電力で HDMI 出力が消えて戻ると、それ以前から開いていたブラウザがパネルの窓一覧に出なくなることがある
+(kensaku-stonebase01 で毎朝の出力の入れ替わりと一致、2026-11-27 調査)。パネルに頼らず閉じられるよう、
+標準 release は rc.xml に `Ctrl+Alt+R` を足す(印 `kiosk-close-browser`)。押すと
+親が PID 1 の Chromium(`kiosk-browser.service` が起動した本体)に `pkill` で TERM を送り、5 秒後に自動で立ち上がる。
+フォーカスの有無に関係なく効く。画面のユーザーに sudo は不要。
+
 ## ロールバック
 
 更新途中の失敗は標準 release の rollback が配布ファイル、所有者・権限、rc.xml を復元する。
