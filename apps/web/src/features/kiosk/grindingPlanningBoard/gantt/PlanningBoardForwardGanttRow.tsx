@@ -2,13 +2,11 @@ import clsx from 'clsx';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { PlacementLocationBadge } from '../../../../components/kiosk/PlacementLocationBadge';
-import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
-import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
-import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
 import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
-import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
+import { PlanningBoardChipLine } from './PlanningBoardChipLine';
+import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, layoutChipStrips, planningBoardBadgeWidth } from './planningBoardChipStrips';
 import { allowedForwardDropResources, beginForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache, placeForwardBar } from './planningBoardForwardDrop';
 import { forwardItemDetails } from './planningBoardForwardQueue';
 import { FOLDED_BAR_TOP, FOLDED_ROW_BASE_HEIGHT, NORMAL_BAR_TOP, NORMAL_ROW_BASE_HEIGHT, operationSplitGap } from './planningBoardGanttGeometry';
@@ -294,13 +292,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         {placement && <span className="inline-flex shrink-0" style={{ width: badgeWidth }}>
           <PlacementLocationBadge placement={placement} />
         </span>}
-        {done.length > 0 && <IconActionTooltip label={`完了: ${chipCodes(done)}`}>
-          <span className={`pointer-events-auto ${progressOverviewProcessChipClassName(true)}`}>{doneChipLabel(done.length)}</span>
-        </IconActionTooltip>}
-        {shown.length > 0 && <KioskResourceProcessChips processes={shown} className="flex-nowrap" />}
-        {hidden.length > 0 && <IconActionTooltip label={`ほか: ${chipCodes(hidden)}`}>
-          <span className="pointer-events-auto rounded border border-slate-500 px-1 py-0.5 text-[10px] leading-none text-slate-200">{moreChipLabel(hidden.length)}</span>
-        </IconActionTooltip>}
+        <PlanningBoardChipLine done={done} shown={shown} hidden={hidden} chipClassName="pointer-events-auto" />
       </div>)}
       {visibleBars.map((bar) => {
         const test = bar.item.kind === 'test' ? bar.item : null;

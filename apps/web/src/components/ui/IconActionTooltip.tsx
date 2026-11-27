@@ -54,7 +54,7 @@ export function IconTooltipBubble({ label, tipSide, tipPosition, floating, porta
     setLeft(Math.max(halfWidth + 8, Math.min(window.innerWidth - halfWidth - 8, floating.left)));
   }, [floating]);
   const style: CSSProperties | undefined = floating
-    ? { position: 'fixed', left, top: floating.top, maxWidth: 'calc(100vw - 16px)' }
+    ? { position: 'fixed', left, top: floating.top, maxWidth: 'calc(100vw - 16px)', zIndex: 110 }
     : tipSide === 'left' && tipPosition ? { position: 'fixed', ...tipPosition, ...(portaled ? { zIndex: 60 } : {}) } : undefined;
   return <span
       ref={ref}
