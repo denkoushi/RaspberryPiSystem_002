@@ -1,10 +1,31 @@
 import { api } from '../http';
 
 import type { ProductionScheduleListResponse } from './production-schedule';
+import type { MachineFactory } from './tools';
 import type { RegisteredShelfEntryDto } from '../../features/mobile-placement/registeredShelves/types';
+import type { GrindingPlanningBoardScheduleSource, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
 /** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
 export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;
+
+export type ResourceShelfAssignment = { resourceCd: string; factory: MachineFactory; resourceNames: string[]; shelfCodes: string[] };
+
+export async function getMobilePlacementResourceShelves() {
+  const { data } = await api.get<{ resources: ResourceShelfAssignment[] }>('/mobile-placement/resource-shelves');
+  return data;
+}
+
+export async function replaceMobilePlacementResourceShelves(resourceCd: string, shelfCodes: string[]) {
+  const { data } = await api.put<Pick<ResourceShelfAssignment, 'resourceCd' | 'shelfCodes'>>(
+    `/mobile-placement/resource-shelves/${encodeURIComponent(resourceCd)}`, { shelfCodes }
+  );
+  return data;
+}
+
+export async function replaceMobilePlacementShelfOrder(shelfCodes: string[]) {
+  const { data } = await api.put<{ shelfCodes: string[] }>('/mobile-placement/shelf-order', { shelfCodes });
+  return data;
+}
 
 export async function getMobilePlacementRegisteredShelves() {
   const { data } = await api.get<{ shelves: RegisteredShelfEntryDto[] }>('/mobile-placement/registered-shelves');
@@ -164,7 +185,7 @@ export type MobilePlacementSlipMatchResponse = {
   reason: 'match' | 'different_seiban' | 'different_part' | 'part_required' | 'order_not_found' | 'transfer_not_found';
   legacyReason?: string;
   actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
-  expected?: { fseiban: string; fhincd: string; partName?: string };
+  expected?: { fseiban: string; fhincd: string; partName?: string; firstResourceCd?: string };
   actual?: { fseiban?: string; partCode?: string };
   matchedBy?: 'part_name';
 };
@@ -404,5 +425,22 @@ export type HaizenUnplacedPart = {
 
 export async function getHaizenUnplacedParts() {
   const { data } = await api.get<HaizenUnplacedPart[]>('/mobile-placement/haizen-overview/unplaced-parts');
+  return data;
+}
+
+export async function getHaizenMaterialView(scheduleSource: GrindingPlanningBoardScheduleSource) {
+  const { data } = await api.get<{ seibanOrder: string[]; excludedFseibans: string[] }>('/mobile-placement/haizen-material-view', { params: { scheduleSource } });
+  return data;
+}
+
+export type HaizenMaterialArrivalItem = {
+  fseiban: string;
+  fhincd: string;
+  status: MaterialArrivalStatus;
+  basis: MaterialArrivalBasis;
+};
+
+export async function getHaizenMaterialArrival(parts: Array<{ fseiban: string; fhincd: string }>) {
+  const { data } = await api.post<{ items: HaizenMaterialArrivalItem[] }>('/mobile-placement/haizen-material-arrival', { parts });
   return data;
 }

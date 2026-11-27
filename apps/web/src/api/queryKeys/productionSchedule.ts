@@ -20,7 +20,7 @@ import type {
 } from '../client';
 
 export const productionScheduleQueryKeys = {
-  grindingPlanningBoardTestBarPartCandidates: (resourceCd: string) => ['kiosk-grinding-planning-board-test-bar-part-candidates', resourceCd] as const,
+  grindingPlanningBoardTestBarPartCandidates: (resourceCd?: string) => ['kiosk-grinding-planning-board-test-bar-part-candidates', resourceCd] as const,
   sameModelResourceGroups: (location: string) => ['production-schedule-same-model-resource-groups', location] as const,
   scheduleAll: ['kiosk-production-schedule'] as const,
   schedule: (params?: Parameters<typeof getKioskProductionSchedule>[0]) =>

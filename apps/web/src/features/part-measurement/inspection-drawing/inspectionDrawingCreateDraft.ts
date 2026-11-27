@@ -20,6 +20,7 @@ export type InspectionDrawingSourceTemplateDraft = {
   sourceProcessGroup: PartMeasurementProcessGroup;
   sourceResourceCd: string;
   sourceFkojun?: string;
+  sourceVisualTemplateId?: string | null;
 };
 
 export type InspectionDrawingCreateDraftForm = {
@@ -285,9 +286,19 @@ export function templateItemsToDraftDrawingPoints(
 /**
  * 有効版テンプレから新規作成フォーム初期値へ変換（編集用 applyLoadedTemplate とは別責務）。
  */
+/** テンプレートの工程を作成画面の工程(研削か切削)に読み替える。 */
+export function normalizeInspectionDrawingProcessGroup(value: string | null | undefined): PartMeasurementProcessGroup {
+  return value === 'grinding' ? 'grinding' : 'cutting';
+}
+
+/** 図面 ID の前後の空白を除き、空なら null にする。 */
+export function normalizeInspectionDrawingVisualTemplateId(value: string | null | undefined): string | null {
+  return value?.trim() || null;
+}
+
 export function templateToCreateDraft(template: PartMeasurementTemplateDto): InspectionDrawingCreateDraftForm {
-  const processGroup: PartMeasurementProcessGroup =
-    template.processGroup === 'grinding' ? 'grinding' : 'cutting';
+  const processGroup = normalizeInspectionDrawingProcessGroup(template.processGroup);
+  const visualTemplateId = normalizeInspectionDrawingVisualTemplateId(template.visualTemplateId);
 
   return {
     templateName: template.name,
@@ -302,7 +313,7 @@ export function templateToCreateDraft(template: PartMeasurementTemplateDto): Ins
       template.selfInspectionFixedCount,
       template.selfInspectionSampleSize
     ),
-    visualTemplateId: template.visualTemplateId?.trim() || null,
+    visualTemplateId,
     visualTemplateName: template.visualTemplate?.name ?? null,
     drawingImageRelativePath: template.visualTemplate?.drawingImageRelativePath ?? null,
     sourceDraft: {
@@ -310,9 +321,38 @@ export function templateToCreateDraft(template: PartMeasurementTemplateDto): Ins
       sourceFhincd: template.fhincd,
       sourceProcessGroup: processGroup,
       sourceResourceCd: template.resourceCd,
-      sourceFkojun: template.fkojun
+      sourceFkojun: template.fkojun,
+      sourceVisualTemplateId: visualTemplateId
     }
   };
+}
+
+/**
+ * 人が確定したテンプレート(編集中のもの、雛形の元)と同じ図面・同じ工程を開いているか。
+ * このときは AI 案を重ねない。図面か工程を変えれば AI 案を出す。
+ */
+export function isConfirmedInspectionDrawing(params: {
+  isEditing: boolean;
+  template: Pick<PartMeasurementTemplateDto, 'visualTemplateId' | 'processGroup'> | null;
+  sourceDraft: InspectionDrawingSourceTemplateDraft | null;
+  visualTemplateId: string | null;
+  processGroup: PartMeasurementProcessGroup;
+}): boolean {
+  if (params.isEditing && !params.template) return true;
+  const confirmed = params.isEditing && params.template
+    ? {
+        visualTemplateId: normalizeInspectionDrawingVisualTemplateId(params.template.visualTemplateId),
+        processGroup: normalizeInspectionDrawingProcessGroup(params.template.processGroup)
+      }
+    : params.sourceDraft
+      ? { visualTemplateId: params.sourceDraft.sourceVisualTemplateId ?? null, processGroup: params.sourceDraft.sourceProcessGroup }
+      : null;
+  return (
+    confirmed !== null &&
+    confirmed.visualTemplateId !== null &&
+    confirmed.visualTemplateId === normalizeInspectionDrawingVisualTemplateId(params.visualTemplateId) &&
+    confirmed.processGroup === params.processGroup
+  );
 }
 
 export function resolveInspectionDrawingCreateKeyCollision(params: {

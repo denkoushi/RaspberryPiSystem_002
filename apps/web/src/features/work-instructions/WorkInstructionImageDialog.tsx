@@ -5,29 +5,13 @@ import { Dialog } from '../../components/ui/Dialog';
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 import { ImageOverlayFrame } from '../overlays/ImageOverlayFrame';
 
+import { workInstructionRendererAssets } from './workInstructionRendererAssets';
 import { workInstructionStepMemo } from './workInstructionViewerNavigation';
 
 import type {
   WorkInstructionOverlayAsset,
   WorkInstructionStep
 } from '../../api/domains/work-instructions';
-
-function rendererAssets(
-  assets?: Record<string, WorkInstructionOverlayAsset>
-) {
-  if (!assets) return undefined;
-  return Object.fromEntries(
-    Object.entries(assets).map(([assetId, asset]) => [assetId, {
-      assetId: asset.assetId || assetId,
-      storageKey: asset.storageKey ?? assetId,
-      contentType: asset.contentType ?? 'image/png',
-      byteSize: asset.byteSize ?? 0,
-      sha256: asset.sha256,
-      url: asset.url,
-      relativeUrl: asset.relativeUrl
-    }])
-  );
-}
 
 export type WorkInstructionImageDialogProps = {
   step: WorkInstructionStep | null;
@@ -117,7 +101,7 @@ export function WorkInstructionImageDialog({
                   protectedImage={false}
                   alt={`${accessibleOperation}作業要領の拡大画像（写真${position}/${photoCount}）`}
                   overlays={step.overlays}
-                  assets={rendererAssets(overlayAssets)}
+                  assets={workInstructionRendererAssets(overlayAssets)}
                   className="h-full w-full"
                 />
               ) : (

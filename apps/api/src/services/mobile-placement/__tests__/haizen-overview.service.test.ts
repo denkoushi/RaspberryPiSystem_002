@@ -1,15 +1,41 @@
 vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ findMany: vi.fn(), zero2w: vi.fn(), resolve: vi.fn(), queryRaw: vi.fn() }));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.queryRaw, orderPlacementBranchState: { findMany: mocks.findMany }, haizenCurrentPlacement: { findMany: mocks.zero2w } } }));
+const mocks = vi.hoisted(() => ({ findMany: vi.fn(), zero2w: vi.fn(), resolve: vi.fn(), queryRaw: vi.fn(), board: vi.fn(), search: vi.fn(), kinds: vi.fn() }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.queryRaw, orderPlacementBranchState: { findMany: mocks.findMany }, haizenCurrentPlacement: { findMany: mocks.zero2w },
+  productionScheduleGrindingPlanningBoardState: { findUnique: mocks.board }, productionScheduleDScheduleMinutesKindMembership: { findMany: mocks.kinds } } }));
 vi.mock('../../production-schedule/seiban-machine-display-names.service.js', () => ({ resolveSeibanMachineDisplayNamesBatched: mocks.resolve }));
+vi.mock('../../production-schedule/production-schedule-search-state.service.js', () => ({ getProductionScheduleSearchState: mocks.search }));
 
-import { HAIZEN_OVERVIEW_LIMIT, listHaizenOverview } from '../haizen-overview.service.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
+import { getHaizenMaterialView, HAIZEN_OVERVIEW_LIMIT, listHaizenOverview } from '../haizen-overview.service.js';
 
 const row = { id: 'branch-1', branchNo: 1, manufacturingOrderBarcodeRaw: '123', shelfCodeRaw: '西-北-01', updatedAt: new Date('2026-10-22T00:00:00Z'), scheduleSnapshot: { FSEIBAN: ' BA1S2320 ', FHINCD: 'K0381', FHINMEI: '部品' } };
 
 beforeEach(() => { vi.clearAllMocks(); mocks.queryRaw.mockResolvedValue([]); mocks.zero2w.mockResolvedValue([]); mocks.resolve.mockResolvedValue({ machineNames: { BA1S2320: 'ＲＶ－１２Ａ' } }); });
+describe('haizen material view', () => {
+  it.each([['general', ['D']], ['dCompany', ['G']], ['both', []]] as const)('reads site order and board exclusions for %s', async (source, excluded) => {
+    mocks.board.mockResolvedValue({ seibanOrder: [' DUPE ', 'G', 'D', 'DUPE', null] });
+    mocks.kinds.mockResolvedValue([
+      { fseiban: 'D', kind: 'D_COMPANY' }, { fseiban: 'G', kind: 'INTERNAL' },
+      { fseiban: 'DUPE', kind: 'D_COMPANY' }, { fseiban: 'DUPE', kind: 'INTERNAL' }
+    ]);
+    expect(await getHaizenMaterialView('site-a', source)).toEqual({ seibanOrder: ['DUPE', 'G', 'D'], excludedFseibans: excluded });
+    expect(mocks.board).toHaveBeenCalledWith({
+      where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: 'site-a' } }, select: { seibanOrder: true }
+    });
+    expect(mocks.kinds).toHaveBeenCalledTimes(source === 'both' ? 0 : 1);
+    expect(mocks.search).not.toHaveBeenCalled();
+  });
+  it('uses the shared seed order before the board is opened, and no board order on an unassigned device', async () => {
+    mocks.board.mockResolvedValue(null);
+    mocks.search.mockResolvedValue({ state: { history: [' B ', 'A', 'B'] } });
+    expect(await getHaizenMaterialView('site-a', 'both')).toEqual({ seibanOrder: ['B', 'A'], excludedFseibans: [] });
+    expect(await getHaizenMaterialView(null, 'both')).toEqual({ seibanOrder: [], excludedFseibans: [] });
+    expect(mocks.board).toHaveBeenCalledTimes(1);
+    expect(mocks.search).toHaveBeenCalledExactlyOnceWith('shared');
+  });
+});
 describe('haizen overview', () => {
   it('returns each current branch with snapshot fields and batched machine names', async () => {
     mocks.findMany.mockResolvedValue([row, { ...row, id: 'branch-2', branchNo: 2, shelfCodeRaw: '東-南-02' }]);

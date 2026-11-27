@@ -29,7 +29,7 @@ describe('useOperationGuide', () => {
     const hook = renderHook(() => useOperationGuide());
     act(() => { hook.result.current.choose('assembly-edit'); });
     act(() => { for (let index = 0; index < 10; index++) hook.result.current.next(); });
-    expect(hook.result.current.index).toBe(9);
+    expect(hook.result.current.index).toBe(7);
     act(() => { hook.result.current.choose('assembly-register'); });
     expect(hook.result.current.index).toBe(0);
     act(() => { for (let index = 0; index < 10; index++) hook.result.current.next(); });

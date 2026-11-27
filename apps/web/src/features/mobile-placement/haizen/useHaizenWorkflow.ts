@@ -1,6 +1,8 @@
 import { normalizeSlipToken } from '@raspi-system/slip-match-core';
 import { useEffect, useRef, useState } from 'react';
 
+import { playHaizenSound } from './haizenSounds';
+
 import type { MobilePlacementSlipMatchResponse } from '../../../api/domains/mobile-placement';
 import type { useMobilePlacementPageState } from '../useMobilePlacementPageState';
 
@@ -22,8 +24,10 @@ export function useHaizenWorkflow(mp: HaizenState, enabled = true, verifiedPart?
     if (enabled && transferOrder.trim() && (actualOrder.trim() || actualFseiban.trim()) && scanField === null && !mp.actualSlipImageOcrBusy) {
       queue.current = queue.current.then(async () => {
         if (!current) return;
-        await runSlipVerify();
-        if (current) setVerified(() => runSlipVerify);
+        const sound = await runSlipVerify();
+        if (!current) return;
+        if (sound) playHaizenSound(sound);
+        setVerified(() => runSlipVerify);
       });
     }
     return () => { current = false; };

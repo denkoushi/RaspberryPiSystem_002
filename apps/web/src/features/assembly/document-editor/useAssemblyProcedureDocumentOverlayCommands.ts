@@ -55,6 +55,8 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
   setPendingRange: StateSetter<AssemblyProcedureOverlayBBox | null>;
   setSelectionMode: StateSetter<boolean>;
   setSelectedOverlayId: StateSetter<string | null>;
+  setSelectedPage: (pageIndex: number, overlayId: string) => void;
+  flushInlineText: () => void;
   setTextCandidates: StateSetter<AssemblyProcedureTextCandidateDto[]>;
   setTextCandidateRange: StateSetter<TextCandidateRange | null>;
   dispatch: Dispatch<OverlayDraftAction>;
@@ -353,18 +355,25 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     }
   }, [session]);
 
-  const placeMaterial = useCallback(async (material: { id: string; employeeTagUid?: string }, options?: { bbox?: AssemblyProcedureOverlayBBox }) => {
+  const placeMaterial = useCallback(async (material: { id: string; employeeTagUid?: string }, options?: { bbox?: AssemblyProcedureOverlayBBox; pageIndex?: number }) => {
     if (session.materialPlacementAllowed === false || session.busy || session.readOnly || !session.document || !session.selectedPage) throw new Error('現在は素材を配置できません');
+    const pageIndex = options?.pageIndex ?? session.selectedPage.pageIndex;
+    const changesPage = pageIndex !== session.selectedPage.pageIndex;
+    if (changesPage) {
+      if (!session.document.pages.some(page => page.pageIndex === pageIndex)) throw new Error('配置先のページが見つかりません');
+      session.flushInlineText();
+    }
     session.setBusy(true);
     try {
       await session.beforeMaterialPlacement?.(material.id);
-      const { element, asset } = await placeProcedureMaterial({ ...(session.holderToken ? { holderToken: session.holderToken } : {}), id: session.document.id, materialId: material.id, employeeTagUid: material.employeeTagUid, pageIndex: session.selectedPage.pageIndex, accessPassword: session.passwordInput });
+      const { element, asset } = await placeProcedureMaterial({ ...(session.holderToken ? { holderToken: session.holderToken } : {}), id: session.document.id, materialId: material.id, employeeTagUid: material.employeeTagUid, pageIndex, accessPassword: session.passwordInput });
       if (asset) session.setDocument((current) => current ? { ...current, assets: { ...current.assets, [asset.assetId]: asset } } : current);
       const zIndex = Math.max(element.zIndex, ...materialElementsRef.current.filter((item) => item.pageIndex === element.pageIndex).map((item) => item.zIndex + 1));
       const placed = { ...element, zIndex, bbox: options?.bbox ? centerMaterialBBox(element.bbox, options.bbox) : element.bbox };
       if (session.trackMaterialPlacement?.(material.id, placed, session.materialPlacementScope ?? 0, undefined, material.employeeTagUid) === false) return;
       materialElementsRef.current = [...materialElementsRef.current, placed];
       addCreatedOverlay(element.kind, placed.bbox, { element: placed }, element.pageIndex);
+      if (changesPage) session.setSelectedPage(pageIndex, placed.id);
       session.setMessage('素材を配置しました。内容を編集して保存してください。');
     } catch (error: unknown) {
       session.onEditLeaseError?.(error);

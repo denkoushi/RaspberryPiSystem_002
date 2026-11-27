@@ -1,3 +1,4 @@
+import { getProcedureDocumentFeedbackScheduler } from '../services/assembly/procedure-document-feedback.scheduler.js';
 import { getProductionSchedulePartNameLookupScheduler } from '../services/production-schedule/production-schedule-part-name-lookup.scheduler.js';
 import { createSessakuAutoUnitSplitScheduler } from '../services/production-schedule/sessaku-pieces/auto-unit-split.scheduler.js';
 import { getLoanPhotoRetentionScheduler } from '../services/tools/loan-photo-retention.scheduler.js';
@@ -197,6 +198,8 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: () => getSecurityReviewQueueScheduler().stop() },
     { name: 'security-review-nightly', start: () => getSecurityReviewScheduler().start(),
       stop: () => getSecurityReviewScheduler().stop() },
+    { name: 'procedure-document-feedback', start: () => getProcedureDocumentFeedbackScheduler().start(),
+      stop: () => getProcedureDocumentFeedbackScheduler().stop() },
     { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
       stop: () => getBusinessHermesNightlyScheduler().stop() },
     { name: 'fkojunst-mail-superseded-prune', start: () => getFkojunstMailSupersededPruneScheduler().start(),

@@ -14,6 +14,7 @@ describe('shared header activity', () => {
     ['/kiosk/inventory/haizen', 'inventory_settings', 'inventory_haizen'],
     ['/kiosk/inventory/haizen/', 'inventory_settings', 'inventory_haizen'],
     ['/kiosk/inventory/haizen/verify-history', 'inventory_settings', 'inventory_haizen_verify_history'],
+    ['/kiosk/inventory/haizen/materials', 'inventory_settings', 'inventory_haizen_materials'],
     ['/kiosk/inventory/settings/', 'inventory_settings', null],
     ['/kiosk/assembly/manuals/workshop', 'assembly', null],
     ['/kiosk/assembly/record-approvals', 'assembly', null],

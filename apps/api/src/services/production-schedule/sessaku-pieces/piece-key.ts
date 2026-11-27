@@ -4,6 +4,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 import { buildGrindingPlanningBoardRowItemIdFromKey } from '../grinding-planning-board-projection.js';
 import { PRODUCTION_SCHEDULE_ROW_KEY_COLUMNS } from '../row-resolver/constants.js';
+import { STATIC_GRINDING_RESOURCE_CDS, isProductionScheduleGrindingResourceCd } from '../policies/resource-category-policy.service.js';
 
 /** 分割の親の識別。研削ボードの行と同じ5要素(4列 + ProductNo)。 */
 export type SessakuPieceLogicalKey = { fseiban: string; fhincd: string; fsigencd: string; fkojun: string; productNo: string };
@@ -12,6 +13,12 @@ export type SessakuPieceSet = Omit<Prisma.ProductionScheduleSessakuPieceSetGetPa
   pieces: Array<Prisma.ProductionScheduleSessakuPieceGetPayload<object> & { sourcePiece?: { opSplits: Array<{ fromOpNo: number }> } | null; opCompletions?: Array<{ opNo: number }>; opSplits?: Array<{ fromOpNo: number; sourceResourceCd: string; leadingSourceResourceCd?: string | null }> }>;
 };
 const RELATED_KEY_CHUNK = 300;
+
+export function isGrindingPieceKey(key: Pick<SessakuPieceLogicalKey, 'fsigencd'>): boolean {
+  return isProductionScheduleGrindingResourceCd(key.fsigencd, {
+    grindingResourceCds: [...STATIC_GRINDING_RESOURCE_CDS], cuttingExcludedResourceCds: []
+  });
+}
 
 export function sessakuPieceKeyFromRow(data: unknown): SessakuPieceLogicalKey {
   const row = data as Record<string, unknown>;
@@ -94,14 +101,25 @@ export async function readSessakuPieceSet(client: SessakuPieceClient, key: Sessa
 export async function readSessakuPieceSets(client: SessakuPieceClient, rows: readonly { rowData: unknown }[]): Promise<Map<string, SessakuPieceSet>> {
   return readSessakuPieceSetsByKeys(client, rows.map((row) => sessakuPieceKeyFromRow(row.rowData)));
 }
-export async function readSessakuPieceSetsByKeys(client: SessakuPieceClient, scheduleRowKeys: readonly SessakuPieceLogicalKey[]): Promise<Map<string, SessakuPieceSet>> {
+export async function readSessakuPieceSetsByKeys(client: SessakuPieceClient, scheduleRowKeys: readonly SessakuPieceLogicalKey[], options: { exact?: boolean } = {}): Promise<Map<string, SessakuPieceSet>> {
   const keys = new Map(scheduleRowKeys.map((key) => [encodeSessakuPieceKey(key), key]));
   if (!keys.size) return new Map();
-  const sets = await client.productionScheduleSessakuPieceSet.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: [...new Set([...keys.values()].map((key) => key.fseiban))] } },
+  const values = [...keys.values()];
+  const filters: Prisma.ProductionScheduleSessakuPieceSetWhereInput[] = [];
+  if (options.exact) {
+    for (let i = 0; i < values.length; i += RELATED_KEY_CHUNK) filters.push({ OR: values.slice(i, i + RELATED_KEY_CHUNK) });
+  } else {
+    filters.push({ fseiban: { in: [...new Set(values.map((key) => key.fseiban))] } });
+  }
+  const sets = new Map<string, SessakuPieceSet>();
+  for (const filter of filters) for (const set of await client.productionScheduleSessakuPieceSet.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, ...filter },
     include: { pieces: { orderBy: { position: 'asc' }, include: { opCompletions: { select: { opNo: true } }, opSplits: { orderBy: { fromOpNo: 'asc' } }, sourcePiece: { select: { opSplits: { select: { fromOpNo: true }, orderBy: { fromOpNo: 'desc' }, take: 1 } } } } } }
-  });
-  return new Map(sets.filter((set) => keys.has(encodeSessakuPieceKey(set))).map((set) => [encodeSessakuPieceKey(set), set]));
+  })) {
+    const encoded = encodeSessakuPieceKey(set);
+    if (keys.has(encoded)) sets.set(encoded, set);
+  }
+  return sets;
 }
 export async function findSessakuPieceWinner(client: SessakuPieceClient, key: SessakuPieceLogicalKey) {
   const rows = await client.$queryRaw<Array<{ id: string; rowData: Prisma.JsonValue; updatedAt: Date }>>(Prisma.sql`
@@ -118,7 +136,7 @@ export async function findSessakuPieceWinner(client: SessakuPieceClient, key: Se
   `);
   return rows[0] ?? null;
 }
-export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, itemIds: readonly string[]): Promise<Map<string, SessakuPieceLogicalKey>> {
+export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, itemIds: readonly string[], options: { allowMissing?: boolean } = {}): Promise<Map<string, SessakuPieceLogicalKey>> {
   const pieceIds = [...new Set(itemIds.map(sessakuPieceIdFromItemId).filter((id): id is string => id !== null))];
   const pieces = pieceIds.length ? await client.productionScheduleSessakuPiece.findMany({ where: { id: { in: pieceIds } }, include: { pieceSet: true } }) : [];
   const byId = new Map(pieces.map((piece) => [piece.id, piece.pieceSet]));
@@ -126,7 +144,10 @@ export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, it
   for (const id of itemIds) {
     const pieceId = sessakuPieceIdFromItemId(id);
     const key = pieceId ? byId.get(pieceId) : decodeSessakuPieceParentItemId(id);
-    if (!key) throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'STALE_SESSAKU_PIECES');
+    if (!key) {
+      if (options.allowMissing) continue;
+      throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'STALE_SESSAKU_PIECES');
+    }
     resolved.set(id, key);
   }
   return resolved;
@@ -192,4 +213,9 @@ export function sessakuPieceIdFromItemId(itemId: string): string | null {
 }
 export function sessakuPieceItemIds(piece: { id: string; opSplits?: readonly { fromOpNo: number }[] }): string[] {
   return [`piece:${piece.id}`, ...(piece.opSplits ?? []).map((split) => `pieceops:${piece.id}:${split.fromOpNo}`)];
+}
+
+/** Pieces whose source cutting piece is about to be removed. */
+export function piecesReferencing<T extends { sourcePieceId: string | null }>(pieces: readonly T[] | undefined, removedSourceIds: readonly string[]): T[] {
+  return pieces?.filter((piece) => piece.sourcePieceId !== null && removedSourceIds.includes(piece.sourcePieceId)) ?? [];
 }

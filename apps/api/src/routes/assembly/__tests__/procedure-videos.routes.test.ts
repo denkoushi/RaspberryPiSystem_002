@@ -167,9 +167,9 @@ describe('procedure-video routes', () => {
     await h.app.inject({ method: 'POST', url: `${base}/restore` });
     expect(h.db.procedureVideo.update).toHaveBeenLastCalledWith({ where: { id }, data: { discardedAt: null } });
   });
-  it('replaces page video ordering under a document lock with the overlay access password', async () => {
+  it('replaces page video ordering under a document lock without the overlay access password', async () => {
     const h = setup(); const response = await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [secondId, id], accessPassword: 'secret' } });
-    expect(response.statusCode).toBe(200); expect(h.access.requireAccessPassword).toHaveBeenCalledExactlyOnceWith('secret', expect.objectContaining({ clientDeviceId: null, ip: '127.0.0.1' }));
+    expect(response.statusCode).toBe(200); expect(h.access.requireAccessPassword).not.toHaveBeenCalled();
     expect(h.db.procedureVideoLink.deleteMany).toHaveBeenCalledWith({ where: { assemblyProcedureDocumentId: id, pageIndex: 0 } });
     expect(h.db.procedureVideoLink.createMany).toHaveBeenCalledWith({ data: [{ videoId: secondId, sceneId: null, assemblyProcedureDocumentId: id, pageIndex: 0, sortOrder: 0 }, { videoId: id, sceneId: null, assemblyProcedureDocumentId: id, pageIndex: 0, sortOrder: 1 }] });
     expect((await h.app.inject(pagePath)).json().videos).toHaveLength(1);
@@ -181,9 +181,8 @@ describe('procedure-video routes', () => {
     expect((await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [id] } })).statusCode).toBe(409);
     expect(h.db.procedureVideoLink.deleteMany).not.toHaveBeenCalled();
   });
-  it('refuses password denial, duplicate IDs, missing pages and discarded/missing videos without replacing links', async () => {
-    const h = setup(); h.access.requireAccessPassword.mockRejectedValueOnce(new ApiError(403, 'パスワードが違います'));
-    expect((await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [] } })).statusCode).toBe(403);
+  it('refuses duplicate IDs, missing pages and discarded/missing videos without replacing links', async () => {
+    const h = setup();
     expect((await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [id, id] } })).statusCode).toBe(400);
     h.db.procedureVideo.count.mockResolvedValue(0);
     expect((await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [id] } })).statusCode).toBe(409);

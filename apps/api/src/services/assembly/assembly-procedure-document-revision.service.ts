@@ -144,8 +144,7 @@ export class AssemblyProcedureDocumentRevisionService {
     });
   }
 
-  async createRevision(sourceId: string, accessPassword: string | undefined, caller: AssemblyProcedureEditActor = {}): Promise<AssemblyProcedureDocumentRevisionRecord> {
-    await this.accessService.requireAccessPassword(accessPassword, caller);
+  async createRevision(sourceId: string): Promise<AssemblyProcedureDocumentRevisionRecord> {
     return runAssemblyTransaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<RevisionDocumentLockRow>>`
         SELECT d."id", d."status", d."isActive", r."revisionRootId", r."revisionNumber",
@@ -246,7 +245,6 @@ export class AssemblyProcedureDocumentRevisionService {
   }
 
   async addBlankPage(params: PageInsertParams) {
-    await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
     }
@@ -310,7 +308,6 @@ export class AssemblyProcedureDocumentRevisionService {
   }
 
   async importPages(params: PageInsertParams & { sourceDocumentId: string; sourcePageIndexes: number[] }) {
-    await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
     }
@@ -353,7 +350,6 @@ export class AssemblyProcedureDocumentRevisionService {
   }
 
   async deletePage(params: AssemblyProcedureEditActor & { documentId: string; pageIndex: number; expectedEditVersion: number; accessPassword?: string }): Promise<AssemblyProcedureDocumentRevisionRecord> {
-    await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
     }
@@ -374,7 +370,6 @@ export class AssemblyProcedureDocumentRevisionService {
   }
 
   async movePage(params: PageInsertParams & { pageIndex: number; toPageIndex: number }): Promise<AssemblyProcedureDocumentRevisionRecord> {
-    await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
     }
@@ -400,7 +395,6 @@ export class AssemblyProcedureDocumentRevisionService {
     appliedCaptionElementIds?: string[];
     accessPassword?: string;
   }): Promise<AssemblyProcedureDocumentRevisionRecord> {
-    await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
     }
@@ -537,7 +531,6 @@ export class AssemblyProcedureDocumentRevisionService {
     accessPassword?: string;
     expectedEditVersion?: number;
   }): Promise<AssemblyProcedureDocumentRevisionRecord> {
-    await this.accessService.requireAccessPassword(params.accessPassword, params);
     let discardedPagePaths: string[] = [];
     let discardedAssetIds: string[] = [];
     const result = await runAssemblyTransaction(async (tx) => {

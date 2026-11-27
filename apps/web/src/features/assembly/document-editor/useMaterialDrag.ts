@@ -6,7 +6,14 @@ import type { ProcedureMaterialDto } from '../procedure-manuals/procedure-materi
 import type { AssemblyProcedureCropRect, AssemblyProcedureOverlayBBox as BBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
 
-export type MaterialDropPreview = { bbox: BBox; guides: SnapGuide[]; pending?: boolean };
+export type MaterialDropPreview = { pageIndex: number; bbox: BBox; guides: SnapGuide[]; pending?: boolean };
+
+type MaterialDropPage = {
+  layerRef: RefObject<HTMLDivElement | null>;
+  pageIndex: number;
+  crop?: AssemblyProcedureCropRect | null;
+  elements: AssemblyProcedureOverlayElement[];
+};
 
 export function materialPreviewSize(material: Pick<ProcedureMaterialDto, 'kind' | 'width' | 'height'>, pageAspect: number) {
   if (material.kind === 'TEXT') return { widthRatio: 0.8, heightRatio: 0.2 };
@@ -16,13 +23,10 @@ export function materialPreviewSize(material: Pick<ProcedureMaterialDto, 'kind' 
   return { widthRatio, heightRatio };
 }
 
-export function useMaterialDrag(options: {
-  layerRef: RefObject<HTMLDivElement | null>;
-  crop?: AssemblyProcedureCropRect | null;
-  elements: AssemblyProcedureOverlayElement[];
+export function useMaterialDrag(options: MaterialDropPage & {
+  adjacentPage?: MaterialDropPage;
   enabled: boolean;
-  pageIndex: number;
-  place: (material: ProcedureMaterialDto, options?: { bbox?: BBox }) => Promise<void>;
+  place: (material: ProcedureMaterialDto, options?: { bbox?: BBox; pageIndex?: number }) => Promise<void>;
   onError: (error: unknown) => void;
 }) {
   const live = useRef(options);
@@ -39,13 +43,15 @@ export function useMaterialDrag(options: {
     setShadow(null);
     if (!pending.current) setPreview(null);
   }, []);
-  const place = useCallback(async (material: ProcedureMaterialDto, bbox?: BBox) => {
+  const place = useCallback(async (material: ProcedureMaterialDto, target?: MaterialDropPreview) => {
     if (!live.current.enabled || pending.current) return;
     pending.current = true;
-    if (bbox) setPreview(current => current && { ...current, pending: true });
+    if (target) setPreview(current => current && { ...current, pending: true });
     try {
-      if (bbox) await live.current.place(material, { bbox });
-      else await live.current.place(material);
+      if (target) {
+        const { bbox, pageIndex } = target;
+        await live.current.place(material, pageIndex === live.current.pageIndex ? { bbox } : { bbox, pageIndex });
+      } else await live.current.place(material);
     } catch (error) { live.current.onError(error); }
     finally { pending.current = false; setPreview(null); }
   }, []);
@@ -64,19 +70,20 @@ export function useMaterialDrag(options: {
       setShadow({ materialId: d.material.id, x: event.clientX, y: event.clientY });
       skipClick.current = true;
       if (event.cancelable) event.preventDefault();
-      const { layerRef, crop, elements } = live.current;
-      const layer = layerRef.current;
       const hit = document.elementFromPoint(event.clientX, event.clientY);
       d.target = undefined;
-      if (!layer || !hit || !(hit === layer || layer.contains(hit))) { setPreview(null); return; }
+      const page = [live.current, live.current.adjacentPage].find(candidate => hit && candidate?.layerRef.current?.contains(hit));
+      const layer = page?.layerRef.current;
+      if (!page || !layer) { setPreview(null); return; }
+      const { crop, elements, pageIndex } = page;
       const rect = layer.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
+      if (!rect.width || !rect.height) { setPreview(null); return; }
       const scaleX = crop?.widthRatio ?? 1, scaleY = crop?.heightRatio ?? 1;
       const xRatio = (crop?.xRatio ?? 0) + (event.clientX - rect.left) / rect.width * scaleX;
       const yRatio = (crop?.yRatio ?? 0) + (event.clientY - rect.top) / rect.height * scaleY;
       const size = materialPreviewSize(d.material, rect.width / rect.height * scaleY / scaleX);
       const bbox = centerMaterialBBox(size, { xRatio, yRatio, widthRatio: 0, heightRatio: 0 });
-      d.target = snapOverlayBBox({ bbox, targets: elements.map(element => element.bbox), viewport: rect, crop });
+      d.target = { pageIndex, ...snapOverlayBBox({ bbox, targets: elements.map(element => element.bbox), viewport: rect, crop }) };
       setPreview(d.target);
     };
     const up = (event: PointerEvent) => {
@@ -88,7 +95,7 @@ export function useMaterialDrag(options: {
       clearTimeout(d.hold);
       drag.current = null;
       setShadow(null);
-      if (d.lifted && target && live.current.enabled) void place(material, target.bbox);
+      if (d.lifted && target && live.current.enabled) void place(material, target);
       else setPreview(null);
     };
     const abort = () => { if (drag.current) skipClick.current = true; cancel(); };

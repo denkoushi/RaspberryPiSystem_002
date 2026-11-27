@@ -11,7 +11,8 @@ import type {
   GrindingPlanningBoardResourceMinutesResponse,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardLoad,
-  GrindingPlanningBoardLoadResponse
+  GrindingPlanningBoardLoadResponse,
+  GrindingPlanningBoardScheduleSource
 } from '@raspi-system/shared-types';
 
 import { ApiError } from '../../lib/errors.js';
@@ -57,7 +58,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   category: GrindingPlanningBoardCategory;
   isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => boolean;
   cache?: {
-    scheduleSource?: 'general' | 'dCompany' | 'both';
+    scheduleSource?: GrindingPlanningBoardScheduleSource;
     generationToken: string;
     readGenerationToken: () => Promise<string>;
     performance: GrindingPlanningBoardPerformance;
@@ -72,6 +73,7 @@ type LoadSummarySourceRow = OpBarSummaryFields & {
   fhinCd: string | null;
   productNo: string | null;
   resourceCd: string | null;
+  resourceSwapCd: string | null;
   processOrder: string | null;
   requiredMinutesRaw: string | null;
   requiredMinutes: number | null;
@@ -299,6 +301,7 @@ async function readAggregatedLoadSummary(params: {
         "CsvDashboardRow"."rowData"->>'ProductNo' AS "productNo",
         "CsvDashboardRow"."rowData"->>'FHINCD' AS "fhincd",
         "CsvDashboardRow"."rowData"->>'FSIGENCD' AS "resourceCd",
+        "ext"."loadResourceCdFromFkojunstResourceSwap" AS "resourceSwapCd",
         "CsvDashboardRow"."rowData"->>'FKOJUN' AS "processOrder",
         CASE
           WHEN ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') ~ '^\\s*-?\\d+(\\.\\d+)?\\s*$'
@@ -335,6 +338,7 @@ async function readAggregatedLoadSummary(params: {
         b."fhincd",
         b."processOrder",
         b."resourceCd" AS "originalResourceCd",
+        b."resourceSwapCd",
         CASE WHEN b."pieceId" IS NULL THEN b."plannedQuantity" ELSE b."pieceQuantity" END AS "quantity",
         'row'::text AS "itemKind",
         CASE WHEN b."pieceId" IS NULL THEN b."requiredMinutes"
@@ -381,6 +385,7 @@ async function readAggregatedLoadSummary(params: {
         "deduplicatedItems"."opBarFromOpNo", "deduplicatedItems"."opBarToOpNo",
         "deduplicatedItems"."opBarSourceResourceCd", "deduplicatedItems"."completedOpNos",
         "deduplicatedItems"."originalResourceCd",
+        "deduplicatedItems"."resourceSwapCd",
         CASE
           WHEN "pieceOverrides"."itemKey" IS NOT NULL THEN COALESCE("pieceOverrides"."overrideResourceCd", "deduplicatedItems"."originalResourceCd")
           WHEN "rowOverrides"."overrideResourceCd" IS NULL
@@ -405,15 +410,18 @@ async function readAggregatedLoadSummary(params: {
           AND "rowOverrides"."processOrder" = COALESCE("deduplicatedItems"."processOrder", '')
     )
     SELECT
-      "originalResourceCd",
-      "effectiveResourceCd",
+      COALESCE("resourceSwapCd", "originalResourceCd") AS "originalResourceCd",
+      -- A board override is the planner's explicit choice and wins over the load-only swap.
+      CASE WHEN UPPER(BTRIM("effectiveResourceCd")) IS DISTINCT FROM UPPER(BTRIM("originalResourceCd")) THEN "effectiveResourceCd"
+        ELSE COALESCE("resourceSwapCd", "effectiveResourceCd") END AS "effectiveResourceCd",
+      "effectiveResourceCd" AS "minutesResourceCd",
       "fhincd", "quantity", "includeSetup",
       "opBarFromOpNo", "opBarToOpNo", "opBarSourceResourceCd", "completedOpNos",
       COUNT(*)::bigint AS "itemCount",
       COUNT(*) FILTER (WHERE "requiredMinutes" IS NULL)::bigint AS "unknownItemCount",
       SUM("requiredMinutes")::double precision AS "requiredMinutesSum"
     FROM "effectiveItems"
-    GROUP BY "originalResourceCd", "effectiveResourceCd", "fhincd", "quantity", "requiredMinutes", "includeSetup"
+    GROUP BY "resourceSwapCd", "originalResourceCd", "effectiveResourceCd", "fhincd", "quantity", "requiredMinutes", "includeSetup"
       , "opBarFromOpNo", "opBarToOpNo", "opBarSourceResourceCd", "completedOpNos"
   `);
 
@@ -519,6 +527,7 @@ async function readBaseGrindingPlanningBoardLoadSummary(
         "CsvDashboardRow"."rowData"->>'FHINCD' AS "fhinCd",
         "CsvDashboardRow"."rowData"->>'ProductNo' AS "productNo",
         "CsvDashboardRow"."rowData"->>'FSIGENCD' AS "resourceCd",
+        "ext"."loadResourceCdFromFkojunstResourceSwap" AS "resourceSwapCd",
         "CsvDashboardRow"."rowData"->>'FKOJUN' AS "processOrder",
         "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO' AS "requiredMinutesRaw",
         CASE
@@ -570,8 +579,12 @@ async function readBaseGrindingPlanningBoardLoadSummary(
   const overrideByItemKey = new Map(overrideRows.map((row) => [row.itemKey, row.overrideResourceCd]));
   const summaryRows = rows.flatMap((row) => {
     const originalResourceCd = row.resourceCd == null ? null : normalizeProductionScheduleResourceCd(row.resourceCd);
-    if (originalResourceCd == null || !params.isResourceInCategory(originalResourceCd, params.category)) return [];
-    return [toSummaryRow(row, overrideByItemKey, resourceMinutes, originalResourceCd)];
+    const loadResourceCd = row.resourceSwapCd ?? originalResourceCd;
+    if (originalResourceCd == null || loadResourceCd == null || !params.isResourceInCategory(loadResourceCd, params.category)) return [];
+    const item = toSummaryRow(row, overrideByItemKey, resourceMinutes, originalResourceCd);
+    // A board override wins over the load-only swap, as in the SQL aggregate.
+    const effectiveResourceCd = item.effectiveResourceCd !== originalResourceCd ? item.effectiveResourceCd : loadResourceCd;
+    return [{ ...item, originalResourceCd: loadResourceCd, effectiveResourceCd }];
   });
   return addPlanningTestBarLoad(buildGrindingPlanningBoardLoadSummary(summaryRows), params);
 }

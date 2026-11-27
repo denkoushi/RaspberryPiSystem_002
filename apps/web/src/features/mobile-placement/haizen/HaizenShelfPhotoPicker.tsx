@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { Dialog } from '../../../components/ui/Dialog';
 import { isHaizenSpeechAvailable, recognizeSpeechNative, stopSpeechNative } from '../haizenNative';
+import { sortShelvesBySetting } from '../registeredShelves';
 import { ShelfPhoto } from '../shelfPhoto/ShelfPhoto';
 import { haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
@@ -21,11 +22,12 @@ type ShelfPhotoListProps = {
 };
 
 /** Machine chips and the scrollable photo grid; shared by the full-screen picker and the 配膳 tab. */
-export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes, selected, loading, error, onRetry, onSelect, compact = false, onView, disabled = false, onExpand, onScan, children, renderHeader }: ShelfPhotoListProps & {
+export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes, selected, loading, error, onRetry, onSelect, compact = false, onView, disabled = false, onExpand, onScan, children, renderHeader, allShelvesToggle }: ShelfPhotoListProps & {
   onScan?: () => void; compact?: boolean; onView?: (shelf: RegisteredShelfEntryDto) => void;
   /** Dims the grid until the 移動票 is read. */ disabled?: boolean;
   /** Shows a button that opens the full-screen picker. */ onExpand?: () => void;
   /** Loading or retry state between the chips and the grid. */ children?: ReactNode;
+  allShelvesToggle?: { pressed: boolean; onToggle: () => void };
   renderHeader?: (speechButton: ReactNode) => ReactNode;
 }) {
   const [viewer, setViewer] = useState<RegisteredShelfEntryDto | null>(null);
@@ -81,12 +83,13 @@ export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes,
       <rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
     </svg>
   </button>;
-  const machines = [...new Set(shelves.flatMap((s) => s.machineName ? [s.machineName] : []))].sort((a, b) => a.localeCompare(b, 'ja'));
+  const sorted = sortShelvesBySetting(shelves);
+  const machines = [...new Set(sorted.flatMap((s) => s.machineName ? [s.machineName] : []))];
   const filters = [...(previousShelfCodes.length ? [{ key: 'previous', label: '前回' }] : []), { key: 'all', label: '全部' },
     ...machines.map((name) => ({ key: `machine:${name}`, label: name }))];
-  const filtered = speechFilter ? shelves.filter((s) => speechFilter.codes.includes(s.shelfCodeRaw)) : (compact ? shelves : filter === 'previous'
-    ? previousShelfCodes.flatMap((code) => shelves.filter((s) => s.shelfCodeRaw === code))
-    : shelves.filter((s) => filter === 'all' || `machine:${s.machineName}` === filter));
+  const filtered = speechFilter ? sorted.filter((s) => speechFilter.codes.includes(s.shelfCodeRaw)) : (compact ? sorted : filter === 'previous'
+    ? previousShelfCodes.flatMap((code) => sorted.filter((s) => s.shelfCodeRaw === code))
+    : sorted.filter((s) => filter === 'all' || `machine:${s.machineName}` === filter));
   const ordered = shelfCounts ? [...filtered].sort((a, b) => (shelfCounts[b.shelfCodeRaw] ?? 0) - (shelfCounts[a.shelfCodeRaw] ?? 0)) : filtered;
   const groups = new Map<string | null, RegisteredShelfEntryDto[]>();
   for (const shelf of ordered) {
@@ -124,20 +127,13 @@ export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes,
           {!compact && !shelfCounts && <h3 className="flex items-baseline gap-2 pt-2 text-base font-bold col-span-2">
             {machineName ?? 'その他'}<small className={`text-xs ${hp.muted}`}>{group.length}棚</small>
           </h3>}
-          {group.map((s) => <button key={s.shelfCodeRaw} type="button" aria-label={`棚 ${[s.machineName, s.direction, s.displayLabel].filter(Boolean).join(' ') || '写真'}`} aria-pressed={selected === s.shelfCodeRaw} disabled={disabled}
-          data-machine={s.machineName} className={`relative overflow-hidden rounded-[14px] ${compact ? "border-[3px] border-[var(--hp-panel)]" : "border-2 border-[var(--hp-line)]"} bg-[var(--hp-panel)] text-left aria-pressed:border-[var(--hp-shelf)]`}
-          onClick={() => { setSpeechFilter(null); selected === s.shelfCodeRaw ? (onView ?? setViewer)(s) : onSelect(s.shelfCodeRaw); }}>
-          <span className="relative block">
-            <ShelfPhoto shelf={s} label={s.direction || s.displayLabel || '棚'} className="aspect-[4/3] w-full" />
-            {compact ? <span className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,.85)_50%)] px-2 pb-[5px] pt-[22px] leading-[1.15]"><span className={`block truncate font-mono text-xs font-bold ${hp.muted}`}>{s.machineName}</span><b className="block truncate text-xl font-black text-[var(--hp-shelf)]">{[s.direction, s.displayLabel].filter(Boolean).join(" ") || s.shelfCodeRaw}</b></span> : s.direction && <span className="absolute inset-x-0 block bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.78))] pt-4 px-2 pb-1.5">
-              <b className="block truncate font-mono text-[var(--hp-shelf)] text-lg">{s.direction}</b>
-            </span>}
-          </span>
-          {s.shelfCodeRaw === previousShelfCodes[0] && <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-[11px] font-black text-[var(--hp-bg)]">前回</span>}
-          {!!shelfCounts?.[s.shelfCodeRaw] && <span aria-label={`この製番 ${shelfCounts[s.shelfCodeRaw]}件`} className="absolute right-1.5 bottom-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-sm font-black text-[var(--hp-bg)]">{shelfCounts[s.shelfCodeRaw]}</span>}
-          {compact && selected === s.shelfCodeRaw && <span aria-hidden className="absolute right-1.5 top-1.5 grid h-[30px] w-[30px] place-items-center rounded-full bg-[var(--hp-shelf)] text-xl font-black text-[var(--hp-bg)]">✓</span>}
-          {!compact && <span className="block pt-1.5 px-2 pb-2"><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>}
-        </button>)}
+          {group.map((s) => <HaizenShelfPhotoTile key={s.shelfCodeRaw} shelf={s} compact={compact}
+            selected={selected === s.shelfCodeRaw} previous={s.shelfCodeRaw === previousShelfCodes[0]}
+            count={shelfCounts?.[s.shelfCodeRaw]} disabled={disabled} onClick={() => {
+              setSpeechFilter(null);
+              if (selected === s.shelfCodeRaw) (onView ?? setViewer)(s);
+              else onSelect(s.shelfCodeRaw);
+            }} />)}
         </Fragment>)}
         {!filtered.length && <p className={`${hp.empty} col-span-2`}>棚がありません</p>}
       </div>}
@@ -146,7 +142,10 @@ export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes,
       {speechButton}
       {onScan && <button type="button" className={`${hp.iconButton} !h-12 !w-12 font-black`} disabled={disabled} onClick={onScan}>QR</button>}
       <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
-        {machines.map((name) => <button key={name} type="button" disabled={disabled} className={`${hp.chip} !h-12 !px-4 !font-mono !text-base`} onClick={() => {
+        {allShelvesToggle && <button type="button" className={`${hp.chip} !h-12 !px-4 !text-base`}
+          aria-pressed={allShelvesToggle.pressed} disabled={disabled}
+          onClick={() => { setSpeechFilter(null); allShelvesToggle.onToggle(); }}>全部</button>}
+        {(!allShelvesToggle || allShelvesToggle.pressed) && machines.map((name) => <button key={name} type="button" disabled={disabled} className={`${hp.chip} !h-12 !px-4 !font-mono !text-base`} onClick={() => {
           const tile = [...(grid.current?.querySelectorAll<HTMLElement>('[data-machine]') ?? [])].find((tile) => tile.dataset.machine === name);
           if (grid.current && tile) grid.current.scrollTo({ top: grid.current.scrollTop + tile.getBoundingClientRect().top - grid.current.getBoundingClientRect().top, behavior: 'auto' });
         }}>{name}</button>)}
@@ -155,6 +154,31 @@ export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes,
     </div>}
     {viewer && <HaizenShelfPhotoViewer shelf={viewer} onClose={() => setViewer(null)} />}
   </>;
+}
+
+export function HaizenShelfPhotoTile({ shelf: s, compact, selected, previous, count, disabled, onClick }: {
+  shelf: RegisteredShelfEntryDto;
+  compact: boolean;
+  selected: boolean;
+  previous?: boolean;
+  count?: number;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return <button type="button" aria-label={`棚 ${[s.machineName, s.direction, s.displayLabel].filter(Boolean).join(' ') || '写真'}`} aria-pressed={selected} disabled={disabled}
+    data-machine={s.machineName} className={`relative overflow-hidden rounded-[14px] ${compact ? "border-[3px] border-[var(--hp-panel)]" : "border-2 border-[var(--hp-line)]"} bg-[var(--hp-panel)] text-left aria-pressed:border-[var(--hp-shelf)]`}
+    onClick={onClick}>
+    <span className="relative block">
+      <ShelfPhoto shelf={s} label={s.direction || s.displayLabel || '棚'} className="aspect-[4/3] w-full" />
+      {compact ? <span className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,.85)_50%)] px-2 pb-[5px] pt-[22px] leading-[1.15]"><span className={`block truncate font-mono text-xs font-bold ${hp.muted}`}>{s.machineName}</span><b className="block truncate text-xl font-black text-[var(--hp-shelf)]">{[s.direction, s.displayLabel].filter(Boolean).join(" ") || s.shelfCodeRaw}</b></span> : s.direction && <span className="absolute inset-x-0 block bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.78))] pt-4 px-2 pb-1.5">
+        <b className="block truncate font-mono text-[var(--hp-shelf)] text-lg">{s.direction}</b>
+      </span>}
+    </span>
+    {previous && <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-[11px] font-black text-[var(--hp-bg)]">前回</span>}
+    {!!count && <span aria-label={`この製番 ${count}件`} className="absolute right-1.5 bottom-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-sm font-black text-[var(--hp-bg)]">{count}</span>}
+    {compact && selected && <span aria-hidden className="absolute right-1.5 top-1.5 grid h-[30px] w-[30px] place-items-center rounded-full bg-[var(--hp-shelf)] text-xl font-black text-[var(--hp-bg)]">✓</span>}
+    {!compact && <span className="block pt-1.5 px-2 pb-2"><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>}
+  </button>;
 }
 
 export function HaizenShelfPhotoPicker({ onClose, onScan, onMaster, ...list }: ShelfPhotoListProps & {

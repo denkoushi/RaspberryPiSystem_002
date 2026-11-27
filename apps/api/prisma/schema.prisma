@@ -770,11 +770,25 @@ model MobilePlacementShelf {
   tier                    Int?
   /// マクロ区画 ID（nw..se）
   macroZoneId             String?
+  /// スマホの棚一覧の表示順（NULL は未設定）
+  sortOrder               Int?
   createdAt               DateTime                      @default(now())
   createdByClientDeviceId String?
   createdBy               ClientDevice?                 @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
   layoutEntities          MobilePlacementLayoutEntity[]
   photo                   MobilePlacementShelfPhoto?
+  resourceShelves         MobilePlacementResourceShelf[]
+}
+
+model MobilePlacementResourceShelf {
+  id         String                @id @default(uuid())
+  resourceCd String
+  /// A row with id = resourceCd and no shelf marks a saved resource, even with no linked shelves.
+  shelfId    String?
+  shelf      MobilePlacementShelf? @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceCd, shelfId])
+  @@index([shelfId])
 }
 
 model MobilePlacementShelfPhoto {
@@ -1609,6 +1623,7 @@ model CsvDashboard {
   grindingPlanningBoardResourceMinutesSources ProductionScheduleGrindingPlanningBoardResourceMinutesSource[]
   grindingPlanningBoardResourcePartMinutes ProductionScheduleGrindingPlanningBoardResourcePartMinutes[]
   grindingPlanningBoardTestBars ProductionScheduleGrindingPlanningBoardTestBar[]
+  grindingPlanningBoardPairs ProductionScheduleGrindingPlanningBoardPair[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
@@ -1670,6 +1685,12 @@ model ProductionSchedulePartNameLookupState {
   builtAt DateTime
 }
 
+enum CsvDashboardRowSupersededReason {
+  ORDER_STATUS_X
+  DROPPED_RESOURCE
+  ORDER_STATUS_X_AND_DROPPED_RESOURCE
+}
+
 model CsvDashboardRow {
   id                                   String                                @id @default(uuid())
   csvDashboardId                       String
@@ -1683,8 +1704,10 @@ model CsvDashboardRow {
   sourceIngestRunStartedAt             DateTime?
   createdAt                            DateTime                              @default(now())
   updatedAt                            DateTime?                             @updatedAt
-  /// 生産日程で、振り直しにより古くなった製造オーダー番号の印(その工程の工程状態が X で、同じ4列キーに X でない別番号がある)。印の付いた行は winner 条件で見えない。
+  /// 生産日程の非表示印。印の付いた行は winner 条件で見えない。
   supersededAt                         DateTime?
+  /// 既存の印で理由が未設定の場合は工程状態 X として扱う。
+  supersededReason                     CsvDashboardRowSupersededReason?
   orderAssignments                     ProductionScheduleOrderAssignment[]
   orderSplits                          ProductionScheduleOrderSplit[]
   rowNotes                             ProductionScheduleRowNote[]
@@ -2109,6 +2132,21 @@ model ProductionScheduleGrindingPlanningBoardTestBar {
   @@index([csvDashboardId, siteKey, resourceCd, deletedAt, completedAt], map: "PSGrindingPlanningTestBar_resource_idx")
 }
 
+model ProductionScheduleGrindingPlanningBoardPair {
+  id             String   @id(map: "PSGrindingPlanningPair_pkey") @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  firstPartCode  String   @db.VarChar(200)
+  firstPartName  String   @db.VarChar(200)
+  secondPartCode String   @db.VarChar(200)
+  secondPartName String   @db.VarChar(200)
+  createdAt      DateTime @default(now())
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningPair_dashboard_fkey")
+
+  @@unique([csvDashboardId, siteKey, firstPartCode, secondPartCode], map: "PSGrindingPlanningPair_site_codes_key")
+}
+
 /// キオスク研削順位ボード専用のサイト共有状態。既存順位ボードの順位・割当は変更しない。
 model ProductionScheduleGrindingPlanningBoardState {
   id             String   @id @default(uuid())
@@ -2294,6 +2332,8 @@ model ProductionScheduleExternalCompletion {
   externallyCompletedFromFkojunstMailStatus     Boolean  @default(false)
   /// 同じ製造オーダ・工順の別資源の C による完了。
   externallyCompletedFromFkojunstResourceSwap   Boolean  @default(false)
+  /// 同じ製造オーダ・工順の未完了の付け替え先。負荷集計専用。
+  loadResourceCdFromFkojunstResourceSwap        String?
   /// 生産日程CSV取込の差分消失完了（2026-05-26 廃止、互換列として保持）。
   externallyCompletedFromScheduleCsvDisappeared Boolean  @default(false)
   createdAt                                     DateTime @default(now())
@@ -3657,6 +3697,7 @@ model AssemblyProcedureDocument {
   overlayElements        AssemblyProcedureOverlayElement[]
   revisionMetadata       AssemblyProcedureDocumentRevision?
   editLease              AssemblyProcedureDocumentEditLease?
+  readingFeedback        AssemblyProcedureDocumentFeedback[]
   revisionRoots          AssemblyProcedureDocumentRevision[]    @relation("AssemblyProcedureDocumentRevisionRoot")
   supersededRevisions    AssemblyProcedureDocumentRevision[]    @relation("AssemblyProcedureDocumentRevisionSupersedes")
   templates              AssemblyTemplate[]
@@ -3709,6 +3750,29 @@ model AssemblyProcedureDocumentRevision {
   @@index([revisionRootId, isRevisionHead], map: "AssemblyProcedureDocumentRevision_idx_revision_head")
   @@index([supersedesDocumentId], map: "AssemblyProcedureDocumentRevision_idx_supersedes")
   @@index([sourceAssetId], map: "AssemblyProcedureDocumentRevision_idx_source_asset")
+}
+
+model AssemblyProcedureDocumentFeedback {
+  id              String                    @id @default(uuid())
+  revisionRootId  String
+  documentId      String
+  revisionNumber  Int
+  sourceUpdatedAt DateTime
+  questions       Json
+  missing         Json
+  unclear         Json
+  ideas           Json
+  createdAt       DateTime                  @default(now())
+  document        AssemblyProcedureDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, sourceUpdatedAt], map: "AssemblyProcedureDocumentFeedback_document_source_key")
+  @@index([revisionRootId, sourceUpdatedAt, revisionNumber], map: "AssemblyProcedureDocumentFeedback_root_source_idx")
+}
+
+/// 行がある系列は、夜に AI が読む対象から外す。行が無ければ読む。
+model AssemblyProcedureDocumentFeedbackOptOut {
+  revisionRootId String   @id
+  createdAt      DateTime @default(now())
 }
 
 /// 組立手順書の外部取込元。手動登録は行を持たず MANUAL と解釈する。
@@ -6917,4 +6981,22 @@ model ProductionScheduleRowSeen {
   dataHash   String   @id
   lastSeenAt DateTime
   updatedAt  DateTime @updatedAt
+}
+
+model DepartmentMasterEntry {
+  id              String    @id @default(uuid())
+  code            String
+  kanaName        String?
+  name            String
+  unitType        String
+  parentCode      String?
+  isSupplier      Boolean
+  isCustomer      Boolean
+  validFrom       DateTime  @db.Date
+  validTo         DateTime  @db.Date
+  sourceEnteredAt DateTime?
+  sourceUpdatedAt DateTime?
+  importedAt      DateTime  @default(now())
+
+  @@unique([code, validFrom])
 }

@@ -1,16 +1,18 @@
 import { listHaizenUnplacedParts } from '../../services/mobile-placement/schedule-seiban-status.service.js';
-import { listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
+import { getHaizenMaterialView, listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
+import { listHaizenMaterialArrival } from '../../services/mobile-placement/haizen-material-arrival.service.js';
 import { extractManufacturingOrder10 } from '../../services/mobile-placement/genpyo-slip/genpyo-mo-extract.js';
 import { buildActualSlipOcrPreviewSafe } from '../../services/mobile-placement/actual-slip-ocr-preview.js';
 import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES } from '@raspi-system/shared-types';
 
 import { applyGrindingPlanningBoardScanArrival } from '../../services/production-schedule/grinding-planning-board/write-scan-arrival.js';
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
-import { resolveCredentialIdentity } from '../../lib/location-scope-resolver.js';
+import { resolveCredentialIdentity, resolveSiteKey } from '../../lib/location-scope-resolver.js';
 import { registerMobileScanFrameRoutes } from './scan-frames.js';
 import { registerMobileVerifyRecordRoutes } from './verify-records.js';
 import { registerOrderTrailRoutes } from './order-trail.js';
@@ -27,8 +29,10 @@ import {
 import {
   deleteMobilePlacementShelf,
   listRegisteredShelvesFromShelfMaster,
-  registerMobilePlacementShelf
+  registerMobilePlacementShelf,
+  replaceShelfOrder
 } from '../../services/mobile-placement/mobile-placement-shelf-master.service.js';
+import { getResourceShelfAssignments, replaceResourceShelves } from '../../services/mobile-placement/mobile-placement-resource-shelves.service.js';
 import {
   applyHaizenScan,
   deleteHaizenCurrentPlacement,
@@ -49,6 +53,12 @@ import {
   listShelfLayoutSummary
 } from '../../services/mobile-placement/shelf-layout-read.service.js';
 import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.js';
+
+const haizenMaterialArrivalBodySchema = z.object({
+  parts: z.array(z.object({ fseiban: z.string().min(1).max(100), fhincd: z.string().min(1).max(100) })).max(6000)
+});
+
+const haizenMaterialViewQuerySchema = z.object({ scheduleSource: z.enum(GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES).default('both') });
 
 const snapFseibanTokensBodySchema = z.object({
   tokens: z.array(z.string().min(1).max(32)).min(1).max(50),
@@ -173,8 +183,33 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
    */
   app.get('/mobile-placement/registered-shelves', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
-    const shelves = await listRegisteredShelvesFromShelfMaster();
-    return { shelves };
+    try {
+      const { shelves } = await getResourceShelfAssignments();
+      return { shelves };
+    } catch (error) {
+      // Shelf choice must keep working even if the resource links cannot be read.
+      request.log.warn({ err: error }, 'resource shelf links unavailable');
+      return { shelves: await listRegisteredShelvesFromShelfMaster() };
+    }
+  });
+
+  app.get('/mobile-placement/resource-shelves', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { resources } = await getResourceShelfAssignments();
+    return { resources };
+  });
+
+  app.put('/mobile-placement/resource-shelves/:resourceCd', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { resourceCd } = z.object({ resourceCd: z.string().trim().min(1).max(20) }).parse(request.params);
+    const { shelfCodes } = z.object({ shelfCodes: z.array(z.string().min(1).max(200)).max(1000) }).parse(request.body);
+    return replaceResourceShelves(resourceCd, shelfCodes);
+  });
+
+  app.put('/mobile-placement/shelf-order', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodes } = z.object({ shelfCodes: z.array(z.string().min(1).max(200)).max(1000) }).parse(request.body);
+    return replaceShelfOrder(shelfCodes);
   });
 
   app.get('/mobile-placement/client-capabilities', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
@@ -271,6 +306,19 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   app.get('/mobile-placement/haizen-overview/unplaced-parts', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listHaizenUnplacedParts();
+  });
+
+  app.get('/mobile-placement/haizen-material-view', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { scheduleSource } = haizenMaterialViewQuerySchema.parse(request.query);
+    const siteKey = clientDevice.siteKey?.trim() ? resolveSiteKey(clientDevice) : null;
+    return getHaizenMaterialView(siteKey, scheduleSource);
+  });
+
+  app.post('/mobile-placement/haizen-material-arrival', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const body = haizenMaterialArrivalBodySchema.parse(request.body);
+    return listHaizenMaterialArrival(body.parts);
   });
 
   /**
@@ -433,6 +481,10 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = edgeScanBodySchema.parse(request.body);
+    // The current shelf-scanner agent posts here, so the grinding mode must branch here as well as on haizen-scans.
+    if (clientDevice.haizenEdgeEnabled && clientDevice.haizenScanMode === 'grinding_arrival') {
+      return applyGrindingPlanningBoardScanArrival({ clientDevice, manufacturingOrderBarcodeRaw: body.orderNumber });
+    }
     const identity = resolveCredentialIdentity(clientDevice);
     return registerEdgeScan({ ...body, clientDeviceId: identity.clientDeviceId });
   });

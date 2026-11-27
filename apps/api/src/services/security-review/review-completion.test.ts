@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resultSchema } from './queue-storage.js';
 import { securityReviewChunkAnswerSchema } from './report-schema.js';
-import { reviewMessages } from './review-completion.js';
+import { knownForChunk, reviewMessages } from './review-completion.js';
 
 describe('review answer contract', () => {
   it.each(['changes', 'security', 'errors'] as const)('explains complete clean reviews and genuine refusals for %s', kind => {
@@ -29,5 +29,20 @@ describe('review answer contract', () => {
     expect(resultSchema.parse(legacy)).toEqual(legacy);
     expect(resultSchema.parse({ ...legacy, failedUnits: [{ ...legacy.failedUnits[0], detail: 'x'.repeat(201), paths: ['p'.repeat(501)] }] }).failedUnits[0])
       .toMatchObject({ detail: 'x'.repeat(200), paths: ['p'.repeat(500)] });
+  });
+});
+
+describe('known findings sent with a chunk', () => {
+  const entry = (location: string, date: string, kind: 'changes' | 'security' | 'errors' = 'changes') =>
+    ({ fingerprint: 'a'.repeat(64), kind, location, what: 'w'.repeat(150), reason: 'r'.repeat(150), date });
+  it('sends findings for files in the chunk first, then newest of the same kind, within 8KB', () => {
+    const old = Array.from({ length: 40 }, (_, i) => entry(`apps/old${i}.ts:1`, '2026-10-01'));
+    const known = { state: 'loaded' as const, fingerprints: new Set<string>(), entries: [
+      ...old, entry('apps/api/src/target.ts:12', '2026-10-02'), entry('apps/new.ts:3', '2026-11-20'), entry('caddy: x', '2026-11-21', 'security')] };
+    const prompt = knownForChunk(known, { id: 'u', kind: 'changes', text: 'diff --git a/apps/api/src/target.ts b/apps/api/src/target.ts\n' });
+    expect(prompt[0]).toMatchObject({ location: 'apps/api/src/target.ts:12', reason: 'r'.repeat(150) });
+    expect(prompt[1]!.location).toBe('apps/new.ts:3');
+    expect(Buffer.byteLength(JSON.stringify(prompt))).toBeLessThanOrEqual(8000 + prompt.length + 2);
+    expect(prompt.some(item => item.location === 'caddy: x')).toBe(false);
   });
 });

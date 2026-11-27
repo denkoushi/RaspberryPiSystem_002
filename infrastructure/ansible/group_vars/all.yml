@@ -204,6 +204,9 @@ security_review_nightly_enabled: true
 security_review_queue_enabled: true
 security_review_queue_cron: "*/10 * * * *"
 security_review_queue_quiet: "05:50-07:00"
+
+# Nightly AI reading notes for procedure documents (the AI never writes into documents).
+procedure_document_feedback_enabled: true
 security_review_enqueue_on_calendar: hourly
 security_review_collect_on_calendar: "*-*-* 05:30:00 Asia/Tokyo"
 security_review_nightly_cron: "0 6 * * *"

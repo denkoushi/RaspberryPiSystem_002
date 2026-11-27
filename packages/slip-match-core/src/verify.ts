@@ -16,7 +16,7 @@ export type SlipVerificationResult = {
   reason: 'match' | 'different_seiban' | 'different_part' | 'part_required' | 'order_not_found' | 'transfer_not_found';
   legacyReason?: Extract<SlipPairMatchResult, { ok: false }>['reason'];
   actualResolvedBy?: SlipPairMatchResult['actualResolvedBy'];
-  expected?: { fseiban: string; fhincd: string; partName?: string };
+  expected?: { fseiban: string; fhincd: string; partName?: string; firstResourceCd?: string };
   actual?: { fseiban?: string; partCode?: string };
   /** 'part_name': the 現品票 carries a material code, so the pair was matched by 製番 and part name. */
   matchedBy?: 'part_name';
@@ -28,13 +28,24 @@ export async function verifySlipMatch(input: SlipPairMatchInput, source: SlipMat
   const findPurchaseOrderLookupRows = source.findPurchaseOrderLookupRows;
   const order = input.actualOrderBarcodeRaw.trim();
   const fseiban = input.actualFseibanRaw.trim();
-  const [transferRow, scheduleRow] = await Promise.all([
-    resolveScheduleRowByProductNo(input.transferOrderBarcodeRaw),
+  const transferOrder = input.transferOrderBarcodeRaw.trim();
+  const [transferRows, scheduleRow] = await Promise.all([
+    transferOrder ? source.listScheduleRowsByProductNo(transferOrder) : [],
     order ? resolveScheduleRowByProductNo(order) : fseiban ? resolveScheduleRowByFseiban(fseiban) : null
   ]);
+  const transferRow = pickPrimaryScheduleRowForOrder(transferRows);
+  let firstProcess: ProductionScheduleLookupRow | undefined;
+  for (const row of transferRows) {
+    if (!row.fsigencd.trim()) continue;
+    const processOrder = row.fkojun ?? Infinity;
+    const firstOrder = firstProcess?.fkojun ?? Infinity;
+    if (!firstProcess || processOrder < firstOrder || (processOrder === firstOrder && row.rowId < firstProcess.rowId)) firstProcess = row;
+  }
+  const firstResourceCd = firstProcess?.fsigencd.trim();
   const expected = transferRow ? {
     fseiban: transferRow.fseiban.trim(), fhincd: transferRow.fhincd.trim(),
-    ...(transferRow.fhinmei ? { partName: transferRow.fhinmei } : {})
+    ...(transferRow.fhinmei ? { partName: transferRow.fhinmei } : {}),
+    ...(firstResourceCd ? { firstResourceCd } : {})
   } : undefined;
   let actualRow = scheduleRow;
   let actual = scheduleRow ? { fseiban: scheduleRow.fseiban.trim(), partCode: scheduleRow.fhincd.trim() } : undefined;

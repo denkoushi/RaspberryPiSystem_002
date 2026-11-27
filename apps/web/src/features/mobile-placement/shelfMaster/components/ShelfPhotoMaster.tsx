@@ -5,6 +5,7 @@ import { Dialog } from '../../../../components/ui/Dialog';
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { HaizenIcon } from '../../haizen/HaizenIcon';
 import { HaizenSheet } from '../../haizen/HaizenSheet';
+import { sortShelvesBySetting } from '../../registeredShelves';
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
 import { ShelfPhotoCamera } from '../../shelfPhoto/ShelfPhotoCamera';
 import { haizenPhoneStyle, hp } from '../../ui/haizenPhoneTokens';
@@ -30,7 +31,7 @@ export function ShelfPhotoMaster({ onMessage }: { onMessage?: (message: string) 
   const [removing, setRemoving] = useState(false);
   const checking = queue.records.find((record) => record.id === checkingId);
   const queuedCodes = new Set(queue.records.map((record) => record.shelfCodeRaw));
-  const shelves = (query.data?.shelves ?? []).filter((shelf) => !queuedCodes.has(shelf.shelfCodeRaw));
+  const shelves = sortShelvesBySetting(query.data?.shelves ?? []).filter((shelf) => !queuedCodes.has(shelf.shelfCodeRaw));
   const occupiedShelves = [...shelves, ...queue.records.map((record) => ({ shelfCodeRaw: record.shelfCodeRaw, isStructured: true }))];
   const [editing, setEditing] = useState<RegisteredShelfEntryDto | 'new' | null>(() => readShelfPhotoDraft() ? 'new' : null);
   return <>

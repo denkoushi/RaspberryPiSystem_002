@@ -15,7 +15,7 @@ function renderToolbar({ workshop = false, locked = false, readOnly = false, isD
     save: vi.fn(), navigateBack: vi.fn(), undo: vi.fn(), redo: vi.fn()
   } as unknown as ComponentProps<typeof AssemblyProcedureDocumentEditorCanvasToolbar>['controller'];
   const onToggleCleanView = vi.fn();
-  render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} cleanView={cleanView} canShowCleanView={canShowCleanView} onToggleCleanView={onToggleCleanView} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} />);
+  render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} cleanView={cleanView} canShowCleanView={canShowCleanView} onToggleCleanView={onToggleCleanView} twoPage={false} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} feedbackButton={{ available: false, open: false, toggle: vi.fn() }} nightlyTargetButton={{ on: true, disabled: false, toggle: vi.fn() }} />);
   return { controller, onToggleCleanView };
 }
 
@@ -46,6 +46,17 @@ describe('document editor toolbar navigation', () => {
   });
 });
 
+
+it('puts the disabled reading feedback button immediately below voice input', () => {
+  renderToolbar();
+  const buttons = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
+  const feedbackButton = screen.getByRole('button', { name: '読んだ感想', pressed: false });
+  expect(buttons[buttons.indexOf(feedbackButton) - 1]).toHaveAccessibleName('音声入力');
+  expect(feedbackButton).toBeDisabled();
+  const nightlyButton = screen.getByRole('button', { name: '夜に読む: する', pressed: true });
+  expect(buttons[buttons.indexOf(feedbackButton) + 1]).toBe(nightlyButton);
+  expect(nightlyButton).toBeEnabled();
+});
 
 describe('document editor save status', () => {
   it.each([

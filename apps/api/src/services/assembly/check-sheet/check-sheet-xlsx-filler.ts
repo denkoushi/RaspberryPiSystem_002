@@ -1,5 +1,6 @@
 import path from 'node:path';
 import JSZip from 'jszip';
+import { columnLettersToNumber } from '../../../lib/spreadsheet-column.js';
 import { assertZipExpansionWithinBudget } from '../../../lib/zip-expansion-budget.js';
 import type { AssemblyCheckSheetCellWrite } from '@raspi-system/shared-types';
 
@@ -24,7 +25,7 @@ function escapeXml(text: string) {
 function address(cell: string) {
   const match = /^([A-Z]{1,3})([1-9]\d*)$/.exec(cell);
   if (!match) throw new Error(`Invalid cell address: ${cell}`);
-  const column = [...match[1]].reduce((value, char) => value * 26 + char.charCodeAt(0) - 64, 0);
+  const column = columnLettersToNumber(match[1]);
   const row = Number(match[2]);
   if (column > 16384 || row > 1048576) throw new Error(`Invalid cell address: ${cell}`);
   return { column, row };

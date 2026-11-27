@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { planLaterProcessPieceQuantities, planSessakuPieceQuantities } from '../piece-quantity.js';
+import { planLaterProcessPieceQuantities, planSessakuPieceQuantities, reconcileSessakuPieceQuantities } from '../piece-quantity.js';
 const pieces = (completed = true) => [{ id: 'a', position: 1, quantity: 2, isCompleted: completed }, { id: 'b', position: 2, quantity: 3, isCompleted: false }];
 describe('sessaku piece quantity reconciliation', () => {
+  it('does not fill an empty grinding set even with a preloaded cutting source', async () => {
+    const key = { fseiban: 'A', fhincd: 'P', fsigencd: ' 581 ', fkojun: '2', productNo: '' };
+    const source = { id: 'source', pieces: pieces(false) };
+    const target = { ...key, sourcePieceSetId: 'source', pieces: [], nextPosition: 1 };
+    await expect(reconcileSessakuPieceQuantities({} as never, key, 5, true, {
+      set: source as never, target: target as never, plannedQuantity: 5
+    })).resolves.toBe(false);
+  });
   it.each([[7, [2, 5]], [4, [2, 2]], [2, [2]]])('keeps completed quantities and absorbs total %s at the tail', (total, expected) => {
     const result = planSessakuPieceQuantities(pieces(), total, false, 3);
     expect(result.pieces.map((p) => p.quantity)).toEqual(expected);

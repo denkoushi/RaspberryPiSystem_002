@@ -13,6 +13,8 @@ import { normalizePurchaseFhinCdForMatching } from '../purchase-order-lookup/pur
 import { normalizeSlipToken } from './mobile-placement-slip-match.js';
 import { readScheduleDates } from './schedule-dates.js';
 
+import type { GrindingPlanningBoardScheduleSource } from '@raspi-system/shared-types';
+
 export type SchedulePartState = 'done' | 'shelf' | 'verified' | 'pending';
 export type ScheduleSeibanPart = {
   productNo: string; fhincd: string; fhinmei: string; state: SchedulePartState;
@@ -25,7 +27,7 @@ export type ScheduleSeibanSummary = {
 };
 export type ScheduleSeibanDetail = ScheduleSeibanSummary & { parts: ScheduleSeibanPart[] };
 export type ScheduleSeibanView = {
-  source: 'general' | 'dCompany' | 'both';
+  source: GrindingPlanningBoardScheduleSource;
   range: 'all' | 'aroundMonth' | 'excludeOlderThanHalfYear';
 };
 const LIST_LIMIT = 200;
@@ -65,8 +67,16 @@ async function aggregateScheduleSeibans(requestedFseiban?: string, view?: Schedu
     });
   }
   if (!roots.length) return [];
-  const aliases = new Map(roots.map(row => [row.fseiban, schedules.filter(alias => alias.isAlias && alias.aliasOf === row.fseiban).map(alias => alias.fseiban)]));
-  const seibans = [...new Set(roots.flatMap(row => [row.fseiban, ...(aliases.get(row.fseiban) ?? [])]))];
+  const aliases = new Map<string, string[]>(roots.map(row => [row.fseiban, []]));
+  for (const row of schedules) {
+    if (row.isAlias && row.aliasOf !== null) aliases.get(row.aliasOf)?.push(row.fseiban);
+  }
+  const rootBySeiban = new Map<string, string>();
+  for (const [root, groupAliases] of aliases) {
+    rootBySeiban.set(root, root);
+    for (const alias of groupAliases) rootBySeiban.set(alias, root);
+  }
+  const seibans = [...rootBySeiban.keys()];
   const machineNamesPending = resolveSeibanMachineDisplayNamesBatched(roots.map(row => row.fseiban));
   const parts = await prisma.$queryRaw<PartRow[]>`
     SELECT MIN(r."rowData"->>'FSEIBAN') AS "fseiban", r."rowData"->>'ProductNo' AS "productNo",
@@ -83,6 +93,14 @@ async function aggregateScheduleSeibans(requestedFseiban?: string, view?: Schedu
     ORDER BY r."rowData"->>'ProductNo'
   `;
   const { machineNames } = await machineNamesPending;
+  const partsByRoot = new Map<string, PartRow[]>();
+  for (const part of parts) {
+    const root = rootBySeiban.get(part.fseiban);
+    if (root === undefined) continue;
+    const group = partsByRoot.get(root);
+    if (group) group.push(part);
+    else partsByRoot.set(root, [part]);
+  }
   const productNos = [...new Set(parts.map(part => part.productNo))];
   const [records, branches, haizen] = productNos.length ? await Promise.all([
     prisma.$queryRaw<{ transferOrderBarcodeRaw: string }[]>`
@@ -119,8 +137,7 @@ async function aggregateScheduleSeibans(requestedFseiban?: string, view?: Schedu
     if (!map.has(key)) map.set(key, row);
   }
   return roots.map(row => {
-    const group = new Set([row.fseiban, ...(aliases.get(row.fseiban) ?? [])]);
-    const groupParts = parts.filter(part => group.has(part.fseiban));
+    const groupParts = partsByRoot.get(row.fseiban) ?? [];
     const seen = new Set<string>();
     const counts = { shelf: 0, verified: 0, pending: 0, done: 0 };
     const resultParts = groupParts.filter(part => !seen.has(part.productNo) && !!seen.add(part.productNo)).map(part => {

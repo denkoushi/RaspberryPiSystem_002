@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { WorkInstructionEditorButton as Button } from './WorkInstructionEditorControls';
-import { workInstructionMemoOverrideMapKey } from './workInstructionEditorMemo';
+import { memoText, workInstructionMemoOverrideMapKey } from './workInstructionEditorMemo';
 import {
   WORK_INSTRUCTION_EDITOR_OPTION_CLASS_NAME,
   WORK_INSTRUCTION_EDITOR_SELECT_CLASS_NAME
@@ -25,10 +25,6 @@ function isUnassigned(override: WorkInstructionMemoOverrideDto): boolean {
   return override.stepKey === null
     || override.sourceStep === null
     || String(override.migrationState ?? '').toUpperCase() === 'UNASSIGNED';
-}
-
-function overrideText(override: WorkInstructionMemoOverrideDto): string {
-  return typeof override.text === 'string' ? override.text : override.memo ?? '';
 }
 
 function isOccupied(override: WorkInstructionMemoOverrideDto): boolean {
@@ -69,7 +65,7 @@ export function WorkInstructionMemoReviewList({
               <p className="break-words text-xs text-[#9fadb9]">
                 元の手順 {override.migratedFromStep ?? '不明'}
               </p>
-              <p className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-white">{overrideText(override)}</p>
+              <p className="max-h-20 overflow-y-auto whitespace-pre-wrap break-words text-white">{memoText(override)}</p>
               <label className="grid min-w-0 gap-1 text-sm font-semibold text-white">
                 移し先の手順
                 <select

@@ -6,12 +6,16 @@ import { HaizenIcon } from '../../haizen/HaizenIcon';
 import { isMobilePlacementShelfRegisterRouteState } from '../../shelfSelection';
 import { haizenPhoneStyle, hp } from '../../ui/haizenPhoneTokens';
 
+import { ResourceShelfPhoneSettings } from './ResourceShelfSettings';
+import { ShelfOrderPhoneSettings } from './ShelfOrderSettings';
 import { ShelfPhotoMaster } from './ShelfPhotoMaster';
 
 export function ShelfMasterPhonePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [toast, setToast] = useState<string | null>(null);
+  const [resourceSettings, setResourceSettings] = useState(false);
+  const [orderSettings, setOrderSettings] = useState(false);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 2500);
@@ -22,8 +26,14 @@ export function ShelfMasterPhonePage() {
   });
 
   return <div className={hp.screen} style={haizenPhoneStyle}><div className={hp.content}>
-    <HaizenHeader title="棚マスタ" onBack={backToHub} />
-    <ShelfPhotoMaster onMessage={setToast} />
+    {resourceSettings ? <ResourceShelfPhoneSettings onClose={() => setResourceSettings(false)} />
+      : orderSettings ? <ShelfOrderPhoneSettings onClose={() => setOrderSettings(false)} onMessage={setToast} /> : <>
+      <HaizenHeader title="棚マスタ" onBack={backToHub}>
+        <button type="button" className={`${hp.segment} ml-auto`} onClick={() => setResourceSettings(true)}>資源CD</button>
+        <button type="button" className={hp.segment} onClick={() => setOrderSettings(true)}>並び順</button>
+      </HaizenHeader>
+      <ShelfPhotoMaster onMessage={setToast} />
+    </>}
     {toast && <div role="status" className="pointer-events-none absolute bottom-24 left-3.5 right-3.5 z-20 flex items-center gap-2.5 rounded-[14px] bg-[var(--hp-ink)] px-4 py-[13px] text-[15px] font-black text-[var(--hp-bg)]"><HaizenIcon name="check" /><span className="break-words">{toast}</span></div>}
   </div></div>;
 }

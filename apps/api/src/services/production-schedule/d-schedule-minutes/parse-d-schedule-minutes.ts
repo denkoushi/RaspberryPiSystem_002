@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { assertZipExpansionWithinBudget } from '../../../lib/zip-expansion-budget.js';
 
-import { calendarDate, cellText, formulaWithoutResult, inferDate, normalize, readDate } from './date-cell.js';
+import { calendarDate, cellText, displayText, formulaWithoutResult, inferDate, normalize, readDate } from './date-cell.js';
 
 export type DScheduleMinutesBlock = {
   seiban: string;
@@ -137,7 +137,7 @@ export async function parseDScheduleMinutesXlsx(input: {
   if (!columns.has('製番') || !columns.has('部品完成')) return fatal('MISSING_HEADERS');
   const warn = (code: string, seiban: string | null, cell: ExcelJS.Cell): void => {
     if (!warnings.some((warning) => warning.code === code && warning.seiban === seiban && warning.cell === cell.address)) {
-      warnings.push({ code, seiban, cell: cell.address, rawText: cellText(cell) || null });
+      warnings.push({ code, seiban, cell: cell.address, rawText: displayText(cell) || null });
     }
   };
   const calendar = new Map<number, string | null>();
@@ -205,8 +205,8 @@ export async function parseDScheduleMinutesXlsx(input: {
     const match = seibanText(seibanCell).match(seibanPattern);
     if (!match) {
       const text = normalize(cellText(seibanCell));
-      // Template rows above the data carry 0 in the 製番 column.
-      if (!hidden(sheet.getRow(row)) && text && text !== '0') warn('INVALID_SEIBAN', null, seibanCell);
+      // Template rows above the data carry 0 (or a column-number row) in the 製番 column.
+      if (row > headerRows.get('製番')! && !hidden(sheet.getRow(row)) && text && text !== '0') warn('INVALID_SEIBAN', null, seibanCell);
       continue;
     }
     if (!shapeValid(sheet, row, seibanColumn)) {
@@ -233,7 +233,7 @@ export async function parseDScheduleMinutesXlsx(input: {
     const partsCell = safeCell(row, columns.get('部品完成')!, row, match[1]);
     blocks.push({ seiban: match[1], aliasSeibans: alias ? [alias[1]] : [], partsCompleteDate: null,
       assignees: [], outsourceMarks: [], surfaceSendOutDates: [], memo: null, sourceRow: row,
-      rawPartsCompleteText: hidden(sheet.getRow(row)) || hidden(sheet.getColumn(columns.get('部品完成')!)) || !partsCell ? null : cellText(partsCell) || null });
+      rawPartsCompleteText: hidden(sheet.getRow(row)) || hidden(sheet.getColumn(columns.get('部品完成')!)) || !partsCell ? null : displayText(partsCell) || null });
   }
   const visibleBlocks = blocks.filter((block) => !hidden(sheet.getRow(block.sourceRow)));
   if (!visibleBlocks.length) return fatal('ZERO_BLOCKS');
@@ -281,7 +281,7 @@ export async function parseDScheduleMinutesXlsx(input: {
         const cell = safeCell(row, col, block.sourceRow, block.seiban);
         if (!cell) continue;
         if (label === '部品完成') {
-          block.rawPartsCompleteText = cellText(cell) || null;
+          block.rawPartsCompleteText = displayText(cell) || null;
           if ([...headerColumns].some((column) => column !== col
             && sheet.getCell(row, column).master.address === cell.master.address)
             || [...offsets].some(([other, otherOffset]) => other !== label && columns.get(other) === col

@@ -1,8 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import { clearManualLists } from './procedure-manual-list-cache';
 import { ProcedureManualBrowser } from './ProcedureManualBrowser';
@@ -47,7 +46,7 @@ const onChanged = vi.fn(); const onFix = vi.fn();
 function showDialog(categoryId = 'tools') { return render(<MemoryRouter><ProcedureManualCommonDialog catalog={catalog} items={items} categoryId={categoryId} onClose={vi.fn()} onChanged={onChanged} onFix={onFix} beforeMutation={() => true} /><Location /></MemoryRouter>); }
 beforeEach(() => {
   clearManualLists();
-  vi.resetAllMocks(); clearProcedureEditorAccess(); saveProcedureEditorAccess('test-pin');
+  vi.resetAllMocks();
   api.catalog.mockResolvedValue(catalog);
   api.overview.mockImplementation(async (_processId, published) => ({ processes: processes.map(row => ({ processId: row.id, count: 0, items: items.filter(item => item.processId === row.id && (!published || item.status === 'published')) })) }));
   api.create.mockResolvedValue({ id: 'new-manual', modelCode: 'エアブロー', modelCodeKey: 'エアブロー', processId: 'tools' });
@@ -56,7 +55,6 @@ beforeEach(() => {
   api.assignments.mockResolvedValue({ assignments: [{ id: 'micrometer', assemblyProcedureDocumentId: 'micrometer', sortOrder: 0, label: '使い方' }], sequence: { documents: [] } });
   api.replace.mockResolvedValue(undefined); api.deleteDocument.mockResolvedValue(undefined);
 });
-afterEach(() => { clearProcedureEditorAccess(); });
 
 describe('common mode in the shared screens', () => {
   it('restores common URL and filters list by category, kana and normalized name with toggle-to-clear', async () => {
@@ -149,7 +147,7 @@ describe('common mode in the shared screens', () => {
     const row = await screen.findByRole('row', { name: 'マイクロメータ_使い方' });
     fireEvent.click(within(row).getByRole('button', { name: '削除' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '下書きを削除' })).getByRole('button', { name: '削除' }));
-    await waitFor(() => expect(api.deleteDocument).toHaveBeenCalledWith('micrometer', 'test-pin'));
+    await waitFor(() => expect(api.deleteDocument).toHaveBeenCalledWith('micrometer', ''));
     expect(api.replace).toHaveBeenCalledWith('マイクロメータ', 'tools', { modelCode: 'マイクロメータ', assignments: [] });
   });
 

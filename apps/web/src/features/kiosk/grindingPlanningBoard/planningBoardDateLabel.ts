@@ -1,1 +1,1 @@
-export const formatPlanningBoardDate = (date: string | null): string => (date ? date.slice(5).replace('-', '/') : '未定');
+export const formatPlanningBoardDate = (date: string | null, separator = '/'): string => (date ? date.slice(5).replace('-', separator) : '未定');

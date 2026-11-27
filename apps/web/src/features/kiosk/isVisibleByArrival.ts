@@ -1,5 +1,6 @@
 type ArrivalItem = {
   arrived?: boolean;
+  waitingForPair?: boolean;
   isCompleted: boolean;
   specialDue?: unknown;
   pendingSpecialDue?: unknown;
@@ -7,5 +8,5 @@ type ArrivalItem = {
 
 export function isVisibleByArrival(item: ArrivalItem, enabled: boolean): boolean {
   const specialDue = item.pendingSpecialDue !== undefined ? item.pendingSpecialDue : item.specialDue;
-  return !enabled || item.isCompleted || item.arrived !== false || Boolean(specialDue);
+  return !enabled || item.isCompleted || Boolean(specialDue) || (item.arrived !== false && !item.waitingForPair);
 }

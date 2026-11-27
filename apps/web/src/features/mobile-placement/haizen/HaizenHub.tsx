@@ -18,6 +18,7 @@ import { HaizenIcon } from './HaizenIcon';
 import { HaizenSheet } from './HaizenSheet';
 import { HaizenShelfPhotoList, HaizenShelfPhotoPicker } from './HaizenShelfPhotoPicker';
 import { HaizenSlipButton } from './HaizenSlipButton';
+import { playHaizenSound, unlockHaizenSound } from './haizenSounds';
 import { createHaizenClientRecordId } from './offline/haizenOfflineQueueStore';
 import { useHaizenOfflineQueue } from './offline/useHaizenOfflineQueue';
 import { formatScheduleDate, scheduleDateColor, scheduleDetailPath } from './scheduleDisplay';
@@ -102,6 +103,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const [scannedAt, setScannedAt] = useState('');
   const [verifyBranchNo, setVerifyBranchNo] = useState<number | null>(null);
   const [verifyShelfCode, setVerifyShelfCode] = useState('');
+  const [showAllVerifyShelves, setShowAllVerifyShelves] = useState(false);
   const [verifyScannedAt, setVerifyScannedAt] = useState('');
   const [placeToast, setPlaceToast] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -125,13 +127,14 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   useEffect(() => {
     setVerifyBranchNo(null);
     setVerifyShelfCode('');
+    setShowAllVerifyShelves(false);
   }, [mp.transferOrder, flow.result]);
   useEffect(() => {
     if (!knownBranches || (tab === 'verify' && flow.result !== 'ok')) return;
     const onlyNone = knownBranches.length === 1 && knownBranches[0].branchNo === 0;
     if (activeBranchNo !== null && (activeBranchNo === 0 ? hasNumbered : hasNone)) {
       setActiveBranchNo(onlyNone ? 0 : null);
-    } else if (activeBranchNo === null && onlyNone) {
+    } else if (activeBranchNo === null && (onlyNone || (tab === 'verify' && !hasNumbered))) {
       setActiveBranchNo(0);
     }
   }, [knownBranches, activeBranchNo, setActiveBranchNo, hasNumbered, hasNone, tab, flow.result]);
@@ -151,6 +154,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     if (!activeNumber?.trim() || activeBranchNo === null || !activeShelfCode.trim() ||
       selectedBranch?.shelfCodeRaw === activeShelfCode || (activeBranchNo === 0 ? hasNumbered : hasNone) ||
       (tab === 'verify' && flow.result !== 'ok')) return;
+    playHaizenSound('decide');
     const shelf = shelves.data?.shelves.find((s) => s.shelfCodeRaw === activeShelfCode);
     const place = (shelf && [shelf.machineName, shelf.direction, shelf.displayLabel].filter(Boolean).join(' ')) || activeShelfCode;
     const moving = Boolean(selectedBranch);
@@ -184,13 +188,20 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const registerError = tab === 'place' ? null : mp.registerError;
 
   const previousShelfCodes = selectedBranch ? [selectedBranch.shelfCodeRaw] : [];
+  const registeredShelves = shelves.data?.shelves ?? [];
+  const firstResourceCd = flow.result === 'ok' ? slipDetails?.expected?.firstResourceCd : undefined;
+  const linkedShelves = firstResourceCd ? registeredShelves.filter((shelf) => shelf.resourceCds?.includes(firstResourceCd)) : [];
+  const hasLinkedShelves = linkedShelves.length > 0;
+  const verifyShelves = hasLinkedShelves && !showAllVerifyShelves
+    ? registeredShelves.filter((shelf) => linkedShelves.includes(shelf) || shelf.shelfCodeRaw === previousShelfCodes[0] || shelf.shelfCodeRaw === verifyShelfCode)
+    : registeredShelves;
   const clearActual = () => {
     mp.setActualOrder(''); mp.setActualFseiban(''); mp.setActualPart('');
     mp.resetSlipResult(); mp.resetActualSlipOcrFeedback();
   };
   const nextVerify = () => {
     clearActual(); mp.setTransferOrder(''); mp.setTransferPart('');
-    setVerifyBranchNo(null); setVerifyShelfCode('');
+    setVerifyBranchNo(0); setVerifyShelfCode(''); setShowAllVerifyShelves(false);
   };
   const change = (setter: (value: string) => void, value: string, actual = false) => {
     setter(value);
@@ -217,7 +228,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const resultTitle = flow.result === 'ok' ? '一致' : flow.result === 'ng' ? '不一致' : flow.result === 'not-found' ? (slipDetails?.reason === 'part_required' ? 'あと1つ' : '未登録') : '照合できませんでした';
   const resultColor = flow.result === 'ok' ? colors.ok : flow.result === 'ng' ? colors.ng : colors.shelf;
 
-  return <div style={haizenPhoneStyle} className={`fixed inset-0 z-40 flex h-dvh flex-col ${hp.surface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]`}>
+  return <div style={haizenPhoneStyle} onPointerDown={unlockHaizenSound} onClickCapture={(e) => { if ((e.target as Element).closest('button')) playHaizenSound('tap'); }} className={hp.frame}>
     <div className="relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col">
       <main className="relative flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-3.5">
         {tab === 'verify' ? <>
@@ -250,13 +261,14 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
             {flow.result === 'not-found' && <div className="flex shrink-0 gap-2">{onPhoto && <button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={onPhoto}>写真で製番</button>}<button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={() => setSheet('inputs')}>部品番号</button></div>}
           </>}
           <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
-            <HaizenShelfPhotoList key={`${mp.transferOrder}:${verifyBranchNo}:${previousShelfCodes.join()}`} compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes} shelfCounts={targetFseiban ? scheduleShelfCounts : undefined}
+            <HaizenShelfPhotoList key={`${mp.transferOrder}:${verifyBranchNo}:${previousShelfCodes.join()}`} compact shelves={verifyShelves} previousShelfCodes={previousShelfCodes} shelfCounts={targetFseiban ? scheduleShelfCounts : undefined}
+              allShelvesToggle={hasLinkedShelves ? { pressed: showAllVerifyShelves, onToggle: () => setShowAllVerifyShelves((show) => !show) } : undefined}
               loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={verifyShelfCode} onSelect={setVerifyShelfCode}
               disabled={flow.result !== 'ok' || verifyBranchNo === null} onScan={() => mp.setScanField('shelf')} onExpand={() => setSheet('shelves')} />
           </section>
         </> : <>
         {(queue.offline || queue.pending.length > 0 || queue.needsCheck.length > 0) && <div aria-label="送信状況" className="flex shrink-0 gap-1.5">
-          {queue.offline && <span className={`${hp.chip} inline-flex items-center !text-[var(--hp-ng)]`}>圏外</span>}
+          {queue.offline && <MobileOfflineChip offline />}
           {queue.pending.length > 0 && <button type="button" className={`${hp.chip} !text-orange-400`} onClick={() => setSheet('pending')}>未送信 {queue.pending.length}</button>}
           {queue.needsCheck.length > 0 && <button type="button" className={`${hp.chip} !text-[var(--hp-ng)]`} onClick={() => { setConfirmDeleteId(null); setSheet('needs_check'); }}>要確認 {queue.needsCheck.length}</button>}
         </div>}
@@ -346,6 +358,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     <BarcodeScanModal onFrameCaptured={captureFrame} open={mp.scanField !== null} formats={mp.scanFormats} engine="auto-native" {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
       onSuccess={(text) => {
         if (tab === 'place' && (mp.scanField === 'transferOrder' || mp.scanField === 'placePurchaseOrder')) {
+          if (text.trim()) playHaizenSound('decide');
           readPlaceSlip(mp.scanField === 'placePurchaseOrder' ? 'po' : 'mo', text, retakeSelection.current); mp.setScanField(null);
         } else mp.onScanSuccess(text);
       }} onAbort={() => { retakeSelection.current = null; mp.setScanField(null); }} />

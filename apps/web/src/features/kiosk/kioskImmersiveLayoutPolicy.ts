@@ -51,7 +51,8 @@ const IMMERSIVE_PATH_EXACT = new Set<string>([
   '/kiosk/production-schedule',
   '/kiosk/documents',
   '/kiosk/inventory',
-  '/kiosk/inventory/haizen'
+  '/kiosk/inventory/haizen',
+  '/kiosk/inventory/haizen/verify-history'
 ]);
 
 /**

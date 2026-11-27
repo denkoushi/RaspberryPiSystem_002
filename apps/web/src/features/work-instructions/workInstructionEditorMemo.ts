@@ -9,7 +9,7 @@ export type WorkInstructionMemoOverrideMap = Record<string, WorkInstructionMemoO
 
 const MIGRATED: WorkInstructionMemoMigrationState = 'MIGRATED';
 
-function memoText(override: Pick<WorkInstructionMemoOverrideDto, 'text' | 'memo'>): string {
+export function memoText(override: Pick<WorkInstructionMemoOverrideDto, 'text' | 'memo'>): string {
   return typeof override.text === 'string' ? override.text : override.memo ?? '';
 }
 

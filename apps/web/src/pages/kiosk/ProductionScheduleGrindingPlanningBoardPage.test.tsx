@@ -1628,14 +1628,14 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const card = await screen.findByTestId('planning-forward-queue-card-b', undefined, { timeout: 3000 });
     expect(card).toHaveClass('border-slate-950', 'text-slate-500');
     const arrive = within(card).getByRole('button', { name: '着', exact: true });
-    expect(arrive).toHaveClass('min-h-9');
+    expect(arrive).toHaveClass('h-5');
     fireEvent.click(arrive);
     await waitFor(() => expect(mocks.arrival).toHaveBeenCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: true }));
     await waitFor(() => expect(screen.getByTestId('planning-gantt-bar-b')).toBeInTheDocument());
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
     const arrived = await screen.findByTestId('planning-forward-queue-card-b', undefined, { timeout: 3000 });
     expect(arrived).not.toHaveClass('text-slate-500');
-    fireEvent.click(within(arrived).getByRole('button', { name: '取り消し', exact: true }));
+    fireEvent.click(within(arrived).getByRole('button', { name: '取消・手押1106', exact: true }));
     await waitFor(() => expect(mocks.arrival).toHaveBeenLastCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: false }));
     await waitFor(() => expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument());
   });
@@ -2394,7 +2394,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.pointerDown(bar, { pointerId: 42, clientX: x, clientY: 20, button: 0 });
     fireEvent.pointerMove(bar, { pointerId: 42, clientX: x, clientY: 120 });
     if (scenario === 'unlisted resource' || scenario === 'different category') {
-      expect(target.closest('[data-gantt-lane]')).toHaveStyle({ opacity: '0.3' });
+      expect(target.closest('[data-gantt-lane]')!.querySelector(':scope > [data-gantt-lane-dim]')).toHaveStyle({ opacity: '0.7' });
       expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
       fireEvent.pointerUp(bar, { pointerId: 42, clientX: x, clientY: 120 });
       expect(mocks.resourceMove).not.toHaveBeenCalled();

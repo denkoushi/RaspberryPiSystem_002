@@ -38,3 +38,11 @@ export function timeSincePlaced(updatedAt: string, now: number): string {
   if (minutes < 1440) return `${Math.floor(minutes / 60)}時間前`;
   return `${Math.floor(minutes / 1440)}日前`;
 }
+
+export function formatHaizenClock(value: number | string): string {
+  return new Date(value).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+export function formatHaizenPlacedAt(value: string): string {
+  return `${new Date(value).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })} ${formatHaizenClock(value)}`;
+}

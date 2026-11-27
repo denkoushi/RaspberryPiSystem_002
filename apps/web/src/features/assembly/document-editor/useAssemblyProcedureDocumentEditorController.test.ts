@@ -3,7 +3,6 @@ import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
-  verifyPassword: vi.fn(),
   getDocument: vi.fn(),
   createRevision: vi.fn(),
   findTextCandidates: vi.fn(),
@@ -38,7 +37,6 @@ vi.mock('../../../api/client', () => ({
   suggestAssemblyProcedureLayout: apiMocks.suggestLayout,
   placeProcedureMaterial: apiMocks.placeMaterial,
   unplaceProcedureMaterial: apiMocks.unplaceMaterial,
-  verifyAssemblyTemplateAccessPassword: apiMocks.verifyPassword,
   getAssemblyProcedureDocument: apiMocks.getDocument,
   createAssemblyProcedureDocumentRevision: apiMocks.createRevision,
   findAssemblyProcedureTextCandidates: apiMocks.findTextCandidates,
@@ -52,7 +50,6 @@ vi.mock('../../../api/client', () => ({
 }));
 
 import { api, getResolvedClientKey } from '../../../api/http';
-import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import { createOverlayForRange, rotateImageOverlay } from './assemblyDocumentEditorDraft';
 import { readAssemblyDocumentEditorRecovery, writeAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
@@ -87,15 +84,11 @@ function makeDocument(overrides: Partial<AssemblyProcedureDocumentDto> = {}): As
 
 async function authenticate(result: { current: ReturnType<typeof useAssemblyProcedureDocumentEditorController> }) {
   await waitFor(() => expect(result.current.loading).toBe(false));
-  await act(async () => {
-    await result.current.verifyEditorPassword('1234');
-  });
-  expect(result.current.accessGranted).toBe(true);
+  await waitFor(() => expect(result.current.accessGranted).toBe(true));
 }
 
 function renderEditor(document: AssemblyProcedureDocumentDto, onNavigateBack?: () => void) {
   apiMocks.getDocument.mockResolvedValue(document);
-  apiMocks.verifyPassword.mockResolvedValue({ success: true });
   apiMocks.createRevision.mockResolvedValue(document);
   return renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: document.id, onNavigateBack }));
 }
@@ -108,7 +101,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     apiMocks.unplaceMaterial.mockResolvedValue(undefined);
     leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
     leaseMocks.release.mockResolvedValue(undefined);
-    window.localStorage.clear(); clearProcedureEditorAccess();
+    window.localStorage.clear();
   });
 
   it('keeps a pending material associated with the rotated photo through undo, redo and recovery', async () => {
@@ -127,7 +120,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     await act(async () => { await hook.result.current.rotateSelectedImage('right', 0.5); });
 
     expect(apiMocks.rotateImage).toHaveBeenCalledExactlyOnceWith({
-      id: document.id, assetId: photo.assetId, accessPassword: '1234', direction: 'right', holderToken: 'session-token'
+      id: document.id, assetId: photo.assetId, accessPassword: '', direction: 'right', holderToken: 'session-token'
     });
     expect(hook.result.current.document?.assets).toMatchObject({ [rotated.assetId]: rotated });
     expect(hook.result.current.elements[0]).toMatchObject({ assetId: rotated.assetId, bbox: { widthRatio: 0.75, heightRatio: 0.25 } });
@@ -223,75 +216,6 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.canUndo).toBe(false);
   });
 
-  it('clears the preview and discards a late result after editor access expires', async () => {
-    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/page.png', overlays: [photo] }] }));
-    await authenticate(hook.result);
-    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
-    act(() => hook.result.current.setSelectedOverlayId(photo.id));
-    const rotated = { ...original, assetId: 'late-rotation' };
-    let finishRotation!: () => void;
-    apiMocks.rotateImage.mockImplementationOnce(() => new Promise(resolve => { finishRotation = () => resolve(rotated); }));
-    let request!: Promise<void>;
-
-    act(() => { request = hook.result.current.rotateSelectedImage('right', 1); });
-    expect(hook.result.current.rotationPreview?.imageAngles.get(photo.id)).toBe(90);
-    act(() => clearProcedureEditorAccess());
-    expect(hook.result.current.rotationPreview).toBeNull();
-
-    await act(async () => { finishRotation(); await request; });
-    expect(hook.result.current.document?.assets?.[rotated.assetId]).toBeUndefined();
-    expect(hook.result.current.elements).toEqual([photo]);
-    expect(hook.result.current.canUndo).toBe(false);
-    expect(hook.result.current.busy).toBe(false);
-  });
-
-  it.each([true, false])('queues two clicks in order and keeps only successful rotations when second success is %s', async secondSucceeds => {
-    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/page.png', overlays: [photo] }] }));
-    await authenticate(hook.result);
-    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
-    act(() => hook.result.current.setSelectedOverlayId(photo.id));
-    const firstAsset = { ...original, assetId: 'first-rotation' };
-    const secondAsset = { ...original, assetId: 'second-rotation' };
-    let finishFirst!: () => void;
-    let finishSecond!: () => void;
-    apiMocks.rotateImage
-      .mockImplementationOnce(() => new Promise(resolve => { finishFirst = () => resolve(firstAsset); }))
-      .mockImplementationOnce(() => new Promise((resolve, reject) => {
-        finishSecond = () => secondSucceeds ? resolve(secondAsset) : reject(new Error('rotate failed'));
-      }));
-    let request!: Promise<void>;
-    act(() => { request = hook.result.current.rotateSelectedImage('right', 1); });
-    act(() => { void hook.result.current.rotateSelectedImage('right', 1); });
-    expect(hook.result.current.canQueueRotation).toBe(true);
-    expect(hook.result.current.rotationPreview?.imageAngles.get(photo.id)).toBe(180);
-    expect(apiMocks.rotateImage).toHaveBeenCalledOnce();
-
-    await act(async () => finishFirst());
-    expect(apiMocks.rotateImage.mock.calls.map(([input]) => [input.assetId, input.direction])).toEqual([
-      [photo.assetId, 'right'], [firstAsset.assetId, 'right']
-    ]);
-    const firstDraft = hook.result.current.elements;
-    expect(firstDraft[0]).toMatchObject({ assetId: firstAsset.assetId });
-    expect(hook.result.current.rotationPreview?.imageAngles.get(photo.id)).toBe(90);
-    expect(hook.result.current.busy).toBe(true);
-    if (!secondSucceeds) act(() => { void hook.result.current.rotateSelectedImage('left', 1); });
-
-    await act(async () => { finishSecond(); await request; });
-    expect(apiMocks.rotateImage).toHaveBeenCalledTimes(2);
-    expect(hook.result.current.busy).toBe(false);
-    expect(hook.result.current.rotationPreview).toBeNull();
-    if (secondSucceeds) {
-      expect(hook.result.current.elements[0]).toMatchObject({ assetId: secondAsset.assetId });
-      await act(async () => hook.result.current.undo());
-    } else {
-      expect(hook.result.current.messageIsError).toBe(true);
-    }
-    expect(hook.result.current.elements).toEqual(firstDraft);
-    await act(async () => hook.result.current.undo());
-    expect(hook.result.current.elements).toEqual([photo]);
-    expect(hook.result.current.canUndo).toBe(false);
-  });
-
   it('toggles sharpening on one overlay with undo, redo and dirty state', async () => {
     const second = { ...photo, id: 'second' };
     const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
@@ -312,7 +236,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(result.current.canTogglePhotoSharpen).toBe(true);
     await act(async () => result.current.togglePhotoSharpen());
     expect(apiMocks.sharpenPhoto).toHaveBeenCalledExactlyOnceWith({
-      id: document.id, assetId: 'original', accessPassword: '1234', holderToken: 'session-token'
+      id: document.id, assetId: 'original', accessPassword: '', holderToken: 'session-token'
     });
     const sharpenedPhoto = { ...photo, assetId: 'sharpened' };
     expect(result.current.elements.slice(0, 2)).toEqual([sharpenedPhoto, second]);
@@ -455,7 +379,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     apiMocks.importPages.mockResolvedValue(next);
     await act(async () => expect(await hook.result.current.importPages('other-document', [2, 0], 0)).toBe(true));
     expect(apiMocks.importPages).toHaveBeenCalledWith({
-      id: document.id, expectedEditVersion: 0, accessPassword: '1234', holderToken: 'session-token',
+      id: document.id, expectedEditVersion: 0, accessPassword: '', holderToken: 'session-token',
       sourceDocumentId: 'other-document', sourcePageIndexes: [2, 0], afterPageIndex: 0
     });
     expect(hook.result.current.selectedPageIndex).toBe(1);
@@ -555,7 +479,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     await act(async () => hook.result.current.movePage(0, 2));
 
     expect(apiMocks.movePage).toHaveBeenCalledWith({
-      id: document.id, pageIndex: 0, toPageIndex: 2, accessPassword: '1234', expectedEditVersion: 0, holderToken: 'session-token'
+      id: document.id, pageIndex: 0, toPageIndex: 2, accessPassword: '', expectedEditVersion: 0, holderToken: 'session-token'
     });
     expect(hook.result.current.selectedPageIndex).toBe(expectedSelection);
     expect(hook.result.current.selectedOverlayId).toBeNull();
@@ -610,7 +534,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const next = { ...document, editVersion: 1, assets: {}, pages: document.pages.filter(page => page.pageIndex !== pageIndex).map((page, index) => ({ ...page, pageIndex: index })) };
     apiMocks.deletePage.mockResolvedValue(next);
     await act(async () => { await hook.result.current.deletePage(pageIndex); });
-    expect(apiMocks.deletePage).toHaveBeenCalledWith({ id: document.id, pageIndex, accessPassword: '1234', holderToken: 'session-token', expectedEditVersion: 0 });
+    expect(apiMocks.deletePage).toHaveBeenCalledWith({ id: document.id, pageIndex, accessPassword: '', holderToken: 'session-token', expectedEditVersion: 0 });
     expect(hook.result.current.document?.editVersion).toBe(1);
     expect(hook.result.current.document?.assets?.draft).toBeDefined();
     expect(hook.result.current.selectedPageIndex).toBe(Math.min(pageIndex, 1));
@@ -717,7 +641,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
   });
 
   it('does nothing when the document is read only', async () => {
-    const hook = renderEditor(makeDocument());
+    const hook = renderEditor(makeDocument({ status: 'published' }));
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
     expect(hook.result.current.readOnly).toBe(true);
     await act(async () => { await hook.result.current.deletePage(0); });
@@ -814,7 +738,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const proposal = [...standard.map(element => element.kind === 'TEXT' ? { ...element, text: '書き直した文章' } : element), added];
     apiMocks.suggestLayout.mockResolvedValue({ elements: proposal, addedElementIds: ['added'], changes: ['写真を読んで 1 行足した'] });
     await act(async () => hook.result.current.layoutSuggestions.start());
-    expect(apiMocks.suggestLayout).toHaveBeenCalledWith(expect.objectContaining({ pageIndex: 0, elements: [draftText, image], accessPassword: '1234', holderToken: 'session-token', signal: expect.any(AbortSignal) }));
+    expect(apiMocks.suggestLayout).toHaveBeenCalledWith(expect.objectContaining({ pageIndex: 0, elements: [draftText, image], accessPassword: '', holderToken: 'session-token', signal: expect.any(AbortSignal) }));
     expect(hook.result.current.elements).toEqual(initial);
     expect(hook.result.current.layoutSuggestions.previewElements).toEqual(proposal.map(element => element.id === 'added' ? { ...element, mask: { enabled: true, color: '#fff2c6' } } : element));
     expect(hook.result.current.readOnly).toBe(true);
@@ -908,7 +832,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     ] });
     await act(async () => hook.result.current.layoutSuggestions.start());
     await act(async () => hook.result.current.layoutSuggestions.apply());
-    expect(apiMocks.addBlankPage).toHaveBeenCalledExactlyOnceWith({ id: document.id, holderToken: 'session-token', accessPassword: '1234', expectedEditVersion: 0, afterPageIndex: 0 });
+    expect(apiMocks.addBlankPage).toHaveBeenCalledExactlyOnceWith({ id: document.id, holderToken: 'session-token', accessPassword: '', expectedEditVersion: 0, afterPageIndex: 0 });
     expect(hook.result.current.selectedPageIndex).toBe(0);
     expect(hook.result.current.selectedPageElements).toEqual(split.elements);
     expect(hook.result.current.elements.filter(element => element.pageIndex === 1)).toEqual(split.nextPageElements);
@@ -1053,11 +977,6 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.elements).toEqual([source]);
     await act(async () => { finish(hook.result.current.document!); await pending; });
     act(() => hook.result.current.setSelectedPageIndex(0));
-    act(() => clearProcedureEditorAccess());
-    expect(hook.result.current.readOnly).toBe(true);
-    act(() => hook.result.current.duplicateOverlayToCurrentPage('source'));
-    expect(hook.result.current.elements).toEqual([source]);
-    expect(hook.result.current.canUndo).toBe(false);
   });
 
   it('preserves the text-erase prefix for same-page and cross-page copies', async () => {
@@ -1080,92 +999,30 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(new Set([source.id, samePageCopy?.id, otherPageCopy?.id]).size).toBe(3);
   });
 
-  it('uses valid entrance access without asking or verifying again', async () => {
-    saveProcedureEditorAccess('2520');
+  it('creates the revision with an empty password on load without asking for a PIN', async () => {
     const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
     const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
     await waitFor(() => expect(result.current.accessGranted).toBe(true));
-    expect(result.current.passwordInput).toBe('2520');
-    expect(apiMocks.verifyPassword).not.toHaveBeenCalled();
-    expect(apiMocks.createRevision).toHaveBeenCalledWith(doc.id, '2520');
+    expect(apiMocks.createRevision).toHaveBeenCalledWith(doc.id, '');
   });
-  it('falls back to the gate and clears stored access when revision authentication fails', async () => {
-    saveProcedureEditorAccess('2520');
+  it('stays out of the editor and shows the failure when the revision cannot be created', async () => {
     apiMocks.getDocument.mockResolvedValue(makeDocument()); apiMocks.createRevision.mockRejectedValue(new Error('認証失敗'));
     const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: 'source-draft' }));
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.accessGranted).toBe(false); expect(result.current.passwordInput).toBe('');
-    expect(readProcedureEditorAccess()).toBeNull();
+    expect(result.current.accessGranted).toBe(false);
+    expect(result.current.message).toBeTruthy();
   });
-  it.each([401, 403])('revokes entrance access on an authenticated save returning %s', async status => {
-    saveProcedureEditorAccess('2520');
+  it.each([401, 403])('keeps editing and shows a message on an authenticated save returning %s', async status => {
     const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
     const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
     await waitFor(() => expect(result.current.accessGranted).toBe(true));
     await waitFor(() => expect(result.current.readOnly).toBe(false));
     act(() => result.current.addOverlay('TEXT'));
-    apiMocks.saveOverlays.mockRejectedValue({ isAxiosError: true, response: { status, data: { message: '組立テンプレート編集パスワードが違います' } } });
+    apiMocks.saveOverlays.mockRejectedValue({ isAxiosError: true, response: { status, data: { message: '権限がありません' } } });
     await act(async () => { await result.current.save(); });
-    expect(result.current.accessGranted).toBe(false); expect(result.current.passwordInput).toBe('');
-    expect(readProcedureEditorAccess()).toBeNull();
-  });
-  it('returns to the gate when the eight-hour deadline arrives', async () => {
-    vi.useFakeTimers();
-    try {
-      saveProcedureEditorAccess('2520');
-      const doc = makeDocument(); apiMocks.getDocument.mockResolvedValue(doc); apiMocks.createRevision.mockResolvedValue(doc);
-      const { result } = renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: doc.id }));
-      await act(async () => {});
-      expect(result.current.accessGranted).toBe(true);
-      await act(async () => { vi.advanceTimersByTime(8 * 60 * 60 * 1000); });
-      expect(result.current.accessGranted).toBe(false);
-      expect(readProcedureEditorAccess()).toBeNull();
-    } finally { vi.useRealTimers(); }
-  });
-  it('saves the last edit immediately before expiry and retains it and the navigation guard after reauthentication', async () => {
-    vi.useFakeTimers();
-    try {
-      saveProcedureEditorAccess('2520');
-      const hook = renderEditor(makeDocument());
-      await act(async () => {});
-      expect(hook.result.current.readOnly).toBe(false);
-      act(() => vi.advanceTimersByTime(8 * 3600000 - 100));
-      act(() => hook.result.current.addOverlay('TEXT'));
-      const element = hook.result.current.elements[0];
-      const beforeEdit = hook.result.current.elements;
-      act(() => hook.result.current.updateElement({ ...element, kind: 'TEXT', text: '失効直前の編集' }));
-      act(() => vi.advanceTimersByTime(100));
-      expect(hook.result.current.accessGranted).toBe(false);
-      expect(readAssemblyDocumentEditorRecovery(localStorage, 'source-draft', { baseUpdatedAt: makeDocument().updatedAt, editVersion: 0 })?.elements).toEqual(hook.result.current.elements);
-      const unload = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(unload);
-      expect(unload.defaultPrevented).toBe(true);
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-      expect(await hook.result.current.confirmNavigation()).toBe(false);
-      expect(confirm).toHaveBeenCalled(); confirm.mockRestore();
-      await act(async () => { await hook.result.current.verifyEditorPassword('2520'); });
-      expect(hook.result.current.accessGranted).toBe(true);
-      expect(hook.result.current.elements[0]).toMatchObject({ text: '失効直前の編集' });
-      expect(hook.result.current.isDirty).toBe(true);
-      expect(hook.result.current.conflict).toBe(false);
-      expect(hook.result.current.recoveryPending).toBeNull();
-      expect(hook.result.current.passwordInput).toBe('2520');
-      act(() => hook.result.current.undo());
-      expect(hook.result.current.elements).toEqual(beforeEdit);
-      act(() => hook.result.current.redo());
-      expect(hook.result.current.elements[0]).toMatchObject({ text: '失効直前の編集' });
-    } finally { vi.useRealTimers(); }
-  });
-  it('keeps edits after reauthentication and enters conflict handling only when the server version changed', async () => {
-    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
-    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
-    act(() => hook.result.current.addOverlay('TEXT'));
-    const localElements = hook.result.current.elements;
-    act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }); });
-    apiMocks.createRevision.mockResolvedValue(makeDocument({ editVersion: 2 }));
-    await act(async () => { await hook.result.current.verifyEditorPassword('2520'); });
-    expect(hook.result.current.elements).toEqual(localElements);
-    expect(hook.result.current.conflict).toBe(true);
-    expect(hook.result.current.conflictEditVersion).toBe(2);
+    expect(result.current.accessGranted).toBe(true);
+    expect(result.current.message).toBeTruthy();
+    expect(result.current.elements).toHaveLength(1);
   });
   it('keeps interaction callbacks stable and uses the latest selection and draft', async () => {
     const hook = renderEditor(makeDocument()); await authenticate(hook.result);
@@ -1222,7 +1079,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.canUndo).toBe(false);
     act(() => hook.result.current.redo());
     expect(hook.result.current.elements).toEqual(reordered);
-    act(() => hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }));
+    act(() => hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 409, data: { code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '別端末', acquiredAt: 'now', heartbeatAt: 'now' } } } }));
     expect(hook.result.current.readOnly).toBe(true);
     act(() => hook.result.current[command](id));
     expect(hook.result.current.elements).toEqual(reordered);
@@ -1290,7 +1147,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const draft = hook.result.current.elements;
     apiMocks.addBlankPage.mockResolvedValue({ ...document, assets: {}, editVersion: 1, pages: [...document.pages, { pageIndex: 3, imageRelativePath: '/pages/blank.png', overlays: [] }] });
     await act(async () => { await hook.result.current.addBlankPage(); });
-    expect(apiMocks.addBlankPage).toHaveBeenCalledWith({ id: document.id, holderToken: 'session-token', accessPassword: '1234', expectedEditVersion: 0 });
+    expect(apiMocks.addBlankPage).toHaveBeenCalledWith({ id: document.id, holderToken: 'session-token', accessPassword: '', expectedEditVersion: 0 });
     expect(hook.result.current.selectedPageIndex).toBe(3);
     expect(hook.result.current.elements).toEqual(draft);
     expect(hook.result.current.document?.editVersion).toBe(1);
@@ -1325,7 +1182,6 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const hook = renderEditor(source);
     await act(async () => undefined);
     expect(hook.result.current.loading).toBe(false);
-    await act(async () => hook.result.current.verifyEditorPassword('1234'));
     expect(hook.result.current.accessGranted).toBe(true);
     try {
       act(() => hook.result.current.handleRangeSelected(range));
@@ -1373,7 +1229,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const element = { id: 'placed-overlay', kind: 'IMAGE', assetId: 'asset', pageIndex: 0, zIndex: 0, bbox: range, objectFit: 'contain' };
     apiMocks.placeMaterial.mockResolvedValue({ element, asset: { assetId: 'asset', relativeUrl: '/asset.png' } });
     await act(async () => { await hook.result.current.placeMaterial({ id: 'material' }); });
-    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material', pageIndex: 0, accessPassword: '1234' });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material', pageIndex: 0, accessPassword: '' });
     expect(hook.result.current.selectedOverlayId).toBe('placed-overlay');
     expect(hook.result.current.elements[1]).toMatchObject({ ...element, zIndex: 1 });
     expect(hook.result.current.document?.assets?.asset).toMatchObject({ assetId: 'asset' });
@@ -1413,7 +1269,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     act(() => hook.result.current.redo());
     expect(hook.result.current.elements).toEqual([{ ...moved, assetId: 'fresh' }]);
     expect(hook.result.current.document?.assets?.fresh).toEqual(asset);
-    expect(apiMocks.placeMaterial).toHaveBeenLastCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'photo', pageIndex: 0, accessPassword: '1234' });
+    expect(apiMocks.placeMaterial).toHaveBeenLastCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'photo', pageIndex: 0, accessPassword: '' });
     act(() => hook.result.current.undo());
     act(() => hook.result.current.undo());
     apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...image, assetId: 'fresh-again' } });
@@ -1835,7 +1691,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.isDirty).toBe(false);
   });
 
-  it.each(['page', 'selection', 'back', 'lease', 'access'])('flushes inline text before %s', async action => {
+  it.each(['page', 'selection', 'back', 'lease'])('flushes inline text before %s', async action => {
     const text: AssemblyProcedureOverlayElement = { id: 'text', kind: 'TEXT', text: '元の文章', pageIndex: 0, zIndex: 0, bbox: range };
     const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text] }] });
     const hook = renderEditor(document);
@@ -1849,12 +1705,11 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
       if (action === 'selection') hook.result.current.setSelectedOverlayId(null);
       if (action === 'back') hook.result.current.navigateBack();
       if (action === 'lease') hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 409, data: { code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '別端末', acquiredAt: 'now', heartbeatAt: 'now' } } } });
-      if (action === 'access') hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } });
     });
     expect(flush).toHaveBeenCalledOnce();
     expect(hook.result.current.elements[0]).toEqual(next);
     if (action === 'back') expect(confirm).toHaveBeenCalledOnce();
-    if (action === 'lease' || action === 'access') {
+    if (action === 'lease') {
       const recovered = readAssemblyDocumentEditorRecovery(window.localStorage, document.id, { baseUpdatedAt: document.updatedAt, editVersion: 0 });
       expect(recovered?.elements).toEqual([next]);
     }
@@ -1880,7 +1735,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
 
     await act(async () => { await hook.result.current.replaceSelectedImageMaterial({ id: 'material-photo', kind: 'PHOTO', employeeTagUid: 'replacement-tag' }); });
 
-    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material-photo', pageIndex: 0, accessPassword: '1234', employeeTagUid: 'replacement-tag' });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material-photo', pageIndex: 0, accessPassword: '', employeeTagUid: 'replacement-tag' });
     expect(apiMocks.placeMaterial).toHaveBeenLastCalledWith(expect.objectContaining({ employeeTagUid: 'replacement-tag' }));
     expect(hook.result.current.elements).toEqual([{ ...image, assetId: asset.assetId }, other]);
     expect(hook.result.current.selectedElement?.bbox).toEqual(range);
@@ -1934,7 +1789,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] }));
     await authenticate(hook.result);
     act(() => hook.result.current.setSelectedOverlayId(image.id));
-    act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } }); });
+    act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 409, data: { code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '別端末', acquiredAt: 'now', heartbeatAt: 'now' } } } }); });
     expect(hook.result.current.readOnly).toBe(true);
     expect(hook.result.current.selectedElement).toEqual(image);
     await act(async () => {
@@ -2214,7 +2069,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const hook = renderEditor(source);
     await authenticate(hook.result);
 
-    expect(apiMocks.createRevision).toHaveBeenCalledWith('source-draft', '1234');
+    expect(apiMocks.createRevision).toHaveBeenCalledWith('source-draft', '');
     expect(hook.result.current.document?.id).toBe('source-draft');
 
     apiMocks.findTextCandidates.mockResolvedValueOnce([{
@@ -2285,7 +2140,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(apiMocks.findTextCandidates).toHaveBeenCalledTimes(2);
     expect(apiMocks.findTextCandidates).toHaveBeenLastCalledWith({
       id: 'source-draft',
-      accessPassword: '1234',
+      accessPassword: '',
       pageIndex: 0,
       bbox: editedBBox
     });
@@ -2337,12 +2192,12 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     const overlays = [edited, high].map(({ assetId, bbox, zIndex, objectFit, opacity }) => ({ assetId, bbox, zIndex, objectFit, opacity }));
     act(() => hook.result.current.handleRangeSelected(range));
     await act(async () => hook.result.current.createOverlay('TEXT'));
-    expect(apiMocks.findTextCandidates).toHaveBeenLastCalledWith({ id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range, overlays });
+    expect(apiMocks.findTextCandidates).toHaveBeenLastCalledWith({ id: 'source-draft', accessPassword: '', pageIndex: 0, bbox: range, overlays });
     act(() => hook.result.current.cancelTextCandidates());
     apiMocks.createImageRegion.mockResolvedValue({ assetId: 'cropped', relativeUrl: '/crop.jpg', contentType: 'image/jpeg' });
     act(() => hook.result.current.handleRangeSelected(range));
     await act(async () => hook.result.current.createOverlay('IMAGE'));
-    expect(apiMocks.createImageRegion).toHaveBeenLastCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range, overlays });
+    expect(apiMocks.createImageRegion).toHaveBeenLastCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '', pageIndex: 0, bbox: range, overlays });
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
   });
 
@@ -2369,7 +2224,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     fireEvent.click(choices[1]);
     await waitFor(() => expect(hook.result.current.elements).toHaveLength(3));
     expect(apiMocks.createTextRewriteRegion).toHaveBeenCalledWith({
-      holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range,
+      holderToken: 'session-token', id: 'source-draft', accessPassword: '', pageIndex: 0, bbox: range,
       overlays: [{ assetId: image.assetId, zIndex: image.zIndex, bbox: image.bbox, objectFit: 'cover' }]
     });
     expect(hook.result.current.elements[1]).toMatchObject({ kind: 'IMAGE', bbox: patchBBox, objectFit: 'fill', assetId: asset.assetId, zIndex: 8 });
@@ -2438,14 +2293,14 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     await act(async () => {
       await hook.result.current.createOverlay('IMAGE');
     });
-    expect(apiMocks.createImageRegion).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', pageIndex: 0, bbox: range });
+    expect(apiMocks.createImageRegion).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '', pageIndex: 0, bbox: range });
     expect(hook.result.current.selectedElement).toMatchObject({ kind: 'IMAGE', assetId: 'roi-png', mask: { enabled: true, color: '#ffffff' } });
 
     const file = new File(['image'], 'manual.webp', { type: 'image/webp' });
     await act(async () => {
       await hook.result.current.uploadImage(file);
     });
-    expect(apiMocks.uploadImage).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', file });
+    expect(apiMocks.uploadImage).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '', file });
     expect(hook.result.current.selectedElement).toMatchObject({ kind: 'IMAGE', assetId: 'upload-webp' });
     expect(hook.result.current.document?.assets?.['upload-webp']).toMatchObject({ contentType: 'image/webp' });
   });
@@ -2471,7 +2326,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     await act(async () => {
       await hook.result.current.publish();
     });
-    expect(apiMocks.publishDocument).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', expectedEditVersion: 1 });
+    expect(apiMocks.publishDocument).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '', expectedEditVersion: 1 });
   });
 
   it('retains local elements on 409 and offers explicit re-save or latest reload', async () => {

@@ -47,7 +47,6 @@ describe('assembly procedure document routes', () => {
       getById: vi.fn().mockResolvedValue(document),
       rename: vi.fn().mockResolvedValue({ ...document, name: '変更後' }),
       getReferenceUsage: vi.fn().mockResolvedValue({ inBoltPageRef: false, inCheckPageRef: false }),
-      requireAccessPassword: vi.fn().mockResolvedValue(undefined),
       deleteIfUnused: vi.fn().mockResolvedValue('deleted')
     };
     const options = {
@@ -84,9 +83,54 @@ describe('assembly procedure document routes', () => {
 
     const deleteResponse = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}`, payload: { accessPassword: '2520' } });
     expect(deleteResponse.statusCode).toBe(204);
-    expect(procedureService.requireAccessPassword).toHaveBeenCalledWith('2520', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
     expect(procedureService.list).toHaveBeenCalledWith({ includeInactive: false, q: '手順書', limit: undefined });
     expect(procedureService.rename).toHaveBeenCalledWith(documentId, '変更後', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
+  });
+
+  it('returns the series feedback from an older revision through the viewer guard', async () => {
+    const root = '00000000-0000-4000-8000-000000000002';
+    const findDocument = vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique')
+      .mockResolvedValue({ revisionMetadata: { revisionRootId: root } } as never);
+    const sections = { questions: ['どこを測る？'], missing: [], unclear: [], ideas: [] };
+    const findFeedback = vi.spyOn(prisma.assemblyProcedureDocumentFeedback, 'findFirst')
+      .mockResolvedValue({ revisionNumber: 1, createdAt: now, ...sections } as never);
+    vi.spyOn(prisma.assemblyProcedureDocumentFeedbackOptOut, 'findUnique').mockResolvedValue(null);
+    const allowView = vi.fn(async () => undefined);
+
+    app = Fastify();
+    registerAssemblyProcedureDocumentRoutes(app, { allowView, allowWriteKiosk: async () => undefined } as AssemblyProcedureDocumentRouteOptions);
+    const url = `/assembly/procedure-documents/${documentId}/feedback`;
+    const response = await app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ feedback: { revisionNumber: 1, createdAt: now.toISOString(), ...sections }, nightlyTarget: true });
+    expect(allowView).toHaveBeenCalledOnce();
+    expect(findDocument).toHaveBeenCalledWith(expect.objectContaining({ where: { id: documentId } }));
+    expect(findFeedback).toHaveBeenCalledWith(expect.objectContaining({
+      where: { revisionRootId: root },
+      orderBy: [{ sourceUpdatedAt: 'desc' }, { revisionNumber: 'desc' }],
+    }));
+
+    findDocument.mockResolvedValue({ revisionMetadata: null } as never);
+    findFeedback.mockResolvedValue(null);
+    const noFeedback = await app.inject({ method: 'GET', url });
+    expect(noFeedback.json()).toEqual({ feedback: null, nightlyTarget: true });
+    expect(findFeedback).toHaveBeenLastCalledWith(expect.objectContaining({ where: { revisionRootId: documentId } }));
+  });
+
+  it('sets the nightly reading target through the write guard', async () => {
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ revisionMetadata: null } as never);
+    vi.spyOn(prisma.assemblyProcedureDocumentFeedback, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.assemblyProcedureDocumentFeedbackOptOut, 'findUnique').mockResolvedValue({ revisionRootId: documentId } as never);
+    const createOptOut = vi.spyOn(prisma.assemblyProcedureDocumentFeedbackOptOut, 'createMany').mockResolvedValue({ count: 1 });
+    const allowWriteKiosk = vi.fn(async () => undefined);
+
+    app = Fastify();
+    registerAssemblyProcedureDocumentRoutes(app, { allowView: async () => undefined, allowWriteKiosk } as AssemblyProcedureDocumentRouteOptions);
+    const response = await app.inject({ method: 'PUT', url: `/assembly/procedure-documents/${documentId}/feedback-target`, payload: { nightlyTarget: false } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ feedback: null, nightlyTarget: false });
+    expect(allowWriteKiosk).toHaveBeenCalledOnce();
+    expect(createOptOut).toHaveBeenCalledWith({ data: { revisionRootId: documentId }, skipDuplicates: true });
   });
 
   it('returns not found for an unknown document without changing the service contract', async () => {
@@ -96,7 +140,6 @@ describe('assembly procedure document routes', () => {
       getById: vi.fn().mockResolvedValue(null),
       rename: vi.fn(),
       getReferenceUsage: vi.fn(),
-      requireAccessPassword: vi.fn().mockResolvedValue(undefined),
       deleteIfUnused: vi.fn()
     };
     app = Fastify();
@@ -162,7 +205,6 @@ describe('assembly procedure document routes', () => {
     const procedureService = {
       getReferenceUsage: vi.fn().mockResolvedValue(usage),
       buildInUseMessage: vi.fn().mockReturnValue(message),
-      requireAccessPassword: vi.fn().mockResolvedValue(undefined),
       deleteIfUnused: vi.fn().mockResolvedValue(result)
     };
     app = Fastify();
@@ -195,11 +237,10 @@ describe('assembly procedure document routes', () => {
     }
   });
 
-  it.each([undefined, {}, { accessPassword: '' }, { accessPassword: '0000' }])('checks the password before document usage for %j', async (payload) => {
+  it.each([undefined, {}, { accessPassword: '' }, { accessPassword: '0000' }])('deletes without checking a password for %j', async (payload) => {
     const procedureService = {
-      requireAccessPassword: vi.fn().mockRejectedValue(new ApiError(403, '管理パスワードが違います')),
-      getReferenceUsage: vi.fn(),
-      deleteIfUnused: vi.fn()
+      getReferenceUsage: vi.fn().mockResolvedValue({ inProcedureManualAssignment: false, inBoltPageRef: false, inCheckPageRef: false }),
+      deleteIfUnused: vi.fn().mockResolvedValue('deleted')
     };
     app = Fastify();
     registerErrorHandler(app);
@@ -208,10 +249,8 @@ describe('assembly procedure document routes', () => {
       procedureService, procedureDraftImportService: {}, procedureGmailImportService: {}
     } as unknown as AssemblyProcedureDocumentRouteOptions);
     const response = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}`, payload });
-    expect(response.statusCode).toBe(403);
-    expect(procedureService.requireAccessPassword).toHaveBeenCalledWith(payload?.accessPassword ?? '', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
-    expect(procedureService.getReferenceUsage).not.toHaveBeenCalled();
-    expect(procedureService.deleteIfUnused).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(204);
+    expect(procedureService.deleteIfUnused).toHaveBeenCalledOnce();
   });
 
   it('returns display URLs for owned assets before an IMAGE overlay is saved', async () => {

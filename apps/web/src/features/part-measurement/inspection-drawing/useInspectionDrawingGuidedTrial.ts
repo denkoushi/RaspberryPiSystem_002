@@ -15,11 +15,9 @@ type Args = {
   enabled: boolean;
   points: InspectionDrawingPoint[];
   onPointsChange: (points: InspectionDrawingPoint[]) => void;
-  selectedPointId: string | null;
   onSelectPointId: (pointId: string | null) => void;
   hasDrawingReady: boolean;
   onZoomLevel: (zoom: number) => void;
-  canvasZoom: number;
 };
 
 export function useInspectionDrawingGuidedTrial({

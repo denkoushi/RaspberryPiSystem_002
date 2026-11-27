@@ -4,10 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../kiosk/shared.js', () => ({ requireClientDevice: vi.fn() }));
-vi.mock('../../services/mobile-placement/haizen-overview.service.js', () => ({ listHaizenOverview: vi.fn() }));
+vi.mock('../../services/mobile-placement/haizen-overview.service.js', () => ({ getHaizenMaterialView: vi.fn(), listHaizenOverview: vi.fn() }));
+vi.mock('../../services/mobile-placement/haizen-material-arrival.service.js', () => ({ listHaizenMaterialArrival: vi.fn() }));
 vi.mock('../../services/mobile-placement/schedule-seiban-status.service.js', () => ({ listHaizenUnplacedParts: vi.fn(), listScheduleSeibans: vi.fn(), getScheduleSeiban: vi.fn() }));
 import { requireClientDevice } from '../kiosk/shared.js';
-import { listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
+import { getHaizenMaterialView, listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
+import { listHaizenMaterialArrival } from '../../services/mobile-placement/haizen-material-arrival.service.js';
 import { listHaizenUnplacedParts } from '../../services/mobile-placement/schedule-seiban-status.service.js';
 import { registerMobilePlacementRoutes } from '../mobile-placement/index.js';
 
@@ -40,6 +42,55 @@ describe('haizen overview routes', () => {
       for (const url of ['/mobile-placement/haizen-overview', '/mobile-placement/haizen-overview/unplaced-parts']) expect((await app.inject({ url })).statusCode).toBe(401);
       expect(listHaizenOverview).not.toHaveBeenCalled();
       expect(listHaizenUnplacedParts).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it('returns material arrival for posted parts', async () => {
+    const app = Fastify();
+    await registerMobilePlacementRoutes(app);
+    vi.mocked(requireClientDevice).mockResolvedValue({} as never);
+    const items = [{ fseiban: 'BA1', fhincd: 'P1', status: 'ordered', basis: 'material' }];
+    vi.mocked(listHaizenMaterialArrival).mockResolvedValue({ items } as never);
+    try {
+      const parts = [{ fseiban: 'BA1', fhincd: 'P1' }];
+      const result = await app.inject({ method: 'POST', url: '/mobile-placement/haizen-material-arrival', headers: { 'x-client-key': 'key' }, payload: { parts } });
+      expect(result.statusCode).toBe(200);
+      expect(result.json()).toEqual({ items });
+      expect(listHaizenMaterialArrival).toHaveBeenCalledWith(parts);
+    } finally { await app.close(); }
+  });
+  it('authenticates material view and validates the schedule source using the device site', async () => {
+    const app = Fastify();
+    await app.register(rateLimit, { max: 1 });
+    await registerMobilePlacementRoutes(app);
+    const url = '/mobile-placement/haizen-material-view';
+    try {
+      vi.mocked(requireClientDevice).mockRejectedValueOnce(Object.assign(new Error('Unauthorized'), { statusCode: 401 }));
+      expect((await app.inject({ url })).statusCode).toBe(401);
+      vi.mocked(requireClientDevice).mockResolvedValue({ clientDevice: { siteKey: ' site-a ' } } as never);
+      const headers = { 'x-client-key': 'key' };
+      expect((await app.inject({ url: `${url}?scheduleSource=invalid`, headers })).statusCode).not.toBe(200);
+      expect(getHaizenMaterialView).not.toHaveBeenCalled();
+      const result = { seibanOrder: ['B', 'A'], excludedFseibans: ['C'] };
+      vi.mocked(getHaizenMaterialView).mockResolvedValue(result);
+      expect((await app.inject({ url, headers })).json()).toEqual(result);
+      expect((await app.inject({ url: `${url}?scheduleSource=dCompany`, headers })).json()).toEqual(result);
+      expect(vi.mocked(getHaizenMaterialView).mock.calls).toEqual([['site-a', 'both'], ['site-a', 'dCompany']]);
+    } finally { await app.close(); }
+  });
+  it('rejects material arrival without a client key and with too many parts', async () => {
+    const app = Fastify();
+    await registerMobilePlacementRoutes(app);
+    try {
+      vi.mocked(requireClientDevice).mockRejectedValue(Object.assign(new Error('Unauthorized'), { statusCode: 401 }));
+      const unauthorized = await app.inject({ method: 'POST', url: '/mobile-placement/haizen-material-arrival', payload: { parts: [] } });
+      expect(unauthorized.statusCode).toBe(401);
+      expect(listHaizenMaterialArrival).not.toHaveBeenCalled();
+      vi.mocked(requireClientDevice).mockResolvedValue({} as never);
+      const parts = Array.from({ length: 6001 }, (_, i) => ({ fseiban: 'BA1', fhincd: `P${i}` }));
+      const tooMany = await app.inject({ method: 'POST', url: '/mobile-placement/haizen-material-arrival', headers: { 'x-client-key': 'key' }, payload: { parts } });
+      // 本番では error-handler が ZodError を 400 にする。この最小構成では既定の 500。
+      expect(tooMany.statusCode).not.toBe(200);
+      expect(listHaizenMaterialArrival).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
 });

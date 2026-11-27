@@ -184,6 +184,22 @@ describe('grinding-planning-board-load-summary', () => {
     });
   });
 
+  it('uses the saved swap to include a row from another resource category', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([]).mockResolvedValueOnce([
+      { id: 'source-1', fseiban: 'S1', fhinCd: 'H1', productNo: '1', processOrder: '10',
+        resourceCd: '051', resourceSwapCd: '503', requiredMinutesRaw: '40', requiredMinutes: 40,
+        isCompleted: false, plannedQuantity: 1 },
+    ]);
+    const result = await readGrindingPlanningBoardLoadSummary({
+      missingStandardHoursRows: [], client: { $queryRaw: queryRaw } as never, siteKey: 'site-a',
+      category: 'grinding', winnerRowIds: ['source-1'], isResourceInCategory: (cd) => cd === '503'
+    });
+    expect((queryRaw.mock.calls[0][0] as Prisma.Sql).sql).toContain('"ext"."loadResourceCdFromFkojunstResourceSwap" AS "resourceSwapCd"');
+    expect(result.load).toEqual([expect.objectContaining({
+      resourceCd: '503', originalItemCount: 1, alternateItemCount: 1, originalRequiredMinutes: 40, requiredMinutes: 40
+    })]);
+  });
+
   it('preserves fractional piece minutes and unsplit row minutes in the source-row path', async () => {
     const source = {
       id: 'source-1', fseiban: 'S1', fhinCd: 'H1', productNo: null,

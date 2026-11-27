@@ -60,6 +60,7 @@
           {{ ((['authorized_keys is missing'] if 'not found' in (backup_key_file.msg | default(''))
                else ['authorized_keys could not be read']) if not backup_key_file_found else
               ['key line is missing'] if (backup_key_lines | length) == 0 else
+              ['key line appears more than once'] if (backup_key_lines | length) > 1 else
               (['restrict is missing'] if backup_key_options is not search('(^|,)restrict(,|$)') else [])
               + (['from= is missing'] if (backup_key_from_list | length) == 0 else [])
               + (['from= does not match'] if (backup_ssh_allowed_from | length) > 0

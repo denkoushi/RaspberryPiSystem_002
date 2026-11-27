@@ -9,10 +9,12 @@ export type DScheduleMinutesExtras = {
   memo: string | null;
 };
 
+export type DScheduleMinutesReceivedAt = { D_COMPANY: string | null; INTERNAL: string | null };
+
 export function useKioskDScheduleMinutes() {
   return useQuery({
     queryKey: ['kiosk-production-schedule', 'd-schedule-minutes'],
-    queryFn: async () => (await api.get<{ rows: DScheduleMinutesExtras[] }>('/kiosk/production-schedule/d-schedule-minutes')).data,
+    queryFn: async () => (await api.get<{ rows: DScheduleMinutesExtras[]; latestReceivedAt?: DScheduleMinutesReceivedAt }>('/kiosk/production-schedule/d-schedule-minutes')).data,
     refetchInterval: 30000,
     refetchOnWindowFocus: false
   });

@@ -3,10 +3,12 @@ import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, use
 
 import { useSingleFlight } from '../../../hooks/useSingleFlight';
 import { KioskDigitTenkey } from '../KioskDigitTenkey';
+import { useDScheduleMinutesReceivedDates } from '../productionSchedule/DScheduleMinutesContext';
 import { normalizeFullMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
 import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
+import { formatPlanningBoardDate } from './planningBoardDateLabel';
 import { PLANNING_BOARD_KEY_CLASS } from './planningBoardKeyClass';
 
 import type { GrindingPlanningBoardSeibanCandidate } from '@raspi-system/shared-types';
@@ -15,10 +17,6 @@ const UNSET_MACHINE_NAME = '未設定';
 const LETTER_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const LIST_ICON_CLASS = 'grid h-11 w-11 place-items-center text-base text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-25 disabled:hover:bg-transparent';
 const KEY_CLASS = `h-11 ${PLANNING_BOARD_KEY_CLASS}`;
-
-function formatCandidateDate(value: string): string {
-  return value.slice(5).replace('-', '/');
-}
 
 function isCandidateOverdue(candidate: GrindingPlanningBoardSeibanCandidate, today: string): boolean {
   return candidate.dueDate < today;
@@ -57,6 +55,13 @@ export type PlanningBoardSeibanDrawerProps = {
   onShowCompletedCandidatesChange: (show: boolean) => void;
 };
 
+const WEEKDAYS = '日月火水木金土';
+function formatReceivedAt(iso: string | null): string {
+  if (!iso) return '—';
+  const jst = new Date(new Date(iso).getTime() + 9 * 3600_000);
+  return `${jst.getUTCMonth() + 1}/${jst.getUTCDate()}(${WEEKDAYS[jst.getUTCDay()]}) ${jst.getUTCHours()}:${String(jst.getUTCMinutes()).padStart(2, '0')}`;
+}
+
 export function PlanningBoardSeibanDrawer({
   isOpen,
   registeredFseibans,
@@ -84,6 +89,7 @@ export function PlanningBoardSeibanDrawer({
   onShowCompletedCandidatesChange
 }: PlanningBoardSeibanDrawerProps) {
   const { gate } = usePlanningBoardOffline();
+  const receivedDates = useDScheduleMinutesReceivedDates();
   const { run: runCandidateRegistration, pending: candidateRegistrationPending } = useSingleFlight();
   const [query, setQuery] = useState('');
   const [registrationError, setRegistrationError] = useState<string | null>(null);
@@ -227,7 +233,7 @@ export function PlanningBoardSeibanDrawer({
                       <span className="min-w-0">
                         <span className="block truncate font-mono text-xs font-bold text-white">{candidate.fseiban}</span>
                         <span className={`block text-[10px] ${overdue ? 'font-bold text-rose-300' : 'text-slate-400'}`}>
-                          {formatCandidateDate(candidate.dueDate)}
+                          {formatPlanningBoardDate(candidate.dueDate)}
                           <span className={`font-semibold ${registered ? 'text-cyan-300' : 'text-slate-500'}`}>
                             ・{registered ? '登録済み' : candidate.isCompleted ? '完了' : '未登録'}
                           </span>
@@ -313,6 +319,13 @@ export function PlanningBoardSeibanDrawer({
       >
         <header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-slate-800 px-3">
           <h2 id="planning-board-seiban-drawer-title" className="text-sm font-bold text-white">製番登録</h2>
+          {receivedDates && (
+            <div className="ml-auto flex min-w-0 flex-wrap justify-end gap-x-4 text-sm tabular-nums text-slate-400 [&>span]:whitespace-nowrap">
+              <span className="mr-1.5">日程メール取得日</span>
+              <span><span className="mr-1.5">D社</span><span className="text-slate-300">{formatReceivedAt(receivedDates.D_COMPANY)}</span></span>
+              <span><span className="mr-1.5">一般</span><span className="text-slate-300">{formatReceivedAt(receivedDates.INTERNAL)}</span></span>
+            </div>
+          )}
           <button
             type="button"
             className="grid min-h-11 min-w-11 place-items-center rounded-md text-lg text-slate-300 hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"

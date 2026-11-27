@@ -33,7 +33,6 @@ export type SelfInspectionNfcRegistrationView = SelfInspectionEntryRegistrationD
   status: SelfInspectionNfcRegistrationStatus;
   message: string | null;
   isReady: boolean;
-  isLocked: boolean;
   nextActionLabel: string | null;
 };
 
@@ -383,7 +382,6 @@ export function useSelfInspectionNfcRegistration(options: {
     () => resolveSelfInspectionEntryRegistrationFromSaved(savedEntry),
     [savedEntry]
   );
-  const isLocked = false;
 
   const draft = useMemo(
     () =>
@@ -407,23 +405,18 @@ export function useSelfInspectionNfcRegistration(options: {
   }, [selectedEntryIndex]);
 
   useEffect(() => {
-    if (!session || isLocked) return;
+    if (!session) return;
     dispatch({
       type: 'sync_saved',
       entryIndex: selectedEntryIndex,
       savedRegistration,
       savedEntry
     });
-  }, [isLocked, savedEntry, savedRegistration, selectedEntryIndex, session]);
-
-  useEffect(() => {
-    if (!isLocked) return;
-    dispatch({ type: 'clear_draft_for_entry', entryIndex: selectedEntryIndex });
-  }, [isLocked, selectedEntryIndex]);
+  }, [savedEntry, savedRegistration, selectedEntryIndex, session]);
 
   const applyResolvedUid = useCallback(
     async (uid: string) => {
-      if (!enabled || isLocked) return;
+      if (!enabled) return;
       const contextGeneration = contextGenerationRef.current;
       const entryIndex = selectedEntryIndex;
       dispatch({ type: 'resolve_start' });
@@ -453,16 +446,16 @@ export function useSelfInspectionNfcRegistration(options: {
         dispatch({ type: 'resolve_failed' });
       }
     },
-    [enabled, ignoreEmployeeTags, isLocked, onInstrumentTagResolved, savedEntry, savedRegistration, selectedEntryIndex]
+    [enabled, ignoreEmployeeTags, onInstrumentTagResolved, savedEntry, savedRegistration, selectedEntryIndex]
   );
 
   useEffect(() => {
-    if (!enabled || !nfcEvent?.uid || isLocked) return;
+    if (!enabled || !nfcEvent?.uid) return;
     const eventKey = `${nfcEvent.uid}:${nfcEvent.timestamp ?? ''}:${selectedEntryIndex}`;
     if (lastProcessedNfcKeyRef.current === eventKey) return;
     lastProcessedNfcKeyRef.current = eventKey;
     void applyResolvedUid(nfcEvent.uid);
-  }, [applyResolvedUid, enabled, isLocked, nfcEvent, selectedEntryIndex]);
+  }, [applyResolvedUid, enabled, nfcEvent, selectedEntryIndex]);
 
   const status = deriveStatus(draft, errorStatus, registrationPolicy);
 
@@ -485,11 +478,10 @@ export function useSelfInspectionNfcRegistration(options: {
 
   const view: SelfInspectionNfcRegistrationView = {
     ...draft,
-    status: status === 'resolving' ? 'resolving' : status,
+    status,
     message,
     isReady: isSelfInspectionEntryRegistrationReadyForSave(draft, savedEntry, registrationPolicy),
-    isLocked,
-    nextActionLabel: isLocked ? null : nextActionLabelForDraft(draft, savedEntry, registrationPolicy)
+    nextActionLabel: nextActionLabelForDraft(draft, savedEntry, registrationPolicy)
   };
 
   return {

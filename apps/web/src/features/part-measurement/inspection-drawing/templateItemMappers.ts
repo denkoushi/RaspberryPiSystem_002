@@ -1,3 +1,5 @@
+import { parseOptionalNumber } from './markerNumbering';
+
 import type { PartMeasurementTemplateItemDto } from '../types';
 
 export {
@@ -27,12 +29,6 @@ export function templateSupportsInspectionDrawing(
 ): boolean {
   if (!drawingPath?.trim() || !items?.length) return false;
   return items.every(templateItemHasInspectionMarker);
-}
-
-function parseOptionalNumber(raw: string | null | undefined): number | null {
-  if (raw == null || String(raw).trim() === '') return null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
 }
 
 /** 図面中心UIの編集ルート（本番 quantity=1 / 評価用） */

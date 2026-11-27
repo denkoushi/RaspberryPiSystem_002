@@ -179,8 +179,7 @@ export class AssemblyProcedureDocumentAssetsService {
     this.accessService = deps.accessService ?? new AssemblyTemplateAccessService();
   }
 
-  private async assertEditable(documentId: string, accessPassword: string | undefined, db: Prisma.TransactionClient = prisma, caller: AssemblyProcedureEditActor = {}) {
-    await this.accessService.requireAccessPassword(accessPassword, caller);
+  private async assertEditable(documentId: string, _accessPassword: string | undefined, db: Prisma.TransactionClient = prisma) {
     const document = await db.assemblyProcedureDocument.findUnique({
       where: { id: documentId },
       select: {
@@ -240,7 +239,7 @@ export class AssemblyProcedureDocumentAssetsService {
   private async lockEditableDocument(params: DocumentEditParams, db: Prisma.TransactionClient) {
     await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
     await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
-    return this.assertEditable(params.documentId, params.accessPassword, db, params);
+    return this.assertEditable(params.documentId, params.accessPassword, db);
   }
 
   async uploadOverlayImage(params: DocumentEditParams & {
@@ -478,7 +477,7 @@ export class AssemblyProcedureDocumentAssetsService {
     await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(
       params.documentId, params.holderKey ?? null, undefined, params.holderToken ?? null
     );
-    const editable = await this.assertEditable(params.documentId, params.accessPassword, prisma, params);
+    const editable = await this.assertEditable(params.documentId, params.accessPassword, prisma);
     const selection = normalizeRegion(params.bbox);
     const pagePath = await this.pageImagePath(params.documentId, params.pageIndex);
     const source = await AssemblyProcedureImageStorage.readImage(pagePath);
@@ -537,7 +536,7 @@ export class AssemblyProcedureDocumentAssetsService {
   }
 
   async findTextCandidates(params: RegionParams & { photoOnly?: boolean }): Promise<AssemblyProcedureTextCandidate[]> {
-    const editable = await this.assertEditable(params.documentId, params.accessPassword, prisma, params);
+    const editable = await this.assertEditable(params.documentId, params.accessPassword, prisma);
     const roi = normalizeRegion(params.bbox);
     if (params.photoOnly && (params.overlays?.length !== 1 || !projectOverlayBBoxToCrop(params.overlays[0].bbox, roi))) {
       throw new ApiError(400, '読み取る写真を1件指定してください');

@@ -7,11 +7,12 @@ const mocks = vi.hoisted(() => ({
     productionScheduleGrindingPlanningBoardArrival: { findFirst: vi.fn(), create: vi.fn() },
     productionScheduleGrindingPlanningBoardFirstProcessArrival: { upsert: vi.fn() }
   },
-  lookup: vi.fn(), rows: vi.fn(), discover: vi.fn(), projection: vi.fn(), pieces: vi.fn(),
+  lookup: vi.fn(), bySeiban: vi.fn(), purchases: vi.fn(), rows: vi.fn(), discover: vi.fn(), projection: vi.fn(), pieces: vi.fn(),
   pieceLocks: vi.fn(), stateLock: vi.fn(), parentLock: vi.fn(), ensureState: vi.fn(), enrich: vi.fn(), policy: vi.fn()
 }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.tx }));
-vi.mock('../production-schedule-lookup.service.js', () => ({ listScheduleRowsByProductNo: mocks.lookup }));
+vi.mock('../production-schedule-lookup.service.js', () => ({ listScheduleRowsByProductNo: mocks.lookup, listScheduleRowsByFseiban: mocks.bySeiban }));
+vi.mock('../../purchase-order-lookup/purchase-order-lookup-query.service.js', () => ({ findPurchaseOrderLookupRows: mocks.purchases }));
 vi.mock('../policies/resource-category-policy.service.js', async importOriginal => ({
   ...await importOriginal<typeof import('../policies/resource-category-policy.service.js')>(), getResourceCategoryPolicy: mocks.policy
 }));
@@ -137,5 +138,50 @@ describe('grinding arrival scans', () => {
       seibanOrder: ['S'], category: 'grinding', isResourceInCategory: cd => cd === 'G1' });
     mocks.projection.mockResolvedValue({ byItemId: new Map(projection.allItems.map(i => [i.itemId, i])) });
     expect(await run()).toMatchObject({ resolutionStatus: 'RESOLVED', arrival: { itemId: buildGrindingPlanningBoardRowItemId(rows[1]!.rowData) } });
+  });
+
+  const purchase = { seiban: 'S ', purchasePartCodeMatchKey: 'PART', purchasePartCodeNormalized: 'PART', purchasePartName: '足' };
+  const purchaseRows = [
+    { rowId: 'r', productNo: '0000012345', fhincd: 'PART-001', fsigencd: 'G1' },
+    { rowId: 'o', productNo: '0000011111', fhincd: 'PART', fsigencd: 'G1' },
+    { rowId: 'x', productNo: '0000099999', fhincd: 'OTHER', fsigencd: 'G1' }
+  ];
+  const scanPurchase = () => applyGrindingPlanningBoardScanArrival({ ...input, manufacturingOrderBarcodeRaw: '0005554987' });
+
+  it('resolves a purchase order number to the only order with an incomplete grinding process', async () => {
+    mocks.lookup.mockResolvedValue([]);
+    mocks.purchases.mockResolvedValue([purchase]);
+    mocks.bySeiban.mockResolvedValue(purchaseRows);
+    mocks.projection.mockResolvedValue({ byItemId: new Map([
+      ['r', { ...item('r', '020'), productNo: '0000012345' }], ['o', { ...item('o', '010', true), productNo: '0000011111' }]
+    ]) });
+    expect(await scanPurchase()).toMatchObject({ resolutionStatus: 'RESOLVED', arrival: { itemId: 'r', productNo: '0005554987' } });
+    expect(mocks.purchases).toHaveBeenCalledWith('0005554987');
+    expect(mocks.bySeiban).toHaveBeenCalledWith('S');
+    expect(mocks.rows).toHaveBeenCalledWith(mocks.tx, ['r', 'o']);
+  });
+
+  it('leaves a purchase order number unresolved when two orders have incomplete grinding processes', async () => {
+    mocks.lookup.mockResolvedValue([]);
+    mocks.purchases.mockResolvedValue([purchase]);
+    mocks.bySeiban.mockResolvedValue(purchaseRows);
+    mocks.projection.mockResolvedValue({ byItemId: new Map([
+      ['r', { ...item('r', '020'), productNo: '0000012345' }], ['o', { ...item('o', '010'), productNo: '0000011111' }]
+    ]) });
+    expect(await scanPurchase()).toMatchObject({ resolutionStatus: 'UNRESOLVED' });
+    expect(arrival.create).not.toHaveBeenCalled();
+    expect(first.upsert).not.toHaveBeenCalled();
+  });
+
+  it('leaves a purchase order number with several seibans unresolved', async () => {
+    mocks.lookup.mockResolvedValue([]);
+    mocks.purchases.mockResolvedValue([
+      { seiban: 'S', purchasePartCodeMatchKey: 'PART', purchasePartCodeNormalized: 'PART', purchasePartName: '足' },
+      { seiban: 'T', purchasePartCodeMatchKey: 'PART', purchasePartCodeNormalized: 'PART', purchasePartName: '足' }
+    ]);
+    const result = await applyGrindingPlanningBoardScanArrival({ ...input, manufacturingOrderBarcodeRaw: '0005554987' });
+    expect(result).toMatchObject({ resolutionStatus: 'UNRESOLVED' });
+    expect(mocks.bySeiban).not.toHaveBeenCalled();
+    expect(arrival.create).not.toHaveBeenCalled();
   });
 });

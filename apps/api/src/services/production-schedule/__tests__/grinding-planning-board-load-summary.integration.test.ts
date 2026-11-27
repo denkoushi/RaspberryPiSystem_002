@@ -248,6 +248,38 @@ describeIntegration('grinding planning board lightweight load summary integratio
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+  it('keeps the source row on its machine and moves both load totals into the destination category', async () => {
+    const fixture = await createFixture();
+    const source = fixture.rows.find((row) => row.data.FSIGENCD === 'G-02')!;
+    const target = 'C-01';
+    await db().productionScheduleExternalCompletion.create({ data: {
+      csvDashboardRowId: source.id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      loadResourceCdFromFkojunstResourceSwap: target
+    } });
+    const isResourceInCategory = (cd: string, category: GrindingPlanningBoardCategory) =>
+      category === 'all' || cd.startsWith(category === 'grinding' ? 'G-' : 'C-');
+    const projected = projectGrindingPlanningBoard({
+      ...projectionInput(fixture), ranks: { rows: new Map([[source.id, { resourceCd: 'G-02', orderNumber: 2 }]]) },
+      seibanOrder: [], category: 'grinding', isResourceInCategory
+    });
+    expect(projected.items.find((item) => item.sourceRowId === source.id)).toMatchObject({
+      originalResourceCd: 'G-02', effectiveResourceCd: 'G-02', originalRank: 2
+    });
+
+    const params = {
+      client: db(), siteKey: fixture.siteKey, isResourceInCategory, missingStandardHoursRows: [],
+      resourceMinutes: { ownSourceResourceCds: [], values: [] },
+    };
+    const aggregateWhere = Prisma.sql`"CsvDashboardRow"."id" = ${source.id}`;
+    for (const scope of [{ winnerRowIds: [source.id] }, { leaderboardMaterializedBaseWhere: aggregateWhere }]) {
+      const cutting = await summaryReader()({ ...params, ...scope, category: 'cutting' });
+      expect(cutting.load).toEqual([expect.objectContaining({
+        resourceCd: target, originalItemCount: 1, alternateItemCount: 1, originalRequiredMinutes: 40, requiredMinutes: 40
+      })]);
+      expect((await summaryReader()({ ...params, ...scope, category: 'grinding' })).load).toEqual([]);
+    }
+  });
+
   it('disables JIT on the aggregate connection and restores it after the root transaction', async () => {
     const fixture = await createFixture();
     const { createPrismaClient } = await import('../../../lib/prisma-client.js');

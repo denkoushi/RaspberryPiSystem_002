@@ -262,7 +262,7 @@ export function KioskLayout() {
   return (
     <div
       className={clsx(
-        'flex flex-col text-white',
+        'flex flex-col pt-[var(--mobile-top-band,0px)] text-white',
         isPortal ? 'overflow-hidden bg-inv-bg' : 'bg-slate-800',
         immersiveKioskLayout || isPortal
           ? [VIEWPORT_HEIGHT_FULL, 'min-h-0', planningBoardRoute && 'kiosk-planning-board-route']

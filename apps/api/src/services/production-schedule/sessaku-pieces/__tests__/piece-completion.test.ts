@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { aggregateSessakuPieceCompletion } from '../piece-completion.js';
+import { aggregateSessakuPieceCompletion, reconcileSessakuPieceProgress } from '../piece-completion.js';
+import type { SessakuPieceSet } from '../piece-key.js';
 describe('sessaku piece effective completion', () => {
+  it('leaves normal row progress to the parent for an empty legacy grinding set', async () => {
+    const set = { fsigencd: '581', sourcePieceSetId: 'cutting', pieces: [] } as unknown as SessakuPieceSet;
+    await expect(reconcileSessakuPieceProgress({} as never, set, { emptyIsIncomplete: true, source: {
+      set, rowId: 'row', externallyCompleted: false, previousCompleted: true, plannedQuantity: 5
+    } })).resolves.toBeNull();
+  });
   it('does not complete an empty set', () => expect(aggregateSessakuPieceCompletion([], true)).toBe(false));
   it('requires all pieces', () => {
     expect(aggregateSessakuPieceCompletion([{ isCompleted: true, quantity: 2 }, { isCompleted: false, quantity: 1 }], false)).toBe(false);

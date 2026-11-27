@@ -58,6 +58,8 @@ import {
   resolveInspectionDrawingCreateSaveBlockReason,
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
+  isConfirmedInspectionDrawing,
+  normalizeInspectionDrawingProcessGroup,
   templateToCreateDraft,
   useInspectionDrawingUnsavedChangesGuard
 } from '../../features/part-measurement/inspection-drawing';
@@ -273,9 +275,12 @@ export function KioskInspectionDrawingCreatePage() {
     visualSource === 'pickExisting' && selectedVisualTemplateId?.trim()
       ? selectedVisualTemplateId
       : null;
+  const showsConfirmedDrawing = isConfirmedInspectionDrawing({
+    isEditing, template, sourceDraft: sourceTemplateDraft, visualTemplateId: visualTemplateIdForOcr, processGroup
+  });
   const placement = useInspectionDrawingPlacementProposals({
     visualTemplateId: visualTemplateIdForOcr, processGroup, clientKey, points, onPointsChange: setPoints,
-    enabled: Boolean(canvasImageUrl) && !contentReadOnly && mode !== 'guidedTrial',
+    enabled: Boolean(canvasImageUrl) && !contentReadOnly && mode !== 'guidedTrial' && !showsConfirmedDrawing,
     onSelectPoint: setSelectedPointId, onPlaceMode: () => setMode('place')
   });
   const visualOcrPending =
@@ -348,11 +353,9 @@ export function KioskInspectionDrawingCreatePage() {
     enabled: mode === 'guidedTrial',
     points,
     onPointsChange: setPoints,
-    selectedPointId,
     onSelectPointId: setSelectedPointId,
     hasDrawingReady: Boolean(canvasImageUrl),
-    onZoomLevel: setZoomLevel,
-    canvasZoom: zoom
+    onZoomLevel: setZoomLevel
   });
 
   const saveBlockedByPreview =
@@ -512,8 +515,7 @@ export function KioskInspectionDrawingCreatePage() {
 
   const applyLoadedTemplate = useCallback(
     (loaded: PartMeasurementTemplateDto) => {
-      const loadedProcessGroup: PartMeasurementProcessGroup =
-        loaded.processGroup === 'grinding' ? 'grinding' : 'cutting';
+      const loadedProcessGroup = normalizeInspectionDrawingProcessGroup(loaded.processGroup);
       const loadedPoints = loaded.items.map((item) => templateItemToDrawingPoint(item));
       const loadedSelfInspectionFixedCount = mapTemplateFixedCountToFormString(
         loaded.selfInspectionMode,

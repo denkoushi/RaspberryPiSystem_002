@@ -5,13 +5,13 @@ import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlann
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
-import { acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
+import { normalizeGrindingPlanningBoardResourceCd, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
-import { acquireSessakuPieceLogicalLocks } from '../sessaku-pieces/piece-key.js';
+import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSetsByKeys, sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
-import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, type CurrentProjection, type DbClient } from './shared.js';
-import { readMasterResourceCds, readOverrides, readWinnerRowsByFseibans } from './source.js';
+import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, resourceOrderLaneCd, type CurrentProjection, type DbClient } from './shared.js';
+import { lockPlanningSourceRows } from './source-row-lock.js';
+import { readLaneCandidateKeys, readMasterResourceCds, readOverrides, readWinnerProgressRows, readWinnerRowsByFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, lockState, stateOrder } from './state.js';
 import { projectCurrentItems, resolveCurrentProjectionInTransaction, writeOverrideIfChanged } from './write.js';
 
@@ -21,20 +21,26 @@ export function projectPlanningTestBar(row: ProductionScheduleGrindingPlanningBo
     alternateRank: row.alternateRank, isCompleted: row.completedAt != null,
     completedAt: row.completedAt?.toISOString() ?? null, deletedAt: row.deletedAt?.toISOString() ?? null };
 }
-export async function getPlanningTestBarPartCandidates(params: { siteKey: string; resourceCd: string }): Promise<GrindingPlanningBoardTestBarPartCandidatesResponse> {
-  const resourceCd = normalizeProductionScheduleResourceCd(params.resourceCd);
-  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
-  const master = await readMasterResourceCds(prisma);
-  if (!resourceCd || !master.has(resourceCd) || !isCategoryResource(resourceCd, 'all', policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
+export async function getPlanningTestBarPartCandidates(params: { siteKey: string; resourceCd?: string }): Promise<GrindingPlanningBoardTestBarPartCandidatesResponse> {
+  const resourceCd = params.resourceCd == null ? null : normalizeProductionScheduleResourceCd(params.resourceCd);
+  if (params.resourceCd != null) {
+    const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+    const master = await readMasterResourceCds(prisma);
+    if (!resourceCd || !master.has(resourceCd) || !isCategoryResource(resourceCd, 'all', policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
+  }
+  // The site-wide picker saves exact FHINMEI names. The machine picker keeps its display trimming.
+  const partName = resourceCd
+    ? Prisma.sql`BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS})`
+    : Prisma.sql`"rowData"->>'FHINMEI'`;
   const parts = await prisma.$queryRaw<GrindingPlanningBoardTestBarPartCandidatesResponse['parts']>(Prisma.sql`
     WITH machine_stock AS (
       SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
       FROM "CsvDashboardRow"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND "rowData"->>'FSEIBAN' = '********'
-        AND BTRIM("rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ${resourceCd}
+        AND BTRIM("rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ${resourceCd}::text
     ), parts AS (
-      SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
+      SELECT DISTINCT ${partName} AS "partName"
       FROM "CsvDashboardRow"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) <> ''
@@ -74,8 +80,10 @@ export function mixedPlanningLane(items: readonly GrindingPlanningBoardItem[], t
   });
   return mixed;
 }
+type ReadLane = (resourceCd: string | null | undefined, referenceIds?: readonly string[]) => Promise<CurrentProjection>;
+
 async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 'excel' | 'scaw' | undefined,
-  action: (tx: Prisma.TransactionClient, current: CurrentProjection, tests: Awaited<ReturnType<typeof readPlanningTestBars>>) => Promise<T>) {
+  action: (tx: Prisma.TransactionClient, tests: Awaited<ReturnType<typeof readPlanningTestBars>>, readLane: ReadLane) => Promise<T>) {
   await ensurePlanningBoardState(siteKey);
   const policy = await getResourceCategoryPolicy({ siteKey });
   const planned = await prisma.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } } });
@@ -85,15 +93,55 @@ async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 
       await acquireSessakuPieceLogicalLocks(tx, pieceKeys);
       const state = await lockState(tx, siteKey);
       assertBoardRevision(sourceRevision, state);
-      const rows = await readWinnerRowsByFseibans(tx, stateOrder(state));
-      const sortedIds = rows.map((row) => row.id).sort((a, b) => a.localeCompare(b));
-      if (sortedIds.length) {
-        await acquireProductionScheduleParentRowLocksInTransaction(tx, sortedIds);
-        await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(${sortedIds}::text[]) ORDER BY "id" FOR UPDATE`;
-      }
-      const current = await resolveCurrentProjectionInTransaction({ client: tx, siteKey, dueSource, sourceRowIds: rows.map((row) => row.id), itemIds: [], policy,
-        includeAllOverrides: true, preloaded: { state, rows, overrides: await readOverrides(tx, siteKey) } });
-      return action(tx, current, await readPlanningTestBars(tx, siteKey));
+      // The state lock serializes override writers. Row locks are taken per lane in saveLane:
+      // locking every board row (10k+) exhausts PostgreSQL's shared lock table.
+      const tests = await readPlanningTestBars(tx, siteKey);
+      return action(tx, tests, async (resourceCd, referenceIds = []) => {
+        const order = stateOrder(state);
+        const readCandidates = async (resource: string | null | undefined, ids: readonly string[]) => {
+          const inboundKeys = await readLaneCandidateKeys(tx, siteKey, resource, ids);
+          const resourceCds = resource == null ? [] : [resource];
+          const winners = resourceCds.length || inboundKeys.length ? await readWinnerRowsByFseibans(tx, order, { resourceCds, inboundKeys }) : [];
+          const keys = winners.map((row) => sessakuPieceKeyFromRow(row.rowData));
+          const pieceSets = await readSessakuPieceSetsByKeys(tx, keys, { exact: true });
+          const itemKeys = keys.map((key) => {
+            const parentId = sessakuPieceParentItemId(key);
+            const pieces = pieceSets.get(encodeSessakuPieceKey(key))?.pieces;
+            return { parentId, itemIds: pieces?.length ? pieces.flatMap(sessakuPieceItemIds) : [parentId] };
+          });
+          const overrides = await readOverrides(tx, siteKey, itemKeys.flatMap(({ parentId, itemIds }) => [parentId, ...itemIds]));
+          const candidates = winners.map((row, i) => {
+            const key = keys[i];
+            const { parentId, itemIds } = itemKeys[i];
+            const original = key.fsigencd.trim();
+            const placements = isCategoryResource(original, 'all', policy) ? itemIds.map((id) => {
+              // A piece's own override replaces the whole inherited override, even with a null resource.
+              const override = overrides.get(id) ?? overrides.get(parentId);
+              return { id, resource: normalizeGrindingPlanningBoardResourceCd(override?.overrideResourceCd ?? original) };
+            }) : [];
+            return { row, key, placements };
+          });
+          return { candidates, overrides, pieceSets };
+        };
+        const first = referenceIds[0];
+        let target = resourceCd;
+        if (target === undefined && first) {
+          target = tests.testBars.find((item) => item.itemId === first)?.resourceCd;
+          if (target === undefined && !first.startsWith('test:')) {
+            const { candidates } = await readCandidates(undefined, [first]);
+            target = candidates.flatMap(({ placements }) => placements).find(({ id }) => id === first)?.resource;
+          }
+        }
+        const { candidates, overrides, pieceSets } = await readCandidates(target, referenceIds);
+        const references = new Set(referenceIds);
+        const scoped = candidates.filter(({ placements }) => placements.some(({ id, resource }) => references.has(id) || (target != null && resource === target)));
+        const rows = scoped.map(({ row }) => row);
+        const rowIds = new Set(rows.map((row) => row.id));
+        // Other operations of these parts contribute only to the displayed completion totals.
+        const progressScope = (await readWinnerProgressRows(tx, order, scoped.map(({ key }) => key))).filter((row) => !rowIds.has(row.id));
+        return resolveCurrentProjectionInTransaction({ client: tx, siteKey, dueSource, sourceRowIds: [...rowIds], itemIds: [], policy,
+          preloaded: { state, rows, overrides, pieceSets, progressScope } });
+      });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30000, maxWait: 15000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
@@ -108,6 +156,7 @@ function assertReference(reference: GrindingPlanningBoardItemReference, item: Gr
   return item;
 }
 async function saveLane(tx: Prisma.TransactionClient, siteKey: string, current: CurrentProjection, lane: readonly GrindingPlanningBoardBar[]) {
+  await lockPlanningSourceRows(tx, [...new Set(lane.flatMap((item) => item.kind === 'test' ? [] : [item.sourceRowId]))].sort());
   const ranks = new Map<string | null, number>();
   for (const item of lane) {
     const band = planningBarBand(item);
@@ -126,18 +175,26 @@ async function saveLane(tx: Prisma.TransactionClient, siteKey: string, current: 
     }
   }
 }
+function projectLaneItems(current: CurrentProjection, resourceCd: string | null) {
+  return [...projectCurrentItems(current, current.overrides).values()].filter((item) => {
+    const before = current.byItemId.get(item.itemId);
+    // A rank write can change an inherited override or the revision of a sibling operation range.
+    return planningBarResource(item) === resourceCd || (before && before.itemRevision !== item.itemRevision);
+  });
+}
 async function mutationResponse(tx: Prisma.TransactionClient, siteKey: string, current: CurrentProjection, id: string): Promise<GrindingPlanningBoardTestBarMutationResponse> {
   const state = await tx.productionScheduleGrindingPlanningBoardState.update({ where: { id: current.state.id }, data: { version: { increment: 1 } } });
   const row = await tx.productionScheduleGrindingPlanningBoardTestBar.findUniqueOrThrow({ where: { id } });
-  return { sourceRevision: boardRevision(state), testBar: projectPlanningTestBar(row), ...await readPlanningTestBars(tx, siteKey), items: [...projectCurrentItems(current, current.overrides).values()] };
+  return { sourceRevision: boardRevision(state), testBar: projectPlanningTestBar(row), ...await readPlanningTestBars(tx, siteKey), items: projectLaneItems(current, row.resourceCd) };
 }
 export async function createPlanningTestBar(params: GrindingPlanningBoardTestBarCreateRequest & { siteKey: string }): Promise<GrindingPlanningBoardTestBarMutationResponse> {
   const partName = params.partName?.trim() || null;
   if (partName && [...partName].length > 200) throw new ApiError(400, '部品名は200文字以内で指定してください', undefined, 'INVALID_TEST_BAR_PART_NAME');
   assertWritablePlanningItemIds([params.afterItem?.itemId]);
   if (!Number.isInteger(params.minutes) || params.minutes < 5 || params.minutes > 1440) throw new ApiError(400, '時間は5〜1440分の整数で指定してください', undefined, 'INVALID_TEST_BAR_MINUTES');
-  return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, current, tests) => {
+  return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, tests, readLane) => {
     const resourceCd = normalizeProductionScheduleResourceCd(params.resourceCd);
+    const current = await readLane(resourceCd, params.afterItem ? [params.afterItem.itemId] : []);
     if (!resourceCd || !current.masterResourceCds.has(resourceCd) || !isCategoryResource(resourceCd, 'all', current.policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
     const lane = mixedPlanningLane([...current.byItemId.values()], tests.testBars, stateOrder(current.state), resourceCd);
     const unbandedStart = lane.filter((item) => planningBarBand(item) != null).length;
@@ -156,10 +213,11 @@ export async function createPlanningTestBar(params: GrindingPlanningBoardTestBar
 }
 export async function mutatePlanningTestBar(params: GrindingPlanningBoardTestBarMutationRequest & { siteKey: string; id: string; action: 'delete' | 'restore' | 'complete' | 'incomplete' }): Promise<GrindingPlanningBoardTestBarMutationResponse> {
   assertWritablePlanningItemIds([params.id, params.restoreAfterItemId]);
-  return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, current, tests) => {
+  return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, tests, readLane) => {
     const row = await tx.productionScheduleGrindingPlanningBoardTestBar.findFirst({ where: { id: params.id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey } });
     if (!row) throw new ApiError(404, 'テスト加工がありません', undefined, 'TEST_BAR_NOT_FOUND');
     if (row.version !== params.expectedVersion || (params.action !== 'restore' && row.deletedAt)) throw new ApiError(409, 'テスト加工が更新されています。再読み込みしてください', undefined, 'STALE_TEST_BAR');
+    const current = await readLane(row.resourceCd);
     await tx.productionScheduleGrindingPlanningBoardTestBar.update({ where: { id: row.id }, data: {
       ...(params.action === 'delete' ? { deletedAt: new Date() } : params.action === 'restore' ? { deletedAt: null } : { completedAt: params.action === 'complete' ? new Date() : null }), version: { increment: 1 }
     } });
@@ -184,12 +242,14 @@ export async function mutatePlanningTestBar(params: GrindingPlanningBoardTestBar
 export async function reorderPlanningTestBarLane(params: (GrindingPlanningBoardResourceOrderRequest | GrindingPlanningBoardResourceOrderBulkRequest) & { siteKey: string }): Promise<GrindingPlanningBoardResourceOrderResponse> {
   assertWritablePlanningItemIds('items' in params ? params.items.map((item) => item.itemId) : [params.itemId, params.targetItemId]);
   const excluded = new Set(await readScheduleSourceExcludedFseibans(params.scheduleSource));
-  return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, current, tests) => {
-    const byId = new Map<string, GrindingPlanningBoardBar>([...current.byItemId.values(), ...tests.testBars].map((item) => [item.itemId, item]));
+  return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, tests, readLane) => {
     const requests = 'items' in params ? params.items : [params, { itemId: params.targetItemId, itemRevision: params.targetItemRevision, overrideVersion: params.targetOverrideVersion }];
     if (!requests.length || requests.length > GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT || new Set(requests.map((item) => item.itemId)).size !== requests.length) throw new ApiError(400, '重複しない棒を指定してください', undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
+    const requestedResource = 'resourceCd' in params ? resourceOrderLaneCd(params.resourceCd) : undefined;
+    const current = await readLane(requestedResource, requests.map((item) => item.itemId));
+    const byId = new Map<string, GrindingPlanningBoardBar>([...current.byItemId.values(), ...tests.testBars].map((item) => [item.itemId, item]));
     const members = requests.map((reference) => assertReference(reference, byId.get(reference.itemId)));
-    const resource = 'resourceCd' in params ? params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd) : planningBarResource(members[0]!);
+    const resource = requestedResource === undefined ? planningBarResource(members[0]!) : requestedResource;
     if (members.some((item) => planningBarResource(item) !== resource || (item.kind !== 'test' && excluded.has(item.fseiban)))) throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
     const lane = mixedPlanningLane([...current.byItemId.values()], tests.testBars, stateOrder(current.state), resource);
     const visible = lane.filter((item) => item.kind === 'test' || !excluded.has(item.fseiban));
@@ -207,6 +267,6 @@ export async function reorderPlanningTestBarLane(params: (GrindingPlanningBoardR
     if (order.some((id, index) => planningBarBand(byId.get(id)!) !== planningBarBand(lane[index]!))) throw new ApiError(409, '特別納期の優先帯をまたいで並べ替えできません', undefined, 'SPECIAL_DUE_ORDER_BAND_MISMATCH');
     await saveLane(tx, params.siteKey, current, order.map((id) => byId.get(id)!));
     const state = await tx.productionScheduleGrindingPlanningBoardState.update({ where: { id: current.state.id }, data: { version: { increment: 1 } } });
-    return { sourceRevision: boardRevision(state), items: [...projectCurrentItems(current, current.overrides).values()], testBars: (await readPlanningTestBars(tx, params.siteKey)).testBars };
+    return { sourceRevision: boardRevision(state), items: projectLaneItems(current, resource), testBars: (await readPlanningTestBars(tx, params.siteKey)).testBars };
   });
 }

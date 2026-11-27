@@ -1676,7 +1676,7 @@
 | **バックアップ設定を変更したい** | **[guides/backup-configuration.md](./guides/backup-configuration.md)** |
 | **バックアップ対象を管理したい** | **[guides/backup-target-management-verification.md](./archive/guides/backup-target-management-verification.md)** / **[requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md)** |
 | **バックアップ機能を実機検証したい** | **[guides/backup-target-management-verification.md](./archive/guides/backup-target-management-verification.md)** |
-| **外部連携（Dropbox/Gmail/Slack）の設定・運用を管理したい** | **[guides/external-integration-ledger.md](./guides/external-integration-ledger.md)** |
+| **外部連携（Dropbox/Gmail/Slack/TypeSafe など）の設定・運用を管理したい** | **[guides/external-integration-ledger.md](./guides/external-integration-ledger.md)** |
 | **Dropbox OAuth 2.0を設定したい** | **[guides/dropbox-oauth-setup-guide.md](./guides/dropbox-oauth-setup-guide.md)** |
 | **Dropbox OAuth 2.0を実機検証したい** | **[guides/dropbox-oauth-verification-checklist.md](./archive/guides/dropbox-oauth-verification-checklist.md)** |
 | **Slack Webhookを設定したい** | **[guides/slack-webhook-setup.md](./guides/slack-webhook-setup.md)** |
@@ -1802,7 +1802,7 @@
 | [runbooks/actual-hours-canonical-backfill.md](./runbooks/actual-hours-canonical-backfill.md) | **Runbook**: 実績工数 Canonical/Feature バックフィル（Deploy後・既存Raw反映） |
 | [guides/operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [modules/tools/operations.md](./modules/tools/operations.md) | **工具管理運用・保守ガイド**（データ整合性、復旧手順、エラーハンドリング） |
-| [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
+| [architecture/infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（コンテナ構成、公開の入口、データの保存、配備、監視、災害復旧） |
 | [guides/error-handling.md](./guides/error-handling.md) | エラーハンドリングガイド |
 | [guides/logging.md](./guides/logging.md) | ログ出力ガイド |
 | [guides/ansible-managed-files.md](./guides/ansible-managed-files.md) | Ansibleで管理すべき設定ファイル一覧 |
@@ -1837,8 +1837,8 @@
 | ファイル | 説明 |
 |---------|------|
 | [overview.md](./architecture/overview.md) | システム全体のアーキテクチャ（クライアントデバイス統合含む） |
-| [infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（スケール性、データ永続化、ネットワーク構成） |
-| [signage-module-architecture.md](./architecture/signage-module-architecture.md) | **デジタルサイネージモジュール アーキテクチャ**（モジュール化、コンフリクト確認、スケーラビリティ） |
+| [infrastructure-base.md](./architecture/infrastructure-base.md) | **インフラ基盤**（コンテナ構成、公開の入口、データの保存、配備、監視、災害復旧） |
+| [signage-module-architecture.md](./architecture/signage-module-architecture.md) | **デジタルサイネージモジュール アーキテクチャ**（表示の種類、描画の仕組み、API、Pi3 端末の動き） |
 | [deployment-modules.md](./architecture/deployment-modules.md) | **デプロイメントモジュール**（原因分析・設計・テスト計画統合、疎結合・モジュール化アーキテクチャ） |
 
 ### 設計決定（decisions/）
@@ -1873,7 +1873,7 @@
 | [measuring-instruments/api.md](./modules/measuring-instruments/api.md) | **計測機器管理API仕様** |
 | [measuring-instruments/ui.md](./modules/measuring-instruments/ui.md) | **計測機器管理UI設計メモ** |
 | [signage/README.md](./modules/signage/README.md) | **デジタルサイネージモジュール** |
-| [signage/signage-lite.md](./modules/signage/signage-lite.md) | **デジタルサイネージ軽量モード計画** |
+| [signage/signage-lite.md](./modules/signage/signage-lite.md) | **サイネージ軽量表示**（端末側の仕組みと運用） |
 | [documents/README.md](./modules/documents/README.md) | ドキュメントモジュール（将来実装予定） |
 | [logistics/README.md](./modules/logistics/README.md) | 物流モジュール（将来実装予定） |
 

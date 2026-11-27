@@ -1169,7 +1169,7 @@ describe('assembly torque management API', () => {
     expect(await prisma.assemblyTemplate.count()).toBe(0);
   });
 
-  it('requires the operation password for template retirement, procedure unpublication and deletion', async () => {
+  it('requires the operation password for template retirement and procedure unpublication, not deletion', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };
     const document = await uploadPublishedProcedureDocument(app, headers, 'Operation manual');
@@ -1191,8 +1191,6 @@ describe('assembly torque management API', () => {
       expect(await prisma.assemblyTemplate.findUniqueOrThrow({ where: { id: templateId } })).toMatchObject({ isActive: true });
       const unpublished = await app.inject({ method: 'POST', url: `/api/assembly/procedure-documents/${unusedDocument.id}/unpublish`, headers, payload });
       expect(unpublished.statusCode).toBe(403);
-      const deleted = await app.inject({ method: 'DELETE', url: `/api/assembly/procedure-documents/${unusedDocument.id}`, headers, payload });
-      expect(deleted.statusCode).toBe(403);
       expect(await prisma.assemblyProcedureDocument.findUniqueOrThrow({ where: { id: unusedDocument.id } })).toMatchObject({
         status: 'PUBLISHED', publishedAt: expect.any(Date)
       });
@@ -1203,7 +1201,7 @@ describe('assembly torque management API', () => {
     const unpublished = await app.inject({ method: 'POST', url: `/api/assembly/procedure-documents/${unusedDocument.id}/unpublish`, headers, payload });
     expect(unpublished.statusCode).toBe(200);
     expect(unpublished.json().document).toMatchObject({ status: 'draft', publishedAt: null });
-    expect((await app.inject({ method: 'DELETE', url: `/api/assembly/procedure-documents/${unusedDocument.id}`, headers, payload })).statusCode).toBe(204);
+    expect((await app.inject({ method: 'DELETE', url: `/api/assembly/procedure-documents/${unusedDocument.id}`, headers })).statusCode).toBe(204);
     expect(await prisma.assemblyProcedureDocument.findUnique({ where: { id: unusedDocument.id } })).toBeNull();
     for (const [method, url] of [
       ['DELETE', `/api/assembly/templates/${randomUUID()}`],

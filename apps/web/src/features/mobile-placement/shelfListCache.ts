@@ -17,7 +17,8 @@ function readCache<T>(key: string, valid: (value: unknown) => value is T): T | u
 
 const validShelves = (value: unknown): value is Shelves => Boolean(value && typeof value === 'object' && 'shelves' in value && Array.isArray(value.shelves) &&
     value.shelves.every((shelf: unknown) => shelf && typeof shelf === 'object' && 'shelfCodeRaw' in shelf && typeof shelf.shelfCodeRaw === 'string' &&
-      'isStructured' in shelf && typeof shelf.isStructured === 'boolean'));
+      'isStructured' in shelf && typeof shelf.isStructured === 'boolean' &&
+      (!('resourceCds' in shelf) || (Array.isArray(shelf.resourceCds) && shelf.resourceCds.every((cd: unknown) => typeof cd === 'string')))));
 
 const validMachines = (value: unknown): value is Machines => Boolean(value && typeof value === 'object' && 'machines' in value && Array.isArray(value.machines) &&
     value.machines.every((name: unknown) => typeof name === 'string') && 'landmarks' in value && Array.isArray(value.landmarks) &&
@@ -53,3 +54,22 @@ export const getCachedRegisteredShelves = ({ refresh = false } = {}) =>
   withShelfCache(SHELVES_KEY, getMobilePlacementRegisteredShelves, readCachedRegisteredShelves(), refresh);
 export const getCachedShelfMachines = ({ refresh = false } = {}) =>
   withShelfCache(MACHINES_KEY, getMobilePlacementShelfMachines, readCachedShelfMachines(), refresh);
+
+export function refreshRegisteredShelvesAfterAssignment(current: Shelves, resourceCd: string, shelfCodes: string[]) {
+  // Retain the confirmed assignment if the connection drops between the PUT and refresh.
+  const fallback = { shelves: current.shelves.map((shelf) => {
+    const codes = (shelf.resourceCds ?? []).filter((code) => code !== resourceCd);
+    if (shelfCodes.includes(shelf.shelfCodeRaw)) codes.push(resourceCd);
+    return { ...shelf, resourceCds: codes };
+  }) };
+  try { localStorage.setItem(SHELVES_KEY, JSON.stringify(fallback)); } catch { /* Keep the live result if storage is full. */ }
+  return withShelfCache(SHELVES_KEY, getMobilePlacementRegisteredShelves, fallback, true);
+}
+
+export function refreshRegisteredShelvesAfterOrder(current: Shelves, shelfCodes: string[]) {
+  // Retain the confirmed order if the connection drops between the PUT and refresh.
+  const order = new Map(shelfCodes.map((code, index) => [code, index]));
+  const fallback = { shelves: current.shelves.map((shelf) => ({ ...shelf, sortOrder: order.get(shelf.shelfCodeRaw) ?? null })) };
+  try { localStorage.setItem(SHELVES_KEY, JSON.stringify(fallback)); } catch { /* Keep the live result if storage is full. */ }
+  return withShelfCache(SHELVES_KEY, getMobilePlacementRegisteredShelves, fallback, true);
+}

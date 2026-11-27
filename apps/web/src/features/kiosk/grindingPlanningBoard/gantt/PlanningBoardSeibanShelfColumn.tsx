@@ -63,7 +63,8 @@ export const PlanningBoardSeibanShelfColumn = memo(function PlanningBoardSeibanS
                   onClick={() => clickTile(tile.item.itemId)}
                   className={clsx('relative grid h-9 shrink-0 touch-none select-none place-items-center rounded-[5px] font-mono text-xs font-extrabold',
                     connected.length > 1 ? 'w-[30px]' : 'w-11', visible.length > 1 && 'first:rounded-r-none last:rounded-l-none [&:not(:first-child):not(:last-child)]:rounded-none',
-                    !tile.placed && 'border-2 border-dashed', selected.has(tile.item.itemId) && 'z-[1] ring-[3px] ring-white',
+                    !tile.placed && 'border-2 border-dashed', tile.placed && tile.item.waitingForPair && 'opacity-[.45]',
+                    selected.has(tile.item.itemId) && 'z-[1] ring-[3px] ring-white',
                     highlightedItemId === tile.item.itemId && 'after:pointer-events-none after:absolute after:-inset-[5px] after:rounded-[7px] after:border-2 after:border-white')}
                   style={{ background: tile.placed ? tile.late ? '#fb7185' : color : 'transparent',
                     borderColor: color, color: tile.late ? tile.placed ? '#fff' : '#fb7185' : tile.placed ? '#020617' : color }}>{tile.resource ?? '—'}</button>;

@@ -50,6 +50,8 @@ export function resolveOpBarMinutes(
 export type LoadSummaryAggregateRow = OpBarSummaryFields & {
   originalResourceCd: string | null;
   effectiveResourceCd: string | null;
+  /** Board assignment used for standard minutes before applying the load-only swap. */
+  minutesResourceCd?: string | null;
   includeSetup?: boolean;
   fhincd?: string | null; quantity?: number | null;
   itemCount: bigint;
@@ -70,7 +72,9 @@ export function resolveOpBarLoadAggregates(aggregateRows: LoadSummaryAggregateRo
     const resolved = resolveRequiredMinutes({
       originalMinutes: row.requiredMinutesSum == null ? null : row.requiredMinutesSum / count,
       originalKnown: Number(row.unknownItemCount) === 0,
-      quantity: row.quantity ?? null, includeSetup: row.includeSetup, effectiveResourceCd: row.effectiveResourceCd, fhincd: row.fhincd ?? ''
+      quantity: row.quantity ?? null, includeSetup: row.includeSetup,
+      effectiveResourceCd: row.minutesResourceCd === undefined ? row.effectiveResourceCd : row.minutesResourceCd,
+      fhincd: row.fhincd ?? ''
     }, resourceMinutes);
     return [resolved.requiredMinutesSource === 'own'
       ? { ...row, requiredMinutesSum: resolved.requiredMinutes! * count, unknownItemCount: 0n } : row];

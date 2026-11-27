@@ -24,6 +24,7 @@ import {
   InspectionDrawingPointSummaryList,
   InspectionDrawingValuePanel,
   inspectionDrawingCanvasColumnClassName,
+  normalizeInspectionDrawingProcessGroup,
   resolveMeasurementPointInputStatus,
   templateItemToDrawingPoint,
   useInspectionDrawingZoom
@@ -159,7 +160,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
     if (locationState) return locationState;
     const templateId = searchParams.get('templateId')?.trim() ?? '';
     const productNo = searchParams.get('productNo')?.trim() ?? '';
-    const processGroup = searchParams.get('processGroup') === 'grinding' ? 'grinding' : 'cutting';
+    const processGroup = normalizeInspectionDrawingProcessGroup(searchParams.get('processGroup'));
     const resourceCd = searchParams.get('resourceCd')?.trim() ?? '';
     const fhincd = searchParams.get('fhincd')?.trim() ?? '';
     const fhinmei = searchParams.get('fhinmei')?.trim() ?? '';

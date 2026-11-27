@@ -446,15 +446,9 @@ async function installEditorApiMocks(
 
 }
 
-async function authenticateDocumentEditor(page: Page): Promise<void> {
-  await expect(page.getByRole('dialog', { name: '暗証番号', exact: true })).toBeVisible();
-  const leaseAcquired = page.waitForResponse((response) =>
-    response.url().endsWith(`/procedure-documents/${REVISION_DOCUMENT_ID}/edit-lease`) && response.request().method() === 'POST'
-  );
-  const tenkey = page.getByTestId('assembly-document-editor-password');
-  for (const digit of EDITOR_PASSWORD) await tenkey.getByRole('button', { name: digit, exact: true }).click();
-  expect((await leaseAcquired).status()).toBe(200);
+async function waitForDocumentEditor(page: Page): Promise<void> {
   await expect(page.getByTestId('assembly-document-editor-layout')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '暗証番号', exact: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: '手順書キャンバス' })).toBeVisible();
   await expect(page.getByRole('button', { name: '範囲を選ぶ', exact: true })).toBeEnabled();
 }
@@ -502,10 +496,10 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   await page.goto(`/kiosk/assembly/procedure-documents/${SOURCE_DOCUMENT_ID}/edit`, {
     waitUntil: 'domcontentloaded'
   });
-  await authenticateDocumentEditor(page);
+  await waitForDocumentEditor(page);
 
-  expect(evidence.verifyPasswordBodies).toEqual([{ password: EDITOR_PASSWORD }]);
-  expect(evidence.revisionBodies).toEqual([{ accessPassword: EDITOR_PASSWORD }]);
+  expect(evidence.verifyPasswordBodies).toEqual([]);
+  expect(evidence.revisionBodies).toHaveLength(1);
   await expect(page.getByText('公開済み組立手順書（改版）')).toBeVisible();
 
   await addOverlay(page, '文章', { x: 0.08, y: 0.1 }, { x: 0.36, y: 0.25 });
@@ -542,7 +536,6 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   await expect.poll(() => evidence.saveBodies.length).toBe(1);
   const firstSave = evidence.saveBodies[0]!;
   expect(firstSave).toMatchObject({
-    accessPassword: EDITOR_PASSWORD,
     expectedEditVersion: 1
   });
   expect(firstSave.elements).toEqual(expect.arrayContaining([
@@ -588,6 +581,9 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
   // Tag approval is the default; this scenario exercises the password path.
   await publishDialog.getByRole('radio', { name: 'パスワードで公開(締付テンプレート向け)' }).check();
   await publishDialog.getByRole('button', { name: '公開する', exact: true }).click();
+  const publishPin = page.getByRole('dialog', { name: '暗証番号', exact: true });
+  await expect(publishPin).toBeVisible();
+  for (const digit of EDITOR_PASSWORD) await publishPin.getByRole('button', { name: digit, exact: true }).click();
   await expect.poll(() => evidence.publishBodies.length).toBe(1);
   expect(evidence.publishBodies[0]).toMatchObject({
     accessPassword: EDITOR_PASSWORD,
@@ -610,7 +606,7 @@ test('reuses another page’s part independently on the current page with one-st
     { pageIndex: 1, imageRelativePath: procedureImage, overlays: [] }
   ] });
   await page.goto(`/kiosk/assembly/procedure-documents/${SOURCE_DOCUMENT_ID}/edit`, { waitUntil: 'domcontentloaded' });
-  await authenticateDocumentEditor(page);
+  await waitForDocumentEditor(page);
   await page.getByRole('button', { name: '2ページ目', exact: true }).click();
   const parts = page.getByRole('complementary', { name: '部品', exact: true });
   await expect(parts.getByRole('button', { name: /^このページ\s*0$/ })).toBeVisible();
@@ -646,7 +642,7 @@ for (const viewport of [
     await page.goto(`/kiosk/assembly/procedure-documents/${SOURCE_DOCUMENT_ID}/edit`, {
       waitUntil: 'domcontentloaded'
     });
-    await authenticateDocumentEditor(page);
+    await waitForDocumentEditor(page);
 
     const layout = page.getByTestId('assembly-document-editor-layout');
     const canvas = page.getByRole('region', { name: '手順書キャンバス' });
@@ -740,7 +736,7 @@ for (const viewport of [
     };
 
     await page.goto(`/kiosk/assembly/procedure-documents/${SOURCE_DOCUMENT_ID}/edit`, { waitUntil: 'domcontentloaded' });
-    await authenticateDocumentEditor(page);
+    await waitForDocumentEditor(page);
     const canvas = page.getByRole('region', { name: '手順書キャンバス' });
     const photoButton = (id: string) => canvas.getByRole('button', { name: `画像オーバーレイ: ${id}`, exact: true });
     const inspector = page.getByRole('complementary', { name: 'オーバーレイ編集' });
@@ -757,7 +753,7 @@ for (const viewport of [
     await expect(cells).toHaveCount(rows.length);
     for (const [index, row] of rows.entries()) await expect(cells.nth(index)).toHaveValue(row);
     expect(evidence.textRegionBodies).toMatchObject([{
-      accessPassword: EDITOR_PASSWORD, pageIndex: photo.pageIndex, bbox: photo.bbox, photoOnly: true,
+      pageIndex: photo.pageIndex, bbox: photo.bbox, photoOnly: true,
       overlays: [{ assetId, bbox: photo.bbox, objectFit: 'contain' }]
     }]);
     await cells.nth(3).scrollIntoViewIfNeeded();
@@ -866,7 +862,7 @@ test.describe('overlay elements receive taps on the editor canvas', () => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await installEditorApiMocks(page, evidence);
     await page.goto(`/kiosk/assembly/procedure-documents/${SOURCE_DOCUMENT_ID}/edit`, { waitUntil: 'domcontentloaded' });
-    await authenticateDocumentEditor(page);
+    await waitForDocumentEditor(page);
     await addOverlay(page, '文章', { x: 0.08, y: 0.1 }, { x: 0.36, y: 0.25 });
     await page.getByRole('option', { name: /抽出された手順文章/ }).click();
     const element = page.getByRole('button', { name: '文章オーバーレイ: 抽出された手順文章', exact: true });

@@ -1,7 +1,9 @@
+import { getProcedureDocumentFeedback, setProcedureDocumentFeedbackTarget } from '../../services/assembly/procedure-document-feedback.service.js';
 import { videosForPage, type ProcedureVideoPageLink } from '../../services/assembly/procedure-video.service.js';
 import { serializeAssemblyProcedureAssets, serializeLastProcedureManualApproval, type ProcedureAssetWithOriginal, type ProcedureManualApprovalSnapshot } from '../../services/assembly/assembly-procedure-document-revision.serializer.js';
 import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
+import { procedureDocumentFeedbackTargetRequestSchema } from '@raspi-system/shared-types';
 import { z } from 'zod';
 import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 
@@ -185,6 +187,17 @@ export function registerAssemblyProcedureDocumentRoutes(
     return { document: serializeProcedureDocument(doc) };
   });
 
+  app.get('/assembly/procedure-documents/:id/feedback', { preHandler: allowView }, async (request) => {
+    const { id } = idParamSchema.parse(request.params);
+    return getProcedureDocumentFeedback(id);
+  });
+
+  app.put('/assembly/procedure-documents/:id/feedback-target', { preHandler: allowWriteKiosk }, async (request) => {
+    const { id } = idParamSchema.parse(request.params);
+    const { nightlyTarget } = procedureDocumentFeedbackTargetRequestSchema.parse(request.body);
+    return setProcedureDocumentFeedbackTarget(id, nightlyTarget);
+  });
+
   app.post('/assembly/procedure-documents', { preHandler: allowWriteKiosk }, async (request) => {
     if (!request.isMultipart()) throw new ApiError(400, 'マルチパートフォームデータが必要です');
     let fileBuffer: Buffer | null = null;
@@ -276,8 +289,7 @@ export function registerAssemblyProcedureDocumentRoutes(
 
   app.delete('/assembly/procedure-documents/:id', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
-    const body = z.object({ accessPassword: z.string().max(128).default('') }).parse(request.body ?? {});
-    await procedureService.requireAccessPassword(body.accessPassword, await resolveAssemblyProcedureEditWriter(request));
+    z.object({ accessPassword: z.string().max(128).default('') }).parse(request.body ?? {});
     const usage = await procedureService.getReferenceUsage(params.id);
     if (usage.inProcedureManualAssignment) {
       throw new DomainHttpError(409, procedureService.buildInUseMessage(usage));

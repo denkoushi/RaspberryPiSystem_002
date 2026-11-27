@@ -7,9 +7,11 @@ vi.mock('../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../kiosk/shared.js', () => ({ requireClientDevice: vi.fn() }));
 vi.mock('../../services/mobile-placement/haizen-placement.service.js', () => ({ applyHaizenScan: vi.fn() }));
 vi.mock('../../services/production-schedule/grinding-planning-board/write-scan-arrival.js', () => ({ applyGrindingPlanningBoardScanArrival: vi.fn() }));
+vi.mock('../../services/mobile-placement/edge-scan.service.js', () => ({ registerEdgeScan: vi.fn() }));
 import { requireClientDevice } from '../kiosk/shared.js';
 import { applyHaizenScan } from '../../services/mobile-placement/haizen-placement.service.js';
 import { applyGrindingPlanningBoardScanArrival } from '../../services/production-schedule/grinding-planning-board/write-scan-arrival.js';
+import { registerEdgeScan } from '../../services/mobile-placement/edge-scan.service.js';
 import { registerMobilePlacementRoutes } from '../mobile-placement/index.js';
 
 const appForTest = async () => {
@@ -69,6 +71,39 @@ describe('haizen scan mode routing', () => {
     try {
       expect((await scan(app)).statusCode).toBe(401);
       expect(applyHaizenScan).not.toHaveBeenCalled(); expect(applyGrindingPlanningBoardScanArrival).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+});
+
+describe('edge scan mode routing', () => {
+  const edgeBody = { clientRecordId: '6f1c2b0e-4d3a-4f5b-9c1d-2e3f4a5b6c7d', scannedAt: new Date().toISOString(), orderNumber: '0005554987', branchNo: 0 };
+  const edgeScan = (app: Awaited<ReturnType<typeof appForTest>>) => app.inject({ method: 'POST', url: '/mobile-placement/edge-scans', headers: { 'x-client-key': 'key' }, payload: edgeBody });
+
+  it('routes grinding mode to the arrival writer', async () => {
+    const app = await appForTest();
+    const clientDevice = { ...device, haizenEdgeEnabled: true, haizenScanMode: 'grinding_arrival' };
+    vi.mocked(requireClientDevice).mockResolvedValue({ clientDevice } as never);
+    const result = { resolutionStatus: 'RESOLVED', arrival: { productNo: '0005554987' } };
+    vi.mocked(applyGrindingPlanningBoardScanArrival).mockResolvedValue(result as never);
+    try {
+      const response = await edgeScan(app);
+      expect(response.statusCode).toBe(200); expect(response.json()).toEqual(result);
+      expect(applyGrindingPlanningBoardScanArrival).toHaveBeenCalledExactlyOnceWith({ clientDevice, manufacturingOrderBarcodeRaw: '0005554987' });
+      expect(registerEdgeScan).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it.each([
+    ['shelf mode', { haizenEdgeEnabled: true, haizenScanMode: 'shelf' }],
+    ['a disabled scanner', { haizenEdgeEnabled: false, haizenScanMode: 'grinding_arrival' }]
+  ])('keeps shelf placement for %s', async (_label, mode) => {
+    const app = await appForTest();
+    vi.mocked(requireClientDevice).mockResolvedValue({ clientDevice: { ...device, ...mode } } as never);
+    vi.mocked(registerEdgeScan).mockResolvedValue({ status: 'created', branchNo: 0, shelfCodeRaw: '研削場 南' } as never);
+    try {
+      expect((await edgeScan(app)).statusCode).toBe(200);
+      expect(registerEdgeScan).toHaveBeenCalledExactlyOnceWith({ ...edgeBody, clientDeviceId: 'scanner' });
+      expect(applyGrindingPlanningBoardScanArrival).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
 });

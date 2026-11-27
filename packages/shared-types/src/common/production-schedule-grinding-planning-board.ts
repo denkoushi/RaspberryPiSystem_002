@@ -5,7 +5,8 @@ export const GRINDING_PLANNING_BOARD_RESOURCE_ORDER_ITEM_LIMIT = 2000;
 /** キオスク研削順位ボードのページ専用API契約。既存順位ボードの順位・割当とは別管理。 */
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
 export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';
-export type GrindingPlanningBoardScheduleSource = 'general' | 'dCompany' | 'both';
+export const GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES = ['general', 'dCompany', 'both'] as const;
+export type GrindingPlanningBoardScheduleSource = (typeof GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES)[number];
 
 export interface GrindingPlanningBoardProcessChipsRequest {
   parts: Array<{ fseiban: string; productNo: string; fhincd: string }>;
@@ -135,7 +136,12 @@ export interface GrindingPlanningBoardItem {
   requiredMinutesSource: GrindingPlanningBoardRequiredMinutesSource;
   isCompleted: boolean;
   lslhSurface: boolean;
+  /** LSLH の工程より後の工程（戻ってからの再研削など）。処理出しの対象にしない。 */
+  afterLslhSurface?: boolean;
+  /** 次の LSLH の工程の処理先（部署マスタの名前）。 */
+  sendOutDestinationName?: string;
   arrived?: boolean;
+  waitingForPair?: boolean;
   isFirstProcess?: boolean;
   firstProcessState?: GrindingPlanningBoardFirstProcessState;
   manualArrivalDate?: string | null;

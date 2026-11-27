@@ -8,7 +8,7 @@ import { useFrozenValue, usePlanningBoardOffline } from './planningBoardOfflineC
 
 import type { KioskGrindingPlanningBoardQuery } from '../../../../api/client';
 import type { MachineSignalResourceUptime } from '../../../../api/domains/machine-signal';
-import type { DScheduleMinutesExtras } from '../../../../api/hooks/production-schedule/d-schedule-minutes';
+import type { DScheduleMinutesExtras, DScheduleMinutesReceivedAt } from '../../../../api/hooks/production-schedule/d-schedule-minutes';
 import type {
   GrindingPlanningBoardResponse, GrindingPlanningBoardLoadResponse, GrindingPlanningBoardProcessChipsResponse,
   GrindingPlanningBoardSeibanCandidatesResponse, GrindingPlanningBoardDueScopeSnapshot,
@@ -34,7 +34,9 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; inFlight.current?.abort(); }; }, []);
   const read = useCallback(async (signal: AbortSignal) => latest.current.fetcher(signal), []);
+  const commits = useRef(0);
   const commit = useCallback((data: unknown) => {
+    commits.current += 1;
     if (mounted.current) { setResult({ data: data as T, isError: false, error: null, scopeKey }); latest.current.publishRead(gate.generation()); }
   }, [scopeKey, gate]);
   useLayoutEffect(() => {
@@ -42,21 +44,25 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
     return registerRead(key, { read, commit });
   }, [key, scopeKey, enabled, read, commit, registerRead]);
   useEffect(() => subscribeFreeze(() => inFlight.current?.abort()), [subscribeFreeze]);
-  const refetch = useCallback(async (): Promise<Result<T>> => {
+  const refetch = useCallback(async (options?: { cancelRefetch?: boolean }): Promise<Result<T>> => {
     if (!gate.canWrite()) return { data: undefined, isError: true, error: new Error('Read only') };
-    const generation = gate.generation();
+    if (options?.cancelRefetch === false && inFlight.current) return { data: undefined, isError: true, error: new Error('Read in progress') };
+    const generation = gate.generation(); const commitsAtStart = commits.current;
     inFlight.current?.abort();
     const abort = new AbortController(); inFlight.current = abort;
     setFetching(true);
     try {
       const data = await read(abort.signal);
-      if (abort.signal.aborted || generation !== gate.generation() || scopeKey !== activeScope.current) return { data: undefined, isError: true, error: new Error('Stale read') };
+      if (abort.signal.aborted || generation !== gate.generation() || scopeKey !== activeScope.current || commits.current !== commitsAtStart) return { data: undefined, isError: true, error: new Error('Stale read') };
+      commits.current += 1;
       const next = { data, isError: false, error: null, scopeKey }; if (mounted.current) { setResult(next); latest.current.publishRead(generation); } return next;
     } catch (error) {
       const next = { data: undefined, isError: true, error };
       if (mounted.current && !abort.signal.aborted && generation === gate.generation() && scopeKey === activeScope.current) setResult((previous) => previous.data ? previous : { ...next, scopeKey: previous.scopeKey });
       return next;
-    } finally { if (mounted.current && inFlight.current === abort) setFetching(false); }
+    } finally {
+      if (inFlight.current === abort) { inFlight.current = undefined; if (mounted.current) setFetching(false); }
+    }
   }, [gate, read, scopeKey]);
   const previousScope = useRef(scopeKey);
   useEffect(() => {
@@ -64,9 +70,9 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
     if (previousScope.current !== scopeKey || !result.data) void refetch();
     previousScope.current = scopeKey;
     if (refetchIntervalMs === false) return;
-    const timer = setInterval(() => { void refetch(); }, refetchIntervalMs);
+    const timer = setInterval(() => { void refetch({ cancelRefetch: key !== 'board' }); }, refetchIntervalMs);
     return () => clearInterval(timer);
-  }, [scopeKey, enabled, offline.frozen, refetch, result.data, refetchIntervalMs]);
+  }, [key, scopeKey, enabled, offline.frozen, refetch, result.data, refetchIntervalMs]);
   const frozenResult = useFrozenValue(result);
   const visibleFetching = useFrozenValue(fetching);
   return { ...frozenResult, refetch, isFetching: visibleFetching, isLoading: !frozenResult.data && !frozenResult.isError,
@@ -76,14 +82,15 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
 function useRequest() {
   const { gate, reportRead } = usePlanningBoardOffline();
   return async <T,>(path: string, signal: AbortSignal, valid: (data: T) => boolean,
-    params?: unknown, body?: unknown): Promise<T> => {
+    params?: unknown, body?: unknown, options?: { background?: boolean }): Promise<T> => {
     const generation = gate.generation(); const identity = getResolvedClientKey();
-    const config = { signal, timeout: 15_000, params, headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' } };
+    const config = { signal, timeout: 15_000, params, headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' },
+      ...(options?.background ? { kioskTelemetry: 'background' as const } : {}) };
     const response = body === undefined ? await api.get<T>(path, config) : await api.post<T>(path, body, config);
     if (signal.aborted || identity !== getResolvedClientKey() || generation !== gate.generation() || response.status < 200 || response.status >= 300 || !response.data || typeof response.data !== 'object' || !valid(response.data)) throw new Error('Invalid board response');
     const finalUrl = response.request?.responseURL as string | undefined;
     if (finalUrl && !new URL(finalUrl, window.location.origin).pathname.endsWith(path)) throw new Error('Redirected board response');
-    if (path.startsWith(base) || path === '/kiosk/production-schedule/resources' || path === '/kiosk/production-schedule/d-schedule-minutes') reportRead(generation, response.headers.date);
+    if (!options?.background && (path.startsWith(base) || path === '/kiosk/production-schedule/resources' || path === '/kiosk/production-schedule/d-schedule-minutes')) reportRead(generation, response.headers.date);
     return response.data;
   };
 }
@@ -150,11 +157,61 @@ export function useOfflineResourceCapacity(enabled: boolean) {
 
 export function useOfflineDScheduleMinutes() {
   const request = useRequest();
-  return useOfflineRead('d-schedule-minutes', null, (signal) => request<{ rows: DScheduleMinutesExtras[] }>('/kiosk/production-schedule/d-schedule-minutes', signal, (data) => Array.isArray(data.rows)));
+  return useOfflineRead('d-schedule-minutes', null, (signal) => request<{ rows: DScheduleMinutesExtras[]; latestReceivedAt?: DScheduleMinutesReceivedAt }>('/kiosk/production-schedule/d-schedule-minutes', signal, (data) => Array.isArray(data.rows)));
 }
 export function useOfflineUptime(enabled: boolean) {
   const request = useRequest();
   return useOfflineRead('uptime', null, (signal) => request<MachineSignalResourceUptime>('/machine-signal/resource-uptime', signal, (data) => Array.isArray(data.resources), { days: 30 }), enabled);
+}
+
+function usePlanningBoardArrivalRefresh(paused: boolean, board: {
+  scopeReady: boolean; isFetching: boolean; isAppending: boolean; isAppendRunning?: () => boolean;
+  refetch: (options: { cancelRefetch: false }) => Promise<{ isError: boolean }>;
+}) {
+  const { gate, frozen, snapshot, subscribeFreeze } = usePlanningBoardOffline();
+  const request = useRequest();
+  const latestRequest = useRef(request); latestRequest.current = request;
+  const online = snapshot.phase === 'online';
+  const latestBoard = useRef(board);
+  useLayoutEffect(() => { latestBoard.current = board; }, [board]);
+  const previous = useRef<{ identity: ReturnType<typeof getResolvedClientKey>; revision: string } | undefined>(undefined);
+  const refreshing = useRef(false);
+  useLayoutEffect(() => {
+    if (paused || frozen || !online) return;
+    let pending: AbortController | undefined;
+    // Only a revision requested before the board's first load can be its baseline; a later one may already be newer than the board.
+    let firstPoll = !previous.current;
+    const unsubscribe = subscribeFreeze(() => pending?.abort());
+    const poll = async () => {
+      if (pending || refreshing.current || !gate.canWrite()) return;
+      const identity = getResolvedClientKey();
+      const abort = new AbortController(); pending = abort;
+      const baselineAllowed = firstPoll && (latestBoard.current.isFetching || !latestBoard.current.scopeReady);
+      firstPoll = false;
+      try {
+        const data = await latestRequest.current<{ revision: string }>(`${base}/arrival-revision`, abort.signal,
+          (value) => typeof value.revision === 'string', undefined, undefined, { background: true });
+        if (!gate.canWrite()) return;
+        const known = previous.current?.identity === identity ? previous.current : undefined;
+        if (!known && baselineAllowed) {
+          previous.current = { identity, revision: data.revision };
+          return;
+        }
+        const currentBoard = latestBoard.current;
+        if (known?.revision === data.revision || !currentBoard.scopeReady || currentBoard.isFetching || currentBoard.isAppending || currentBoard.isAppendRunning?.()) return;
+        refreshing.current = true;
+        try {
+          const result = await currentBoard.refetch({ cancelRefetch: false });
+          if (!result.isError) previous.current = { identity, revision: data.revision };
+        } finally { refreshing.current = false; }
+      } catch {
+        // Keep the last revision so the next poll can retry.
+      } finally { pending = undefined; }
+    };
+    void poll();
+    const timer = setInterval(() => { void poll(); }, 15_000);
+    return () => { clearInterval(timer); pending?.abort(); unsubscribe(); };
+  }, [paused, frozen, online, gate, subscribeFreeze]);
 }
 
 export function usePlanningBoardPageQueries(params: KioskGrindingPlanningBoardQuery, options: {
@@ -168,6 +225,7 @@ export function usePlanningBoardPageQueries(params: KioskGrindingPlanningBoardQu
   const useDueDetail = enabled ? useOfflineDueDetail : useKioskGrindingPlanningBoardDueDetail;
   // View only changes server ordering; the page sorts the shared items for each display.
   const query = useBoard({ ...params, view: 'resource' }, { refetchIntervalMs: options.refetchIntervalMs });
+  usePlanningBoardArrivalRefresh(options.refetchIntervalMs === false, query);
   const data = useMemo(() => query.data ? { ...query.data, view: params.view ?? 'resource' } : undefined, [query.data, params.view]);
   const boardQuery = { ...query, data };
   const loadQuery = useLoad(params.category, params.scheduleSource);

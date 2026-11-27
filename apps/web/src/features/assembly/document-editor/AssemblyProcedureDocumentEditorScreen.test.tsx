@@ -11,6 +11,13 @@ import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocume
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
+const feedbackQuery = vi.hoisted(() => vi.fn());
+const feedbackTargetMutate = vi.hoisted(() => vi.fn());
+vi.mock('../../../api/hooks/assembly-procedure-documents', () => ({
+  useAssemblyProcedureDocumentFeedback: (id: string | undefined) => feedbackQuery(id) ?? {},
+  useSetAssemblyProcedureDocumentFeedbackTarget: () => ({ mutate: feedbackTargetMutate, isPending: false }),
+}));
+
 const approvalMocks = vi.hoisted(() => ({ listDocuments: vi.fn(), getDocument: vi.fn(), realCanvas: false, count: vi.fn(async () => 0), read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
 vi.mock('../../../api/client', () => ({ listAssemblyProcedureDocumentSummaries: approvalMocks.listDocuments, getAssemblyProcedureDocument: approvalMocks.getDocument, resolveProcedureManualApprover: approvalMocks.resolve, countProcedureMaterials: approvalMocks.count, listProcedureWorkInstructionCandidates: async () => ({ items: [] }), listProcedureMaterials: approvalMocks.materials, listProcedureVideos: approvalMocks.videos, getProcedurePageVideos: approvalMocks.pageVideos, replaceProcedurePageVideos: approvalMocks.saveVideos }));
 vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: (armed: boolean) => armed ? approvalMocks.read : null }));
@@ -120,7 +127,6 @@ function makeController(
     retryConflictSave: vi.fn(async () => undefined),
     passwordInput: '1234',
     setPasswordInput: vi.fn(),
-    verifyEditorPassword: vi.fn(async () => true),
     selectedPageIndex: 0,
     setSelectedPageIndex: vi.fn(),
     selectedPage,
@@ -193,9 +199,13 @@ function renderInteractive(overrides: Partial<AssemblyProcedureDocumentEditorCon
   const c = makeController({ elements: [interactiveText], selectedPageElements: [interactiveText], ...overrides });
   const select = c.setSelectedOverlayId;
   function Harness() {
+    const [pageIndex, setPageIndex] = useState(c.selectedPageIndex);
     const [selected, setSelected] = useState<string | null>('text');
-    return <AssemblyProcedureDocumentEditorProvider value={{ ...c, selectedOverlayId: selected,
-      selectedElement: selected ? interactiveText : null,
+    return <AssemblyProcedureDocumentEditorProvider value={{
+      ...c, selectedPageIndex: pageIndex, selectedPage: c.pages.find(page => page.pageIndex === pageIndex) ?? c.selectedPage,
+      selectedPageElements: c.selectedPageElements.filter(element => element.pageIndex === pageIndex),
+      selectedOverlayId: selected, selectedElement: c.elements.find(element => element.id === selected) ?? null,
+      setSelectedPageIndex: (index, id = null) => { c.setSelectedPageIndex(index, id); setPageIndex(index); setSelected(id); },
       setSelectedOverlayId: id => { select(id); setSelected(id); }
     }}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>;
   }
@@ -443,6 +453,93 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     approvalMocks.count.mockReset().mockResolvedValue(0);
     approvalMocks.materials.mockReset().mockResolvedValue([]);
     vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false }); localStorage.clear(); approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
+  const multiPage = Array.from({ length: 4 }, (_, pageIndex) => ({
+    pageIndex, imageRelativePath: `/pages/${pageIndex + 1}.png`, overlays: []
+  }));
+  const twoPageButton = () => screen.getByRole('button', { name: '2ページで表示' });
+  const shownPages = () => Array.from(document.querySelectorAll<HTMLElement>('[data-editor-spread-page]'),
+    sheet => Number(sheet.dataset.editorSpreadPage));
+
+  it('defaults to two pages and persists switching to one page across remounts', () => {
+    const controller = makeController({ pages: multiPage });
+    const view = renderScreen(controller);
+    expect(twoPageButton()).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByTestId('editor-canvas')).toHaveLength(2);
+    expect(screen.getByTestId('assembly-document-editor-layout')).toHaveClass('[--details-width:200px]');
+    fireEvent.click(twoPageButton());
+    expect(twoPageButton()).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('editor-canvas')).toBeVisible();
+    expect(screen.getByTestId('assembly-document-editor-layout')).toHaveClass('[--details-width:min(400px,26vw)]');
+    expect(localStorage.getItem('assembly-document-editor-two-page')).toBe('off');
+    view.unmount();
+    renderScreen(controller);
+    expect(twoPageButton()).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(twoPageButton());
+    expect(shownPages()).toEqual([0, 1]);
+    expect(localStorage.getItem('assembly-document-editor-two-page')).toBe('on');
+  });
+
+  it('hands the pointer drag and selection to the adjacent page without changing the spread', async () => {
+    const second = { ...interactiveText, id: 'second', pageIndex: 1, text: '次のページの本文' };
+    const elements = [interactiveText, second];
+    const c = renderInteractive({ pages: multiPage, elements, selectedPageElements: elements });
+    const overlay = await screen.findByRole('button', { name: '文章オーバーレイ: 次のページの本文' });
+    fireEvent.pointerDown(overlay, { pointerId: 1, clientX: 110, clientY: 110 });
+    expect(c.setSelectedPageIndex).toHaveBeenCalledWith(1, 'second');
+    expect(overlay).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.pointerUp(overlay, { pointerId: 1, clientX: 210, clientY: 210 });
+    expect(c.beginOverlayDrag).toHaveBeenCalledOnce();
+    expect(c.updateElementBBox).toHaveBeenCalledWith('second', expect.objectContaining({ xRatio: expect.closeTo(0.2) }));
+    expect(c.endOverlayDrag).toHaveBeenCalledOnce();
+    expect(shownPages()).toEqual([0, 1]);
+    fireEvent.keyDown(overlay, { key: 'Enter' });
+    const input = screen.getByRole('textbox', { name: '本文をその場で編集' });
+    fireEvent.change(input, { target: { value: '修正後の本文' } });
+    fireEvent.pointerDown(screen.getAllByTestId('document-editor-overlay-surface')[0]);
+    expect(c.commitInlineText).toHaveBeenCalledWith(expect.objectContaining({ id: second.id, text: '修正後の本文' }));
+    expect(c.commitInlineText).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: '1ページ目（選択中）' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '3ページ目' }));
+    expect(shownPages()).toEqual([2, 3]);
+    fireEvent.click(screen.getByRole('button', { name: '2ページ目' }));
+    expect(shownPages()).toEqual([1, 2]);
+    fireEvent.click(screen.getByRole('button', { name: '4ページ目' }));
+    expect(shownPages()).toEqual([2, 3]);
+  });
+
+  it('previews, snaps and drops material on the adjacent page', async () => {
+    const material = { id: 'unplaced', kind: 'TEXT', text: '新しい素材' };
+    approvalMocks.materials.mockResolvedValue([material] as never);
+    const second = { ...interactiveText, id: 'second', pageIndex: 1, bbox: { xRatio: 0.12, yRatio: 0.2, widthRatio: 0.27, heightRatio: 0.23 } };
+    const c = renderInteractive({ pages: multiPage, elements: [interactiveText, second] });
+    const adjacent = screen.getAllByTestId('document-editor-overlay-surface')[1];
+    vi.spyOn(adjacent, 'getBoundingClientRect').mockReturnValue({ left: 1000, top: 0, width: 1000, height: 1000 } as DOMRect);
+    if (!document.elementFromPoint) document.elementFromPoint = () => null;
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(adjacent);
+
+    fireEvent.click(screen.getByRole('button', { name: '素材', exact: true }));
+    const card = await screen.findByRole('button', { name: '素材を置く: 新しい素材' });
+    fireEvent.pointerDown(card, { pointerId: 1, clientX: 100, clientY: 200 });
+    const dropPoint = { pointerId: 1, clientX: 1522, clientY: 304 };
+    fireEvent.pointerMove(adjacent, dropPoint);
+    expect(within(adjacent).getByTestId('material-drop-preview')).toBeInTheDocument();
+    expect(within(adjacent).getAllByTestId('overlay-snap-guide')).toHaveLength(2);
+    expect(c.setSelectedPageIndex).not.toHaveBeenCalled();
+    fireEvent.pointerUp(adjacent, dropPoint);
+    await waitFor(() => expect(c.placeMaterial).toHaveBeenCalledExactlyOnceWith(material, {
+      pageIndex: 1, bbox: { xRatio: expect.closeTo(0.12), yRatio: expect.closeTo(0.2), widthRatio: 0.8, heightRatio: 0.2 }
+    }));
+  });
+
+  it.each(['narrow viewport', 'single page'])('uses one canvas and hides the toggle with a %s', condition => {
+    if (condition === 'narrow viewport') {
+      vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    }
+    renderScreen(makeController({ pages: condition === 'single page' ? multiPage.slice(0, 1) : multiPage }));
+    expect(screen.getByTestId('editor-canvas')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '2ページで表示' })).not.toBeInTheDocument();
+  });
+
   it('redraws only the edited page thumbnail and keeps the toolbar stable while typing', () => {
     const first: AssemblyProcedureOverlayElement = { id: 'first', kind: 'TEXT', text: '文章', pageIndex: 0, zIndex: 0, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.2 } };
     const second = { ...first, id: 'second', pageIndex: 1 };
@@ -670,11 +767,11 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: '紐づけを保存' }));
     await waitFor(() => expect(onEditLeaseError).toHaveBeenCalledWith(error));
   });
-  it('keeps workshop context and the return action before editor authentication', () => {
+  it('keeps workshop context and the return action when the revision cannot be opened', () => {
     const navigateBack = vi.fn();
     const controller = makeController({ accessGranted: false, navigateBack });
     render(<MemoryRouter><AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode: 'fix' }} /></AssemblyProcedureDocumentEditorProvider></MemoryRouter>);
-    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
     expect(navigateBack).toHaveBeenCalledOnce();
   });
@@ -808,7 +905,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(navigateBack).toHaveBeenCalledTimes(1);
   });
 
-  it('requires explicit confirmation before publishing', () => {
+  it('requires explicit confirmation before publishing', async () => {
     const publish = vi.fn(async () => undefined);
     renderScreen(makeController({ publish }));
     fireEvent.click(screen.getByRole('button', { name: '公開する' }));
@@ -818,7 +915,10 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByRole('radio', { name: '社員タグで承認して公開' })).toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: 'パスワードで公開(締付テンプレート向け)' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '手順書を公開' })).getByRole('button', { name: '公開する' }));
-    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+    const pinDialog = screen.getByRole('dialog', { name: '暗証番号' });
+    for (const digit of '2520') fireEvent.click(within(pinDialog).getByRole('button', { name: digit, exact: true }));
+    await waitFor(() => expect(publish).toHaveBeenCalledExactlyOnceWith(undefined, '2520'));
   });
 
   it('reads an employee tag, confirms name and position, then publishes with an optional comment', async () => {
@@ -914,7 +1014,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '清書で見る', '音声入力', '元に戻す', 'やり直す']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '清書で見る', '音声入力', '読んだ感想', '夜に読む: する', '元に戻す', 'やり直す']);
     expect(within(rail).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');
@@ -1042,15 +1142,88 @@ it('rebuilds clean view on page selection and exits on a page without text', () 
   render(<Harness />);
   fireEvent.click(screen.getByRole('button', { name: '清書で見る' }));
   expect(screen.queryByTestId('editor-canvas')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '2ページで表示' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '手順1 元の本文' }));
   fireEvent.click(screen.getByRole('button', { name: '2ページ目' }));
   const cleanPage = screen.getByRole('region', { name: '2ページ目の清書' });
   expect(within(cleanPage).getByText('2 / 3')).toBeVisible();
   expect(within(cleanPage).getByRole('button', { name: '手順1 次のページの手順', pressed: false })).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: '3ページ目' }));
-  expect(screen.getByTestId('editor-canvas')).toBeVisible();
+  expect(screen.getAllByTestId('editor-canvas')).toHaveLength(2);
   expect(screen.getByRole('button', { name: '清書で見る' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: '1ページ目' }));
-  expect(screen.getByTestId('editor-canvas')).toBeVisible();
+  expect(screen.getAllByTestId('editor-canvas')).toHaveLength(2);
   expect(screen.getByRole('button', { name: '清書で見る' })).toBeEnabled();
+});
+
+
+describe('要領書を読んだ感想', () => {
+  afterEach(() => { feedbackQuery.mockReset(); feedbackTargetMutate.mockReset(); });
+
+  it('日付と4つの分類を右欄に表示し、同じボタンで閉じる', () => {
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      revisionNumber: 2, createdAt: '2026-11-26T17:50:00Z',
+      questions: ['どこに治具を当てる？'],
+      missing: ['測定回数があると助かる'],
+      unclear: ['写真の右と左で迷う'],
+      ideas: ['原点に矢印を置くと分かりそう'],
+    } } });
+    renderScreen(makeController());
+    expect(feedbackQuery).toHaveBeenCalledWith(editorDocument.id);
+
+    const button = screen.getByRole('button', { name: '読んだ感想', pressed: false });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    const panel = within(screen.getByTestId('assembly-document-editor-details')).getByRole('region', { name: '読んだ感想' });
+    expect(panel.firstElementChild).toHaveTextContent('第2版 11/27');
+    expect(within(panel).getAllByRole('heading').map(heading => heading.textContent))
+      .toEqual(['素朴な質問', '足りないかも', '分かりにくいかも', 'こうしたらいいかも']);
+    expect(within(panel).getAllByRole('listitem').map(item => item.textContent))
+      .toEqual(['どこに治具を当てる？', '測定回数があると助かる', '写真の右と左で迷う', '原点に矢印を置くと分かりそう']);
+    expect(within(panel).queryByRole('button')).toBeNull();
+
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(panel).not.toBeInTheDocument();
+  });
+
+  it('夜に読むボタンを押すと、今と逆の値で切り替える', () => {
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: false, feedback: null } });
+    renderScreen(makeController());
+    const button = screen.getByRole('button', { name: '夜に読む: しない', pressed: false });
+    fireEvent.click(button);
+    expect(feedbackTargetMutate).toHaveBeenCalledWith(true);
+  });
+
+  it('感想と整えるを同時に表示しない', () => {
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
+      questions: ['どこを測る？'], missing: [], unclear: [], ideas: [],
+    } } });
+    const controller = makeController();
+    const cancel = vi.fn();
+    function Harness() {
+      const [suggesting, setSuggesting] = useState(true);
+      return <AssemblyProcedureDocumentEditorProvider value={{
+        ...controller,
+        layoutSuggestions: {
+          ...controller.layoutSuggestions,
+          canSuggest: true,
+          state: suggesting ? { status: 'pending', seconds: 1 } : { status: 'idle' },
+          cancel: () => { cancel(); setSuggesting(false); },
+          start: async () => { setSuggesting(true); },
+        },
+      }}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>;
+    }
+    render(<Harness />);
+    expect(screen.getByRole('status', { name: '配置の提案' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '読んだ感想' }));
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('status', { name: '配置の提案' })).toBeNull();
+    expect(screen.getByRole('region', { name: '読んだ感想' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '整える' }));
+    expect(screen.queryByRole('region', { name: '読んだ感想' })).toBeNull();
+    expect(screen.getByRole('status', { name: '配置の提案' })).toBeVisible();
+  });
 });

@@ -16,8 +16,6 @@ export interface IncomingCallPayload {
   callerLocation?: string | null;
 }
 
-export type CallState = 'idle' | 'ringing' | 'incoming' | 'connecting' | 'connected' | 'ended';
-
 export interface CallInfo {
   callId: string;
   from: string;

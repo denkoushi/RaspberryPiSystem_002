@@ -60,18 +60,21 @@ export function assertBoardRevision(expected: string, current: PlanningState): v
   if (parsed.orderHash !== orderHash(stateOrder(current)) || (parsed.boardVersion != null && parsed.boardVersion !== current.version)) throw new ApiError(409, '製番順が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ORDER');
 }
 
+/** A site's first board order: the shared search history (the user's registered list). */
+export async function readInitialBoardOrder(): Promise<string[]> {
+  const { getProductionScheduleSearchState } = await import('../production-schedule-search-state.service.js');
+  const sharedHistory = await getProductionScheduleSearchState('shared');
+  return uniqueFseibans(sharedHistory.state.history);
+}
+
 export async function getOrCreateState(siteKey: string, fseibans: readonly string[], client: DbClient = prisma): Promise<PlanningState> {
   const existing = await client.productionScheduleGrindingPlanningBoardState.findUnique({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } } });
   if (existing) return existing as PlanningState;
   let order: string[] = [];
   if (client === prisma) {
-    const { getProductionScheduleSearchState } = await import('../production-schedule-search-state.service.js');
-    const sharedHistory = await getProductionScheduleSearchState('shared');
     // The first board copy is intentionally independent from the current winner set.
-    // Shared search history is the user's registered list; missing rows are resolved
-    // on the next read without mutating the copied site order.
-    const seeded = uniqueFseibans(sharedHistory.state.history);
-    order = seeded;
+    // Missing rows are resolved on the next read without mutating the copied site order.
+    order = await readInitialBoardOrder();
   }
   try {
     return await client.productionScheduleGrindingPlanningBoardState.create({ data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, seibanOrder: order } }) as PlanningState;

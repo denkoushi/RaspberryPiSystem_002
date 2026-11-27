@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { Dialog } from '../../components/ui/Dialog';
@@ -18,21 +18,10 @@ import { WorkInstructionMemoReviewList } from '../../features/work-instructions/
 import { WorkInstructionOverlayTypeDialog } from '../../features/work-instructions/WorkInstructionOverlayTypeDialog';
 import { WorkInstructionTextCandidateDialog } from '../../features/work-instructions/WorkInstructionTextCandidateDialog';
 import { WorkInstructionVersionComparison } from '../../features/work-instructions/WorkInstructionVersionComparison';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { WorkInstructionEditorController } from '../../features/work-instructions/useWorkInstructionEditorController';
-
-const wideEditorQuery = '(min-width: 1280px)';
-
-function subscribeEditorWidth(onChange: () => void) {
-  const query = window.matchMedia(wideEditorQuery);
-  query.addEventListener('change', onChange);
-  return () => query.removeEventListener('change', onChange);
-}
-
-function isWideEditor() {
-  return window.matchMedia(wideEditorQuery).matches;
-}
 
 function editorMessage(message: string | null): string {
   return (message ?? '').replace(/オーバーレイ|注記/g, '注釈').replace(/memo/gi, 'メモ').replace(/移植/g, '確認').replace(/asset(?: ID)?/gi, '画像').replace(/fingerprint/gi, '原本の情報').replace(/USE_SOURCE/g, '原本を使う').replace(/KEEP/g, '維持').replace(/\bitem\b/gi, '原本').replace(/比率/g, '割合');
@@ -196,7 +185,7 @@ export function KioskWorkInstructionEditorPage() {
   const moreRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const menuFirstRef = useRef<HTMLButtonElement>(null);
-  const wideEditor = useSyncExternalStore(subscribeEditorWidth, isWideEditor, () => false);
+  const wideEditor = useMediaQuery('(min-width: 1280px)');
   const showComparison = comparisonOpen ?? (wideEditor && controller.hasUpdate);
   const showInspector = Boolean(controller.selectedElement || memoOpen);
   const panelMargin = wideEditor ? (showInspector ? 356 : 0) + (showComparison ? 396 : 0) : 0;

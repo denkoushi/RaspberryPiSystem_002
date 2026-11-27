@@ -16,7 +16,8 @@ vi.mock('../../grinding-planning-board/source.js', () => ({ readWinnerRowsByFsei
 vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../piece-key.js')>(), readSessakuPieceSets: mocks.sets }));
 vi.mock('../../grinding-planning-board-projection.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../../grinding-planning-board-projection.js')>(), projectGrindingPlanningBoard: mocks.projection }));
 vi.mock('../../grinding-planning-board-resource-capacity.service.js', () => ({ getGrindingPlanningBoardResourceCapacity: mocks.capacity }));
-vi.mock('../../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: mocks.policy, isProductionScheduleCuttingResourceCd: (cd: string) => cd !== '305' }));
+vi.mock('../../policies/resource-category-policy.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../policies/resource-category-policy.service.js')>(), getResourceCategoryPolicy: mocks.policy, isProductionScheduleCuttingResourceCd: (cd: string) => cd !== '305' }));
 vi.mock('../sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split,
   runAutoUnitSplitBatch: mocks.batch,
   runAutoUnitSplitLot: async (work: () => Promise<unknown>) => work() }));
@@ -556,12 +557,22 @@ describe('automatic unit split', () => {
     expect(await autoSplitSessakuUnits({ siteKey: 'site' })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: false });
     expect(mocks.mark).not.toHaveBeenCalled();
   });
+  it('protects a cutting piece still referenced by a legacy grinding piece', async () => {
+    const source = { id: 'source-set', fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '',
+      pieces: [{ id: 'editable', quantity: 3, isCompleted: false }] };
+    const grinding = { ...source, id: 'grinding-set', fsigencd: ' 581 ', fkojun: '20', sourcePieceSetId: source.id,
+      pieces: [{ id: 'grinding-piece', sourcePieceId: 'editable', isCompleted: false }] };
+    mocks.sets.mockResolvedValue(new Map([['source', source], ['grinding', grinding]]));
+    mocks.items = [item({ itemId: 'piece:editable', kind: 'piece', parentItemId: sessakuPieceParentItemId(source), pieceId: 'editable', pieceSetVersion: 1 })];
+    expect(await autoSplitSessakuUnits({ siteKey: 'retained-grinding' })).toMatchObject({ splitCount: 0 });
+    expect(mocks.split).not.toHaveBeenCalled();
+  });
   it.each(['completed', 'quantity-warning', 'row-completed', 'operation'] as const)(
     'matches the SQL gate for a linked downstream %s before opening a lot transaction', async (protection) => {
       const source = { id: 'source-set', fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10', productNo: '',
         pieces: [{ id: 'editable', quantity: 3, isCompleted: false }] };
       const parentId = sessakuPieceParentItemId(source);
-      const later = { ...source, id: 'later-set', fsigencd: '305', fkojun: '20', sourcePieceSetId: source.id,
+      const later = { ...source, id: 'later-set', fsigencd: '022', fkojun: '20', sourcePieceSetId: source.id,
         quantityWarning: protection === 'quantity-warning' ? 'INVALID_PLANNED_QUANTITY' : null,
         pieces: [{ id: 'later-piece', sourcePieceId: 'editable', isCompleted: protection === 'completed',
           opCompletions: protection === 'operation' ? [{ opNo: 9 }] : [] }] };

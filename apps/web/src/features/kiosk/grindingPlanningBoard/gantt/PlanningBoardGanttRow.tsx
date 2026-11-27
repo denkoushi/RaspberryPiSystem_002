@@ -11,10 +11,7 @@ import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 import { ganttBarGeometry, unknownPlanningBarWidth } from './planningBoardGanttGeometry';
 import { isNormalGanttBar , dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
-import {
-  estimateLateStarLabelHeight,
-  PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars
-} from './planningBoardLateStars';
+import { PlanningBoardLateStar, usePlanningBoardLateStars } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 import { operationSplitColor } from './planningBoardSeibanColor';
 import { PlanningBoardUnitBarSections } from './PlanningBoardUnitBarSections';
@@ -49,6 +46,7 @@ type InteractionProps = {
 };
 type BarProps = InteractionProps & {
   bar: GanttBar;
+  sendOutFocused?: boolean;
   onHeldItem: (itemId: string | null) => void;
   start: number;
   dayWidth: number;
@@ -60,7 +58,7 @@ type BarProps = InteractionProps & {
 type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: number; frame: number | null; element: HTMLButtonElement };
 
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
-  bar, onHeldItem, start, dayWidth, today, selected, sibling, dimmed, disabled, pieceDisabled, showPieceQuantity, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingItemIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
+  bar, onHeldItem, sendOutFocused, start, dayWidth, today, selected, sibling, dimmed, disabled, pieceDisabled, showPieceQuantity, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingItemIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
   const { gate, frozen } = usePlanningBoardOffline();
   const pending = useRef<Drag | null>(null);
@@ -149,7 +147,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
         bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
-        focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed ? 'opacity-30' : undefined
+        sendOutFocused ? 'ring-2 ring-white' : focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed ? 'opacity-30' : undefined
       )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : split && !bar.unknown && bar.tone !== 'completed' ? operationSplitColor(color ?? (bar.tone === 'late' ? 'bg-rose-400' : undefined), opIndex) : undefined, borderRadius: split && !bar.item.itemId.startsWith('piece:') ? 0 : undefined, borderLeft: split && opIndex > 0 ? '1px solid rgb(2 6 23 / .6)' : undefined, clipPath: !split && bar.item.kind === 'piece' && width >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: true, right: true }) : undefined }}>
         {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={bar.start!} end={bar.end!} />}
         {split ? opIndex === 0 && width >= 48 ? <span className="relative">{bar.item.fhinmei || bar.item.fhincd}</span> : null : bar.opSegments ? <span className="relative">{bar.item.processOrder} {bar.resource}</span>
@@ -181,11 +179,11 @@ export type PlanningBoardGanttRowProps = InteractionProps & {
   selectedItemIds: ReadonlySet<string>;
   selectedParts: ReadonlySet<string>;
   resourceView: boolean;
-  onToggleSeiban?: PlanningBoardToggleSeiban;
+  sendOutFocusId?: string | null;
 };
 
 export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
-  row, window = null, registerRow, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, onToggleSeiban, ...interaction
+  row, window = null, registerRow, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, sendOutFocusId, ...interaction
 }: PlanningBoardGanttRowProps) {
   const rowRef = useCallback((element: HTMLDivElement | null) => registerRow?.(row.key, element), [registerRow, row.key]);
   const [heldItemId, setHeldItemId] = useState<string | null>(null);
@@ -196,9 +194,6 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   const visibleIds = new Set(visibleBars.map((bar) => bar.item.itemId));
   const chipsByPart = usePlanningBoardProcessChips();
   const lateStars = usePlanningBoardLateStars(row.bars, dateToDay(today));
-  // px-2 on both sides; reserve space for the optional warning and missing-due labels.
-  const labelWidth = GANTT_LABEL_WIDTH - 16 - (row.flagged ? 16 : 0) - (row.bars.some((bar) => bar.due == null) ? 52 : 0);
-  const estimatedHeight = Math.max(GANTT_ROW_HEIGHT, estimateLateStarLabelHeight(lateStars.groups, labelWidth, Boolean(onToggleSeiban)));
   // One chip strip per part, under that part's last bar on this row.
   const lastBarByPart = new Map<string, GanttBar>();
   for (const bar of row.bars.filter(isNormalGanttBar)) {
@@ -208,13 +203,12 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   }
   return (
     <div ref={rowRef} data-gantt-flagged={row.flagged || undefined} className="flex border-b border-slate-800/70"
-      style={{ minHeight: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${estimatedHeight}px` }}>
+      style={{ minHeight: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${GANTT_ROW_HEIGHT}px` }}>
       <div className={clsx('sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-slate-700 bg-slate-900 px-2 text-xs', row.flagged && 'border-l-2 border-l-rose-400')}
         style={{ width: GANTT_LABEL_WIDTH }}>
         {row.flagged && <span className="text-rose-300" aria-label="工程の重なり">⚠</span>}
         <div className="min-w-0 flex-1">
           <span className="block truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small></span>
-          <PlanningBoardLateStarDates groups={lateStars.groups} focusedSeiban={interaction.focusedSeiban} onToggleSeiban={onToggleSeiban} />
         </div>
         {row.bars.some((bar) => bar.due == null) && <span className="text-slate-400">納期なし</span>}
       </div>
@@ -222,11 +216,11 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
         <PlanningBoardGanttSendOutStars bars={row.bars} window={window} start={start} dayWidth={dayWidth} />
         {row.connectors.filter((link) => !window || (link.start - start) * dayWidth <= window.right && (link.end - start) * dayWidth >= window.left).map((link, i) => <span key={i} className="pointer-events-none absolute top-7 h-px bg-slate-500" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
         {visibleBars.map((bar) => (
-          <PlanningBoardGanttBar key={bar.item.itemId} bar={bar} onHeldItem={setHeldItemId} start={start} dayWidth={dayWidth} today={today}
+          <PlanningBoardGanttBar key={bar.item.itemId} bar={bar} sendOutFocused={sendOutFocusId === bar.item.itemId} onHeldItem={setHeldItemId} start={start} dayWidth={dayWidth} today={today}
             selected={selectedItemIds.has(bar.item.itemId)} sibling={resourceView && selectedParts.has(bar.partKey)}
             dimmed={resourceView && selectedParts.size > 0 && !selectedParts.has(bar.partKey)} {...interaction} />
         ))}
-        {visibleBars.filter((bar) => lateStars.itemIds.has(bar.item.itemId)).map((bar) => (
+        {visibleBars.filter((bar) => lateStars.has(bar.item.itemId)).map((bar) => (
           <PlanningBoardLateStar key={`late:${bar.item.itemId}`} left={(bar.end! - start) * dayWidth - (bar.unknown ? unknownPlanningBarWidth(bar.item) : Math.max(5, (bar.end! - bar.start!) * dayWidth))} top={26} />
         ))}
         {[...lastBarByPart.values()].filter((bar) => visibleIds.has(bar.item.itemId)).map((bar) => {

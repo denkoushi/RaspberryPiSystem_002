@@ -35,6 +35,7 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
   onRangeSelected,
   assets,
   className,
+  spreadPage,
   layerRef: externalLayerRef,
   materialPreview,
   saving,
@@ -53,13 +54,14 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
   locked?: boolean;
   selectedOverlayId: string | null;
   onSelectOverlay: (id: string) => void;
-  onNudgeOverlay: (id: string, dxRatio: number, dyRatio: number) => void;
+  onNudgeOverlay?: (id: string, dxRatio: number, dyRatio: number) => void;
   onInteractionStart?: () => void;
   onInteractionEnd?: () => void;
   onUpdateOverlayBBox: (id: string, bbox: AssemblyProcedureOverlayBBox) => void;
   onRangeSelected: (bbox: AssemblyProcedureOverlayBBox) => void;
   assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
   className?: string;
+  spreadPage?: 'current' | 'adjacent';
   layerRef?: RefObject<HTMLDivElement | null>;
   materialPreview?: MaterialDropPreview | null;
   saving?: boolean;
@@ -70,12 +72,15 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
 }) {
   const [editing, setEditing] = useState<InlineTextElement | null>(null);
   const localFlush = useRef<InlineTextFlush | null>(null);
-  const registerFlush = useRef(registerInlineTextFlush);
-  registerFlush.current = registerInlineTextFlush;
-  const registerEditorFlush = useCallback((flush: InlineTextFlush | null) => { localFlush.current = flush; registerFlush.current?.(flush); }, []);
+  const registerEditorFlush = useCallback((flush: InlineTextFlush | null) => { localFlush.current = flush; }, []);
+  useLayoutEffect(() => {
+    if (!registerInlineTextFlush) return;
+    registerInlineTextFlush(() => localFlush.current?.() ?? null);
+    return () => registerInlineTextFlush(null);
+  }, [registerInlineTextFlush]);
   const finishEditing = () => { setEditing(null); onInlineEditingChange?.(null); };
   const beginEditing = (id: string) => {
-    if (!editable || locked || saving || !onUpdateText) return;
+    if (!editable || locked || saving || !onUpdateText || id !== selectedOverlayId) return;
     const element = elements.find(candidate => candidate.id === id);
     if (element?.kind !== 'TEXT') return;
     tap.current = null;
@@ -108,10 +113,15 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
   }, [crop, elements, imageAngles, layerRef]);
   const interaction = useRef<{ id: string; mode: SnapMode; original: AssemblyProcedureOverlayBBox } | null>(null);
   const active = useRef(false);
+  const endInteraction = useRef(onInteractionEnd);
+  endInteraction.current = onInteractionEnd;
   const beginEditingRef = useRef(beginEditing);
   beginEditingRef.current = beginEditing;
   const editTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(editTimer.current), []);
+  useEffect(() => () => {
+    clearTimeout(editTimer.current);
+    if (active.current) endInteraction.current?.();
+  }, []);
   const [guides, setGuides] = useState<SnapGuide[]>([]);
   const shownGuides = materialPreview?.guides ?? guides;
   const local = (coordinate: number, axis: 'x' | 'y') => (coordinate - (axis === 'x' ? crop?.xRatio ?? 0 : crop?.yRatio ?? 0)) / (axis === 'x' ? crop?.widthRatio ?? 1 : crop?.heightRatio ?? 1);
@@ -202,6 +212,7 @@ export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProce
         assets={assets}
       />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden" style={{ zIndex: 1_000_001 }}>
+        {spreadPage ? <span className={clsx('absolute inset-0 ring-inset', spreadPage === 'current' ? 'ring-[3px] ring-[#5fc3e8]' : 'ring-1 ring-[#344252]')} /> : null}
         {shownGuides.map(guide => <span key={`${guide.axis}:${guide.coordinate}`} data-testid="overlay-snap-guide" className="absolute bg-blue-500" style={guide.axis === 'x' ? { left: `${local(guide.coordinate, 'x') * 100}%`, top: 0, width: 1, height: '100%' } : { top: `${local(guide.coordinate, 'y') * 100}%`, left: 0, height: 1, width: '100%' }} />)}
         {materialPreview ? <span data-testid="material-drop-preview" className="absolute border-2 border-blue-500 bg-blue-500/10" style={{ left: `${local(materialPreview.bbox.xRatio, 'x') * 100}%`, top: `${local(materialPreview.bbox.yRatio, 'y') * 100}%`, width: `${materialPreview.bbox.widthRatio / (crop?.widthRatio ?? 1) * 100}%`, height: `${materialPreview.bbox.heightRatio / (crop?.heightRatio ?? 1) * 100}%`, opacity: materialPreview.pending ? 0.5 : 1 }} /> : null}
       </div>

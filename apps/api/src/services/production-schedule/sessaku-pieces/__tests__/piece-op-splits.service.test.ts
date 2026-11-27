@@ -45,7 +45,8 @@ vi.mock('../piece-audit.js', async () => ({ pieceTimingStage: new (await import(
   runSessakuPieceOperation: async (audit: unknown, callback: (audit: unknown) => unknown) => callback(audit) }));
 vi.mock('../piece-completion.js', () => ({ reconcileSessakuPieceProgress: mocks.progress }));
 vi.mock('../piece-quantity.js', () => ({ reconcileSessakuPieceQuantities: mocks.quantities }));
-vi.mock('../../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: async () => ({}), isProductionScheduleCuttingResourceCd: () => true }));
+vi.mock('../../policies/resource-category-policy.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../policies/resource-category-policy.service.js')>(), getResourceCategoryPolicy: async () => ({}), isProductionScheduleCuttingResourceCd: () => true }));
 vi.mock('../../fkojunst-status-mail-critical-lock.js', () => ({ acquireFkojunstStatusMailCriticalTransactionLock: vi.fn() }));
 vi.mock('../../order-assignment/production-schedule-parent-row-lock.service.js', () => ({ acquireProductionScheduleParentRowLockInTransaction: vi.fn(), acquireProductionScheduleParentRowLocksInTransaction: vi.fn() }));
 import { configureSessakuPieceOps, clearSessakuPieceOps, splitSessakuPieceOps, mergeSessakuPieceOps, splitSessakuPieces, mergeSessakuPieces, setSessakuPieceOpCompletion, setSessakuPieceCompletion } from '../sessaku-pieces.service.js';

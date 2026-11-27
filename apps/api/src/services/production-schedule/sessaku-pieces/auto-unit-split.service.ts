@@ -7,13 +7,13 @@ import { prisma } from '../../../lib/prisma.js';
 import { logger } from '../../../lib/logger.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
-import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
+import { buildGrindingPlanningBoardRowItemId, isGrindingPlanningBoardRowCompleted, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
 import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans } from '../grinding-planning-board/source.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess, type AutoUnitSplitRejectedInput, type AutoUnitSplitCursor } from './auto-unit-split-candidates.js';
 import { runSessakuPieceOperation, pieceTimingStage, type PieceAuditContext } from './piece-audit.js';
-import { sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSets } from './piece-key.js';
+import { sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId, isGrindingPieceKey, readSessakuPieceSets } from './piece-key.js';
 import { runAutoUnitSplitBatch, runAutoUnitSplitLot, splitSessakuPieces } from './sessaku-pieces.service.js';
 import { isUnitSplitEnabled } from './unit-split-policy.js';
 
@@ -261,7 +261,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
             const completedParents = new Set(items.filter((item) => item.isCompleted).map((item) => item.parentItemId ?? item.itemId));
             for (const row of rows) {
               const detail = details.get(row.id);
-              if (detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) {
+              if (detail && isGrindingPlanningBoardRowCompleted(detail)) {
                 completedParents.add(sessakuPieceParentItemId(sessakuPieceKeyFromRow(row.rowData)));
               }
             }
@@ -269,7 +269,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
             const protectedPieces = new Set<string>();
             for (const set of pieceSets.values()) {
               const parentId = sessakuPieceParentItemId(set);
-              if (set.autoUnitSplitHeldAt || set.quantityWarning || set.pieces.some((piece) => piece.sourcePieceId)) blockedParents.add(parentId);
+              if (set.autoUnitSplitHeldAt || set.quantityWarning || set.sourcePieceSetId || set.pieces.some((piece) => piece.sourcePieceId)) blockedParents.add(parentId);
               if (set.quantityWarning || completedParents.has(parentId) || set.pieces.some((piece) => piece.isCompleted)) {
                 const sourceIds = new Set([set.sourcePieceSetId, ...set.pieces.map((piece) => piece.sourcePieceId ? setsByPiece.get(piece.sourcePieceId)?.id : null)]);
                 for (const id of sourceIds) {
@@ -277,9 +277,10 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
                   if (source) blockedParents.add(sessakuPieceParentItemId(source));
                 }
               }
-              for (const piece of set.pieces) if (piece.opCompletions?.length) {
-                protectedPieces.add(piece.id);
-                if (piece.sourcePieceId) protectedPieces.add(piece.sourcePieceId);
+              const grinding = isGrindingPieceKey(set);
+              for (const piece of set.pieces) {
+                if (piece.opCompletions?.length) protectedPieces.add(piece.id);
+                if ((grinding || piece.opCompletions?.length) && piece.sourcePieceId) protectedPieces.add(piece.sourcePieceId);
               }
             }
             const candidates = structuralCandidates.filter((item) => candidateIds.has(item.sourceRowId)

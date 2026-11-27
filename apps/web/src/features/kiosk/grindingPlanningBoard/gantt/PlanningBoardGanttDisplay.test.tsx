@@ -1210,7 +1210,7 @@ describe('two-machine forward dragging', () => {
     const insertion = screen.getByTestId('planning-gantt-insertion');
     expect(insertion.closest('[data-gantt-window-row]')).toBe(target.closest('[data-gantt-window-row]'));
     expect(insertion.style.left).toBe(target.style.left);
-    expect(target.closest('[data-gantt-lane-resource]')).toHaveStyle({ outline: '3px solid rgb(110 231 183)' });
+    expect(target.closest('[data-gantt-lane-resource]')!.querySelector(':scope > [data-gantt-lane-outline]')).toHaveStyle({ opacity: '1' });
     const arrow = screen.getByTestId('planning-gantt-drag-arrow').querySelector('path[stroke]')!;
     expect(arrow).toHaveAttribute('stroke', 'rgb(52 211 153)');
     expect(arrow).toHaveAttribute('stroke-width', '3');

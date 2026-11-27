@@ -14,27 +14,39 @@ function stopRecovery() {
   recoveryTimer = undefined;
 }
 
+async function probeServer() {
+  if (!unreachable || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+  // The phone syncs only on Wi-Fi; never probe over mobile data.
+  if (!isOnWifiOrEthernet()) return;
+  const timer = recoveryTimer;
+  try {
+    await api.get('/kiosk/mobile-local-data/versions', {
+      kioskTelemetry: 'background', timeout: MOBILE_REQUEST_TIMEOUT_MS, validateStatus: () => true
+    });
+    if (recoveryTimer === timer) reportMobileNetworkSuccess();
+  } catch (error) {
+    if (recoveryTimer === timer && isAxiosError(error) && error.response) reportMobileNetworkSuccess();
+  }
+}
+
 function startRecovery() {
   if (recoveryTimer !== undefined) return;
-  const timer = setInterval(async () => {
-    if (!unreachable || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
-    // The phone syncs only on Wi-Fi; never probe over mobile data.
-    const type = typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { connection?: { type?: string } }).connection?.type;
-    if (type !== 'wifi' && type !== 'ethernet') return;
-    try {
-      await api.get('/kiosk/mobile-local-data/versions', {
-        kioskTelemetry: 'background', timeout: MOBILE_REQUEST_TIMEOUT_MS, validateStatus: () => true
-      });
-      if (recoveryTimer === timer) reportMobileNetworkSuccess();
-    } catch (error) {
-      if (recoveryTimer === timer && isAxiosError(error) && error.response) reportMobileNetworkSuccess();
-    }
-  }, 15_000);
-  recoveryTimer = timer;
+  recoveryTimer = setInterval(probeServer, 15_000);
 }
 
 export function canUseMobileNetwork() {
   return (typeof navigator === 'undefined' || navigator.onLine !== false) && !unreachable;
+}
+
+export function isMobileServerUnreachable() { return unreachable; }
+
+export type MobileConnection = EventTarget & { type?: string };
+export const mobileConnection = () => typeof navigator === 'undefined' ? undefined
+  : (navigator as Navigator & { connection?: MobileConnection }).connection;
+
+export function isOnWifiOrEthernet() {
+  const type = mobileConnection()?.type;
+  return type === 'wifi' || type === 'ethernet';
 }
 
 export function reportMobileNetworkSuccess() {
@@ -55,7 +67,11 @@ export function subscribeMobileConnectivity(listener: () => void) {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => { unreachable = false; stopRecovery(); notify(); });
+  window.addEventListener('online', () => {
+    // Back on Wi-Fi: Tailscale may still be off, so clear only after the server answers.
+    if (unreachable && isOnWifiOrEthernet()) { void probeServer(); return; }
+    unreachable = false; stopRecovery(); notify();
+  });
   window.addEventListener('offline', notify);
 }
 
