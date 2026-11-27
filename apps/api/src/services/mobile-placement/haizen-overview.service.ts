@@ -1,5 +1,9 @@
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { readScheduleSourceExcludedFseibans } from '../production-schedule/grinding-planning-board/schedule-source.js';
+import { uniqueFseibans } from '../production-schedule/grinding-planning-board/shared.js';
+import { stateOrder } from '../production-schedule/grinding-planning-board/state.js';
+import { getProductionScheduleSearchState } from '../production-schedule/production-schedule-search-state.service.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../production-schedule/seiban-machine-display-names.service.js';
 
 import { filterActivePlacements } from './placement-completion.service.js';
@@ -7,8 +11,29 @@ import { normalizeSlipToken } from './mobile-placement-slip-match.js';
 import { readScheduleDates } from './schedule-dates.js';
 
 import type { Prisma } from '@prisma/client';
+import type { GrindingPlanningBoardScheduleSource } from '@raspi-system/shared-types';
 
 export const HAIZEN_OVERVIEW_LIMIT = 3000;
+
+async function readHaizenBoardOrder(siteKey: string | null) {
+  if (!siteKey) return [];
+  const state = await prisma.productionScheduleGrindingPlanningBoardState.findUnique({
+    where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
+    select: { seibanOrder: true }
+  });
+  if (state) return stateOrder(state);
+  // The board seeds a new site's order from shared history on its first open.
+  const { state: search } = await getProductionScheduleSearchState('shared');
+  return uniqueFseibans(search.history);
+}
+
+export async function getHaizenMaterialView(siteKey: string | null, scheduleSource: GrindingPlanningBoardScheduleSource) {
+  const [seibanOrder, excludedFseibans] = await Promise.all([
+    readHaizenBoardOrder(siteKey),
+    readScheduleSourceExcludedFseibans(scheduleSource)
+  ]);
+  return { seibanOrder, excludedFseibans };
+}
 
 function snapshotText(snapshot: Prisma.JsonValue | null, field: string): string | null {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return null;

@@ -1,5 +1,5 @@
 import { listHaizenUnplacedParts } from '../../services/mobile-placement/schedule-seiban-status.service.js';
-import { listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
+import { getHaizenMaterialView, listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
 import { listHaizenMaterialArrival } from '../../services/mobile-placement/haizen-material-arrival.service.js';
 import { extractManufacturingOrder10 } from '../../services/mobile-placement/genpyo-slip/genpyo-mo-extract.js';
 import { buildActualSlipOcrPreviewSafe } from '../../services/mobile-placement/actual-slip-ocr-preview.js';
@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { applyGrindingPlanningBoardScanArrival } from '../../services/production-schedule/grinding-planning-board/write-scan-arrival.js';
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
-import { resolveCredentialIdentity } from '../../lib/location-scope-resolver.js';
+import { resolveCredentialIdentity, resolveSiteKey } from '../../lib/location-scope-resolver.js';
 import { registerMobileScanFrameRoutes } from './scan-frames.js';
 import { registerMobileVerifyRecordRoutes } from './verify-records.js';
 import { registerOrderTrailRoutes } from './order-trail.js';
@@ -56,6 +56,8 @@ import { TERMINAL_ROUTE_RATE_LIMIT } from '../../lib/terminal-route-rate-limit.j
 const haizenMaterialArrivalBodySchema = z.object({
   parts: z.array(z.object({ fseiban: z.string().min(1).max(100), fhincd: z.string().min(1).max(100) })).max(6000)
 });
+
+const haizenMaterialViewQuerySchema = z.object({ scheduleSource: z.enum(['general', 'dCompany', 'both']).default('both') });
 
 const snapFseibanTokensBodySchema = z.object({
   tokens: z.array(z.string().min(1).max(32)).min(1).max(50),
@@ -303,6 +305,13 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   app.get('/mobile-placement/haizen-overview/unplaced-parts', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listHaizenUnplacedParts();
+  });
+
+  app.get('/mobile-placement/haizen-material-view', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { scheduleSource } = haizenMaterialViewQuerySchema.parse(request.query);
+    const siteKey = clientDevice.siteKey?.trim() ? resolveSiteKey(clientDevice) : null;
+    return getHaizenMaterialView(siteKey, scheduleSource);
   });
 
   app.post('/mobile-placement/haizen-material-arrival', { config: { rateLimit: TERMINAL_ROUTE_RATE_LIMIT } }, async (request) => {

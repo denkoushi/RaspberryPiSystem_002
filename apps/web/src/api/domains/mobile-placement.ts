@@ -3,7 +3,7 @@ import { api } from '../http';
 import type { ProductionScheduleListResponse } from './production-schedule';
 import type { MachineFactory } from './tools';
 import type { RegisteredShelfEntryDto } from '../../features/mobile-placement/registeredShelves/types';
-import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardScheduleSource, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
 /** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
 export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;
@@ -425,6 +425,11 @@ export type HaizenUnplacedPart = {
 
 export async function getHaizenUnplacedParts() {
   const { data } = await api.get<HaizenUnplacedPart[]>('/mobile-placement/haizen-overview/unplaced-parts');
+  return data;
+}
+
+export async function getHaizenMaterialView(scheduleSource: GrindingPlanningBoardScheduleSource) {
+  const { data } = await api.get<{ seibanOrder: string[]; excludedFseibans: string[] }>('/mobile-placement/haizen-material-view', { params: { scheduleSource } });
   return data;
 }
 

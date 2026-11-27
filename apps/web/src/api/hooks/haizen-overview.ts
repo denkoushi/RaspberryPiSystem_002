@@ -1,8 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenMaterialArrival, getHaizenOverview, getHaizenUnplacedParts, getMobilePlacementRegisteredShelves } from '../domains/mobile-placement';
+import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenMaterialArrival, getHaizenMaterialView, getHaizenOverview, getHaizenUnplacedParts, getMobilePlacementRegisteredShelves } from '../domains/mobile-placement';
 
 import type { HaizenOverviewRow } from '../domains/mobile-placement';
+import type { GrindingPlanningBoardScheduleSource } from '@raspi-system/shared-types';
 
 export function useHaizenOverview() {
   return useQuery({ queryKey: ['mobile-placement', 'haizen-overview'], queryFn: getHaizenOverview, refetchInterval: 60_000 });
@@ -32,6 +33,14 @@ export function useDeleteHaizenPlacement() {
 
 export function useHaizenUnplacedParts(enabled: boolean) {
   return useQuery({ queryKey: ['mobile-placement', 'haizen-overview', 'unplaced-parts'], queryFn: getHaizenUnplacedParts, enabled, refetchInterval: 60_000 });
+}
+
+export function useHaizenMaterialView(scheduleSource: GrindingPlanningBoardScheduleSource) {
+  return useQuery({
+    queryKey: ['mobile-placement', 'haizen-material-view', scheduleSource],
+    queryFn: () => getHaizenMaterialView(scheduleSource),
+    refetchInterval: 60_000
+  });
 }
 
 export function useHaizenMaterialArrival(parts: Array<{ fseiban: string; fhincd: string }>) {
