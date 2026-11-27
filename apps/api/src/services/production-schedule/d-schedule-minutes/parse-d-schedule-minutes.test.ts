@@ -166,6 +166,21 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(await parse(fixture)).toMatchObject({ ok: false, reason: 'ZERO_BLOCKS' });
   });
 
+  it('ignores a column-number row above the headers', async () => {
+    const fixture = buildWorkbook();
+    [1, 2, 3].forEach((value, index) => { fixture.sheet.getCell(2, index + 1).value = value; });
+    const result = success(await parse(fixture));
+    expect(result.warnings.filter((warning) => warning.code === 'INVALID_SEIBAN')).toEqual([]);
+    expect(result.blocks.map((block) => block.seiban)).toEqual(success(await parse()).blocks.map((block) => block.seiban));
+  });
+
+  it('keeps native date cells readable in the raw parts-complete text', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, fixture.parts).value = new Date('2026-04-30T00:00:00Z');
+    fixture.sheet.getCell(fixture.start + 4, fixture.parts).value = { formula: 'X1', result: new Date('2026-05-01T00:00:00Z') };
+    expect(success(await parse(fixture)).blocks.slice(0, 2).map((block) => block.rawPartsCompleteText)).toEqual(['2026-04-30', '2026-05-01']);
+  });
+
   it.each([false, true])('accepts native dates, numeric serials and cached formulas (date1904=%s)', async (date1904) => {
     const fixture = buildWorkbook();
     fixture.workbook.properties.date1904 = date1904;
