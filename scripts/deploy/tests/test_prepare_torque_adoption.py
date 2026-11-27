@@ -37,9 +37,9 @@ def test_rewrite_block_changes_only_six_values():
 
 
 def test_rewrite_block_fails_when_missing_or_duplicated():
-    with pytest.raises(mod.AdoptionError):
+    with pytest.raises(mod.PrepareError):
         mod.rewrite_block("x = 1\n", NEW_VALUES)
-    with pytest.raises(mod.AdoptionError):
+    with pytest.raises(mod.PrepareError):
         mod.rewrite_block(OLD + OLD, NEW_VALUES)
 
 
@@ -60,7 +60,7 @@ def test_pick_platform_digests_ignores_unknown():
 
 
 def test_pick_platform_digests_fails_when_platform_missing():
-    with pytest.raises(mod.AdoptionError):
+    with pytest.raises(mod.PrepareError):
         mod.pick_platform_digests(
             [manifest("sha256:a", "linux", "arm64"), manifest("sha256:c", "unknown", "unknown")]
         )
@@ -88,13 +88,13 @@ def test_select_blocked_prs():
 
 def test_select_job_states():
     name = mod.JOB_NAME
-    with pytest.raises(mod.AdoptionError) as missing:
+    with pytest.raises(mod.PrepareError) as missing:
         mod.select_job([{"name": "other"}])
     assert missing.value.code == 4 and "not published" in str(missing.value)
-    with pytest.raises(mod.AdoptionError) as running:
+    with pytest.raises(mod.PrepareError) as running:
         mod.select_job([{"name": name, "status": "in_progress"}])
     assert running.value.code == 4
-    with pytest.raises(mod.AdoptionError) as failed:
+    with pytest.raises(mod.PrepareError) as failed:
         mod.select_job([{"name": name, "status": "completed", "conclusion": "failure"}])
     assert failed.value.code == 5
     ok = {"name": name, "status": "completed", "conclusion": "success", "id": 7}

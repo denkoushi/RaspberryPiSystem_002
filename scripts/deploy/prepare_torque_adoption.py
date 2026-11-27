@@ -14,10 +14,17 @@ import sys
 import urllib.request
 from pathlib import Path
 
+try:
+    from .release_artifact_contract import TORQUE_ADOPTED_SOURCE_SHA
+    from .torque_component_adoption import SOURCE_CLOSURE, AdoptionError
+except ImportError:  # Direct script execution from scripts/deploy.
+    from release_artifact_contract import TORQUE_ADOPTED_SOURCE_SHA
+    from torque_component_adoption import SOURCE_CLOSURE, AdoptionError
+
 SLUG = "denkoushi/RaspberryPiSystem_002"
 GHCR_REPOSITORY = "denkoushi/raspisys-torque-agent"
 CONTRACT = Path(__file__).resolve().with_name("release_artifact_contract.py")
-SOURCE_PATHS = ["clients/torque-agent", "infrastructure/docker/Dockerfile.torque-agent"]
+CONTRACT_PATH = "scripts/deploy/release_artifact_contract.py"
 JOB_NAME = "pi4-agent-images-publish (torque-agent)"
 CHECK_NAME = "torque-release-compatibility"
 BLOCK_RE = re.compile(r"(TORQUE_ADOPTION = TorqueAdoption\(\n)(.*?)(\n\))", re.DOTALL)
@@ -27,7 +34,7 @@ INDEX_ACCEPT = (
 )
 
 
-class AdoptionError(Exception):
+class PrepareError(AdoptionError):
     def __init__(self, message: str, code: int = 1) -> None:
         super().__init__(message)
         self.code = code
@@ -49,7 +56,12 @@ def git_last_commit(*paths: str) -> str:
 
 
 def git_contains(ancestor: str, head: str) -> bool:
-    run("git", "fetch", "origin", head)
+    """Return True when head already has ancestor; a fetch failure skips that PR."""
+    try:
+        run("git", "fetch", "origin", head)
+    except subprocess.CalledProcessError as exc:
+        print(f"  skip {head[:8]}: fetch failed: {exc.stderr.strip()}", file=sys.stderr)
+        return True
     return (
         subprocess.run(
             ["git", "merge-base", "--is-ancestor", ancestor, head], capture_output=True, check=False
@@ -91,10 +103,21 @@ def fetch_ghcr_index(tag: str) -> tuple[str, list[dict]]:
 # --- logic ------------------------------------------------------------------
 
 
+def git_main_contract() -> str:
+    return run("git", "show", f"origin/main:{CONTRACT_PATH}")
+
+
+def git_adoption_commit(source_sha: str) -> str:
+    """The main commit that set the current source_sha (not merely the last edit)."""
+    return run(
+        "git", "log", "-1", "--format=%H", f"-Ssource_sha=\"{source_sha}\"", "origin/main", "--", CONTRACT_PATH
+    ).strip()
+
+
 def adopted_sha(text: str) -> str:
     match = re.search(r'source_sha="([0-9a-f]{40})"', text)
     if not match:
-        raise AdoptionError("source_sha not found in release_artifact_contract.py")
+        raise PrepareError("source_sha not found in release_artifact_contract.py")
     return match.group(1)
 
 
@@ -109,7 +132,7 @@ def pick_platform_digests(manifests: list[dict]) -> tuple[str, str]:
         elif platform.get("architecture") == "arm" and platform.get("variant") == "v7":
             armv7.append(entry["digest"])
     if len(arm64) != 1 or len(armv7) != 1:
-        raise AdoptionError(
+        raise PrepareError(
             f"expected exactly one linux/arm64 and one linux/arm/v7 entry, got {len(arm64)} and {len(armv7)}"
         )
     return arm64[0], armv7[0]
@@ -119,17 +142,17 @@ def select_job(jobs: list[dict]) -> dict:
     for job in jobs:
         if job.get("name") == JOB_NAME:
             if job.get("status") != "completed":
-                raise AdoptionError(f"not published yet: job '{JOB_NAME}' is {job.get('status')}", 4)
+                raise PrepareError(f"not published yet: job '{JOB_NAME}' is {job.get('status')}", 4)
             if job.get("conclusion") != "success":
-                raise AdoptionError(f"job '{JOB_NAME}' concluded {job.get('conclusion')}", 5)
+                raise PrepareError(f"job '{JOB_NAME}' concluded {job.get('conclusion')}", 5)
             return job
-    raise AdoptionError(f"not published yet: job '{JOB_NAME}' not found", 4)
+    raise PrepareError(f"not published yet: job '{JOB_NAME}' not found", 4)
 
 
 def rewrite_block(text: str, values: dict) -> str:
     matches = BLOCK_RE.findall(text)
     if len(matches) != 1:
-        raise AdoptionError(f"TORQUE_ADOPTION block found {len(matches)} times, expected 1")
+        raise PrepareError(f"TORQUE_ADOPTION block found {len(matches)} times, expected 1")
 
     def sub_block(match: re.Match) -> str:
         body = match.group(2)
@@ -137,7 +160,7 @@ def rewrite_block(text: str, values: dict) -> str:
             literal = str(value) if isinstance(value, int) else f'"{value}"'
             body, count = re.subn(rf"(?m)^(\s*{key}=).*?,$", lambda m, lit=literal: f"{m.group(1)}{lit},", body)
             if count != 1:
-                raise AdoptionError(f"field {key} not found exactly once in block")
+                raise PrepareError(f"field {key} not found exactly once in block")
         return match.group(1) + body + match.group(3)
 
     return BLOCK_RE.sub(sub_block, text, count=1)
@@ -159,7 +182,7 @@ def select_blocked_prs(prs: list[dict], contains) -> list[int]:
 
 def pending_sha() -> str:
     git_fetch_main()
-    return git_last_commit(*SOURCE_PATHS)
+    return git_last_commit(*SOURCE_CLOSURE)
 
 
 def build_pr_body(v: dict) -> str:
@@ -207,7 +230,7 @@ def build_pr_body(v: dict) -> str:
 
 def cmd_status(_args) -> int:
     pending = pending_sha()
-    current = adopted_sha(CONTRACT.read_text())
+    current = adopted_sha(git_main_contract())
     if pending == current:
         print(f"adopted: {current}")
         return 0
@@ -217,7 +240,7 @@ def cmd_status(_args) -> int:
 
 def cmd_write(args) -> int:
     text = CONTRACT.read_text()
-    current = adopted_sha(text)
+    current = TORQUE_ADOPTED_SOURCE_SHA
     sha = args.source_sha or pending_sha()
     if sha == current:
         print(f"already adopted: {sha}")
@@ -227,7 +250,7 @@ def cmd_write(args) -> int:
         "--event", "push", "--json", "databaseId,status,conclusion",
     )
     if not runs:
-        raise AdoptionError(f"not published yet: no push CI run for {sha}", 4)
+        raise PrepareError(f"not published yet: no push CI run for {sha}", 4)
     run_id = max(r["databaseId"] for r in runs)
     job = select_job(gh_paginated_jobs(run_id))
     index_digest, manifests = fetch_ghcr_index(sha)
@@ -251,7 +274,7 @@ def cmd_write(args) -> int:
 
 def cmd_update_blocked_prs(args) -> int:
     git_fetch_main()
-    adoption = git_last_commit("scripts/deploy/release_artifact_contract.py")
+    adoption = git_adoption_commit(adopted_sha(git_main_contract()))
     prs = gh_json(
         "pr", "list", "--repo", SLUG, "--state", "open", "--limit", "200",
         "--json", "number,headRefOid,isCrossRepository,statusCheckRollup",
@@ -286,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except AdoptionError as exc:
+    except PrepareError as exc:
         print(str(exc), file=sys.stderr)
         return exc.code
     except subprocess.CalledProcessError as exc:
