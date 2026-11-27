@@ -300,6 +300,16 @@ sudo systemctl status torque-bluetooth-guard --no-pager
 8. 両Piを再起動し、リース無しでは外付けBluetoothがOFFのままであることを確認する。
 9. 上記がすべて成功した後だけ、別承認で対象レンチのenforcementを有効化し、リース無し入力の拒否監査を確認する。
 
+## イメージの採用（CI）
+
+`clients/torque-agent/` か `infrastructure/docker/Dockerfile.torque-agent` を変えたPRがmainへ入ると、`scripts/deploy/release_artifact_contract.py` の `TORQUE_ADOPTION` を新しいイメージへ差し替える採用PRが要る。採用PRがmainへ入るまで、torqueの対象と判定されたPRは中身に関係なく `torque-release-compatibility` の「an unchanged adoption manifest is required for the source-publication stage」で落ちる。採用を置き去りにしないため、マージした側が続けて次を行う。
+
+1. mainのCI（`pi4-agent-images-publish (torque-agent)`）の成功を待ち、`python3 scripts/deploy/prepare_torque_adoption.py write --pr-body <本文のパス>` で値をGHCRから読んで書き換える。採用済みなら何もしない。
+2. 書き換えを採用PRにして、全チェックの合格後にマージする。
+3. `python3 scripts/deploy/prepare_torque_adoption.py update-blocked-prs` で、このチェックで落ちたまま古いmainの上にある開いたPRへmainを取り込む（`--dry-run` で対象だけを表示）。
+
+採用待ちが残っているかは `python3 scripts/deploy/prepare_torque_adoption.py status` で分かる（終了コード3が採用待ち）。
+
 ## 関連資料
 
 - [クライアント Docker agent 追加 Runbook](client-agent-addition.md)
