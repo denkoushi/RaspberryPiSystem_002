@@ -2,15 +2,21 @@ import clsx from 'clsx';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
+import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
 import { normalizeMachineName } from '../../productionSchedule/machineName';
+import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
 import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { pageZoom } from '../pageZoom';
 import { formatPlanningBoardDate } from '../planningBoardDateLabel';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
+import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
+import { chipCodes, doneChipLabel, fitChips, moreChipLabel } from './planningBoardChipStrips';
 import { beginForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache } from './planningBoardForwardDrop';
 import { canReorderForwardBars, forwardDueLabel, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
+import { planningBoardPartKey } from './planningBoardGanttLayout';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -18,6 +24,8 @@ import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, RefObject } from 'react';
 
+// Card inner width: 150px card - 5px left border - 16px side padding.
+const CARD_CHIP_ROOM = 129;
 const HOVER_SHOW_DELAY_MS = 2000;
 const HOVER_PIN_DELAY_MS = 3000;
 // While a float is open, and shortly after it closes by leaving a bar, the next bar under the cursor opens at once so the float keeps following.
@@ -63,6 +71,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   layout, scale, resourceNameMap, disabled, dragDisabled, resourceView, onResourceReorder, onArrivalChange, onFirstProcessArrivalChange, arrivalPending, arrivalError
 }, ref) {
   const { gate, frozen } = usePlanningBoardOffline();
+  const chipsByPart = usePlanningBoardProcessChips();
   const [open, setOpen] = useState<OpenQueue | null>(null);
   const openRef = useRef<OpenQueue | null>(null);
   openRef.current = open;
@@ -299,10 +308,10 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
         {!bar.arrivalPending && forwardStartLabel(bar) && <div className="truncate text-slate-400">開始 {forwardStartLabel(bar)}</div>}
         {bar.due && <div className={clsx('truncate', !bar.arrivalPending && bar.tone === 'late' ? 'text-rose-300' : 'text-slate-400')}>納期 {forwardDueLabel(bar.due)}</div>}
         {item.isFirstProcess ? (
-          <div className="mt-1 grid grid-cols-2 gap-1">
+          <div className="mt-0.5 grid grid-cols-2 gap-1">
             {(['arrived', 'excluded'] as const).map((state) => <button key={state} type="button"
               aria-pressed={item.firstProcessState === state}
-              className={clsx('min-h-9 rounded border border-slate-500 disabled:opacity-50',
+              className={clsx('h-5 leading-none rounded border border-slate-500 disabled:opacity-50',
                 item.firstProcessState === state ? 'bg-white text-slate-950' : 'text-slate-100')}
               disabled={item.standardHoursMissing || disabled || arrivalPending}
               onClick={() => onFirstProcessArrivalChange?.(item, item.firstProcessState === state ? null : state)}>
@@ -310,12 +319,24 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
             </button>)}
           </div>
         ) : bar.arrivalPending ? (
-          <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
+          <button type="button" className="mt-0.5 h-5 leading-none w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
             disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, true)}>着</button>
         ) : <>
-          {item.manualArrivalDate && <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
+          {item.manualArrivalDate && <button type="button" className="mt-0.5 h-5 leading-none w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
             disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, false)}>{`取消・手押${formatPlanningBoardDate(item.manualArrivalDate, '')}`}</button>}
         </>}
+        {(() => {
+          const { done, shown, hidden } = fitChips(chipsByPart.get(planningBoardPartKey(item)) ?? [], CARD_CHIP_ROOM, true);
+          return done.length + shown.length + hidden.length > 0 && <div data-testid={`planning-forward-queue-chips-${item.itemId}`} className="mt-0.5 flex h-4 flex-nowrap gap-0.5 overflow-hidden">
+            {done.length > 0 && <IconActionTooltip label={`完了: ${chipCodes(done)}`}>
+              <span className={progressOverviewProcessChipClassName(true)}>{doneChipLabel(done.length)}</span>
+            </IconActionTooltip>}
+            {shown.length > 0 && <KioskResourceProcessChips processes={shown} className="flex-nowrap" />}
+            {hidden.length > 0 && <IconActionTooltip label={`ほか: ${chipCodes(hidden)}`}>
+              <span className="rounded border border-slate-500 px-1 py-0.5 text-[10px] leading-none text-slate-200">{moreChipLabel(hidden.length)}</span>
+            </IconActionTooltip>}
+          </div>;
+        })()}
 
         </>}
         {drop?.bar.item.itemId === item.itemId && <span data-testid="planning-forward-queue-insertion"

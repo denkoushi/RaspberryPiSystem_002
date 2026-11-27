@@ -1628,7 +1628,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const card = await screen.findByTestId('planning-forward-queue-card-b', undefined, { timeout: 3000 });
     expect(card).toHaveClass('border-slate-950', 'text-slate-500');
     const arrive = within(card).getByRole('button', { name: '着', exact: true });
-    expect(arrive).toHaveClass('min-h-9');
+    expect(arrive).toHaveClass('h-5');
     fireEvent.click(arrive);
     await waitFor(() => expect(mocks.arrival).toHaveBeenCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: true }));
     await waitFor(() => expect(screen.getByTestId('planning-gantt-bar-b')).toBeInTheDocument());
