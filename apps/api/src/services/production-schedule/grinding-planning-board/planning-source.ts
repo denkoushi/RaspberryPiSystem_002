@@ -11,6 +11,7 @@ import { prepareProductionScheduleDashboardFilters } from '../production-schedul
 import { fetchLeaderboardPlanningScopedParentRowIds } from '../leaderboard/leaderboard-row-selection.service.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { isGrindingPlanningBoardRowCompleted } from '../grinding-planning-board-projection.js';
 import type { GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection-input.types.js';
 import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { asRowData, dateValue, type PlanningSource, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
@@ -200,7 +201,7 @@ function buildPlanningProgressRows(
       fseiban: valueAsString(data, 'FSEIBAN'),
       productNo: valueAsString(data, 'ProductNo'),
       fhincd: valueAsString(data, 'FHINCD'),
-      isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted)
+      isCompleted: isGrindingPlanningBoardRowCompleted(detail)
     }];
   });
 }

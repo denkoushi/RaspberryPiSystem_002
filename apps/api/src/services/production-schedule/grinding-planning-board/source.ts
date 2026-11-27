@@ -6,6 +6,7 @@ import { chunkLeaderboardRowIdsForHydrate } from '../leaderboard/leaderboard-dis
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { isSendaiResourceGroupCd } from '../resource-master.service.js';
+import { isGrindingPlanningBoardRowCompleted } from '../grinding-planning-board-projection.js';
 import type { GrindingPlanningBoardProjectionRanks } from '../grinding-planning-board-projection-input.types.js';
 import { buildMaxProductNoLogicalKeyPartitionExprs, buildMaxProductNoWinnerCondition, buildMaxProductNoWinnerSelectionOrderBySql } from '../row-resolver/index.js';
 import { STRING_TRIM_CHARACTERS, isCategoryResource, type DbClient, type RankRow, type RowDetail, type WinnerRow } from './shared.js';
@@ -118,6 +119,19 @@ export async function readRowDetails(client: DbClient, rowIds: readonly string[]
     for (const detail of rows) details.set(detail.id, { ...detail, ...byId.get(detail.id) } as RowDetail);
   }
   return details;
+}
+
+export async function readRowCompletionFlags(client: DbClient, rowIds: readonly string[]) {
+  const flags = new Map<string, boolean>();
+  for (const chunk of chunkLeaderboardRowIdsForHydrate(rowIds)) {
+    const rows = await client.csvDashboardRow.findMany({
+      where: { id: { in: chunk }, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true, productionScheduleProgress: { select: { isCompleted: true } },
+        productionScheduleExternalCompletion: { select: { isExternallyCompleted: true } } }
+    });
+    for (const row of rows) flags.set(row.id, isGrindingPlanningBoardRowCompleted(row));
+  }
+  return flags;
 }
 
 export async function readRanks(client: DbClient, rowIds: readonly string[], siteKey: string, records?: readonly RankRow[]): Promise<GrindingPlanningBoardProjectionRanks> {

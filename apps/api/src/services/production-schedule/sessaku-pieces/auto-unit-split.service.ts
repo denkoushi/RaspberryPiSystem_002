@@ -7,7 +7,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { logger } from '../../../lib/logger.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
-import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
+import { buildGrindingPlanningBoardRowItemId, isGrindingPlanningBoardRowCompleted, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
 import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans } from '../grinding-planning-board/source.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
@@ -261,7 +261,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
             const completedParents = new Set(items.filter((item) => item.isCompleted).map((item) => item.parentItemId ?? item.itemId));
             for (const row of rows) {
               const detail = details.get(row.id);
-              if (detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) {
+              if (detail && isGrindingPlanningBoardRowCompleted(detail)) {
                 completedParents.add(sessakuPieceParentItemId(sessakuPieceKeyFromRow(row.rowData)));
               }
             }
