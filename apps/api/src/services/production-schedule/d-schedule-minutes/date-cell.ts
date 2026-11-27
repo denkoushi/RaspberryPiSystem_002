@@ -77,7 +77,7 @@ export function readDate(cell: ExcelJS.Cell, meetingDate: string, date1904: bool
     if (!Number.isFinite(value) || days < 20000 || (!date1904 && days === 60)) return { ...empty, invalid: true };
     const epoch = Date.UTC(date1904 ? 1904 : 1899, date1904 ? 0 : 11, date1904 ? 1 : 31);
     const date = new Date(epoch + (days - (!date1904 && days > 60 ? 1 : 0)) * 86400000);
-    return checked(Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : null);
+    return checked(isoDate(date));
   }
   const match = text.match(strict
     ? /^(?:確定\s*)?(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})(?:\s*\(([A-Z]+)\))?$/
