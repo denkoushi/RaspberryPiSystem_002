@@ -91,8 +91,9 @@ function ResourceRows({ settings: s, kiosk = false }: { settings: Settings; kios
       : 'min-h-12 gap-2.5 rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)] px-3 py-2'}`}
     onClick={() => s.select(resource.resourceCd)}>
     <strong className={`shrink-0 font-mono ${kiosk ? 'min-w-11 whitespace-nowrap text-lg' : 'w-14 break-all text-xl'}`}>{resource.resourceCd}</strong>
-    <span className={`min-w-0 flex-1 font-bold ${kiosk ? 'truncate text-sm leading-tight' : ''}`}>{resource.resourceNames.join('・')}
-      <small className={`block ${kiosk ? 'truncate text-xs' : 'break-words'} ${resource.shelfCodes.length ? kiosk ? 'text-inv-amber' : 'text-[var(--hp-shelf)]' : kiosk ? 'text-inv-muted' : hp.muted}`}>
+    <span className={`min-w-0 flex-1 font-bold ${kiosk ? 'text-sm leading-tight' : ''}`}>
+      <span className={kiosk ? 'line-clamp-2 break-words' : undefined}>{resource.resourceNames.join('・')}</span>
+      <small className={`${kiosk ? 'line-clamp-2 break-words text-xs' : 'block break-words'} ${resource.shelfCodes.length ? kiosk ? 'text-inv-amber' : 'text-[var(--hp-shelf)]' : kiosk ? 'text-inv-muted' : hp.muted}`}>
         {resource.shelfCodes.join('・') || '棚なし'}
       </small>
     </span>
@@ -149,7 +150,7 @@ export function ResourceShelfKioskDialog({ onClose }: { onClose: () => void }) {
       <button type="button" className={invButton} disabled={s.busy} onClick={onClose}>閉じる</button>
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_28rem] gap-4">
-      <div className="grid min-h-0 auto-rows-min grid-cols-[repeat(auto-fill,minmax(190px,1fr))] content-start gap-1 overflow-y-auto"><ResourceRows settings={s} kiosk /></div>
+      <div className="grid min-h-0 auto-rows-min grid-cols-4 content-start gap-1 overflow-y-auto"><ResourceRows settings={s} kiosk /></div>
       <div key={s.selected?.resourceCd} className="flex min-h-0 flex-col gap-1.5 overflow-y-auto border-l border-inv-line pl-4"><ShelfGroups settings={s} kiosk /></div>
     </div>
     <footer className="flex shrink-0 items-center justify-end gap-2">
