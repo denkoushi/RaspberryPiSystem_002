@@ -171,6 +171,9 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
     if (path === '/api/assembly/procedure-documents/sop-procedure-revision-1' && request.method() === 'GET') {
       return json(route, { document: revisionDocument() });
     }
+    if (path.endsWith('/feedback') && request.method() === 'GET') {
+      return json(route, { feedback: null });
+    }
     if (path.endsWith('/regions/text') && request.method() === 'POST') {
       return json(route, { candidates: [] });
     }

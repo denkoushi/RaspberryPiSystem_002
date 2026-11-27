@@ -4,7 +4,7 @@ import { env } from '../../config/env.js';
 import { DomainHttpError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
-import { stripJsonFence } from '../../lib/strip-json-fence.js';
+import { extractJsonObject, stringList } from '../../lib/llm-json.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import { readAssemblyProcedureAssetAsJpeg } from './procedure-asset-jpeg.js';
@@ -53,26 +53,16 @@ function createNameRedactor(employees: Pick<Employee, 'displayName' | 'lastName'
 }
 
 function parseFeedback(raw: string, redact: (text: string) => string) {
-  const text = stripJsonFence(raw);
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) return null;
-  try {
-    const data = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-    const strings = (value: unknown) => Array.isArray(value)
-      ? value.filter((item): item is string => typeof item === 'string')
-        .map(item => item.trim()).filter(Boolean).slice(0, 6).map(redact)
-      : [];
-    const sections = {
-      questions: strings(data.questions),
-      missing: strings(data.missing),
-      unclear: strings(data.unclear),
-      ideas: strings(data.ideas),
-    };
-    return Object.values(sections).some(items => items.length) ? sections : null;
-  } catch {
-    return null;
-  }
+  const data = extractJsonObject(raw);
+  if (!data) return null;
+  const strings = (value: unknown) => stringList(value, 6).map(redact);
+  const sections = {
+    questions: strings(data.questions),
+    missing: strings(data.missing),
+    unclear: strings(data.unclear),
+    ideas: strings(data.ideas),
+  };
+  return Object.values(sections).some(items => items.length) ? sections : null;
 }
 
 export async function getProcedureDocumentFeedback(documentId: string): Promise<ProcedureDocumentFeedbackResponse> {

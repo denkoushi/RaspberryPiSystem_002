@@ -1,5 +1,5 @@
 import type { TextChatMessage } from '../../inference/ports/text-completion.port.js';
-import { stripJsonFence } from '../../../lib/strip-json-fence.js';
+import { extractJsonObject, stringList } from '../../../lib/llm-json.js';
 
 export type Organized = { topics: string[]; decisions: string[]; open: string[]; actions: string[]; next: string };
 export const EMPTY_ORGANIZED: Organized = { topics: [], decisions: [], open: [], actions: [], next: '' };
@@ -7,34 +7,19 @@ export const TRANSCRIPT_MAX_CHARS = 12000;
 
 export type CompleteFn = (messages: TextChatMessage[], signal: AbortSignal) => Promise<string>;
 
-function strings(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((v) => (typeof v === 'string' ? v.trim() : ''))
-    .filter(Boolean)
-    .slice(0, 30);
-}
+const strings = (value: unknown) => stringList(value, 30);
 
 /** Parses the LLM answer defensively; returns null when it is not usable JSON. */
 export function parseOrganized(raw: string): Organized | null {
-  let text = stripJsonFence(raw);
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) return null;
-  text = text.slice(start, end + 1);
-  try {
-    const data = JSON.parse(text) as Record<string, unknown>;
-    if (!data || typeof data !== 'object') return null;
-    return {
-      topics: strings(data.topics),
-      decisions: strings(data.decisions),
-      open: strings(data.open),
-      actions: strings(data.actions),
-      next: typeof data.next === 'string' ? data.next.trim() : ''
-    };
-  } catch {
-    return null;
-  }
+  const data = extractJsonObject(raw);
+  if (!data) return null;
+  return {
+    topics: strings(data.topics),
+    decisions: strings(data.decisions),
+    open: strings(data.open),
+    actions: strings(data.actions),
+    next: typeof data.next === 'string' ? data.next.trim() : ''
+  };
 }
 
 export function renderOrganized(o: Organized): string {
