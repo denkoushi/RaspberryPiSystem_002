@@ -10,23 +10,39 @@ import { formatHaizenClock } from '../../features/kiosk/haizen/haizenSearch';
 import { invButton, invButtonGhost, invPanel, invSeg, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { useStoredToggleSet } from '../../hooks/useStoredToggleSet';
+
+export const PICKED_SEIBANS_STORAGE_KEY = 'kiosk-haizen-material-picked-seibans';
+
+const pickedSeibanOptions = {
+  parse: (stored: unknown) => {
+    const saved = stored as { schemaVersion?: unknown; fseibans?: unknown } | null;
+    return saved?.schemaVersion === 1 && Array.isArray(saved.fseibans) ? saved.fseibans.filter((value): value is string => typeof value === 'string') : [];
+  },
+  serialize: (fseibans: readonly string[]) => ({ schemaVersion: 1, fseibans })
+};
 
 const columns = ['照合', '材料', '棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '納期', '置いた日時', '足取り'];
 
 function HaizenCount({ label, count, total }: { label: string; count: number; total: number }) {
-  return <span className="whitespace-nowrap text-base text-inv-muted">{label} <strong className={`text-lg ${count === total ? 'text-inv-green' : 'text-inv-text'}`}>{count}/{total}</strong></span>;
+  return <span className="whitespace-nowrap text-base text-inv-text">{label} <strong className={`text-lg ${count === total ? 'text-inv-green' : 'text-inv-text'}`}>{count}/{total}</strong></span>;
 }
 
 export function KioskHaizenMaterialPage() {
   const navigate = useNavigate();
   const { scheduleSource, changeScheduleSource } = usePlanningBoardScheduleSource('kiosk-haizen-material-schedule-source');
   const [openSeibans, setOpenSeibans] = useState(new Set<string | null>());
+  const { values: picked, toggle: togglePicked } = useStoredToggleSet(PICKED_SEIBANS_STORAGE_KEY, pickedSeibanOptions);
   const overview = useHaizenOverview();
   const master = useHaizenShelves();
   const unplaced = useHaizenUnplacedParts(true);
   const view = useHaizenMaterialView(scheduleSource);
   const listRows = useMemo(() => [...buildHaizenUnplacedRows(unplaced.data ?? []), ...(overview.data?.rows ?? [])], [overview.data, unplaced.data]);
-  const groups = useMemo(() => buildHaizenDueGroups(listRows, view.data?.seibanOrder ?? [], view.data?.excludedFseibans ?? []), [listRows, view.data]);
+  const boardGroups = useMemo(() => buildHaizenDueGroups(listRows, view.data?.seibanOrder ?? [], view.data?.excludedFseibans ?? []), [listRows, view.data]);
+  const groups = useMemo(() => {
+    const isPicked = (fseiban: string | null) => fseiban !== null && picked.has(fseiban);
+    return [...boardGroups.filter(group => isPicked(group.fseiban)), ...boardGroups.filter(group => !isPicked(group.fseiban))];
+  }, [boardGroups, picked]);
   const loadingRows = overview.isPending || unplaced.isPending;
   const parts = useMemo(() => {
     if (loadingRows) return [];
@@ -75,26 +91,30 @@ export function KioskHaizenMaterialPage() {
           const shelves = new Map<string, number>();
           for (const row of rows) if (!row.unplaced) shelves.set(row.shelfCodeRaw, (shelves.get(row.shelfCodeRaw) ?? 0) + 1);
           const unplacedCount = rows.length - placed;
-          return <div key={fseiban ?? ''} className="grid grid-cols-1 items-center gap-x-4 gap-y-2 py-2 lg:grid-cols-[auto_minmax(0,1fr)_9rem]">
+          const isPicked = fseiban !== null && picked.has(fseiban);
+          return <div key={fseiban ?? ''} className={`grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-x-4 gap-y-2 py-2 lg:grid-cols-[4rem_auto_minmax(0,1fr)_9rem] ${isPicked ? 'bg-inv-cyan/[0.06]' : ''}`}>
+            <label className={`row-span-3 flex h-14 w-16 items-center justify-center lg:row-span-1 ${fseiban === null ? 'invisible' : 'cursor-pointer'}`}>
+              <input type="checkbox" aria-label={fseiban ?? '製番不明'} disabled={fseiban === null} checked={isPicked} onChange={() => { if (fseiban !== null) togglePicked(fseiban); }} className="h-7 w-7 cursor-pointer accent-inv-cyan" />
+            </label>
             <button type="button" aria-expanded={expanded} onClick={() => toggleSeiban(fseiban)}
-              className="grid min-h-12 grid-cols-2 items-center gap-x-4 gap-y-2 rounded-lg px-4 text-left tabular-nums hover:bg-inv-cyan/10 lg:grid-cols-[minmax(0,20rem)_8rem_7rem_7rem]">
+              className="grid min-h-12 grid-cols-2 items-center gap-x-4 gap-y-2 rounded-lg px-4 text-left tabular-nums hover:bg-inv-cyan/10 lg:grid-cols-[minmax(0,30rem)_8rem_7rem_7rem]">
               <span className="flex min-w-0 items-baseline gap-2">
                 <span aria-hidden="true" className="shrink-0 text-inv-cyan">{expanded ? '▾' : '▸'}</span>
                 <strong className="shrink-0 font-mono text-xl">{fseiban || '製番不明'}</strong>
-                <span className="truncate text-base text-inv-muted">{normalizeMachineName(machineName) || '—'}</span>
+                <span className="truncate text-base text-inv-text">{normalizeMachineName(machineName) || '—'}</span>
               </span>
-              <span className="whitespace-nowrap text-base text-inv-muted">納期 <strong className="text-inv-text">{dueDate ? <time dateTime={dueDate}>{formatDueDate(dueDate) || '—'}</time> : '—'}</strong></span>
+              <span className="whitespace-nowrap text-base text-inv-text">納期 <strong className="text-inv-text">{dueDate ? <time dateTime={dueDate}>{formatDueDate(dueDate) || '—'}</time> : '—'}</strong></span>
               <HaizenCount label="照合" count={verified} total={rows.length} />
               <HaizenCount label="配膳" count={placed} total={rows.length} />
             </button>
-            <span className="flex min-w-0 flex-wrap gap-1.5 px-4 lg:px-0">
+            <span className="col-start-2 flex min-w-0 flex-wrap gap-1.5 px-4 lg:col-start-auto lg:px-0">
               {[...shelves].sort(([a], [b]) => (shelfLabels.get(a) || a).localeCompare(shelfLabels.get(b) || b, 'ja')).map(([shelf, count]) => <button key={shelf} type="button" aria-label={`棚 ${shelf} ${shelfLabels.get(shelf) || shelf} ${count}点`} className="h-11 whitespace-nowrap rounded-lg border border-inv-line2 bg-inv-s2 px-2.5 text-[15px] font-semibold hover:bg-inv-s3" onClick={() => openShelf(shelf)}>
-                {shelfLabels.get(shelf) || shelf}<span className="ml-1.5 text-inv-muted">{count}</span>
+                {shelfLabels.get(shelf) || shelf}<span className="ml-1.5 text-inv-text">{count}</span>
               </button>)}
-              {unplacedCount > 0 && <span className="inline-flex h-11 items-center whitespace-nowrap rounded-lg border border-dashed border-inv-line2 px-2.5 text-[15px] text-inv-muted">未配置 {unplacedCount}</span>}
+              {unplacedCount > 0 && <span className="inline-flex h-11 items-center whitespace-nowrap rounded-lg border border-dashed border-inv-line2 px-2.5 text-[15px] text-inv-text">未配置 {unplacedCount}</span>}
             </span>
-            <span className="whitespace-nowrap px-4 text-[15px] font-bold text-inv-amber lg:pl-0">{waitingMaterial > 0 && `材料未入荷 ${waitingMaterial}`}</span>
-            {expanded && <div className="overflow-x-auto lg:col-span-3">
+            <span className="col-start-2 whitespace-nowrap px-4 text-[15px] font-bold text-inv-amber lg:col-start-auto lg:pl-0">{waitingMaterial > 0 && `材料未入荷 ${waitingMaterial}`}</span>
+            {expanded && <div className="col-span-2 overflow-x-auto lg:col-span-4">
               <table aria-label={`${fseiban || '製番不明'}の部品一覧`} className="w-full min-w-[1100px] border-collapse text-left tabular-nums">
                 <thead className="bg-inv-s2 text-[15px] text-inv-muted">
                   <tr>{columns.map(label => <th key={label} scope="col" className={`whitespace-nowrap px-3.5 py-1 ${label === '置いた日時' ? 'text-right' : ''}`}>{label}</th>)}</tr>

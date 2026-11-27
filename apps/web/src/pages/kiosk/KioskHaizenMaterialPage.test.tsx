@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getHaizenMaterialArrival, getHaizenMaterialView, getHaizenOverview, getHaizenUnplacedParts, getMobilePlacementRegisteredShelves } from '../../api/domains/mobile-placement';
 import { SCHEDULE_SOURCE_STORAGE_KEY } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardScheduleSource';
 
-import { KioskHaizenMaterialPage } from './KioskHaizenMaterialPage';
+import { KioskHaizenMaterialPage, PICKED_SEIBANS_STORAGE_KEY } from './KioskHaizenMaterialPage';
 
 import type { HaizenMaterialArrivalItem } from '../../api/domains/mobile-placement';
 
@@ -109,6 +109,22 @@ describe('KioskHaizenMaterialPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '両方' }));
     await screen.findByRole('button', { name: /BA1/ });
     expect(screen.getByRole('button', { name: /LATE/ })).toBeInTheDocument();
+  });
+  it('moves checked seibans above the board order and keeps them on this terminal', async () => {
+    const before = (a: HTMLElement, b: HTMLElement) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const { unmount } = mount();
+    await waitFor(() => expect(before(screen.getByRole('button', { name: /LATE/ }), screen.getByRole('button', { name: /BA1/ }))).toBe(true));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'BA1' }));
+    expect(screen.getByRole('checkbox', { name: 'BA1' })).toBeChecked();
+    expect(before(screen.getByRole('button', { name: /BA1/ }), screen.getByRole('button', { name: /LATE/ }))).toBe(true);
+    expect(JSON.parse(window.localStorage.getItem(PICKED_SEIBANS_STORAGE_KEY) ?? 'null')).toEqual({ schemaVersion: 1, fseibans: ['BA1'] });
+    unmount();
+    client.clear();
+    mount();
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'BA1' })).toBeChecked());
+    expect(before(screen.getByRole('button', { name: /BA1/ }), screen.getByRole('button', { name: /LATE/ }))).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'BA1' }));
+    expect(before(screen.getByRole('button', { name: /LATE/ }), screen.getByRole('button', { name: /BA1/ }))).toBe(true);
   });
   it('opens a shelf from the collapsed row without expanding it', async () => {
     mount();
