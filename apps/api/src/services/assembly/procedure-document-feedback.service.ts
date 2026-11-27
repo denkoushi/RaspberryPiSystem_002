@@ -7,6 +7,7 @@ import { prisma } from '../../lib/prisma.js';
 import { extractJsonObject, stringList } from '../../lib/llm-json.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
+import { runAssemblyTransaction } from './assembly-transaction.js';
 import { readAssemblyProcedureAssetAsJpeg } from './procedure-asset-jpeg.js';
 import { PROCEDURE_DOCUMENT_FEEDBACK_REFERENCE } from './procedure-document-feedback.reference.js';
 import type { Employee } from '@prisma/client';
@@ -101,7 +102,7 @@ export async function setProcedureDocumentFeedbackTarget(documentId: string, nig
 type Candidate = { id: string; updatedAt: Date };
 
 async function generateFeedback(candidate: Candidate, employees: Parameters<typeof createNameRedactor>[0], signal: AbortSignal) {
-  const document = await prisma.$transaction(tx => tx.assemblyProcedureDocument.findUnique({
+  const document = await runAssemblyTransaction(tx => tx.assemblyProcedureDocument.findUnique({
     where: { id: candidate.id, isActive: true },
     select: {
       name: true, updatedAt: true,
@@ -118,7 +119,7 @@ async function generateFeedback(candidate: Candidate, employees: Parameters<type
         },
       },
     },
-  }), { isolationLevel: 'RepeatableRead' });
+  }));
   if (!document) return false;
   signal.throwIfAborted();
   const redact = createNameRedactor(employees);
