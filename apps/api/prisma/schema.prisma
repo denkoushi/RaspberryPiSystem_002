@@ -3697,6 +3697,7 @@ model AssemblyProcedureDocument {
   overlayElements        AssemblyProcedureOverlayElement[]
   revisionMetadata       AssemblyProcedureDocumentRevision?
   editLease              AssemblyProcedureDocumentEditLease?
+  readingFeedback        AssemblyProcedureDocumentFeedback[]
   revisionRoots          AssemblyProcedureDocumentRevision[]    @relation("AssemblyProcedureDocumentRevisionRoot")
   supersededRevisions    AssemblyProcedureDocumentRevision[]    @relation("AssemblyProcedureDocumentRevisionSupersedes")
   templates              AssemblyTemplate[]
@@ -3749,6 +3750,29 @@ model AssemblyProcedureDocumentRevision {
   @@index([revisionRootId, isRevisionHead], map: "AssemblyProcedureDocumentRevision_idx_revision_head")
   @@index([supersedesDocumentId], map: "AssemblyProcedureDocumentRevision_idx_supersedes")
   @@index([sourceAssetId], map: "AssemblyProcedureDocumentRevision_idx_source_asset")
+}
+
+model AssemblyProcedureDocumentFeedback {
+  id              String                    @id @default(uuid())
+  revisionRootId  String
+  documentId      String
+  revisionNumber  Int
+  sourceUpdatedAt DateTime
+  questions       Json
+  missing         Json
+  unclear         Json
+  ideas           Json
+  createdAt       DateTime                  @default(now())
+  document        AssemblyProcedureDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, sourceUpdatedAt], map: "AssemblyProcedureDocumentFeedback_document_source_key")
+  @@index([revisionRootId, sourceUpdatedAt, revisionNumber], map: "AssemblyProcedureDocumentFeedback_root_source_idx")
+}
+
+/// 行がある系列は、夜に AI が読む対象から外す。行が無ければ読む。
+model AssemblyProcedureDocumentFeedbackOptOut {
+  revisionRootId String   @id
+  createdAt      DateTime @default(now())
 }
 
 /// 組立手順書の外部取込元。手動登録は行を持たず MANUAL と解釈する。
