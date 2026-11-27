@@ -1,3 +1,5 @@
+import { isManufacturingOrderNo } from '@raspi-system/shared-types';
+
 import { ApiError } from '../../../lib/errors.js';
 import { resolveLocationScopeContext, type ClientDeviceForScopeResolution } from '../../../lib/location-scope-resolver.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -8,13 +10,39 @@ import { acquireProductionScheduleParentRowLockInTransaction } from '../order-as
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { compareProcessOrder } from '../process-order.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
-import { listScheduleRowsByProductNo } from '../production-schedule-lookup.service.js';
+import { listScheduleRowsByFseiban, listScheduleRowsByProductNo } from '../production-schedule-lookup.service.js';
+import { findPurchaseOrderLookupRows } from '../../purchase-order-lookup/purchase-order-lookup-query.service.js';
+import {
+  normalizePurchaseFhinCdForMatching,
+  normalizePurchaseFhinCdForScheduleLookup,
+} from '../../purchase-order-lookup/purchase-fhincd-normalize.js';
 import { acquireSessakuPieceLogicalLocks } from '../sessaku-pieces/piece-key.js';
 import { asRowData, planningBoardArrivalDate } from './shared.js';
 import { readWinnerRowsByIds } from './source.js';
 import { ensurePlanningBoardState, lockState } from './state.js';
 import { readLivePieceKeys, resolveCurrentProjectionInTransaction } from './write.js';
 import { discoverSourceRows } from './write-source.js';
+
+/**
+ * A manufacturing order number (移動票) matches its own rows. A purchase order number (現品票) has no
+ * schedule rows of its own, so it is resolved through the purchase data to its seiban and part code,
+ * matched with the purchase lookup's normalization. Several ProductNos may match; the caller leaves
+ * the scan unresolved unless exactly one has an incomplete grinding process.
+ * `productNos` is null when the scanned value itself is the ProductNo.
+ */
+async function listScanCandidates(scanned: string) {
+  const byProductNo = await listScheduleRowsByProductNo(scanned);
+  if (byProductNo.length || !isManufacturingOrderNo(scanned)) return { rows: byProductNo, productNos: null };
+  const purchases = await findPurchaseOrderLookupRows(scanned);
+  const seibans = [...new Set(purchases.map((row) => row.seiban.trim()).filter(Boolean))];
+  if (seibans.length !== 1) return { rows: [], productNos: null };
+  const matchKeys = new Set(purchases.map((row) => row.purchasePartCodeMatchKey.trim()).filter(Boolean));
+  const normalizedCodes = new Set(purchases.map((row) => row.purchasePartCodeNormalized.trim()).filter(Boolean));
+  const rows = (await listScheduleRowsByFseiban(seibans[0]!)).filter((row) =>
+    matchKeys.has(normalizePurchaseFhinCdForMatching(row.fhincd)) ||
+    normalizedCodes.has(normalizePurchaseFhinCdForScheduleLookup(row.fhincd)));
+  return { rows, productNos: new Set(rows.map((row) => row.productNo.trim())) };
+}
 
 export async function applyGrindingPlanningBoardScanArrival(params: {
   clientDevice: ClientDeviceForScopeResolution;
@@ -32,7 +60,9 @@ export async function applyGrindingPlanningBoardScanArrival(params: {
   const productNo = normalizeSlipToken(params.manufacturingOrderBarcodeRaw);
   const unresolved = () => ({ resolutionStatus: 'UNRESOLVED' as const, arrival: { productNo, reason: 'NO_INCOMPLETE_GRINDING_PROCESS' } });
   const policy = await getResourceCategoryPolicy({ siteKey });
-  const candidates = (await listScheduleRowsByProductNo(productNo))
+  const scan = await listScanCandidates(productNo);
+  const matchesProductNo = (value: string) => (scan.productNos ? scan.productNos.has(value.trim()) : value.trim() === productNo);
+  const candidates = scan.rows
     .filter((row) => policy.grindingResourceCds.includes(normalizeProductionScheduleResourceCd(row.fsigencd)));
   if (!candidates.length) return unresolved();
   // Preserve the raw logical-key values (including zero-padded FKOJUN).
@@ -53,10 +83,12 @@ export async function applyGrindingPlanningBoardScanArrival(params: {
     }
     // The board projection owns completion (local progress OR external completion).
     const current = await resolveCurrentProjectionInTransaction({ client, siteKey, sourceRowIds, itemIds: [], policy, allowPieceParent: true });
-    const item = [...current.byItemId.values()]
-      .filter((entry) => entry.productNo.trim() === productNo && !entry.isCompleted &&
-        policy.grindingResourceCds.includes(normalizeProductionScheduleResourceCd(entry.originalResourceCd ?? '')))
-      .sort((a, b) => compareProcessOrder(a.processOrder, b.processOrder) || a.itemId.localeCompare(b.itemId))[0];
+    const open = [...current.byItemId.values()]
+      .filter((entry) => matchesProductNo(entry.productNo) && !entry.isCompleted &&
+        policy.grindingResourceCds.includes(normalizeProductionScheduleResourceCd(entry.originalResourceCd ?? '')));
+    // A purchase order cannot tell two live ProductNos apart, so it marks nothing rather than guess.
+    if (new Set(open.map((entry) => entry.productNo.trim())).size > 1) return unresolved();
+    const item = open.sort((a, b) => compareProcessOrder(a.processOrder, b.processOrder) || a.itemId.localeCompare(b.itemId))[0];
     if (!item) return unresolved();
     const [arrival] = await enrichRowsWithProcessArrival([{
       id: item.itemId, sourceRowId: item.sourceRowId,

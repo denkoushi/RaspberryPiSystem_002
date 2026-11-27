@@ -71,6 +71,7 @@ export async function requireKioskClientDevice(rawClientKey: unknown): Promise<{
     inquiryReceiverEnabled: boolean;
     systemNoticeReceiverEnabled: boolean;
     haizenScanMode: string;
+    haizenEdgeEnabled: boolean;
   };
 }> {
   const clientKey = normalizeClientKey(rawClientKey);
