@@ -65,11 +65,16 @@ export function PlanningBoardSendOutPopup({ label, resource, rows, today, chipsB
     lastPosition.current = next;
     setPosition(next);
   };
+  // A wider list can open at a position remembered for a narrower one; pull it back on screen once per row change.
   useLayoutEffect(() => {
+    const at = lastPosition.current;
     const box = panel.current?.getBoundingClientRect();
-    if (!position || !box || box.right <= globalThis.innerWidth) return;
-    moveWindow({ left: Math.max(0, globalThis.innerWidth - box.width) / pageZoom(), top: position.top });
-  });
+    if (!at || !box || box.right - globalThis.innerWidth < 1) return;
+    const next = { left: Math.max(0, globalThis.innerWidth - box.width) / pageZoom(), top: at.top };
+    if (Math.abs(next.left - at.left) < 1) return;
+    lastPosition.current = next;
+    setPosition(next);
+  }, [rows, lastPosition]);
   const headerDrag = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const pending = useRef<Pending | null>(null);
   const suppressClick = useRef(false);
