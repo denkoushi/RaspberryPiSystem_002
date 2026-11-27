@@ -5,7 +5,10 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 
-/** 取り込み完了と同じトランザクションで、今回届いた工順の資源だけを照合する。 */
+// 機械でない資源。同じ工順に機械の行と並んで届くのが普通なので、付け替えの証拠にも、隠す対象にもしない。
+const NON_MACHINE_RESOURCE_CDS = ['10', 'MSZ', 'KUMITATE1', 'KUMITATE2'];
+
+/** 取り込み完了と同じトランザクションで、今回届いた工順の機械の資源だけを照合する。 */
 export async function refreshDroppedProductionScheduleResources(
   tx: Prisma.TransactionClient,
   rows: ReadonlyArray<{ data: Record<string, unknown> }>,
@@ -15,7 +18,9 @@ export async function refreshDroppedProductionScheduleResources(
     const productNo = toTrimmedString(data.ProductNo);
     const fkojun = toTrimmedString(data.FKOJUN);
     const resource = normalizeProductionScheduleResourceCd(toTrimmedString(data.FSIGENCD));
-    return productNo && fkojun && resource ? [{ productNo, fkojun, resource }] : [];
+    return productNo && fkojun && resource && !NON_MACHINE_RESOURCE_CDS.includes(resource)
+      ? [{ productNo, fkojun, resource }]
+      : [];
   });
   // CSV が応答上限で末尾から切れたとき(KB-435)、最後のオーダーだけは資源が欠けている恐れがあるので照合しない。
   const lastProductNo = keys.at(-1)?.productNo;
@@ -35,6 +40,7 @@ export async function refreshDroppedProductionScheduleResources(
         AND BTRIM(r."rowData"->>'FKOJUN') = i.fkojun
       WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND BTRIM(r."rowData"->>'FSIGENCD') <> ''
+        AND UPPER(BTRIM(r."rowData"->>'FSIGENCD')) NOT IN (${Prisma.join(NON_MACHINE_RESOURCE_CDS)})
         AND (r."sourceIngestRunStartedAt" IS NULL OR r."sourceIngestRunStartedAt" <= ${ingestStartedAt})
         AND NOT EXISTS (
           SELECT 1 FROM "CsvDashboardIngestRun" newer

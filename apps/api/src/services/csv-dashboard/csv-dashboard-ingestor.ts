@@ -394,8 +394,9 @@ export class CsvDashboardIngestor {
             await applyFkojunstDeferredRowUpdatesInTransaction(tx, deferredExistingRowUpdates);
           }
 
-          if (isProductionScheduleDashboard) {
+          if (isProductionScheduleDashboard && messageId) {
             // DB更新を省略した行も、今回届いた資源として扱う。
+            // 管理画面の手動アップロード(messageId なし)は絞った CSV のこともあるので照合しない。
             await refreshDroppedProductionScheduleResources(tx, normalizedRows, ingestRun.startedAt);
           }
 

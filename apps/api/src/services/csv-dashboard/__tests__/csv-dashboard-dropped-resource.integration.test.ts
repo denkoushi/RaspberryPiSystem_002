@@ -24,7 +24,11 @@ const ingestor = new CsvDashboardIngestor();
 const csvRow = (resource: string, fkojun = '200', order = productNo): string =>
   [order, 'BA1S6345', 'MD004240000', fkojun, resource, caseDate].join(',');
 
-const rawIngest = (...rows: string[]) => ingestor.ingestFromGmail(D, [columns.join(','), ...rows].join('\n'));
+let mailSeq = 0;
+const rawIngest = (...rows: string[]) =>
+  ingestor.ingestFromGmail(D, [columns.join(','), ...rows].join('\n'), `mail-${++mailSeq}`);
+const manualIngest = (...rows: string[]) =>
+  ingestor.ingestFromGmail(D, [columns.join(','), ...rows, tailRow()].join('\n'));
 // 末尾のオーダーは照合しないので、検証対象の後ろに別のオーダーを置く。
 const tailRow = (): string => csvRow('999', '100', '0009999999');
 const ingest = (...rows: string[]) => rawIngest(...rows, tailRow());
@@ -105,6 +109,18 @@ describe('生産日程 CSV の旧資源の非表示 (PostgreSQL)', () => {
     expect(await prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findUnique({
       where: { id: arrival.id },
     })).toEqual(arrival);
+  });
+
+  it('機械でない資源だけが届いた工順と、手動アップロードでは隠さない', async () => {
+    await ingest(csvRow('26M'), csvRow('10'));
+    expect(await ingest(csvRow('10'))).toMatchObject({ rowsSkipped: 2 });
+    expect(await visibleResources()).toEqual(['10', '26M']);
+
+    expect(await manualIngest(csvRow('27M'))).toMatchObject({ rowsAdded: 1 });
+    expect(await visibleResources()).toEqual(['10', '26M', '27M']);
+
+    await ingest(csvRow('27M'));
+    expect(await visibleResources()).toEqual(['10', '27M']);
   });
 
   it('一部の工順だけ届いたときは他の工順やオーダーに触れない', async () => {
