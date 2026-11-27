@@ -42,13 +42,14 @@ afterEach(() => { cleanup(); client.clear(); });
 describe('KioskHaizenMaterialPage', () => {
   it('starts collapsed in board order with normalized machine, due date and progress, and opens the selected shelf', async () => {
     mount();
-    const heading = await screen.findByRole('button', { name: /BA1 RV-12A 納期 11\/7\(土\) 照合済み 1\/2 配膳済み 1\/2/ });
+    const heading = await screen.findByRole('button', { name: /BA1 RV-12A 納期 11\/7\(土\) 照合 1\/2 配膳 1\/2/ });
     const late = screen.getByRole('button', { name: /LATE/ });
     await waitFor(() => expect(late.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy());
     expect(heading).toHaveAttribute('aria-expanded', 'false');
     expect(late).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    expect([...heading.querySelectorAll<HTMLSpanElement>('span[style]')].map(bar => bar.style.width)).toEqual(['50%', '50%']);
+    expect(await screen.findByRole('button', { name: '棚名2 1' })).toBeInTheDocument();
+    expect(screen.getByText('未配置 1')).toBeInTheDocument();
     fireEvent.click(heading);
     expect(heading).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('未配置部品')).toBeInTheDocument();
@@ -75,13 +76,12 @@ describe('KioskHaizenMaterialPage', () => {
     expect(screen.getByRole('button', { name: '棚 西-北-02 西-北-02' })).toBeInTheDocument();
     expect(screen.getByText('未配置部品')).toBeInTheDocument();
     expect(screen.queryByText('材料未入荷')).not.toBeInTheDocument();
-    expect(screen.queryByText('材料未着あり')).not.toBeInTheDocument();
+    expect(screen.queryByText('材料未入荷 1')).not.toBeInTheDocument();
     await waitFor(() => expect(getHaizenMaterialArrival).toHaveBeenCalledTimes(1));
     expect(getHaizenMaterialArrival).toHaveBeenCalledWith(expect.arrayContaining([{ fseiban: 'BA1', fhincd: 'K1' }]));
     resolveMaterial({ items: [arrival] });
     await screen.findByText('材料未入荷');
-    fireEvent.click(heading);
-    expect(screen.getByText('材料未着あり')).toBeInTheDocument();
+    expect(screen.getByText('材料未入荷 1')).toBeInTheDocument();
   });
   it('switches all three sources and restores the kiosk selection without changing the board storage', async () => {
     const savedBoardSource = JSON.stringify({ schemaVersion: 1, scheduleSource: 'general' });
@@ -105,6 +105,13 @@ describe('KioskHaizenMaterialPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '両方' }));
     await screen.findByRole('button', { name: /BA1/ });
     expect(screen.getByRole('button', { name: /LATE/ })).toBeInTheDocument();
+  });
+  it('opens a shelf from the collapsed row without expanding it', async () => {
+    mount();
+    const heading = await screen.findByRole('button', { name: /BA1/ });
+    fireEvent.click(await screen.findByRole('button', { name: '棚名2 1' }));
+    await screen.findByText('配膳の場所の画面');
+    expect(heading).not.toBeInTheDocument();
   });
   it('keeps the table when the material lookup fails', async () => {
     vi.mocked(getHaizenMaterialArrival).mockRejectedValue(new Error('boom'));
