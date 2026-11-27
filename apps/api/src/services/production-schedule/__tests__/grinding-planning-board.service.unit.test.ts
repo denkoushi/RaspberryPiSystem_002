@@ -85,6 +85,12 @@ vi.mock('../../purchase-order-lookup/material-arrival-status.service.js', async 
 }));
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.prisma }));
+vi.mock('../../department-master/department-master-lookup.js', () => ({
+  findDepartmentMasterEntries: vi.fn(async (codes: string[]) => new Map(codes.flatMap((code) => {
+    const name = ({ 'C-A': '会社A', 'C-B': '会社B 第二工場' } as Record<string, string>)[code];
+    return name ? [[code, { name }]] : [];
+  })))
+}));
 vi.mock('../policies/resource-category-policy.service.js', () => ({
   getResourceCategoryPolicy: mocks.getResourceCategoryPolicy,
   filterProductionScheduleResourceCdsByCategoryWithPolicy: mocks.filterProductionScheduleResourceCdsByCategoryWithPolicy,
@@ -311,6 +317,7 @@ describe('grinding planning board service orchestration', () => {
         { ...base, itemId: 'code', productNo: 'CODE', fhincd: 'PAINT', processOrder: '200' },
         { ...base, itemId: 'regrind', productNo: 'CODE', fhincd: 'PAINT', processOrder: '710' },
         { ...base, itemId: 'between', productNo: 'TWO', fhincd: 'PAINT', processOrder: '710' },
+        { ...base, itemId: 'early', productNo: 'TWO', fhincd: 'PAINT', processOrder: '100' },
         { ...base, itemId: 'manual', productNo: 'MANUAL', fhincd: 'LSLH-PART' },
         { ...base, itemId: 'other', productNo: 'OTHER', fhincd: 'OTHER-PART' }
       ], load: [], unknownRequiredMinutesCount: 0, progress: { bySeiban: new Map() }
@@ -318,14 +325,15 @@ describe('grinding planning board service orchestration', () => {
     const query = mocks.prisma.$queryRaw.getMockImplementation()!;
     mocks.prisma.$queryRaw.mockImplementation(async (sql: unknown) => {
       if (JSON.stringify(sql).includes('FSEZONO')) return [
-        { productNo: 'CODE', fhincd: null, processOrder: '700' }, { productNo: null, fhincd: 'LSLH-PART', processOrder: null },
-        { productNo: 'TWO', fhincd: null, processOrder: '700' }, { productNo: 'TWO', fhincd: null, processOrder: '0800' }
+        { productNo: 'CODE', fhincd: null, processOrder: '700', code: 'C-A' }, { productNo: null, fhincd: 'LSLH-PART', processOrder: null, code: null },
+        { productNo: 'TWO', fhincd: null, processOrder: '0800', code: 'C-B' }, { productNo: 'TWO', fhincd: null, processOrder: '700', code: 'C-A' }
       ];
       return query(sql);
     });
     const result = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
-    expect(result.items.map(({ itemId, lslhSurface, afterLslhSurface }) => [itemId, lslhSurface, afterLslhSurface ?? false])).toEqual([
-      ['code', true, false], ['regrind', true, true], ['between', true, false], ['manual', true, false], ['other', false, false]
+    expect(result.items.map(({ itemId, lslhSurface, afterLslhSurface, sendOutDestinationName }) => [itemId, lslhSurface, afterLslhSurface ?? false, sendOutDestinationName])).toEqual([
+      ['code', true, false, '会社A'], ['regrind', true, true, undefined], ['between', true, false, '会社B 第二工場'],
+      ['early', true, false, '会社A'], ['manual', true, false, undefined], ['other', false, false, undefined]
     ]);
     const calls = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('FSEZONO'));
     expect(calls).toHaveLength(1);
