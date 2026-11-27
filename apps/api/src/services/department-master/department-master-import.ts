@@ -58,8 +58,24 @@ const CELL_PATTERN = /<(?:[\w-]+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:[\w-]+:)?c
 const TEXT_PATTERN = /<(?:[\w-]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?t>/g;
 const VALUE_PATTERN = /<(?:[\w-]+:)?v\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?v>/;
 
-/** sheet XML を、セルの並び順だけで文字列の表にする(セル参照は使わない)。 */
-export function parseSheetXmlToRows(xml: string): string[][] {
+const SHARED_STRING_PATTERN = /<(?:[\w-]+:)?si\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?si>/g;
+
+/** 列の文字(A, B, ..., AA)を 0 始まりの位置にする。 */
+function columnIndex(reference: string): number | undefined {
+  const letters = /^([A-Z]+)\d*$/.exec(reference)?.[1];
+  return letters ? [...letters].reduce((index, letter) => index * 26 + letter.charCodeAt(0) - 64, 0) - 1 : undefined;
+}
+
+export function parseSharedStrings(xml: string): string[] {
+  return [...xml.matchAll(SHARED_STRING_PATTERN)].map((match) =>
+    [...(match[1] ?? '').matchAll(TEXT_PATTERN)].map((text) => decodeXmlText(text[1] ?? '')).join(''));
+}
+
+/**
+ * sheet XML を文字列の表にする。この取り込み元(基幹の書き出し)は名前空間の接頭辞付きで ExcelJS が読めないため、自前で読む。
+ * セル参照(r)があればその列に置き、無ければ並び順で置く。
+ */
+export function parseSheetXmlToRows(xml: string, sharedStrings: readonly string[] = []): string[][] {
   const rows: string[][] = [];
   for (const rowMatch of xml.matchAll(ROW_PATTERN)) {
     const cells: string[] = [];
@@ -67,15 +83,18 @@ export function parseSheetXmlToRows(xml: string): string[][] {
       const attrs = cellMatch[1] ?? '';
       const body = cellMatch[2] ?? '';
       const type = /\bt="([^"]*)"/.exec(attrs)?.[1];
-      if (type === 's') {
-        throw new Error('共有文字列のセルには対応していません');
-      }
+      const reference = /\br="([^"]*)"/.exec(attrs)?.[1];
+      const at = (reference ? columnIndex(reference) : undefined) ?? cells.length;
+      while (cells.length < at) cells.push('');
+      const value = VALUE_PATTERN.exec(body)?.[1];
       if (type === 'inlineStr') {
-        const parts = [...body.matchAll(TEXT_PATTERN)].map((m) => decodeXmlText(m[1] ?? ''));
-        cells.push(parts.join(''));
+        cells[at] = [...body.matchAll(TEXT_PATTERN)].map((m) => decodeXmlText(m[1] ?? '')).join('');
+      } else if (type === 's') {
+        const text = value === undefined ? undefined : sharedStrings[Number(value)];
+        if (text === undefined) throw new Error('共有文字列の番号が見つかりません');
+        cells[at] = text;
       } else {
-        const value = VALUE_PATTERN.exec(body)?.[1];
-        cells.push(value === undefined ? '' : decodeXmlText(value));
+        cells[at] = value === undefined ? '' : decodeXmlText(value);
       }
     }
     rows.push(cells);
@@ -85,11 +104,15 @@ export function parseSheetXmlToRows(xml: string): string[][] {
 
 export async function readXlsxFirstSheetRows(buffer: Buffer): Promise<string[][]> {
   const zip = await JSZip.loadAsync(buffer);
-  const sheet = zip.file('xl/worksheets/sheet1.xml');
+  const sheetPath = zip.file('xl/worksheets/sheet1.xml')
+    ? 'xl/worksheets/sheet1.xml'
+    : Object.keys(zip.files).filter((path) => /^xl\/worksheets\/[^/]+\.xml$/.test(path)).sort()[0];
+  const sheet = sheetPath ? zip.file(sheetPath) : null;
   if (!sheet) {
-    throw new Error('xl/worksheets/sheet1.xml が見つかりません');
+    throw new Error('ワークシートが見つかりません');
   }
-  return parseSheetXmlToRows(await sheet.async('string'));
+  const shared = zip.file('xl/sharedStrings.xml');
+  return parseSheetXmlToRows(await sheet.async('string'), shared ? parseSharedStrings(await shared.async('string')) : []);
 }
 
 function parseSerial(raw: string, rowNumber: number, column: string): number {
@@ -145,6 +168,7 @@ export function parseDepartmentMasterRows(table: readonly (readonly string[])[])
 
     if (code === '') throw new Error(`${rowNumber} 行目の FBUSHOCD が空です`);
     if (unitType === '') throw new Error(`${rowNumber} 行目の FBUSHOTYP が空です`);
+    if (name === '') throw new Error(`${rowNumber} 行目の FBUSHONM が空です`);
 
     const from = serialToDate(parseSerial(validFrom, rowNumber, 'FVALIDYMD'));
     const to = serialToDate(parseSerial(validTo, rowNumber, 'FINVALYMD'));

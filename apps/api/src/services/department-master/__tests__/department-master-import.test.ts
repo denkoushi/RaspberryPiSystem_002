@@ -61,6 +61,7 @@ describe('parseDepartmentMasterRows', () => {
     expect(() => parseDepartmentMasterRows([header])).toThrow('0件');
     expect(() => parseDepartmentMasterRows([header, row({ 10: 'x' })])).toThrow('FVALIDYMD');
     expect(() => parseDepartmentMasterRows([header, row({ 7: '2' })])).toThrow('FSIREFLG');
+    expect(() => parseDepartmentMasterRows([header, row({ 2: ' ' })])).toThrow('FBUSHONM');
     expect(() => parseDepartmentMasterRows([header, row({ 5: '44000' })])).toThrow('逆転');
   });
   it('summarizes counts', () => {
@@ -98,6 +99,19 @@ describe('readDepartmentMasterXlsx', () => {
   it('fails when the sheet is missing', async () => {
     const zip = new JSZip();
     zip.file('other.xml', '<a/>');
-    await expect(readDepartmentMasterXlsx(await zip.generateAsync({ type: 'nodebuffer' }))).rejects.toThrow('sheet1');
+    await expect(readDepartmentMasterXlsx(await zip.generateAsync({ type: 'nodebuffer' }))).rejects.toThrow('ワークシート');
+  });
+
+  it('reads shared strings, cell references and a sheet not named sheet1', async () => {
+    const strings = [...header, 'TEST01', 'テスト部署', 'C', '0', '1'];
+    const s = (text: string, ref: string): string => `<c r="${ref}" t="s"><v>${strings.indexOf(text)}</v></c>`;
+    const headRow = `<row>${header.map((h, i) => s(h, `${String.fromCharCode(65 + i)}1`)).join('')}</row>`;
+    const dataRow = `<row>${s('TEST01', 'A2')}${s('テスト部署', 'C2')}${s('C', 'D2')}<c r="E2"><v>45000</v></c><c r="F2"><v>45099</v></c>${s('0', 'H2')}<c r="I2"><v>45001</v></c>${s('1', 'J2')}<c r="K2"><v>45000</v></c></row>`;
+    const zip = new JSZip();
+    zip.file('xl/sharedStrings.xml', `<sst>${strings.map((v) => `<si><t>${v}</t></si>`).join('')}</sst>`);
+    zip.file('xl/worksheets/sheetA.xml', `<worksheet><sheetData>${headRow}${dataRow}</sheetData></worksheet>`);
+    const rows = await readDepartmentMasterXlsx(await zip.generateAsync({ type: 'nodebuffer' }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ code: 'TEST01', kanaName: null, name: 'テスト部署', parentCode: null, isCustomer: true });
   });
 });
