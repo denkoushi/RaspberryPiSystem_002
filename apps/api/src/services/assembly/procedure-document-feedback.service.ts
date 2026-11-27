@@ -11,10 +11,10 @@ import { readAssemblyProcedureAssetAsJpeg } from './procedure-asset-jpeg.js';
 import { PROCEDURE_DOCUMENT_FEEDBACK_REFERENCE } from './procedure-document-feedback.reference.js';
 import type { Employee } from '@prisma/client';
 
-const SYSTEM_PROMPT = 'あなたは、国内外の金属加工の現場と工程設計をよく知る読み手で、この手順書を初めて読みます。手順書を作り直すのは人間で、あなたは読んだ感想を返すだけです。文書を書き直したり、まとめ直したりしない。人の名前は書かない。下の参考資料に照らして読み、文書にも参考資料にも根拠の無い思いつきや一般論は書かない。参考資料は金属加工と手順書の一般論なので、文書の作業に当てはまらない所は使わない。';
+const SYSTEM_PROMPT = 'あなたは、国内外の金属加工の現場と工程設計をよく知る読み手で、この手順書を初めて読みます。手順書を作り直すのは人間で、あなたは読んだ感想を返すだけです。文書を書き直したり、まとめ直したりしない。人の名前は書かない。下の専門知識に照らして読み、文書にも専門知識にも根拠の無い思いつきや、どの文書にも言える一般論は書かない。専門知識のうち、文書の作業に当てはまらない所は使わない。';
 const PHOTO_PROMPT = 'これは要領書に貼ってある写真です(向きが回っていることがあります)。読み取れることだけを日本語の箇条書きで書いてください。図面なら、部品の形、穴の種類と数(注記の数とも比べる)、寸法の入れ方、削り代や表面の指示。読めない所は「読めない」と書き、推測で埋めない。';
 const FEEDBACK_PROMPT = [
-  '読んだ感想を、次の4つに分けて書いてください。どれも、どこの話か(例: 1ページ目の「1 加工原点」)が分かる書き出しにし、1つ1〜2文で短く、話し言葉で。参考資料に照らした感想は「一般には〜」と一言添える。参考資料の番号(R1 など)や「参考資料」という言葉は書かない。文書を読めば分かることは聞かない。言えることが無い分類は少なくてよい。各0〜4個。写真は先頭3枚だけを読んでいて、ページの下地の画像は読めていないので、読めていない所が足りないとは言わない。',
+  '読んだ感想を、次の4つに分けて書いてください。どれも、どこの話か(例: 1ページ目の「1 加工原点」)が分かる書き出しにし、1つ1〜2文で短く、話し言葉で。感想には、専門知識にある具体的な数値・やり方・よくある失敗を当てはめて書く(例:「止まり穴の M10深20 なら、下穴の深さはふつう25〜28くらい。手順書のどこにも下穴の深さが無いので、人によって変わりそう」)。「確認が必要」「明確にするとよい」だけで終わる感想は書かない。専門知識から引いた所には「ふつうは〜」と添える(1つの感想に1回まで)。知識の番号(R1 など)や「専門知識」「参考資料」という言葉は書かない。文書を読めば分かることは聞かない。言えることが無い分類は少なくてよい。各0〜4個。写真は先頭3枚だけを読んでいて、ページの下地の画像は読めていないので、読めていない所が足りないとは言わない。',
   'questions: 素朴な質問(読んで分からなかったこと、聞いてみたいこと)',
   'missing: ここが足りないかも',
   'unclear: ここが分かりにくいかも',
@@ -158,7 +158,7 @@ async function generateFeedback(candidate: Candidate, employees: Parameters<type
       useCase: 'business_hermes', jsonOutput: true, enableThinking: false, temperature: 0, maxTokens: 2400, signal,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `文書名: ${name}\n\n=== 参考資料(金属加工の一般的な流れと、良い手順書の条件)\n${PROCEDURE_DOCUMENT_FEEDBACK_REFERENCE}\n\n=== 文書の文字(ページごと)\n${pages.join('\n\n')}${photoSection}\n\n${FEEDBACK_PROMPT}` },
+        { role: 'user', content: `文書名: ${name}\n\n=== 専門知識(マシニングでの金属加工の図面の読み・工程・段取り・工具・切削条件・ねじ・測定・よくある失敗・手順書の作り方)\n${PROCEDURE_DOCUMENT_FEEDBACK_REFERENCE}\n\n=== 文書の文字(ページごと)\n${pages.join('\n\n')}${photoSection}\n\n${FEEDBACK_PROMPT}` },
       ],
     });
     signal.throwIfAborted();

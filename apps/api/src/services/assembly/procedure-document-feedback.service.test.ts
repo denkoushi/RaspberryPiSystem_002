@@ -118,7 +118,7 @@ describe('夜間の要領書への感想', () => {
     const prompt = request.messages[1].content;
     expect(prompt).not.toMatch(/山田|太郎|鈴木|花子/);
     expect(prompt).toContain('文書名: 作業者Aの加工要領');
-    expect(prompt).toContain('=== 参考資料(金属加工の一般的な流れと、良い手順書の条件)\n[R1 初品加工の一般的な流れ]');
+    expect(prompt).toContain('=== 専門知識(マシニングでの金属加工の図面の読み・工程・段取り・工具・切削条件・ねじ・測定・よくある失敗・手順書の作り方)\n[R1 初品加工の流れと、各段で決めて書き残すこと]');
     expect(prompt).toContain('1ページ目\n作業者Aが加工する\n作業者Aが確認する\n\n2ページ目\n作業者Bが記録する');
     expect(prompt).toContain('3ページ目の写真 1\n・作業者Bのメモと作業者Aの印');
     expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
