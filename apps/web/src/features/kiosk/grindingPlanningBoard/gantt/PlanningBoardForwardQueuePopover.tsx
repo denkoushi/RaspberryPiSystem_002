@@ -7,10 +7,14 @@ import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext'
 import { pageZoom } from '../pageZoom';
 import { formatPlanningBoardDate } from '../planningBoardDateLabel';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
+import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
+import { PlanningBoardChipLine } from './PlanningBoardChipLine';
+import { fitChips } from './planningBoardChipStrips';
 import { beginForwardDropCache, findForwardDrop, forwardDropBoard, invalidateForwardDropCache } from './planningBoardForwardDrop';
 import { canReorderForwardBars, forwardDueLabel, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
+import { planningBoardPartKey } from './planningBoardGanttLayout';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -18,6 +22,9 @@ import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, RefObject } from 'react';
 
+const CARD_WIDTH = 150;
+// Chip room inside a card: its width minus the 5px left border (border-l-[5px]) and the 8px padding on each side (p-2).
+const CARD_CHIP_ROOM = CARD_WIDTH - 5 - 8 * 2;
 const HOVER_SHOW_DELAY_MS = 2000;
 const HOVER_PIN_DELAY_MS = 3000;
 // While a float is open, and shortly after it closes by leaving a bar, the next bar under the cursor opens at once so the float keeps following.
@@ -63,6 +70,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   layout, scale, resourceNameMap, disabled, dragDisabled, resourceView, onResourceReorder, onArrivalChange, onFirstProcessArrivalChange, arrivalPending, arrivalError
 }, ref) {
   const { gate, frozen } = usePlanningBoardOffline();
+  const chipsByPart = usePlanningBoardProcessChips();
   const [open, setOpen] = useState<OpenQueue | null>(null);
   const openRef = useRef<OpenQueue | null>(null);
   openRef.current = open;
@@ -253,8 +261,8 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     }}>
     <div ref={scroll} className="relative flex gap-1.5 overflow-x-auto p-1">
       {cards.map(({ bar, position: queuePosition }) => { const item = bar.item; return <div key={item.itemId} data-queue-position={queuePosition}
-        data-testid={`planning-forward-queue-card-${item.itemId}`}
-        className={clsx('relative min-h-11 w-[150px] shrink-0 touch-pan-x select-none rounded-lg border-l-[5px] border-slate-950 bg-slate-950 p-2 text-xs tabular-nums',
+        data-testid={`planning-forward-queue-card-${item.itemId}`} style={{ width: CARD_WIDTH }}
+        className={clsx('relative min-h-11 shrink-0 touch-pan-x select-none rounded-lg border-l-[5px] border-slate-950 bg-slate-950 p-2 text-xs tabular-nums',
           bar.arrivalPending && 'text-slate-500 [&_.text-slate-400]:text-slate-600',
           focusedSeiban !== null && item.kind !== 'test' && item.fseiban === focusedSeiban && 'shadow-[0_0_0_3px_#fff]',
           item.itemId === openBar.item.itemId && clsx('outline outline-2 outline-amber-400', focusedSeiban !== null && item.kind !== 'test' && item.fseiban === focusedSeiban && 'outline-offset-[-3px]'),
@@ -299,10 +307,10 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
         {!bar.arrivalPending && forwardStartLabel(bar) && <div className="truncate text-slate-400">開始 {forwardStartLabel(bar)}</div>}
         {bar.due && <div className={clsx('truncate', !bar.arrivalPending && bar.tone === 'late' ? 'text-rose-300' : 'text-slate-400')}>納期 {forwardDueLabel(bar.due)}</div>}
         {item.isFirstProcess ? (
-          <div className="mt-1 grid grid-cols-2 gap-1">
+          <div className="mt-0.5 grid grid-cols-2 gap-1">
             {(['arrived', 'excluded'] as const).map((state) => <button key={state} type="button"
               aria-pressed={item.firstProcessState === state}
-              className={clsx('min-h-9 rounded border border-slate-500 disabled:opacity-50',
+              className={clsx('h-5 leading-none rounded border border-slate-500 disabled:opacity-50',
                 item.firstProcessState === state ? 'bg-white text-slate-950' : 'text-slate-100')}
               disabled={item.standardHoursMissing || disabled || arrivalPending}
               onClick={() => onFirstProcessArrivalChange?.(item, item.firstProcessState === state ? null : state)}>
@@ -310,12 +318,18 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
             </button>)}
           </div>
         ) : bar.arrivalPending ? (
-          <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
+          <button type="button" className="mt-0.5 h-5 leading-none w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
             disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, true)}>着</button>
         ) : <>
-          {item.manualArrivalDate && <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
+          {item.manualArrivalDate && <button type="button" className="mt-0.5 h-5 leading-none w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
             disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, false)}>{`取消・手押${formatPlanningBoardDate(item.manualArrivalDate, '')}`}</button>}
         </>}
+        {(() => {
+          const { done, shown, hidden } = fitChips(chipsByPart.get(planningBoardPartKey(item)) ?? [], CARD_CHIP_ROOM, true);
+          return done.length + shown.length + hidden.length > 0 && <div data-testid={`planning-forward-queue-chips-${item.itemId}`} className="mt-0.5 flex h-4 flex-nowrap gap-0.5 overflow-hidden">
+            <PlanningBoardChipLine done={done} shown={shown} hidden={hidden} />
+          </div>;
+        })()}
 
         </>}
         {drop?.bar.item.itemId === item.itemId && <span data-testid="planning-forward-queue-insertion"

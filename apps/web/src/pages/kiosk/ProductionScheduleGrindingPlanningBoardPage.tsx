@@ -240,10 +240,10 @@ export function PlanningBoardPage() {
 
   const ganttItems = useMemo(() => displayItems.filter((item) => view === 'seiban' && focusedFseiban ? item.fseiban === focusedFseiban : activeFseibans.has(item.fseiban)), [displayItems, view, focusedFseiban, activeFseibans]);
 
-  const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(arrivalItems), [arrivalItems]);
+  const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(displayItems), [displayItems]);
   const chipsQuery = usePlanningBoardPageChips(chipParts, scheduleSource);
   const chipData = usePlanningBoardQueryData(chipsQuery.data);
-  const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(arrivalItems, chipsQuery.isError ? undefined : chipData?.chipsByPartKey), [arrivalItems, chipsQuery.isError, chipData]);
+  const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(displayItems, chipsQuery.isError ? undefined : chipData?.chipsByPartKey), [displayItems, chipsQuery.isError, chipData]);
   const placementByPart = useMemo(() => buildPlanningBoardPlacementByPart(arrivalItems), [arrivalItems]);
 
   const refreshRequired = orderConflict || rankConflict || (writeQueue.blocked && !writeQueue.pending);

@@ -998,6 +998,20 @@ describe('forward PlanningBoardGanttView', () => {
     }
     return values;
   }
+  it('shows one chip line on queue cards, folding done chips, also for not-yet-arrived items', () => {
+    const values = laterProps();
+    for (const bar of values.layout.groups[0]!.rows[0]!.bars) bar.arrivalPending = true;
+    const target = values.layout.groups[0]!.rows[0]!.bars[1]!.item;
+    const chips = new Map([[planningBoardPartKey(target), [
+      { rowId: 'd1', resourceCd: '100', isCompleted: true }, { rowId: 'd2', resourceCd: '200', isCompleted: true },
+      { rowId: 'active', resourceCd: '305', isCompleted: false }
+    ]]]);
+    render(<PlanningBoardProcessChipsContext.Provider value={chips}><PlanningBoardGanttView {...values} /></PlanningBoardProcessChipsContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
+    const strip = screen.getByTestId('planning-forward-queue-chips-b');
+    expect(strip).toHaveTextContent('済2305');
+    expect(screen.queryByTestId('planning-forward-queue-chips-c')).toBeNull();
+  });
   it('opens the full pinned queue from the edge and updates the edge on scroll', async () => {
     render(<PlanningBoardGanttView {...laterProps()} />);
     const column = screen.getByRole('button', { name: '305の先の待ち' });
@@ -2376,7 +2390,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerUp(hidden, { pointerId: 1, clientX: 400 });
     expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     const arrive = within(hidden).getByRole('button', { name: '着', exact: true });
-    expect(arrive).toHaveClass('min-h-9');
+    expect(arrive).toHaveClass('h-5');
     fireEvent.click(arrive);
     expect(onArrivalChange).toHaveBeenCalledWith(items[1], true);
     const arrived = screen.getByTestId('planning-forward-queue-card-c');

@@ -33,7 +33,7 @@ export type FittedChipStrip<T> = T & {
 };
 
 /** Fits as many chips as the room allows; anything left over becomes a 「+N」 chip. */
-function fitChips(chips: readonly KioskResourceProgressProcessChip[], room: number, collapseDone: boolean, badgeWidth = 0) {
+export function fitChips(chips: readonly KioskResourceProgressProcessChip[], room: number, collapseDone: boolean, badgeWidth = 0) {
   const prefixWidth = badgeWidth ? badgeWidth + (chips.length ? CHIP_GAP : 0) : 0;
   room -= prefixWidth;
   const doneChips = collapseDone ? chips.filter((chip) => chip.isCompleted) : [];
