@@ -168,7 +168,7 @@ export function parseDepartmentMasterRows(table: readonly (readonly string[])[])
 
     if (code === '') throw new Error(`${rowNumber} 行目の FBUSHOCD が空です`);
     if (unitType === '') throw new Error(`${rowNumber} 行目の FBUSHOTYP が空です`);
-    if (name === '') throw new Error(`${rowNumber} 行目の FBUSHONM が空です`);
+    if (name === '') throw new Error(`${rowNumber} 行目の FBUSHORMEI が空です`);
 
     const from = serialToDate(parseSerial(validFrom, rowNumber, 'FVALIDYMD'));
     const to = serialToDate(parseSerial(validTo, rowNumber, 'FINVALYMD'));

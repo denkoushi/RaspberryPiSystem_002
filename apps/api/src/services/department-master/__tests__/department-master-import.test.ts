@@ -61,7 +61,7 @@ describe('parseDepartmentMasterRows', () => {
     expect(() => parseDepartmentMasterRows([header])).toThrow('0件');
     expect(() => parseDepartmentMasterRows([header, row({ 10: 'x' })])).toThrow('FVALIDYMD');
     expect(() => parseDepartmentMasterRows([header, row({ 7: '2' })])).toThrow('FSIREFLG');
-    expect(() => parseDepartmentMasterRows([header, row({ 2: ' ' })])).toThrow('FBUSHONM');
+    expect(() => parseDepartmentMasterRows([header, row({ 2: ' ' })])).toThrow('FBUSHORMEI');
     expect(() => parseDepartmentMasterRows([header, row({ 5: '44000' })])).toThrow('逆転');
   });
   it('summarizes counts', () => {

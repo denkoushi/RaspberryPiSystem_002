@@ -28,7 +28,7 @@ async function run(): Promise<void> {
     await tx.departmentMasterEntry.deleteMany({});
     const created = await tx.departmentMasterEntry.createMany({ data: rows });
     return created.count;
-  });
+  }, { timeout: 60_000 });
   console.log(JSON.stringify({ dryRun: false, inserted, ...summary }, null, 2));
 }
 
