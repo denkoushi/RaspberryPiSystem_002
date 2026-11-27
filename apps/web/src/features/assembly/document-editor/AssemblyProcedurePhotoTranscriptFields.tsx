@@ -107,26 +107,26 @@ export function AssemblyProcedurePhotoTranscriptFields({ image, readText, disabl
 
   return <fieldset disabled={disabled || reading} className="grid min-w-0 gap-1 font-semibold">
     <legend>写真の文字</legend>
-    <div className="grid grid-cols-[1fr_1fr_auto] gap-1">
+    <div className="grid grid-cols-[1fr_1fr_auto] gap-1 [@container_assembly-details_(width<300px)]:grid-cols-2">
       {(['table', 'list'] as const).map(kind => <Button key={kind} type="button" variant="ghostOnDark"
         className={`${buttonClass} aria-pressed:!border-[#5fc3e8] aria-pressed:!bg-[#5fc3e81f] aria-pressed:!text-[#5fc3e8]`}
         aria-pressed={draft.kind === kind} onClick={() => setKind(kind)}>{kind === 'table' ? '表' : '一覧'}</Button>)}
-      <Button type="button" variant="ghostOnDark" className={buttonClass} aria-busy={reading}
+      <Button type="button" variant="ghostOnDark" className={`${buttonClass} [@container_assembly-details_(width<300px)]:col-span-full`} aria-busy={reading}
         disabled={!readText || !image.assetId} onClick={() => void read()}>{reading ? '読み取り中…' : '読み取る'}</Button>
     </div>
     {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
     <div className={`grid min-w-0 gap-1 rounded border p-1 ${stale ? 'border-amber-400' : 'border-transparent'}`} data-stale={stale}>
-      <div className={`grid min-w-0 gap-1 overflow-x-auto ${stale ? 'opacity-55' : ''}`}>
+      <div className={`grid min-w-0 gap-1 overflow-x-auto [@container_assembly-details_(width<300px)]:gap-3 [@container_assembly-details_(width<300px)]:overflow-visible ${stale ? 'opacity-55' : ''}`}>
         {!isTable ? <input className={fieldClass} aria-label="見出し" maxLength={limits.cell}
           value={draft.title ?? ''} onChange={event => setDraft({ ...draft, title: event.target.value || undefined })} /> : null}
         {draft.rows.map((row, ri) => {
           const header = isTable && ri === 0;
           const selected = draft.sel.includes(ri);
-          return <div key={ri} className="grid items-center gap-1" style={{
+          return <div key={ri} className="grid items-center gap-1 [@container_assembly-details_(width<300px)]:!grid-cols-1" style={{
             gridTemplateColumns: `2.75rem repeat(${cols}, minmax(4rem, 1fr)) 2.75rem`
           }}>
-            {header ? <span /> : <Button type="button" variant="ghostOnDark"
-              className={`${buttonClass} aria-pressed:!border-[#0078d7] aria-pressed:!bg-[#0078d7]`}
+            {header ? <span className="[@container_assembly-details_(width<300px)]:hidden" /> : <Button type="button" variant="ghostOnDark"
+              className={`${buttonClass} [@container_assembly-details_(width<300px)]:w-11 aria-pressed:!border-[#0078d7] aria-pressed:!bg-[#0078d7]`}
               aria-label={`${ri + 1}行目を選択中にする`} aria-pressed={selected}
               onClick={() => setDraft({ ...draft, sel: selected ? draft.sel.filter(i => i !== ri) : isTable ? [...draft.sel, ri] : [ri] })} />}
             {Array.from({ length: cols }, (_, ci) => <input key={ci}
@@ -137,7 +137,7 @@ export function AssemblyProcedurePhotoTranscriptFields({ image, readText, disabl
                 setDraft({ ...draft, rows: draft.rows.map((cells, i) => i === ri
                   ? Array.from({ length: Math.max(cells.length, ci + 1) }, (_, col) => col === ci ? value : cells[col] ?? '') : cells) });
               }} />)}
-            <Button type="button" variant="ghostOnDark" className={`${buttonClass} !border-transparent`}
+            <Button type="button" variant="ghostOnDark" className={`${buttonClass} !border-transparent [@container_assembly-details_(width<300px)]:w-11 [@container_assembly-details_(width<300px)]:justify-self-end`}
               aria-label={`${ri + 1}行目を消す`} onClick={() => removeRow(ri)}>✕</Button>
           </div>;
         })}
@@ -152,25 +152,25 @@ export function AssemblyProcedurePhotoTranscriptFields({ image, readText, disabl
     </div>
     {!isTable ? <fieldset className="grid min-w-0 gap-1">
       <legend>選択肢</legend>
-      {draft.choices.map((choice, index) => <div key={index} className="grid grid-cols-[2.75rem_minmax(0,1fr)_3.5rem_2.75rem] gap-1">
-        <Button type="button" variant="ghostOnDark" className={`${buttonClass} grid place-items-center`} aria-label={`選択肢${index + 1}の色を変える`}
+      {draft.choices.map((choice, index) => <div key={index} className="grid grid-cols-[2.75rem_minmax(0,1fr)_3.5rem_2.75rem] gap-1 [@container_assembly-details_(width<300px)]:grid-cols-[minmax(0,1fr)_2.75rem]">
+        <Button type="button" variant="ghostOnDark" className={`${buttonClass} grid place-items-center [@container_assembly-details_(width<300px)]:w-11`} aria-label={`選択肢${index + 1}の色を変える`}
           onClick={() => updateChoice(index, { color: colors[(colors.indexOf(choice.color) + 1) % colors.length] })}>
           <span className="h-1.5 w-5" style={{ backgroundColor: choice.color }} />
         </Button>
-        <input className={fieldClass} aria-label={`選択肢${index + 1}の名前`} maxLength={limits.label} value={choice.label}
+        <input className={`${fieldClass} [@container_assembly-details_(width<300px)]:col-span-full`} aria-label={`選択肢${index + 1}の名前`} maxLength={limits.label} value={choice.label}
           onChange={event => updateChoice(index, { label: event.target.value })} />
         <select className={fieldClass} aria-label={`選択肢${index + 1}の行`} value={choice.row}
           onChange={event => updateChoice(index, { row: Number(event.target.value) })}>
           {draft.rows.map((_, row) => <option key={row} value={row}>{row + 1}</option>)}
         </select>
-        <Button type="button" variant="ghostOnDark" className={`${buttonClass} !border-transparent`}
+        <Button type="button" variant="ghostOnDark" className={`${buttonClass} !border-transparent [@container_assembly-details_(width<300px)]:w-11 [@container_assembly-details_(width<300px)]:justify-self-end`}
           aria-label={`選択肢${index + 1}を消す`} onClick={() => setDraft({ ...draft, choices: draft.choices.filter((_, i) => i !== index) })}>✕</Button>
       </div>)}
       <Button type="button" variant="ghostOnDark" className={`${buttonClass} justify-self-start`}
         disabled={!draft.rows.length || draft.choices.length >= limits.choices}
         onClick={() => setDraft({ ...draft, choices: [...draft.choices, { label: '', color: colors[draft.choices.length % colors.length], row: 0 }] })}>＋ 選択肢</Button>
     </fieldset> : null}
-    <div className="flex justify-between gap-1">
+    <div className="flex justify-between gap-1 [@container_assembly-details_(width<300px)]:flex-wrap">
       <Button type="button" variant={confirmed || stale ? 'ghostOnDark' : 'primary'}
         className={`${buttonClass} ${stale ? '!border-amber-400 !bg-amber-400 !text-slate-900' : confirmed ? '!text-emerald-400' : ''}`}
         disabled={!!confirmed || !parsedDraft.success || (!hasContent && !saved) || draft.choices.some(choice => !choice.label.trim())}

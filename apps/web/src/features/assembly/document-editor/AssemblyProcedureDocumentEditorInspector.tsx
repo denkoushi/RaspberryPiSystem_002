@@ -116,7 +116,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
       </div>
 
       {element.kind === 'TEXT' ? (
-        <fieldset className="grid gap-1 font-semibold">
+        <fieldset className="grid gap-1 font-semibold [@container_assembly-details_(width<300px)]:[&_button.h-16]:col-span-full">
           <legend>文章</legend>
           <textarea
             data-kiosk-sop-target="assembly-document-editor-text-value"
@@ -135,7 +135,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
           >
             この範囲で候補を再取得
           </Button>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5 [@container_assembly-details_(width<300px)]:grid-cols-1">
             <label className="grid gap-0.5 text-sm font-semibold">
               文字サイズ比率 (%)
               <Input
@@ -191,7 +191,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
             type="button"
             variant="ghostOnDark"
             data-kiosk-sop-target="assembly-document-editor-image-asset"
-            className="min-h-11"
+            className="min-h-11 [@container_assembly-details_(width<300px)]:!px-2"
             disabled={busy || readOnly}
             onClick={onReplaceImage}
           >
@@ -252,7 +252,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
             <option value="LINE">線</option>
             <option value="ARROW">矢印</option>
           </select>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5 [@container_assembly-details_(width<300px)]:grid-cols-1">
             {([
               ['strokeColor', '線色', element.strokeColor ?? '#dc2626'],
               ['fillColor', '塗り色', element.fillColor ?? 'transparent'],
@@ -273,11 +273,11 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
             ))}
           </div>
           {(element.shape === 'LINE' || element.shape === 'ARROW') ? (
-            <fieldset className="grid gap-1 rounded border border-white/10 p-2">
+            <fieldset className="grid gap-1 rounded border border-white/10 p-2 [@container_assembly-details_(width<300px)]:px-1">
               <legend className="px-1 text-xs font-bold text-white/70">線分の始点・終点</legend>
               <div role="group" aria-label="向き" className="grid gap-1">
                 <span className="text-sm font-semibold">向き</span>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5 [@container_assembly-details_(width<300px)]:gap-1">
                   {([
                     ['up-left', '左上へ', '↖'], ['up', '上へ', '↑'], ['up-right', '右上へ', '↗'],
                     ['left', '左へ', '←'], null, ['right', '右へ', '→'],
@@ -288,7 +288,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
                       type="button"
                       variant="ghostOnDark"
                       aria-label={option[1]}
-                      className="min-h-11 min-w-11 text-xl"
+                      className="min-h-11 min-w-11 text-xl [@container_assembly-details_(width<300px)]:!px-1"
                       disabled={readOnly}
                       onClick={() => patch(lineEndpointsForDirection(bbox, option[0]))}
                     >
@@ -309,7 +309,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
               >
                 向きを反転
               </Button>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5 [@container_assembly-details_(width<300px)]:grid-cols-1">
                 {([
                   ['start', '始点', element.start ?? { xRatio: bbox.xRatio, yRatio: bbox.yRatio }],
                   ['end', '終点', element.end ?? { xRatio: bbox.xRatio + bbox.widthRatio, yRatio: bbox.yRatio + bbox.heightRatio }]
@@ -337,7 +337,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
 
       <fieldset className="grid gap-1 rounded border border-white/10 p-2">
         <legend className="px-1 text-xs font-bold text-white/70">位置と大きさ（元ページに対する %）</legend>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5 [@container_assembly-details_(width<300px)]:grid-cols-1">
           {([
             ['xRatio', '左'],
             ['yRatio', '上'],
@@ -376,7 +376,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
 
       <fieldset className="grid gap-1 rounded border border-white/10 p-2">
         <legend className="px-1 text-xs font-bold text-white/70">重なり順とマスク</legend>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5 [@container_assembly-details_(width<300px)]:[&>button]:!px-1">
           <Button type="button" variant="ghostOnDark" className="min-h-11 !px-2 text-xs" onClick={() => onBringToFront(element.id)}>
             最前面へ
           </Button>

@@ -3,6 +3,7 @@ import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { renderSignageCanvasPreview } from '../../api/domains/signage';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useNearViewportOnce } from '../../hooks/useNearViewportOnce';
 import { ProtectedImage } from '../ProtectedImage';
 
@@ -104,25 +105,6 @@ function escapeInputHtml(value: string): string {
     '"': '&quot;',
     "'": '&#39;'
   })[character] ?? character);
-}
-
-function useReducedMotion(): boolean {
-  const [reducedMotion, setReducedMotion] = useState(() => (
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      : false
-  ));
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReducedMotion(mediaQuery.matches);
-    update();
-    mediaQuery.addEventListener?.('change', update);
-    return () => mediaQuery.removeEventListener?.('change', update);
-  }, []);
-
-  return reducedMotion;
 }
 
 function ResetIcon() {
@@ -472,7 +454,7 @@ export default function HermesChatPanel({
   activityStatus = null,
   style
 }: HermesChatPanelProps) {
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const voice = useHermesVoiceInput(composerVisible && !conversationContent && !isBusy && !isConsultationDetailLoading && !isMessageHistoryLoading && !isConsultationsLoading, text => onVoiceTranscript?.(text));
   const panelRef = useRef<HTMLElement | null>(null);
   const signagePreviewToken = suggestion?.signageProposal?.canvas || suggestion?.signageProposal?.a2ui
