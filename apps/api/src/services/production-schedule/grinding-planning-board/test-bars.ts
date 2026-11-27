@@ -5,13 +5,13 @@ import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlann
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { buildPartKey, normalizeGrindingPlanningBoardResourceCd, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
+import { normalizeGrindingPlanningBoardResourceCd, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
-import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSets, sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../sessaku-pieces/piece-key.js';
+import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSetsByKeys, sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
 import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, resourceOrderLaneCd, type CurrentProjection, type DbClient } from './shared.js';
 import { lockPlanningSourceRows } from './source-row-lock.js';
-import { readMasterResourceCds, readOverrides, readWinnerRowsByFseibans } from './source.js';
+import { readLaneCandidateKeys, readMasterResourceCds, readOverrides, readWinnerProgressRows, readWinnerRowsByFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, lockState, stateOrder } from './state.js';
 import { projectCurrentItems, resolveCurrentProjectionInTransaction, writeOverrideIfChanged } from './write.js';
 
@@ -97,39 +97,48 @@ async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 
       // locking every board row (10k+) exhausts PostgreSQL's shared lock table.
       const tests = await readPlanningTestBars(tx, siteKey);
       return action(tx, tests, async (resourceCd, referenceIds = []) => {
-        const winners = await readWinnerRowsByFseibans(tx, stateOrder(state));
-        const overrides = await readOverrides(tx, siteKey);
-        const pieceSets = await readSessakuPieceSets(tx, winners);
-        const references = new Set(referenceIds);
-        let inferredResource: string | null | undefined = tests.testBars.find((item) => item.itemId === referenceIds[0])?.resourceCd;
-        const candidates = winners.map((row) => {
-          const logicalKey = sessakuPieceKeyFromRow(row.rowData);
-          const partKey = buildPartKey(logicalKey.fseiban, logicalKey.productNo, logicalKey.fhincd);
-          const original = logicalKey.fsigencd.trim();
-          const resources = new Set<string | null>();
-          let referenced = false;
-          if (isCategoryResource(original, 'all', policy)) {
-            const key = encodeSessakuPieceKey(logicalKey);
-            const parentId = sessakuPieceParentItemId(logicalKey);
-            const pieces = pieceSets.get(key)?.pieces;
-            for (const itemId of pieces?.length ? pieces.flatMap(sessakuPieceItemIds) : [parentId]) {
+        const order = stateOrder(state);
+        const readCandidates = async (resource: string | null | undefined, ids: readonly string[]) => {
+          const inboundKeys = await readLaneCandidateKeys(tx, siteKey, resource, ids);
+          const resourceCds = resource == null ? [] : [resource];
+          const winners = resourceCds.length || inboundKeys.length ? await readWinnerRowsByFseibans(tx, order, { resourceCds, inboundKeys }) : [];
+          const keys = winners.map((row) => sessakuPieceKeyFromRow(row.rowData));
+          const pieceSets = await readSessakuPieceSetsByKeys(tx, keys, { exact: true });
+          const itemKeys = keys.map((key) => {
+            const parentId = sessakuPieceParentItemId(key);
+            const pieces = pieceSets.get(encodeSessakuPieceKey(key))?.pieces;
+            return { parentId, itemIds: pieces?.length ? pieces.flatMap(sessakuPieceItemIds) : [parentId] };
+          });
+          const overrides = await readOverrides(tx, siteKey, itemKeys.flatMap(({ parentId, itemIds }) => [parentId, ...itemIds]));
+          const candidates = winners.map((row, i) => {
+            const key = keys[i];
+            const { parentId, itemIds } = itemKeys[i];
+            const original = key.fsigencd.trim();
+            const placements = isCategoryResource(original, 'all', policy) ? itemIds.map((id) => {
               // A piece's own override replaces the whole inherited override, even with a null resource.
-              const override = overrides.get(itemId) ?? overrides.get(parentId);
-              const resource = normalizeGrindingPlanningBoardResourceCd(override?.overrideResourceCd ?? original);
-              resources.add(resource);
-              if (references.has(itemId)) referenced = true;
-              if (itemId === referenceIds[0]) inferredResource = resource;
-            }
+              const override = overrides.get(id) ?? overrides.get(parentId);
+              return { id, resource: normalizeGrindingPlanningBoardResourceCd(override?.overrideResourceCd ?? original) };
+            }) : [];
+            return { row, key, placements };
+          });
+          return { candidates, overrides, pieceSets };
+        };
+        const first = referenceIds[0];
+        let target = resourceCd;
+        if (target === undefined && first) {
+          target = tests.testBars.find((item) => item.itemId === first)?.resourceCd;
+          if (target === undefined && !first.startsWith('test:')) {
+            const { candidates } = await readCandidates(undefined, [first]);
+            target = candidates.flatMap(({ placements }) => placements).find(({ id }) => id === first)?.resource;
           }
-          return { row, partKey, resources, referenced };
-        });
-        const target = resourceCd === undefined ? inferredResource : resourceCd;
-        const scoped = candidates.filter(({ resources, referenced }) => referenced || (target != null && resources.has(target)));
+        }
+        const { candidates, overrides, pieceSets } = await readCandidates(target, referenceIds);
+        const references = new Set(referenceIds);
+        const scoped = candidates.filter(({ placements }) => placements.some(({ id, resource }) => references.has(id) || (target != null && resource === target)));
         const rows = scoped.map(({ row }) => row);
         const rowIds = new Set(rows.map((row) => row.id));
         // Other operations of these parts contribute only to the displayed completion totals.
-        const parts = new Set(scoped.map(({ partKey }) => partKey));
-        const progressScope = candidates.filter(({ row, partKey }) => parts.has(partKey) && !rowIds.has(row.id)).map(({ row }) => row);
+        const progressScope = (await readWinnerProgressRows(tx, order, scoped.map(({ key }) => key))).filter((row) => !rowIds.has(row.id));
         return resolveCurrentProjectionInTransaction({ client: tx, siteKey, dueSource, sourceRowIds: [...rowIds], itemIds: [], policy,
           preloaded: { state, rows, overrides, pieceSets, progressScope } });
       });
