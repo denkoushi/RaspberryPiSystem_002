@@ -7,7 +7,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghos
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   busy?: boolean;
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostOnDark';
+  variant?: ButtonVariant;
 };
 
 const buttonBaseClassName =
