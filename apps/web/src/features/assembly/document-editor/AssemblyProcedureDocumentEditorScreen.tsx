@@ -357,7 +357,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
               const current = page.pageIndex === selectedPage.pageIndex;
               return <div key={`${documentId}:${page.pageIndex}`}
                 data-editor-spread-page={twoPage ? page.pageIndex : undefined}
-                className={twoPage ? 'min-h-0 min-w-0 overflow-hidden' : 'contents'}>
+                className={twoPage ? 'isolate min-h-0 min-w-0 overflow-hidden' : 'contents'}>
                 <AssemblyProcedureDocumentEditorCanvas
                   spreadPage={twoPage ? (current ? 'current' : 'adjacent') : undefined}
                   saving={canvasSaving}
