@@ -101,14 +101,25 @@ export async function readSessakuPieceSet(client: SessakuPieceClient, key: Sessa
 export async function readSessakuPieceSets(client: SessakuPieceClient, rows: readonly { rowData: unknown }[]): Promise<Map<string, SessakuPieceSet>> {
   return readSessakuPieceSetsByKeys(client, rows.map((row) => sessakuPieceKeyFromRow(row.rowData)));
 }
-export async function readSessakuPieceSetsByKeys(client: SessakuPieceClient, scheduleRowKeys: readonly SessakuPieceLogicalKey[]): Promise<Map<string, SessakuPieceSet>> {
+export async function readSessakuPieceSetsByKeys(client: SessakuPieceClient, scheduleRowKeys: readonly SessakuPieceLogicalKey[], options: { exact?: boolean } = {}): Promise<Map<string, SessakuPieceSet>> {
   const keys = new Map(scheduleRowKeys.map((key) => [encodeSessakuPieceKey(key), key]));
   if (!keys.size) return new Map();
-  const sets = await client.productionScheduleSessakuPieceSet.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: [...new Set([...keys.values()].map((key) => key.fseiban))] } },
+  const values = [...keys.values()];
+  const filters: Prisma.ProductionScheduleSessakuPieceSetWhereInput[] = [];
+  if (options.exact) {
+    for (let i = 0; i < values.length; i += RELATED_KEY_CHUNK) filters.push({ OR: values.slice(i, i + RELATED_KEY_CHUNK) });
+  } else {
+    filters.push({ fseiban: { in: [...new Set(values.map((key) => key.fseiban))] } });
+  }
+  const sets = new Map<string, SessakuPieceSet>();
+  for (const filter of filters) for (const set of await client.productionScheduleSessakuPieceSet.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, ...filter },
     include: { pieces: { orderBy: { position: 'asc' }, include: { opCompletions: { select: { opNo: true } }, opSplits: { orderBy: { fromOpNo: 'asc' } }, sourcePiece: { select: { opSplits: { select: { fromOpNo: true }, orderBy: { fromOpNo: 'desc' }, take: 1 } } } } } }
-  });
-  return new Map(sets.filter((set) => keys.has(encodeSessakuPieceKey(set))).map((set) => [encodeSessakuPieceKey(set), set]));
+  })) {
+    const encoded = encodeSessakuPieceKey(set);
+    if (keys.has(encoded)) sets.set(encoded, set);
+  }
+  return sets;
 }
 export async function findSessakuPieceWinner(client: SessakuPieceClient, key: SessakuPieceLogicalKey) {
   const rows = await client.$queryRaw<Array<{ id: string; rowData: Prisma.JsonValue; updatedAt: Date }>>(Prisma.sql`
@@ -125,7 +136,7 @@ export async function findSessakuPieceWinner(client: SessakuPieceClient, key: Se
   `);
   return rows[0] ?? null;
 }
-export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, itemIds: readonly string[]): Promise<Map<string, SessakuPieceLogicalKey>> {
+export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, itemIds: readonly string[], options: { allowMissing?: boolean } = {}): Promise<Map<string, SessakuPieceLogicalKey>> {
   const pieceIds = [...new Set(itemIds.map(sessakuPieceIdFromItemId).filter((id): id is string => id !== null))];
   const pieces = pieceIds.length ? await client.productionScheduleSessakuPiece.findMany({ where: { id: { in: pieceIds } }, include: { pieceSet: true } }) : [];
   const byId = new Map(pieces.map((piece) => [piece.id, piece.pieceSet]));
@@ -133,7 +144,10 @@ export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, it
   for (const id of itemIds) {
     const pieceId = sessakuPieceIdFromItemId(id);
     const key = pieceId ? byId.get(pieceId) : decodeSessakuPieceParentItemId(id);
-    if (!key) throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'STALE_SESSAKU_PIECES');
+    if (!key) {
+      if (options.allowMissing) continue;
+      throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'STALE_SESSAKU_PIECES');
+    }
     resolved.set(id, key);
   }
   return resolved;
