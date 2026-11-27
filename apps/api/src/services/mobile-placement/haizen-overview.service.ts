@@ -1,9 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { readScheduleSourceExcludedFseibans } from '../production-schedule/grinding-planning-board/schedule-source.js';
-import { uniqueFseibans } from '../production-schedule/grinding-planning-board/shared.js';
-import { stateOrder } from '../production-schedule/grinding-planning-board/state.js';
-import { getProductionScheduleSearchState } from '../production-schedule/production-schedule-search-state.service.js';
+import { readInitialBoardOrder, stateOrder } from '../production-schedule/grinding-planning-board/state.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../production-schedule/seiban-machine-display-names.service.js';
 
 import { filterActivePlacements } from './placement-completion.service.js';
@@ -22,9 +20,7 @@ async function readHaizenBoardOrder(siteKey: string | null) {
     select: { seibanOrder: true }
   });
   if (state) return stateOrder(state);
-  // The board seeds a new site's order from shared history on its first open.
-  const { state: search } = await getProductionScheduleSearchState('shared');
-  return uniqueFseibans(search.history);
+  return readInitialBoardOrder();
 }
 
 export async function getHaizenMaterialView(siteKey: string | null, scheduleSource: GrindingPlanningBoardScheduleSource) {

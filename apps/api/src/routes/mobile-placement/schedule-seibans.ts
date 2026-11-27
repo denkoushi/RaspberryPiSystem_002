@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES } from '@raspi-system/shared-types';
 
 import { ApiError } from '../../lib/errors.js';
 import { getScheduleSeiban, listScheduleSeibans } from '../../services/mobile-placement/schedule-seiban-status.service.js';
@@ -12,7 +13,7 @@ export async function registerMobilePlacementScheduleSeibansRoutes(app: FastifyI
     await deps.requireClientDevice(request.headers['x-client-key']);
     reply.header('Cache-Control', 'no-store');
     const query = z.object({
-      source: z.enum(['general', 'dCompany', 'both']).default('both'),
+      source: z.enum(GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES).default('both'),
       range: z.enum(['all', 'aroundMonth', 'excludeOlderThanHalfYear']).default('all')
     }).parse(request.query);
     return listScheduleSeibans(query);

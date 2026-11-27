@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useScheduleSeibans } from '../../../api/hooks/schedule-seibans';
+import { SCHEDULE_SOURCE_OPTIONS } from '../../kiosk/grindingPlanningBoard/usePlanningBoardScheduleSource';
 import { normalizeMachineName } from '../../kiosk/productionSchedule/machineName';
 import { haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
@@ -23,7 +24,7 @@ export function HaizenScheduleList() {
       <HaizenHeader title="日程" onBack={() => navigate('/kiosk/mobile-placement')} />
       <div className="flex max-w-full shrink-0 flex-nowrap gap-1.5 overflow-x-auto [scrollbar-width:none] px-3.5 pb-1 pt-3" role="group" aria-label="製番の絞り込み">
         <HaizenScheduleDropdown ariaLabel="区分" value={view.source}
-          options={[{ value: 'general', label: '一般' }, { value: 'dCompany', label: 'D社' }, { value: 'both', label: '両方' }]}
+          options={SCHEDULE_SOURCE_OPTIONS}
           closedLabel={{ both: '一般・D社', general: '一般', dCompany: 'D社' }[view.source]}
           onChange={source => changeView({ ...view, source })} />
         <HaizenScheduleDropdown ariaLabel="範囲" value={view.range}

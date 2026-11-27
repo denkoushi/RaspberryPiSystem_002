@@ -7,6 +7,7 @@ import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-
 import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES } from '@raspi-system/shared-types';
 
 import { applyGrindingPlanningBoardScanArrival } from '../../services/production-schedule/grinding-planning-board/write-scan-arrival.js';
 import { ApiError } from '../../lib/errors.js';
@@ -57,7 +58,7 @@ const haizenMaterialArrivalBodySchema = z.object({
   parts: z.array(z.object({ fseiban: z.string().min(1).max(100), fhincd: z.string().min(1).max(100) })).max(6000)
 });
 
-const haizenMaterialViewQuerySchema = z.object({ scheduleSource: z.enum(['general', 'dCompany', 'both']).default('both') });
+const haizenMaterialViewQuerySchema = z.object({ scheduleSource: z.enum(GRINDING_PLANNING_BOARD_SCHEDULE_SOURCES).default('both') });
 
 const snapFseibanTokensBodySchema = z.object({
   tokens: z.array(z.string().min(1).max(32)).min(1).max(50),

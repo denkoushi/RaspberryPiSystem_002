@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { useHaizenMaterialArrival, useHaizenMaterialView, useHaizenOverview, useHaizenShelves, useHaizenUnplacedParts } from '../../api/hooks/haizen-overview';
 import { MaterialArrivalBadge } from '../../components/kiosk/MaterialArrivalBadge';
-import { usePlanningBoardScheduleSource } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardScheduleSource';
+import { SCHEDULE_SOURCE_OPTIONS, usePlanningBoardScheduleSource } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardScheduleSource';
 import { buildHaizenDueGroups, buildHaizenUnplacedRows, materialArrivalKey } from '../../features/kiosk/haizen/haizenDueRows';
 import { HaizenListTableRow } from '../../features/kiosk/haizen/HaizenListTableRow';
 import { formatHaizenClock } from '../../features/kiosk/haizen/haizenSearch';
@@ -11,7 +11,6 @@ import { invButton, invButtonGhost, invPanel, invSeg, invSurface, invTitle } fro
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
-const scheduleSources = [['general', '一般'], ['dCompany', 'D社'], ['both', '両方']] as const;
 const columns = ['照合', '材料', '棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '納期', '置いた日時', '足取り'];
 
 function HaizenProgress({ label, count, total, color }: { label: string; count: number; total: number; color: string }) {
@@ -64,7 +63,7 @@ export function KioskHaizenMaterialPage() {
       <h1 className={`${invTitle} shrink-0`}>納期と材料</h1>
       <span className="min-w-0 flex-1" />
       <div role="group" aria-label="区分" className="flex gap-1">
-        {scheduleSources.map(([value, label]) => <button key={value} type="button" className={invSeg(scheduleSource === value)} aria-pressed={scheduleSource === value} onClick={() => changeScheduleSource(value)}>{label}</button>)}
+        {SCHEDULE_SOURCE_OPTIONS.map(({ value, label }) => <button key={value} type="button" className={invSeg(scheduleSource === value)} aria-pressed={scheduleSource === value} onClick={() => changeScheduleSource(value)}>{label}</button>)}
       </div>
       <span className="w-[76px] shrink-0 text-right text-[13px] tabular-nums text-inv-faint">{loading ? '読込中…' : Number.isFinite(updatedAt) ? `${formatHaizenClock(updatedAt)} 更新` : '—'}</span>
     </div>
