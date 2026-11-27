@@ -2,22 +2,18 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
-  verifyPassword: vi.fn(),
   createRevision: vi.fn(),
   publish: vi.fn(), approvePublish: vi.fn(),
   saveOverlays: vi.fn()
 }));
 
 vi.mock('../../../api/client', () => ({
-  verifyAssemblyTemplateAccessPassword: apiMocks.verifyPassword,
   createAssemblyProcedureDocumentRevision: apiMocks.createRevision,
   saveAssemblyProcedureDocumentOverlays: apiMocks.saveOverlays,
   getAssemblyProcedureDocument: vi.fn(),
   publishAssemblyProcedureDocument: apiMocks.publish,
   approvePublishAssemblyProcedureDocument: apiMocks.approvePublish,
 }));
-
-import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
 
@@ -50,7 +46,6 @@ function makeSession(
     isDirty: true,
     readOnly: false,
     conflictEditVersion: null,
-    setAccessGranted: vi.fn(),
     setBaselineSnapshot: vi.fn(),
     setBusy: vi.fn(),
     setConflict: vi.fn(),
@@ -66,24 +61,13 @@ function makeSession(
 }
 
 describe('useAssemblyProcedureDocumentRevisionCommands', () => {
-  beforeEach(() => { vi.resetAllMocks(); clearProcedureEditorAccess(); saveProcedureEditorAccess('2520'); });
+  beforeEach(() => { vi.resetAllMocks(); });
 
-  it('orchestrates password revision creation and optimistic-versioned saves', async () => {
+  it('saves with optimistic versioning', async () => {
     const revision = { ...documentFixture, editVersion: 3 };
-    apiMocks.verifyPassword.mockResolvedValue({ success: true });
-    apiMocks.createRevision.mockResolvedValue(revision);
     apiMocks.saveOverlays.mockResolvedValue(revision);
     const session = makeSession();
     const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
-
-    await act(async () => {
-      expect(await hook.result.current.verifyEditorPassword('2520')).toBe(true);
-    });
-    expect(apiMocks.verifyPassword).toHaveBeenCalledWith({ password: '2520' });
-    expect(apiMocks.createRevision).toHaveBeenCalledWith('document-1', '2520');
-    expect(session.setAccessGranted).toHaveBeenCalledWith(true);
-    expect(session.setPasswordInput).toHaveBeenCalledWith('2520');
-    expect(session.setBaselineSnapshot).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       await hook.result.current.save();
@@ -120,37 +104,14 @@ describe('useAssemblyProcedureDocumentRevisionCommands', () => {
     expect(session.appliedCaptionElementIds).toHaveLength(201);
   });
 
-  it('returns mismatch without creating a revision or retaining a wrong PIN', async () => {
-    apiMocks.verifyPassword.mockResolvedValue({ success: false });
-    const session = makeSession({ passwordInput: '' });
-    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
-    await act(async () => { expect(await hook.result.current.verifyEditorPassword('0000')).toBe('mismatch'); });
-    expect(apiMocks.createRevision).not.toHaveBeenCalled();
-    expect(session.setAccessGranted).not.toHaveBeenCalledWith(true);
-    expect(session.setPasswordInput).not.toHaveBeenCalled();
-    expect(session.setBusy).toHaveBeenLastCalledWith(false);
-  });
-
   it.each([
-    [401, 'mismatch'], [403, 'mismatch'], [429, 'rate-limited'], [500, 'network'], [undefined, 'network']
-  ] as const)('classifies verification and revision failures (%s) as %s', async (status, expected) => {
-    const error = { isAxiosError: true, response: status == null ? undefined : { status } };
-    for (const stage of ['verify', 'revision']) {
-      apiMocks.verifyPassword.mockReset();
-      apiMocks.createRevision.mockReset();
-      if (stage === 'verify') apiMocks.verifyPassword.mockRejectedValue(error);
-      else {
-        apiMocks.verifyPassword.mockResolvedValue({ success: true });
-        apiMocks.createRevision.mockRejectedValue(error);
-      }
-      const session = makeSession({ revokeAccess: vi.fn() });
-      const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
-      await act(async () => { expect(await hook.result.current.verifyEditorPassword('1234')).toBe(expected); });
-      expect(session.revokeAccess).toHaveBeenCalledOnce();
-      expect(session.setPasswordInput).not.toHaveBeenCalled();
-      expect(session.setAccessGranted).not.toHaveBeenCalledWith(true);
-      hook.unmount();
-    }
+    [401, 'mismatch'], [403, 'mismatch'], [429, 'rate-limited']
+  ] as const)('returns %s from password publication as %s', async (status, expected) => {
+    apiMocks.publish.mockRejectedValue({ isAxiosError: true, response: { status } });
+    const session = makeSession({ isDirty: false });
+    const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
+    await act(async () => { expect(await hook.result.current.publish(undefined, '1234')).toBe(expected); });
+    expect(apiMocks.publish).toHaveBeenCalledExactlyOnceWith({ id: 'document-1', accessPassword: '1234', expectedEditVersion: 2 });
   });
 
   it.each(['password', 'tag'])('publishes via %s with the current edit version', async method => {
@@ -160,7 +121,7 @@ describe('useAssemblyProcedureDocumentRevisionCommands', () => {
     const session = makeSession({ isDirty: false });
     const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
     await act(async () => {
-      expect(await hook.result.current.publish(method === 'tag' ? { reviewerTagUid: 'TAG', comment: '確認済み' } : undefined)).toBe(true);
+      expect(await hook.result.current.publish(method === 'tag' ? { reviewerTagUid: 'TAG', comment: '確認済み' } : undefined, method === 'tag' ? undefined : '2520')).toBe(true);
     });
     if (method === 'tag') {
       expect(apiMocks.approvePublish).toHaveBeenCalledExactlyOnceWith({ id: 'document-1', reviewerTagUid: 'TAG', expectedEditVersion: 2, comment: '確認済み' });

@@ -100,7 +100,6 @@ export class ProcedureLayoutSuggestionService {
   }
 
   private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[], textFeedback: Prisma.AssemblyProcedureTextFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
-    await this.access.requireAccessPassword(params.accessPassword, params);
     const document = await prisma.assemblyProcedureDocument.findUnique({
       where: { id: params.documentId },
       select: { name: true, status: true, isActive: true, revisionMetadata: { select: { revisionRootId: true, isRevisionHead: true } } },

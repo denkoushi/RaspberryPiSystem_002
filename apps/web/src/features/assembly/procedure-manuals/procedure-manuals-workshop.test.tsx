@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import { clearManualLists, fetchManualList, readManualList } from './procedure-manual-list-cache';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
@@ -50,7 +49,6 @@ function show(query = '?model=DFD1&process=assembly') { return render(<MemoryRou
 beforeEach(() => {
   clearManualLists();
   vi.resetAllMocks();
-  clearProcedureEditorAccess(); saveProcedureEditorAccess('2520');
   mocks.verify.mockResolvedValue({ success: true });
   mocks.partCandidates.mockImplementation(async ({ q, digitQuery }: { q: string; digitQuery: string }) => {
     const key = q.normalize('NFKC').trim().toUpperCase();
@@ -87,7 +85,7 @@ describe('procedure-manuals workshop', () => {
     expect(within(dialog).getByText('改版ラベル。元に戻せません')).toBeInTheDocument();
     mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [published] }] });
     fireEvent.click(within(dialog).getByRole('button', { name: '破棄' }));
-    await waitFor(() => expect(mocks.discard).toHaveBeenCalledExactlyOnceWith({ id: 'v3', accessPassword: '2520', expectedEditVersion: 8 }));
+    await waitFor(() => expect(mocks.discard).toHaveBeenCalledExactlyOnceWith({ id: 'v3', accessPassword: '', expectedEditVersion: 8 }));
     await waitFor(() => expect(screen.queryByRole('button', { name: '改版を破棄' })).not.toBeInTheDocument());
     expect(mocks.allOverview).toHaveBeenCalledTimes(2);
     expect(mocks.replace).not.toHaveBeenCalled();
@@ -118,17 +116,6 @@ describe('procedure-manuals workshop', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('他の編集で更新されています');
   });
 
-  it('rechecks editor access before confirming revision discard', async () => {
-    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [{ ...published, draftRevision: { documentId: 'v3', editVersion: 8, revisionNumber: 3, editLease: null } }] }] });
-    show();
-    fireEvent.click(await screen.findByRole('button', { name: '改版を破棄' }));
-    const confirm = within(screen.getByRole('dialog', { name: '改版を破棄' })).getByRole('button', { name: '破棄' });
-    act(() => clearProcedureEditorAccess());
-    fireEvent.click(confirm);
-    expect(mocks.discard).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
-  });
-
   it.each([false, true])('offers revision discard in the common workshop with the same lease guard (locked: %s)', async locked => {
     mocks.common.mockResolvedValue({ categories: [], actions: [], subjects: [] });
     mocks.processes.mockResolvedValue([{ id: 'common-category', name: '共通分類', subjectKind: 'COMMON', parentId: null }]);
@@ -143,7 +130,7 @@ describe('procedure-manuals workshop', () => {
     } else {
       fireEvent.click(button);
       fireEvent.click(within(screen.getByRole('dialog', { name: '改版を破棄' })).getByRole('button', { name: '破棄' }));
-      await waitFor(() => expect(mocks.discard).toHaveBeenCalledExactlyOnceWith({ id: 'common-v3', accessPassword: '2520', expectedEditVersion: 5 }));
+      await waitFor(() => expect(mocks.discard).toHaveBeenCalledExactlyOnceWith({ id: 'common-v3', accessPassword: '', expectedEditVersion: 5 }));
     }
   });
 
@@ -358,10 +345,9 @@ describe('procedure-manuals workshop', () => {
     if (visible) {
       expect(button).toHaveClass('min-h-12', 'w-11', '!border-[#f6b93b]');
       expect(within(button!).queryByText('新')).not.toBeInTheDocument();
-      sessionStorage.removeItem('procedure-editor-access');
       fireEvent.click(button!);
-      expect(screen.queryByRole('dialog', { name: '部品を付け直す' })).not.toBeInTheDocument();
-      expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+      expect(await screen.findByRole('dialog', { name: '部品を付け直す' })).toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument();
     }
   });
 
@@ -544,53 +530,9 @@ describe('procedure-manuals workshop', () => {
     }));
   });
 
-  it('skips the PIN dialog with valid access', () => {
+  it('enters the workshop without a PIN dialog or verification', () => {
     show(); expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument();
     expect(mocks.verify).not.toHaveBeenCalled();
-  });
-  it('verifies at the entrance, stays on failure, and saves successful access', async () => {
-    clearProcedureEditorAccess(); mocks.verify.mockResolvedValueOnce({ success: false });
-    show(); expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
-    const pinDialog = screen.getByRole('dialog', { name: '暗証番号' });
-    for (const digit of '2520') fireEvent.click(within(pinDialog).getByRole('button', { name: digit, exact: true }));
-    expect(await screen.findByText('違います')).toBeInTheDocument();
-    expect(readProcedureEditorAccess()).toBeNull();
-    fireEvent.click(within(pinDialog).getByRole('button', { name: 'OK' }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument());
-    expect(mocks.verify).toHaveBeenCalledWith({ password: '2520' });
-    expect(readProcedureEditorAccess()?.pin).toBe('2520');
-  });
-  it('returns to viewing when access has expired', () => {
-    saveProcedureEditorAccess('2520', Date.now() - 8 * 60 * 60 * 1000);
-    show(); fireEvent.click(screen.getByRole('button', { name: '見るへ戻る' }));
-    expect(screen.getByTestId('location')).toHaveTextContent('"pathname":"/kiosk/assembly/manuals"');
-  });
-  it('shows the PIN gate at the deadline while the workshop stays mounted', async () => {
-    vi.useFakeTimers();
-    try {
-      clearProcedureEditorAccess(); saveProcedureEditorAccess('2520'); show();
-      await act(async () => {});
-      act(() => vi.advanceTimersByTime(8 * 3600000));
-      expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
-    } finally { vi.useRealTimers(); }
-  });
-  it.each(['visible', 'storage'])('rechecks access on %s', async trigger => {
-    show(); await screen.findByRole('button', { name: '作る' });
-    sessionStorage.removeItem('procedure-editor-access');
-    act(() => {
-      if (trigger === 'visible') {
-        vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
-        document.dispatchEvent(new Event('visibilitychange'));
-      } else window.dispatchEvent(new StorageEvent('storage', { key: 'procedure-editor-access', storageArea: sessionStorage }));
-    });
-    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
-  });
-  it.each(['作る', '既存の要領書を割り当てる', '外す', '削除'])('rechecks expired access before %s', async action => {
-    show(); await screen.findByRole('button', { name: '作る' });
-    sessionStorage.removeItem('procedure-editor-access');
-    fireEvent.click(screen.getAllByRole('button', { name: action })[0]);
-    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
-    expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.delete).not.toHaveBeenCalled();
   });
   it('exposes ten visually hidden column headers and reads the page count with its unit', async () => {
     show();
@@ -927,7 +869,7 @@ describe('procedure-manuals workshop', () => {
     for (const button of within(dialog).getAllByRole('button')) expect(button).toHaveClass('min-h-12');
     expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.delete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '削除' }));
-    await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('draft1', '2520'));
+    await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('draft1', ''));
     expect(mocks.replace).toHaveBeenCalledExactlyOnceWith('DFD1', 'assembly', { modelCode: 'DFD1', assignments: [
       { assemblyProcedureDocumentId: 'root', kioskDocumentId: null, sortOrder: 0, label: null },
       { assemblyProcedureDocumentId: null, kioskDocumentId: 'pdf', sortOrder: 1, label: 'PDF' }

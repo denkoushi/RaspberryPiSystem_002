@@ -344,7 +344,7 @@ describe('assembly procedure revision routes', () => {
       payload: { accessPassword: '2520' }
     });
     expect(created.statusCode).toBe(200);
-    expect(harness.service.createRevision).toHaveBeenCalledWith(documentId, '2520', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
+    expect(harness.service.createRevision).toHaveBeenCalledWith(documentId);
 
     const saved = await app.inject({
       method: 'PUT',

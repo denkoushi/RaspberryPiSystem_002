@@ -23,7 +23,6 @@ export class ProcedureMaterialPlacementService {
   ) {}
 
   async place(params: AssemblyProcedureEditActor & { documentId: string; materialId: string; pageIndex: number; employeeTagUid?: string; accessPassword?: string }) {
-    await this.access.requireAccessPassword(params.accessPassword, params);
     let asset: AssemblyProcedureOverlayAssetDto | undefined;
     try {
       return await runAssemblyTransaction(async (tx) => {

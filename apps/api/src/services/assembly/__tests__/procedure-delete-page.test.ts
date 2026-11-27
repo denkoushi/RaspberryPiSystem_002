@@ -107,7 +107,7 @@ describe('delete a procedure page', () => {
     expect(result.revisionMetadata.editVersion).toBe(5);
     expect(prisma.$transaction).toHaveBeenCalledOnce();
     expect(AssemblyProcedureImageStorage.deleteImage).not.toHaveBeenCalled();
-    expect(AssemblyTemplateAccessService.prototype.requireAccessPassword).toHaveBeenCalledWith('1234', expect.objectContaining({ holderKey: 'writer' }));
+    expect(AssemblyTemplateAccessService.prototype.requireAccessPassword).not.toHaveBeenCalled();
     expect(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).toHaveBeenCalledWith('doc', 'writer', data.tx, 'lease');
   });
   it('resolves only the latest text feedback per element, breaking createdAt ties by id', async () => {
@@ -180,10 +180,7 @@ describe('delete a procedure page', () => {
     for (const extra of [{ pageIndex: -1 }, { pageIndex: 0.5 }, { expectedEditVersion: -1 }, { expectedEditVersion: undefined }]) await expect(deletePage(extra)).rejects.toMatchObject({ statusCode: 400 });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
-  it('checks password and reservation before writing', async () => {
-    vi.mocked(AssemblyTemplateAccessService.prototype.requireAccessPassword).mockRejectedValueOnce(new ApiError(403, 'パスワードが違います'));
-    await expect(deletePage()).rejects.toMatchObject({ statusCode: 403 });
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+  it('checks reservation before writing', async () => {
     vi.mocked(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).mockRejectedValueOnce(new ApiError(409, '予約がありません'));
     await expect(deletePage()).rejects.toMatchObject({ statusCode: 409 });
     expect(data.tx.assemblyProcedureOverlayElement.deleteMany).not.toHaveBeenCalled();

@@ -43,7 +43,7 @@ describe('procedure-video document viewing', () => {
     vi.spyOn(prisma.assemblyProcedureDocumentPage, 'createMany').mockResolvedValue({ count: 1 });
     const copy = vi.spyOn(prisma.procedureVideoLink, 'createMany').mockResolvedValue({ count: 1 });
     const remove = vi.spyOn(prisma.procedureVideoLink, 'deleteMany');
-    await new AssemblyProcedureDocumentRevisionService({ requireAccessPassword: async () => undefined } as never, {} as never).createRevision('doc', 'pw');
+    await new AssemblyProcedureDocumentRevisionService({ requireAccessPassword: async () => undefined } as never, {} as never).createRevision('doc');
     expect(copy).toHaveBeenCalledExactlyOnceWith({ data: [{ videoId: 'READY', sceneId: 'scene', pageIndex: 0, sortOrder: 0, assemblyProcedureDocumentId: 'draft' }] });
     expect(remove).not.toHaveBeenCalled();
   });

@@ -1,8 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 
-import { KioskPinDialog } from '../../kiosk/KioskPinDialog';
 import { KIOSK_ASSEMBLY_LIBRARY_PATH } from '../assemblyRoutes';
-import { PROCEDURE_EDITOR_ACCESS_HOURS } from '../procedureEditorAccess';
 
 import { useAssemblyProcedureDocumentEditor } from './AssemblyProcedureDocumentEditorContext';
 
@@ -12,7 +10,6 @@ export function AssemblyProcedureDocumentEditorAuthGate({ context }: { context?:
     accessGranted,
     loading,
     message,
-    verifyEditorPassword,
     navigateBack
   } = useAssemblyProcedureDocumentEditor();
 
@@ -22,16 +19,9 @@ export function AssemblyProcedureDocumentEditorAuthGate({ context }: { context?:
   }
 
   return (
-    <main className="flex min-h-0 flex-1 bg-slate-800">
-      <KioskPinDialog
-        validHours={PROCEDURE_EDITOR_ACCESS_HOURS}
-        backLabel={context ? '戻る' : '一覧へ'}
-        onBack={context ? navigateBack : () => navigate(KIOSK_ASSEMBLY_LIBRARY_PATH)}
-        onSubmit={verifyEditorPassword}
-        notice={message ?? undefined}
-        pinTargetId="assembly-document-editor-password"
-        submitTargetId="assembly-document-editor-authenticate"
-      />
+    <main className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 bg-slate-800 text-white">
+      {message ? <p role="alert" className="text-center text-sm text-amber-200">{message}</p> : null}
+      <button type="button" onClick={context ? navigateBack : () => navigate(KIOSK_ASSEMBLY_LIBRARY_PATH)} className="min-h-11 rounded-lg border border-[#344252] px-4 text-[19px] font-bold text-[#eef3f6]">{context ? '戻る' : '一覧へ'}</button>
     </main>
   );
 }

@@ -88,15 +88,6 @@
       "viewport": { "width": 1366, "height": 768, "deviceScaleFactor": 1 },
       "sheets": [
         {
-          "id": "assembly-document-editor-auth",
-          "title": "手順書エディタを認証する",
-          "summary": "改版編集を開いたらテンキーで暗証番号を入力して認証します。",
-          "steps": [
-            { "id": "document-editor-password", "targetId": "assembly-document-editor-password", "necessity": "required", "title": "暗証番号を入力", "description": "手順書オーバーレイ編集を始める前にテンキーで暗証番号を入力します。" },
-            { "id": "document-editor-authenticate", "targetId": "assembly-document-editor-authenticate", "necessity": "required", "title": "認証して改版を作成", "description": "4桁で自動認証し、公開済み手順書の編集用改版を作成します。再試行は「OK」を押します。" }
-          ]
-        },
-        {
           "id": "assembly-document-editor-range",
           "title": "編集範囲を選ぶ",
           "summary": "「範囲」の記号を押し、元ページ上で編集する範囲をドラッグします。",

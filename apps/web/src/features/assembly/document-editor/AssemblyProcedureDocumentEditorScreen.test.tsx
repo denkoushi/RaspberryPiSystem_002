@@ -120,7 +120,6 @@ function makeController(
     retryConflictSave: vi.fn(async () => undefined),
     passwordInput: '1234',
     setPasswordInput: vi.fn(),
-    verifyEditorPassword: vi.fn(async () => true),
     selectedPageIndex: 0,
     setSelectedPageIndex: vi.fn(),
     selectedPage,
@@ -761,11 +760,11 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: '紐づけを保存' }));
     await waitFor(() => expect(onEditLeaseError).toHaveBeenCalledWith(error));
   });
-  it('keeps workshop context and the return action before editor authentication', () => {
+  it('keeps workshop context and the return action when the revision cannot be opened', () => {
     const navigateBack = vi.fn();
     const controller = makeController({ accessGranted: false, navigateBack });
     render(<MemoryRouter><AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode: 'fix' }} /></AssemblyProcedureDocumentEditorProvider></MemoryRouter>);
-    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '暗証番号' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
     expect(navigateBack).toHaveBeenCalledOnce();
   });
@@ -899,7 +898,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(navigateBack).toHaveBeenCalledTimes(1);
   });
 
-  it('requires explicit confirmation before publishing', () => {
+  it('requires explicit confirmation before publishing', async () => {
     const publish = vi.fn(async () => undefined);
     renderScreen(makeController({ publish }));
     fireEvent.click(screen.getByRole('button', { name: '公開する' }));
@@ -909,7 +908,10 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByRole('radio', { name: '社員タグで承認して公開' })).toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: 'パスワードで公開(締付テンプレート向け)' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '手順書を公開' })).getByRole('button', { name: '公開する' }));
-    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).not.toHaveBeenCalled();
+    const pinDialog = screen.getByRole('dialog', { name: '暗証番号' });
+    for (const digit of '2520') fireEvent.click(within(pinDialog).getByRole('button', { name: digit, exact: true }));
+    await waitFor(() => expect(publish).toHaveBeenCalledExactlyOnceWith(undefined, '2520'));
   });
 
   it('reads an employee tag, confirms name and position, then publishes with an optional comment', async () => {
