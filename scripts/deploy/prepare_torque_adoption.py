@@ -15,14 +15,23 @@ import urllib.request
 from pathlib import Path
 
 try:
-    from .release_artifact_contract import TORQUE_ADOPTED_SOURCE_SHA
-    from .torque_component_adoption import SOURCE_CLOSURE, AdoptionError
+    from .release_artifact_contract import SOURCE_REPOSITORY, TORQUE_AGENT_REPOSITORY
+    from .torque_component_adoption import (
+        SOURCE_CLOSURE,
+        AdoptionError,
+        select_platform_digests,
+    )
 except ImportError:  # Direct script execution from scripts/deploy.
-    from release_artifact_contract import TORQUE_ADOPTED_SOURCE_SHA
-    from torque_component_adoption import SOURCE_CLOSURE, AdoptionError
+    from release_artifact_contract import SOURCE_REPOSITORY, TORQUE_AGENT_REPOSITORY
+    from torque_component_adoption import (
+        SOURCE_CLOSURE,
+        AdoptionError,
+        select_platform_digests,
+    )
 
-SLUG = "denkoushi/RaspberryPiSystem_002"
-GHCR_REPOSITORY = "denkoushi/raspisys-torque-agent"
+SLUG = SOURCE_REPOSITORY
+GHCR_REPOSITORY = TORQUE_AGENT_REPOSITORY.removeprefix("ghcr.io/")
+HTTP_TIMEOUT = 30
 CONTRACT = Path(__file__).resolve().with_name("release_artifact_contract.py")
 CONTRACT_PATH = "scripts/deploy/release_artifact_contract.py"
 JOB_NAME = "pi4-agent-images-publish (torque-agent)"
@@ -89,15 +98,15 @@ def gh_paginated_jobs(run_id: int) -> list[dict]:
     return jobs
 
 
-def fetch_ghcr_index(tag: str) -> tuple[str, list[dict]]:
+def fetch_ghcr_index(tag: str) -> tuple[str, bytes]:
     token_url = f"https://ghcr.io/token?scope=repository:{GHCR_REPOSITORY}:pull"
-    token = json.load(urllib.request.urlopen(token_url))["token"]
+    token = json.load(urllib.request.urlopen(token_url, timeout=HTTP_TIMEOUT))["token"]
     req = urllib.request.Request(
         f"https://ghcr.io/v2/{GHCR_REPOSITORY}/manifests/{tag}",
         headers={"Authorization": f"Bearer {token}", "Accept": INDEX_ACCEPT},
     )
-    resp = urllib.request.urlopen(req)
-    return resp.headers["Docker-Content-Digest"], json.load(resp)["manifests"]
+    resp = urllib.request.urlopen(req, timeout=HTTP_TIMEOUT)
+    return resp.headers["Docker-Content-Digest"], resp.read()
 
 
 # --- logic ------------------------------------------------------------------
@@ -121,21 +130,11 @@ def adopted_sha(text: str) -> str:
     return match.group(1)
 
 
-def pick_platform_digests(manifests: list[dict]) -> tuple[str, str]:
-    arm64, armv7 = [], []
-    for entry in manifests:
-        platform = entry.get("platform") or {}
-        if platform.get("os") != "linux":
-            continue
-        if platform.get("architecture") == "arm64":
-            arm64.append(entry["digest"])
-        elif platform.get("architecture") == "arm" and platform.get("variant") == "v7":
-            armv7.append(entry["digest"])
-    if len(arm64) != 1 or len(armv7) != 1:
-        raise PrepareError(
-            f"expected exactly one linux/arm64 and one linux/arm/v7 entry, got {len(arm64)} and {len(armv7)}"
-        )
-    return arm64[0], armv7[0]
+def pick_platform_digests(index_raw: bytes) -> tuple[str, str]:
+    result = select_platform_digests(index_raw)
+    if set(result) != {"linux/arm64", "linux/arm/v7"}:
+        raise PrepareError(f"OCI index lacks linux/arm64 or linux/arm/v7: {sorted(result)}")
+    return result["linux/arm64"], result["linux/arm/v7"]
 
 
 def select_job(jobs: list[dict]) -> dict:
@@ -240,8 +239,9 @@ def cmd_status(_args) -> int:
 
 def cmd_write(args) -> int:
     text = CONTRACT.read_text()
-    current = TORQUE_ADOPTED_SOURCE_SHA
-    sha = args.source_sha or pending_sha()
+    git_fetch_main()
+    sha = args.source_sha or git_last_commit(*SOURCE_CLOSURE)
+    current = adopted_sha(git_main_contract())
     if sha == current:
         print(f"already adopted: {sha}")
         return 0
@@ -251,10 +251,11 @@ def cmd_write(args) -> int:
     )
     if not runs:
         raise PrepareError(f"not published yet: no push CI run for {sha}", 4)
-    run_id = max(r["databaseId"] for r in runs)
+    succeeded = [r for r in runs if r.get("conclusion") == "success"]
+    run_id = max(r["databaseId"] for r in (succeeded or runs))
     job = select_job(gh_paginated_jobs(run_id))
-    index_digest, manifests = fetch_ghcr_index(sha)
-    arm64, armv7 = pick_platform_digests(manifests)
+    index_digest, index_raw = fetch_ghcr_index(sha)
+    arm64, armv7 = pick_platform_digests(index_raw)
     values = {
         "source_sha": sha, "index_digest": index_digest, "arm64_digest": arm64,
         "armv7_digest": armv7, "origin_run_id": run_id, "origin_job_id": job["id"],
@@ -275,6 +276,8 @@ def cmd_write(args) -> int:
 def cmd_update_blocked_prs(args) -> int:
     git_fetch_main()
     adoption = git_adoption_commit(adopted_sha(git_main_contract()))
+    if not adoption:
+        raise PrepareError("adoption commit for the current source_sha not found on origin/main")
     prs = gh_json(
         "pr", "list", "--repo", SLUG, "--state", "open", "--limit", "200",
         "--json", "number,headRefOid,isCrossRepository,statusCheckRollup",

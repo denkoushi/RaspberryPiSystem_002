@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from scripts.deploy import prepare_torque_adoption as mod
@@ -44,17 +45,16 @@ class PrepareTorqueAdoptionTest(unittest.TestCase):
 
     def test_pick_platform_digests_ignores_unknown(self):
         manifests = [
-            manifest("sha256:a", "linux", "arm64"),
-            manifest("sha256:b", "linux", "arm", "v7"),
-            manifest("sha256:c", "unknown", "unknown"),
+            manifest(D1, "linux", "arm64"),
+            manifest(D2, "linux", "arm", "v7"),
+            manifest(D3, "unknown", "unknown"),
+            manifest(D3, "linux", "arm64", "v8"),
         ]
-        self.assertEqual(mod.pick_platform_digests(manifests), ("sha256:a", "sha256:b"))
+        self.assertEqual(mod.pick_platform_digests(index(manifests)), (D1, D2))
 
     def test_pick_platform_digests_fails_when_platform_missing(self):
         with self.assertRaises(mod.PrepareError):
-            mod.pick_platform_digests(
-                [manifest("sha256:a", "linux", "arm64"), manifest("sha256:c", "unknown", "unknown")]
-            )
+            mod.pick_platform_digests(index([manifest(D1, "linux", "arm64"), manifest(D3, "unknown", "unknown")]))
 
     def test_select_blocked_prs(self):
         prs = [pr(1), pr(2, conclusion="SUCCESS"), pr(3, cross=True), pr(4)]
@@ -74,6 +74,13 @@ class PrepareTorqueAdoptionTest(unittest.TestCase):
         self.assertEqual(failed.exception.code, 5)
         ok = {"name": name, "status": "completed", "conclusion": "success", "id": 7}
         self.assertIs(mod.select_job([ok]), ok)
+
+
+D1, D2, D3 = ("sha256:" + c * 64 for c in "abc")
+
+
+def index(manifests):
+    return json.dumps({"manifests": manifests}).encode()
 
 
 def manifest(digest, os_, arch, variant=None):

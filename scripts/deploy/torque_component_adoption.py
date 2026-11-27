@@ -102,7 +102,8 @@ def verify_source_closure(
         )
 
 
-def platform_digests(index_raw: bytes) -> dict[str, str]:
+def select_platform_digests(index_raw: bytes) -> dict[str, str]:
+    """Pick the linux/arm64 and linux/arm/v7 digests from an OCI index."""
     if len(index_raw) > MAX_INDEX_BYTES:
         raise AdoptionError("OCI index exceeds its size limit")
     try:
@@ -136,6 +137,11 @@ def platform_digests(index_raw: bytes) -> dict[str, str]:
         ):
             raise AdoptionError("OCI platform descriptor is malformed or duplicated")
         result[key] = digest
+    return result
+
+
+def platform_digests(index_raw: bytes) -> dict[str, str]:
+    result = select_platform_digests(index_raw)
     expected = {"linux/arm64": ARM64_DIGEST, "linux/arm/v7": ARMV7_DIGEST}
     if result != expected:
         raise AdoptionError(
