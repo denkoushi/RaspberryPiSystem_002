@@ -8,7 +8,7 @@ import { useFrozenValue, usePlanningBoardOffline } from './planningBoardOfflineC
 
 import type { KioskGrindingPlanningBoardQuery } from '../../../../api/client';
 import type { MachineSignalResourceUptime } from '../../../../api/domains/machine-signal';
-import type { DScheduleMinutesExtras } from '../../../../api/hooks/production-schedule/d-schedule-minutes';
+import type { DScheduleMinutesExtras, DScheduleMinutesReceivedAt } from '../../../../api/hooks/production-schedule/d-schedule-minutes';
 import type {
   GrindingPlanningBoardResponse, GrindingPlanningBoardLoadResponse, GrindingPlanningBoardProcessChipsResponse,
   GrindingPlanningBoardSeibanCandidatesResponse, GrindingPlanningBoardDueScopeSnapshot,
@@ -157,7 +157,7 @@ export function useOfflineResourceCapacity(enabled: boolean) {
 
 export function useOfflineDScheduleMinutes() {
   const request = useRequest();
-  return useOfflineRead('d-schedule-minutes', null, (signal) => request<{ rows: DScheduleMinutesExtras[] }>('/kiosk/production-schedule/d-schedule-minutes', signal, (data) => Array.isArray(data.rows)));
+  return useOfflineRead('d-schedule-minutes', null, (signal) => request<{ rows: DScheduleMinutesExtras[]; latestReceivedAt?: DScheduleMinutesReceivedAt }>('/kiosk/production-schedule/d-schedule-minutes', signal, (data) => Array.isArray(data.rows)));
 }
 export function useOfflineUptime(enabled: boolean) {
   const request = useRequest();

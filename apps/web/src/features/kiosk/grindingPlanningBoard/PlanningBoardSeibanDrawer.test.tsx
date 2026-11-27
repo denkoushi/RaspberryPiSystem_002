@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { DScheduleMinutesContext } from '../productionSchedule/DScheduleMinutesContext';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { PlanningBoardSeibanDrawer } from './PlanningBoardSeibanDrawer';
@@ -61,5 +62,19 @@ describe('PlanningBoardSeibanDrawer registered list', () => {
     expect(rows()[0]).toHaveTextContent('更新機種');
     view.rerender(<PlanningBoardSeibanDrawer {...values} orderBusy />);
     rows().forEach((row) => within(row).getAllByRole('button').forEach((button) => expect(button).toBeDisabled()));
+  });
+});
+
+describe('PlanningBoardSeibanDrawer minutes received dates', () => {
+  it('shows JST received dates, a dash for none, and nothing without data', () => {
+    const view = render(<PlanningBoardSeibanDrawer {...props()} />);
+    expect(screen.queryByText('日程メール取得日')).toBeNull();
+    view.unmount();
+    render(
+      <DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows: new Map(), latestReceivedAt: { D_COMPANY: '2026-11-25T23:42:00.000Z', INTERNAL: null } }}>
+        <PlanningBoardSeibanDrawer {...props()} />
+      </DScheduleMinutesContext.Provider>
+    );
+    expect(screen.getByText('日程メール取得日').parentElement?.textContent).toBe('日程メール取得日D社11/26(木) 8:42一般—');
   });
 });
