@@ -28,14 +28,6 @@
     - {key: SECURITY_REVIEW_QUEUE_QUIET, value: "{{ security_review_queue_quiet }}"}
   no_log: true
 
-- name: Deliver the procedure document feedback scheduler switch
-  ansible.builtin.lineinfile:
-    path: "{{ release_pi5_compose_environment.PI5_ENV_FILE }}"
-    regexp: "^PROCEDURE_DOCUMENT_FEEDBACK_ENABLED="
-    line: "PROCEDURE_DOCUMENT_FEEDBACK_ENABLED={{ procedure_document_feedback_enabled | default(false) | bool | ternary('true', 'false') }}"
-    create: false
-    mode: '0600'
-
 - name: Create root-only collector configuration and state directories
   ansible.builtin.file:
     path: "{{ item }}"
