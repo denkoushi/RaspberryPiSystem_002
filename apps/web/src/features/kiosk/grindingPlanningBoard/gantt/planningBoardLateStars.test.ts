@@ -22,7 +22,7 @@ describe('planningBoardSendOutRows', () => {
     const testBar = { ...early, item: { kind: 'test', itemId: 'test' } } as GanttBar;
     const list = planningBoardSendOutRows([
       bar('later', 'A', 3), bar('yesterday', 'B', 0), early, early, testBar,
-      bar('no-dates', 'C', 0), bar('paint', 'A', 0, { lslhSurface: false }),
+      bar('no-dates', 'C', 0), bar('paint', 'A', 0, { lslhSurface: false }), bar('regrind', 'A', 0, { afterLslhSurface: true }),
       bar('complete', 'A', 0, { isCompleted: true }), { ...bar('completed-tone', 'A', 0), tone: 'completed' }
     ], rows);
     expect(list.map(({ bar, sendOutDay }) => [bar.item.itemId, sendOutDay])).toEqual([
