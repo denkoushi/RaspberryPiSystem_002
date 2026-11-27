@@ -21,7 +21,9 @@ class KioskLabwcConfigTests(unittest.TestCase):
     def test_long_config_preserves_existing_text_and_inserts_inside_window_rules(self):
         original = (FIXTURES / "kiosk-labwc-long.xml").read_text()
         result = UPDATE(original)
-        expected = original.replace("<windowRules>", "<windowRules>\n    " + HELPER["TITLEBAR_RULE"])
+        expected = original.replace("<windowRules>", "<windowRules>\n    " + HELPER["TITLEBAR_RULE"]).replace(
+            "<keyboard>", "<keyboard>\n    " + HELPER["CLOSE_BROWSER_BLOCK"]
+        )
         self.assertEqual(result, expected)
         root = ET.fromstring(result)
         rules = root.findall("rc:windowRules/rc:windowRule", NS)
@@ -45,7 +47,8 @@ class KioskLabwcConfigTests(unittest.TestCase):
         original = (FIXTURES / "kiosk-labwc-fjv60-80.xml").read_text()
         result = UPDATE(original)
         root = ET.fromstring(result)
-        self.assertEqual(root.find("rc:keyboard/rc:keybind", NS).get("key"), "W-S-p")
+        keys = [bind.get("key") for bind in root.findall("rc:keyboard/rc:keybind", NS)]
+        self.assertEqual(keys, ["C-A-r", "W-S-p"])
         self.assertIsNotNone(root.find("rc:windowRules/rc:windowRule", NS))
         self.assertIn("<theme><name>PiXflat</name></theme>", result)
         self.assertEqual(result.count("BEGIN ANSIBLE MANAGED: show-kiosk-panel"), 1)
@@ -57,7 +60,31 @@ class KioskLabwcConfigTests(unittest.TestCase):
         )
         root = ET.fromstring(UPDATE(original))
         self.assertEqual(len(root.findall("rc:keyboard", NS)), 1)
-        self.assertEqual(len(root.findall("rc:keyboard/rc:keybind", NS)), 2)
+        self.assertEqual(len(root.findall("rc:keyboard/rc:keybind", NS)), 3)
+
+    def test_close_browser_key_is_added_once_and_rewritten_in_place(self):
+        original = (FIXTURES / "kiosk-labwc-long.xml").read_text()
+        result = UPDATE(original)
+        root = ET.fromstring(result)
+        binds = [bind for bind in root.findall("rc:keyboard/rc:keybind", NS) if bind.get("key") == "C-A-r"]
+        self.assertEqual(len(binds), 1)
+        action = binds[0].find("rc:action", NS)
+        self.assertEqual(action.get("name"), "Execute")
+        self.assertEqual(action.find("rc:command", NS).text, HELPER["CLOSE_BROWSER_COMMAND"])
+        self.assertEqual(UPDATE(result), result)
+        stale = result.replace(HELPER["CLOSE_BROWSER_COMMAND"], "true")
+        self.assertEqual(UPDATE(stale), result)
+
+    def test_close_browser_key_without_keyboard_section(self):
+        for original in (
+            "<labwc_config><theme /></labwc_config>",
+            "<labwc_config><keyboard /></labwc_config>",
+        ):
+            result = UPDATE(original)
+            root = ET.fromstring(result)
+            self.assertEqual(len(root.findall("keyboard")), 1)
+            self.assertEqual(root.find("keyboard/keybind").get("key"), "C-A-r")
+            self.assertEqual(UPDATE(result), result)
 
     def test_labwc_root_and_comment_tags(self):
         original = (

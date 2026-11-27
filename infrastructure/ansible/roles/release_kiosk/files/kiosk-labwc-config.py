@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add the kiosk window rule without reserializing the user's labwc XML."""
+"""Add the kiosk window rule and keys without reserializing the user's labwc XML."""
 
 from __future__ import annotations
 
@@ -38,6 +38,31 @@ MANAGED_TITLEBAR = re.compile(
 SHORTCUT_BLOCK = re.compile(
     r"<!--\s*BEGIN ANSIBLE MANAGED: show-kiosk-panel\s*-->.*?"
     r"<!--\s*END ANSIBLE MANAGED: show-kiosk-panel\s*-->",
+    re.DOTALL,
+)
+# The panel's window list can lose the browser after the HDMI output goes away
+# and comes back (monitor power saving), so the browser needs a close key that
+# works without the panel or keyboard focus. The service's MainPID is Chromium
+# itself (kiosk-launch.sh execs it) and Restart=always brings it back in 5s.
+CLOSE_BROWSER_BEGIN = "<!-- BEGIN ANSIBLE MANAGED: kiosk-close-browser -->"
+CLOSE_BROWSER_END = "<!-- END ANSIBLE MANAGED: kiosk-close-browser -->"
+CLOSE_BROWSER_KEY = "C-A-r"
+CLOSE_BROWSER_COMMAND = (
+    "sh -c 'pid=$(systemctl show -p MainPID --value kiosk-browser.service); "
+    "[ \"${pid:-0}\" -gt 1 ] || exit 0; kill -TERM \"$pid\"'"
+)
+CLOSE_BROWSER_BLOCK = (
+    CLOSE_BROWSER_BEGIN
+    + '\n    <keybind key="' + CLOSE_BROWSER_KEY + '">'
+    + '\n      <action name="Execute">'
+    + "\n        <command>" + CLOSE_BROWSER_COMMAND + "</command>"
+    + "\n      </action>"
+    + "\n    </keybind>"
+    + "\n    " + CLOSE_BROWSER_END
+)
+MANAGED_CLOSE_BROWSER = re.compile(
+    r"<!--\s*BEGIN ANSIBLE MANAGED: kiosk-close-browser\s*-->.*?"
+    r"<!--\s*END ANSIBLE MANAGED: kiosk-close-browser\s*-->",
     re.DOTALL,
 )
 # Comments and quoted attributes must not be mistaken for structural tags.
@@ -120,6 +145,18 @@ def update_config(text: str) -> str:
                 + "\n  " + TITLEBAR_BLOCK + "\n"
                 + text[root_close.start() :]
             )
+
+    root_close, children = root_sections(text)
+    if MANAGED_CLOSE_BROWSER.search(text[: root_close.start()]):
+        text = MANAGED_CLOSE_BROWSER.sub(lambda _: CLOSE_BROWSER_BLOCK, text, count=1)
+    elif "keyboard" in children:
+        text = insert_child(text, children["keyboard"], CLOSE_BROWSER_BLOCK)
+    else:
+        text = (
+            text[: root_close.start()]
+            + "\n  <keyboard>\n    " + CLOSE_BROWSER_BLOCK + "\n  </keyboard>\n"
+            + text[root_close.start() :]
+        )
     ET.fromstring(text)
     return text
 
