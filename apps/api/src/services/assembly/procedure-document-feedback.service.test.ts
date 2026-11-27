@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { runProcedureDocumentFeedback } from './procedure-document-feedback.service.js';
+import { getProcedureDocumentFeedback, runProcedureDocumentFeedback, setProcedureDocumentFeedbackTarget } from './procedure-document-feedback.service.js';
 import { getProcedureDocumentFeedbackScheduler } from './procedure-document-feedback.scheduler.js';
 
 const mocks = vi.hoisted(() => ({
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   candidates: vi.fn(), findDocument: vi.fn(), employees: vi.fn(), save: vi.fn(),
   text: vi.fn(), vision: vi.fn(), read: vi.fn(), ensureReady: vi.fn(), release: vi.fn(),
   warn: vi.fn(), schedule: vi.fn(), stop: vi.fn(),
+  findSeries: vi.fn(), findFeedback: vi.fn(), findOptOut: vi.fn(), createOptOut: vi.fn(), deleteOptOut: vi.fn(),
 }));
 
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
@@ -23,7 +24,9 @@ vi.mock('../../lib/prisma.js', () => ({
     $queryRaw: mocks.candidates,
     $transaction: (work: (tx: unknown) => unknown) => work({ assemblyProcedureDocument: { findUnique: mocks.findDocument } }),
     employee: { findMany: mocks.employees },
-    assemblyProcedureDocumentFeedback: { createMany: mocks.save },
+    assemblyProcedureDocument: { findUnique: mocks.findSeries },
+    assemblyProcedureDocumentFeedback: { createMany: mocks.save, findFirst: mocks.findFeedback },
+    assemblyProcedureDocumentFeedbackOptOut: { findUnique: mocks.findOptOut, createMany: mocks.createOptOut, deleteMany: mocks.deleteOptOut },
   },
 }));
 vi.mock('../assembly-procedure-assets/index.js', () => ({ getAssemblyProcedureAssetStorage: () => ({ read: mocks.read }) }));
@@ -156,5 +159,18 @@ describe('夜間の要領書への感想', () => {
     await expect(run()).resolves.toEqual({ selected: 0, saved: 0 });
     expect(mocks.employees).not.toHaveBeenCalled();
     expect(mocks.ensureReady).not.toHaveBeenCalled();
+  });
+
+  it('夜に読む対象の切り替え: しないで行を作り、するで消し、取得でも返す', async () => {
+    mocks.findSeries.mockResolvedValue({ revisionMetadata: { revisionRootId: 'root' } });
+    mocks.findFeedback.mockResolvedValue(null);
+    mocks.findOptOut.mockResolvedValue({ revisionRootId: 'root' });
+    await expect(setProcedureDocumentFeedbackTarget('version-2', false)).resolves.toEqual({ feedback: null, nightlyTarget: false });
+    expect(mocks.createOptOut).toHaveBeenCalledWith({ data: { revisionRootId: 'root' }, skipDuplicates: true });
+
+    mocks.findOptOut.mockResolvedValue(null);
+    await expect(setProcedureDocumentFeedbackTarget('version-2', true)).resolves.toEqual({ feedback: null, nightlyTarget: true });
+    expect(mocks.deleteOptOut).toHaveBeenCalledWith({ where: { revisionRootId: 'root' } });
+    await expect(getProcedureDocumentFeedback('version-2')).resolves.toEqual({ feedback: null, nightlyTarget: true });
   });
 });

@@ -172,7 +172,7 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
       return json(route, { document: revisionDocument() });
     }
     if (path.endsWith('/feedback') && request.method() === 'GET') {
-      return json(route, { feedback: null });
+      return json(route, { feedback: null, nightlyTarget: true });
     }
     if (path.endsWith('/regions/text') && request.method() === 'POST') {
       return json(route, { candidates: [] });

@@ -14,7 +14,11 @@ export const procedureDocumentFeedbackSchema = procedureDocumentFeedbackSections
 
 export const procedureDocumentFeedbackResponseSchema = z.object({
   feedback: procedureDocumentFeedbackSchema.nullable(),
+  nightlyTarget: z.boolean(),
 });
+
+export const procedureDocumentFeedbackTargetRequestSchema = z.object({ nightlyTarget: z.boolean() });
 
 export type ProcedureDocumentFeedback = z.infer<typeof procedureDocumentFeedbackSchema>;
 export type ProcedureDocumentFeedbackResponse = z.infer<typeof procedureDocumentFeedbackResponseSchema>;
+export type ProcedureDocumentFeedbackTargetRequest = z.infer<typeof procedureDocumentFeedbackTargetRequestSchema>;

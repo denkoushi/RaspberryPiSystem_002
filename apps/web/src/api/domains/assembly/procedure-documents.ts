@@ -34,7 +34,12 @@ export async function getAssemblyProcedureDocument(id: string) {
 
 export async function getAssemblyProcedureDocumentFeedback(id: string, signal: AbortSignal) {
   const { data } = await api.get(`/assembly/procedure-documents/${encodeURIComponent(id)}/feedback`, { signal });
-  return procedureDocumentFeedbackResponseSchema.parse(data).feedback;
+  return procedureDocumentFeedbackResponseSchema.parse(data);
+}
+
+export async function setAssemblyProcedureDocumentFeedbackTarget(id: string, nightlyTarget: boolean) {
+  const { data } = await api.put(`/assembly/procedure-documents/${encodeURIComponent(id)}/feedback-target`, { nightlyTarget });
+  return procedureDocumentFeedbackResponseSchema.parse(data);
 }
 
 export async function createAssemblyProcedureDocumentRevision(id: string, accessPassword: string) {

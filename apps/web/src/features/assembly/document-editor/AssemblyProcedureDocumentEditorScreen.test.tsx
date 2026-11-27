@@ -12,8 +12,10 @@ import type { AssemblyProcedureDocumentEditorController } from './useAssemblyPro
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 const feedbackQuery = vi.hoisted(() => vi.fn());
+const feedbackTargetMutate = vi.hoisted(() => vi.fn());
 vi.mock('../../../api/hooks/assembly-procedure-documents', () => ({
   useAssemblyProcedureDocumentFeedback: (id: string | undefined) => feedbackQuery(id) ?? {},
+  useSetAssemblyProcedureDocumentFeedbackTarget: () => ({ mutate: feedbackTargetMutate, isPending: false }),
 }));
 
 const approvalMocks = vi.hoisted(() => ({ listDocuments: vi.fn(), getDocument: vi.fn(), realCanvas: false, count: vi.fn(async () => 0), read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
@@ -1010,7 +1012,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '清書で見る', '音声入力', '読んだ感想', '元に戻す', 'やり直す']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '写真をくっきり', '整える', '清書で見る', '音声入力', '読んだ感想', '夜に読む: する', '元に戻す', 'やり直す']);
     expect(within(rail).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');
@@ -1154,16 +1156,16 @@ it('rebuilds clean view on page selection and exits on a page without text', () 
 
 
 describe('要領書を読んだ感想', () => {
-  afterEach(() => feedbackQuery.mockReset());
+  afterEach(() => { feedbackQuery.mockReset(); feedbackTargetMutate.mockReset(); });
 
   it('日付と4つの分類を右欄に表示し、同じボタンで閉じる', () => {
-    feedbackQuery.mockReturnValue({ data: {
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
       revisionNumber: 2, createdAt: '2026-11-26T17:50:00Z',
       questions: ['どこに治具を当てる？'],
       missing: ['測定回数があると助かる'],
       unclear: ['写真の右と左で迷う'],
       ideas: ['原点に矢印を置くと分かりそう'],
-    } });
+    } } });
     renderScreen(makeController());
     expect(feedbackQuery).toHaveBeenCalledWith(editorDocument.id);
 
@@ -1184,11 +1186,19 @@ describe('要領書を読んだ感想', () => {
     expect(panel).not.toBeInTheDocument();
   });
 
+  it('夜に読むボタンを押すと、今と逆の値で切り替える', () => {
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: false, feedback: null } });
+    renderScreen(makeController());
+    const button = screen.getByRole('button', { name: '夜に読む: しない', pressed: false });
+    fireEvent.click(button);
+    expect(feedbackTargetMutate).toHaveBeenCalledWith(true);
+  });
+
   it('感想と整えるを同時に表示しない', () => {
-    feedbackQuery.mockReturnValue({ data: {
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
       revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
       questions: ['どこを測る？'], missing: [], unclear: [], ideas: [],
-    } });
+    } } });
     const controller = makeController();
     const cancel = vi.fn();
     function Harness() {

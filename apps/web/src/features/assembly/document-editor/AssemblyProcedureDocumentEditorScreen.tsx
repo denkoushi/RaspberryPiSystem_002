@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { countProcedureMaterials, findAssemblyProcedureTextCandidates } from '../../../api/client';
-import { useAssemblyProcedureDocumentFeedback } from '../../../api/hooks/assembly-procedure-documents';
+import { useAssemblyProcedureDocumentFeedback, useSetAssemblyProcedureDocumentFeedbackTarget } from '../../../api/hooks/assembly-procedure-documents';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useMediaQuery } from '../../../hooks/useMediaQuery';
@@ -42,7 +42,9 @@ const partsPaneStoredValues = { on: 'open', off: 'closed' };
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
   const documentId = controller.document?.id;
-  const { data: feedback } = useAssemblyProcedureDocumentFeedback(controller.accessGranted ? documentId : undefined);
+  const { data: feedbackData } = useAssemblyProcedureDocumentFeedback(controller.accessGranted ? documentId : undefined);
+  const feedback = feedbackData?.feedback;
+  const setFeedbackTarget = useSetAssemblyProcedureDocumentFeedbackTarget(documentId);
   const [openFeedbackId, setOpenFeedbackId] = useState<string | null>(null);
   const feedbackOpen = Boolean(feedback && documentId && openFeedbackId === documentId);
   const feedbackAvailable = Boolean(feedback && documentId);
@@ -60,6 +62,13 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
       }
     },
   }), [feedbackAvailable, feedbackOpen, documentId, layoutActive, cancelLayout]);
+  const nightlyTarget = feedbackData?.nightlyTarget;
+  const { mutate: mutateFeedbackTarget, isPending: feedbackTargetPending } = setFeedbackTarget;
+  const nightlyTargetButton = useMemo(() => ({
+    on: nightlyTarget !== false,
+    disabled: controller.readOnly || nightlyTarget === undefined || feedbackTargetPending,
+    toggle: () => mutateFeedbackTarget(nightlyTarget === false),
+  }), [nightlyTarget, controller.readOnly, feedbackTargetPending, mutateFeedbackTarget]);
   const startLayoutSuggestion = controller.layoutSuggestions.start;
   const startLayout = useCallback(() => {
     setOpenFeedbackId(null);
@@ -474,7 +483,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         </aside>
         <AssemblyProcedureDocumentEditorCanvasToolbar controller={toolbarController} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
           voiceInputEnabled={voiceInputEnabled} onToggleVoiceInput={toggleVoiceInput}
-          feedbackButton={feedbackButton}
+          feedbackButton={feedbackButton} nightlyTargetButton={nightlyTargetButton}
           cleanView={cleanView} canShowCleanView={canShowCleanView} onToggleCleanView={toggleCleanView}
           twoPage={twoPage} onToggleTwoPage={canShowTwoPage ? toggleTwoPage : undefined}
           onMaterial={openMaterial} onVideo={openVideo} onPublish={openPublish} />

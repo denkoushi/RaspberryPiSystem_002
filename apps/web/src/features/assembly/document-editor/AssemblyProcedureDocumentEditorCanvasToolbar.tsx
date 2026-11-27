@@ -24,11 +24,13 @@ const icons: Record<string, ReactNode> = {
   twoPage: <><rect x="2.5" y="4" width="8.5" height="16" rx="1" /><rect x="13" y="4" width="8.5" height="16" rx="1" /></>,
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
   feedback: <path d="M20 5H4v11h4v4l5-4h7zM8 9h8M8 12h6" />,
+  nightlyOn: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />,
+  nightlyOff: <><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /><path d="M3 3l18 18" /></>,
   undo: <><path d="M9 5L4 10l5 5M4 10h9a6 6 0 016 6" /></>,
   redo: <><path d="M15 5l5 5-5 5M20 10h-9a6 6 0 00-6 6" /></>
 };
 
-export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, voiceInputEnabled, onToggleVoiceInput, feedbackButton, cleanView, canShowCleanView, onToggleCleanView, twoPage, onToggleTwoPage }: {
+export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, voiceInputEnabled, onToggleVoiceInput, feedbackButton, nightlyTargetButton, cleanView, canShowCleanView, onToggleCleanView, twoPage, onToggleTwoPage }: {
   controller: Pick<AssemblyProcedureDocumentEditorController,
     'readOnly' | 'busy' | 'canSave' | 'canPublish' | 'canUndo' | 'canRedo' |
     'canTogglePhotoSharpen' | 'photoSharpened' | 'togglePhotoSharpen' |
@@ -49,6 +51,7 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
   voiceInputEnabled: boolean;
   onToggleVoiceInput: () => void;
   feedbackButton: { available: boolean; open: boolean; toggle: () => void };
+  nightlyTargetButton: { on: boolean; disabled: boolean; toggle: () => void };
   materialCount: number | null;
   materialOpen: boolean;
   videoOpen: boolean;
@@ -84,6 +87,10 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
     {button('読んだ感想', 'feedback', feedbackButton.toggle, {
       disabled: !feedbackButton.available, pressed: feedbackButton.open,
       color: feedbackButton.open ? '!border-[#5fc3e8] !text-[#5fc3e8]' : undefined
+    })}
+    {button(nightlyTargetButton.on ? '夜に読む: する' : '夜に読む: しない', nightlyTargetButton.on ? 'nightlyOn' : 'nightlyOff', nightlyTargetButton.toggle, {
+      disabled: nightlyTargetButton.disabled, pressed: nightlyTargetButton.on,
+      color: nightlyTargetButton.on ? '!border-[#5fc3e8] !text-[#5fc3e8]' : undefined
     })}
     {separator}
     {button('元に戻す', 'undo', c.undo, { disabled: editingDisabled || !c.canUndo })}

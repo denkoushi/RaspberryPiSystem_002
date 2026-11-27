@@ -71,14 +71,31 @@ export async function getProcedureDocumentFeedback(documentId: string): Promise<
     select: { revisionMetadata: { select: { revisionRootId: true } } },
   });
   if (!document) throw new DomainHttpError(404, '手順書が見つかりません');
-  const feedback = await prisma.assemblyProcedureDocumentFeedback.findFirst({
-    where: { revisionRootId: document.revisionMetadata?.revisionRootId ?? documentId },
+  const revisionRootId = document.revisionMetadata?.revisionRootId ?? documentId;
+  const [feedback, optOut] = await Promise.all([prisma.assemblyProcedureDocumentFeedback.findFirst({
+    where: { revisionRootId },
     orderBy: [{ sourceUpdatedAt: 'desc' }, { revisionNumber: 'desc' }],
     select: { revisionNumber: true, createdAt: true, questions: true, missing: true, unclear: true, ideas: true },
-  });
+  }), prisma.assemblyProcedureDocumentFeedbackOptOut.findUnique({ where: { revisionRootId }, select: { revisionRootId: true } })]);
   return procedureDocumentFeedbackResponseSchema.parse({
     feedback: feedback && { ...feedback, createdAt: feedback.createdAt.toISOString() },
+    nightlyTarget: !optOut,
   });
+}
+
+export async function setProcedureDocumentFeedbackTarget(documentId: string, nightlyTarget: boolean): Promise<ProcedureDocumentFeedbackResponse> {
+  const document = await prisma.assemblyProcedureDocument.findUnique({
+    where: { id: documentId },
+    select: { revisionMetadata: { select: { revisionRootId: true } } },
+  });
+  if (!document) throw new DomainHttpError(404, '手順書が見つかりません');
+  const revisionRootId = document.revisionMetadata?.revisionRootId ?? documentId;
+  if (nightlyTarget) {
+    await prisma.assemblyProcedureDocumentFeedbackOptOut.deleteMany({ where: { revisionRootId } });
+  } else {
+    await prisma.assemblyProcedureDocumentFeedbackOptOut.createMany({ data: { revisionRootId }, skipDuplicates: true });
+  }
+  return getProcedureDocumentFeedback(documentId);
 }
 
 type Candidate = { id: string; updatedAt: Date };
@@ -195,8 +212,9 @@ export async function runProcedureDocumentFeedback(signal: AbortSignal) {
         ORDER BY f."sourceUpdatedAt" DESC
         LIMIT 1
       ) latest ON true
-      WHERE edited."updatedAt" > latest."sourceUpdatedAt"
-        OR (latest."sourceUpdatedAt" IS NULL AND edited."updatedAt" >= ${cutoff})
+      WHERE (edited."updatedAt" > latest."sourceUpdatedAt"
+        OR (latest."sourceUpdatedAt" IS NULL AND edited."updatedAt" >= ${cutoff}))
+        AND NOT EXISTS (SELECT 1 FROM "AssemblyProcedureDocumentFeedbackOptOut" o WHERE o."revisionRootId" = edited."rootId")
       ORDER BY edited."rootId", edited."updatedAt" DESC, edited."revisionNumber" DESC NULLS LAST, edited."id"
     ) candidates
     ORDER BY candidates."updatedAt" DESC, candidates."id"
