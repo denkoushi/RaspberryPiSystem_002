@@ -1,6 +1,7 @@
 import { readScheduleRowPresence } from '../schedule-row-presence.service.js';
 import { readMissingStandardHoursBoardRows, type MissingStandardHoursBoardRow } from '../missing-standard-hours-process.js';
 import { readPlanningTestBars } from './test-bars.js';
+import { isLaterProcessOrder } from '../process-order.js';
 import { findWaitingPlanningPairItemIds, planningPairPartners, readPlanningPairs } from './pairs.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
 import { readScheduleSourceExcludedFseibans, withScheduleSourceWhere } from './schedule-source.js';
@@ -273,17 +274,22 @@ const LSLH_SURFACE_INDEX_PREDICATE = Prisma.raw(
   + ` AND r."rowData"->>'FKOTEICD' IN (${LSLH_SURFACE_PROCESS_CODES.map((code) => `'${code}'`).join(', ')})`
 );
 
+/** True when every LSLH step of the order comes before this process, e.g. the regrind after the part comes back. */
+function isAfterEverySurfaceProcess(processOrder: string, surfaceOrders: readonly string[] | undefined): boolean {
+  return Boolean(surfaceOrders?.length) && surfaceOrders!.every((surface) => isLaterProcessOrder(processOrder, surface));
+}
+
 async function findLslhSurface(items: readonly GrindingPlanningBoardItem[]) {
-  if (!items.length) return { productNos: new Set<string>(), fhincds: new Set<string>() };
+  if (!items.length) return { productNos: new Set<string>(), fhincds: new Set<string>(), processOrdersByProductNo: new Map<string, string[]>() };
   const productNos = [...new Set(items.map((item) => item.productNo.trim()).filter(Boolean))];
   const fhincds = [...new Set(items.map((item) => item.fhincd))];
-  const matches = await prisma.$queryRaw<Array<{ productNo: string | null; fhincd: string | null }>>(Prisma.sql`
-    SELECT DISTINCT BTRIM(r."rowData"->>'FSEZONO') AS "productNo", NULL::text AS "fhincd"
+  const matches = await prisma.$queryRaw<Array<{ productNo: string | null; fhincd: string | null; processOrder: string | null }>>(Prisma.sql`
+    SELECT DISTINCT BTRIM(r."rowData"->>'FSEZONO') AS "productNo", NULL::text AS "fhincd", BTRIM(r."rowData"->>'FKOJUN') AS "processOrder"
     FROM "CsvDashboardRow" r
     WHERE ${LSLH_SURFACE_INDEX_PREDICATE}
       AND BTRIM(r."rowData"->>'FSEZONO') IN (${Prisma.join(productNos.length ? productNos : [''])})
     UNION ALL
-    SELECT NULL::text AS "productNo", p."fhincd"
+    SELECT NULL::text AS "productNo", p."fhincd", NULL::text AS "processOrder"
     FROM "ProductionSchedulePartProcessingType" p
     WHERE p."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND p."processingType" = 'LSLH'
@@ -291,7 +297,11 @@ async function findLslhSurface(items: readonly GrindingPlanningBoardItem[]) {
   `);
   return {
     productNos: new Set(matches.flatMap((row) => row.productNo == null ? [] : [row.productNo])),
-    fhincds: new Set(matches.flatMap((row) => row.fhincd == null ? [] : [row.fhincd]))
+    fhincds: new Set(matches.flatMap((row) => row.fhincd == null ? [] : [row.fhincd])),
+    processOrdersByProductNo: matches.reduce((orders, row) => {
+      if (row.productNo != null && row.processOrder) orders.set(row.productNo, [...orders.get(row.productNo) ?? [], row.processOrder]);
+      return orders;
+    }, new Map<string, string[]>())
   };
 }
 
@@ -394,6 +404,7 @@ async function readPlanningItemsWithArrival(page: readonly GrindingPlanningBoard
       isFirstProcess,
       firstProcessState,
       lslhSurface: lslhSurface.productNos.has(item.productNo.trim()) || lslhSurface.fhincds.has(item.fhincd),
+      ...(isAfterEverySurfaceProcess(item.processOrder, lslhSurface.processOrdersByProductNo.get(item.productNo.trim())) ? { afterLslhSurface: true } : {}),
       arrived,
       manualArrivalDate,
       ...(arrival ? { materialArrivalStatus: arrival.status,

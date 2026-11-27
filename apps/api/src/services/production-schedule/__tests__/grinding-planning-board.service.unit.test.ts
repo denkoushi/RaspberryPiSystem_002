@@ -308,7 +308,9 @@ describe('grinding planning board service orchestration', () => {
     const base = mocks.projectGrindingPlanningBoard().items[0];
     mocks.projectGrindingPlanningBoard.mockReturnValue({
       allItems: [], items: [
-        { ...base, itemId: 'code', productNo: 'CODE', fhincd: 'PAINT' },
+        { ...base, itemId: 'code', productNo: 'CODE', fhincd: 'PAINT', processOrder: '200' },
+        { ...base, itemId: 'regrind', productNo: 'CODE', fhincd: 'PAINT', processOrder: '710' },
+        { ...base, itemId: 'between', productNo: 'TWO', fhincd: 'PAINT', processOrder: '710' },
         { ...base, itemId: 'manual', productNo: 'MANUAL', fhincd: 'LSLH-PART' },
         { ...base, itemId: 'other', productNo: 'OTHER', fhincd: 'OTHER-PART' }
       ], load: [], unknownRequiredMinutesCount: 0, progress: { bySeiban: new Map() }
@@ -316,13 +318,14 @@ describe('grinding planning board service orchestration', () => {
     const query = mocks.prisma.$queryRaw.getMockImplementation()!;
     mocks.prisma.$queryRaw.mockImplementation(async (sql: unknown) => {
       if (JSON.stringify(sql).includes('FSEZONO')) return [
-        { productNo: 'CODE', fhincd: null }, { productNo: null, fhincd: 'LSLH-PART' }
+        { productNo: 'CODE', fhincd: null, processOrder: '700' }, { productNo: null, fhincd: 'LSLH-PART', processOrder: null },
+        { productNo: 'TWO', fhincd: null, processOrder: '700' }, { productNo: 'TWO', fhincd: null, processOrder: '0800' }
       ];
       return query(sql);
     });
     const result = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
-    expect(result.items.map(({ itemId, lslhSurface }) => [itemId, lslhSurface])).toEqual([
-      ['code', true], ['manual', true], ['other', false]
+    expect(result.items.map(({ itemId, lslhSurface, afterLslhSurface }) => [itemId, lslhSurface, afterLslhSurface ?? false])).toEqual([
+      ['code', true, false], ['regrind', true, true], ['between', true, false], ['manual', true, false], ['other', false, false]
     ]);
     const calls = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('FSEZONO'));
     expect(calls).toHaveLength(1);
