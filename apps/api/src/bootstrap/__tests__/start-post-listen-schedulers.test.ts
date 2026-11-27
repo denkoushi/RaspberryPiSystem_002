@@ -189,6 +189,7 @@ const EXPECTED_SCHEDULER_NAMES = [
   'advisory-check',
   'security-review-queue',
   'security-review-nightly',
+  'procedure-document-feedback',
   'business-hermes-nightly',
   'fkojunst-mail-superseded-prune',
   'file-storage-integrity-backfill',

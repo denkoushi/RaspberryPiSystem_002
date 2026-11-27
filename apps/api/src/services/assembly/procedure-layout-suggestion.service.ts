@@ -7,12 +7,12 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
-import { getAssemblyProcedureAssetStorage } from '../assembly-procedure-assets/index.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
 import type { AccessPasswordCaller } from '../production-schedule/production-schedule-settings.service.js';
+import { readAssemblyProcedureAssetAsJpeg } from './procedure-asset-jpeg.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 import { buildProcedureCaptionLearningPrompt } from './procedure-caption-learning-prompt.js';
 import { buildProcedureTextLearningPrompt } from './procedure-text-learning-prompt.js';
@@ -226,8 +226,7 @@ export class ProcedureLayoutSuggestionService {
           if (image.kind !== 'IMAGE') continue;
           const asset = assets.find(asset => asset.id === image.assetId);
           if (!asset) continue;
-          let imageBytes = await getAssemblyProcedureAssetStorage().read({ storageKey: asset.storageKey });
-          if ((await sharp(imageBytes).metadata()).format !== 'jpeg') imageBytes = await sharp(imageBytes).rotate().jpeg().toBuffer();
+          const imageBytes = await readAssemblyProcedureAssetAsJpeg({ storageKey: asset.storageKey });
           params.signal.throwIfAborted();
           const result = await (this.vision ?? getInferenceRuntime().createVisionCompletionPort()).complete({
             userText: photoInstruction(document.name, rows.indexOf(row) + 1, pageTexts, site, vocabularyPrompt + captionLearningPrompt), imageBytes, mimeType: 'image/jpeg',
