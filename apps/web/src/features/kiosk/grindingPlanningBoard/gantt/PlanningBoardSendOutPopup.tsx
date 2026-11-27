@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
@@ -65,6 +65,11 @@ export function PlanningBoardSendOutPopup({ label, resource, rows, today, chipsB
     lastPosition.current = next;
     setPosition(next);
   };
+  useLayoutEffect(() => {
+    const box = panel.current?.getBoundingClientRect();
+    if (!position || !box || box.right <= globalThis.innerWidth) return;
+    moveWindow({ left: Math.max(0, globalThis.innerWidth - box.width) / pageZoom(), top: position.top });
+  });
   const headerDrag = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const pending = useRef<Pending | null>(null);
   const suppressClick = useRef(false);
@@ -101,7 +106,7 @@ export function PlanningBoardSendOutPopup({ label, resource, rows, today, chipsB
       drag.lanes.current, drag.start, drag.dayWidth) : null;
 
   return createPortal(<section ref={panel} role="region" aria-labelledby={titleId} data-planning-send-out
-    className="fixed z-[100] flex max-h-[min(460px,calc(100%-32px))] w-[min(1180px,calc(100%-32px))] flex-col overflow-hidden rounded-[10px] border border-slate-600 bg-[#111a2c] text-slate-200 shadow-[0_20px_60px_rgba(0,0,0,.6)]"
+    className="fixed z-[100] flex max-h-[min(460px,calc(100%-32px))] w-max max-w-[calc(100%-32px)] flex-col overflow-hidden rounded-[10px] border border-slate-600 bg-[#111a2c] text-slate-200 shadow-[0_20px_60px_rgba(0,0,0,.6)]"
     style={position ?? { left: '50%', bottom: 16, transform: 'translateX(-50%)' }}>
     <header className="flex touch-none select-none items-center gap-3 border-b border-[#24324a] py-2 pl-4 pr-2 [cursor:move]"
       onPointerDown={(event) => {
@@ -131,8 +136,8 @@ export function PlanningBoardSendOutPopup({ label, resource, rows, today, chipsB
         className="ml-auto h-11 w-11 shrink-0 rounded-lg border border-[#24324a] text-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">×</button>
     </header>
     <div className="min-w-0 overflow-auto">
-      <table className="w-full border-separate border-spacing-0 whitespace-nowrap text-left text-[15px] [&_td]:border-b [&_td]:border-[#24324a] [&_td]:px-2.5 [&_td]:py-[7px]">
-        <thead><tr>{columns.map((column) => <th key={column} scope="col" className="sticky top-0 z-[1] border-b border-[#24324a] bg-[#16213a] px-2.5 py-[7px] text-[13px] text-slate-400">{column}</th>)}</tr></thead>
+      <table className="w-full border-separate border-spacing-0 whitespace-nowrap text-left text-[15px] [&_td]:border-b [&_td]:border-[#24324a] [&_td]:px-1.5 [&_td]:py-[7px]">
+        <thead><tr>{columns.map((column) => <th key={column} scope="col" className="sticky top-0 z-[1] border-b border-[#24324a] bg-[#16213a] px-1.5 py-[7px] text-[13px] text-slate-400">{column}</th>)}</tr></thead>
         <tbody>{rows.map(({ bar, sendOutDay }) => {
           const { item } = bar;
           const over = today - sendOutDay;
