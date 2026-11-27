@@ -1,7 +1,7 @@
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 
-type PowerAction = 'reboot' | 'poweroff';
+import type { PowerAction } from './powerAction';
 
 type KioskPowerConfirmModalProps = {
   isOpen: boolean;

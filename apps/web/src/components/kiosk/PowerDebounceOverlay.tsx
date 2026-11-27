@@ -1,6 +1,6 @@
 import { FullScreenOverlay } from '../ui/FullScreenOverlay';
 
-type PowerAction = 'reboot' | 'poweroff';
+import type { PowerAction } from './powerAction';
 
 type PowerDebounceOverlayProps = {
   action: PowerAction | null;
