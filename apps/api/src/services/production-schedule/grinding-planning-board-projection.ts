@@ -81,7 +81,7 @@ export function isGrindingPlanningBoardRowCompleted(detail: { productionSchedule
   );
 }
 
-function normalizeResourceCd(value: string | null | undefined): string | null {
+export function normalizeGrindingPlanningBoardResourceCd(value: string | null | undefined): string | null {
   const normalized = value?.trim() ?? '';
   return normalized.length > 0 ? normalized : null;
 }
@@ -341,7 +341,7 @@ function buildItems(
     const fseiban = rowValue(data, 'FSEIBAN');
     const detail = params.details.get(row.id);
     if (!detail) continue;
-    const originalResourceCd = normalizeResourceCd(rowValue(data, 'FSIGENCD'));
+    const originalResourceCd = normalizeGrindingPlanningBoardResourceCd(rowValue(data, 'FSIGENCD'));
     if (!isInCategory(originalResourceCd, params.category, predicate)) continue;
 
     const sourceMinutes = parseRequiredMinutes(data);
@@ -353,7 +353,7 @@ function buildItems(
     const rowItemId = buildGrindingPlanningBoardRowItemIdFromKey(scheduleRowKey);
     const itemId = rowItemId;
     const override = params.overrides.get(itemId);
-    const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? originalResourceCd);
+    const effectiveResourceCd = normalizeGrindingPlanningBoardResourceCd(override?.overrideResourceCd ?? originalResourceCd);
 
     const displayFields = { plannedQuantity: sourceQuantity, machineRequiredMinutes: sourceMinutes ?? undefined };
     const resolvedMinutes = resolveRequiredMinutes({ originalMinutes: sourceMinutes, originalKnown: sourceMinutes != null,
@@ -374,7 +374,7 @@ function buildItems(
     });
     const rankRow = params.ranks.rows.get(row.id);
     const originalRank =
-      rankRow != null && normalizeResourceCd(rankRow.resourceCd) === originalResourceCd
+      rankRow != null && normalizeGrindingPlanningBoardResourceCd(rankRow.resourceCd) === originalResourceCd
         ? rankRow.orderNumber
         : null;
     const itemProgress = progressForItem(
@@ -465,9 +465,9 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.originalRequiredMinutes != null && parent.originalRequiredMinutes > 0
         ? parent.originalRequiredMinutes * piece.quantity / total : null;
       const resolvedMinutes = resolveRequiredMinutes({ originalMinutes: minutes, originalKnown: minutes != null,
-        quantity: piece.quantity, includeSetup: piece.position === firstPosition, effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
+        quantity: piece.quantity, includeSetup: piece.position === firstPosition, effectiveResourceCd: normalizeGrindingPlanningBoardResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
         fhincd: parent.fhincd }, params.resourceMinutes);
-      const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd);
+      const effectiveResourceCd = normalizeGrindingPlanningBoardResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd);
       const partMinutes = minutesByPart.get(JSON.stringify([effectiveResourceCd, parent.fhincd.trim()]));
       const ops = partMinutes?.ops ?? [];
       const opNos = new Set(ops.map((op) => op.opNo));
@@ -495,7 +495,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
         quantityWarning: set.quantityWarning as GrindingPlanningBoardItem['quantityWarning'],
         manualIsCompleted: piece.isCompleted, isCompleted,
         completionSource: external ? 'import' : piece.isCompleted ? 'manual' : null,
-        effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
+        effectiveResourceCd: normalizeGrindingPlanningBoardResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
         effectiveDueDate, alternateRank: override?.alternateRank ?? null,
         orderPinned: override?.orderPinned ?? false, specialDue: specialDueForOverride(override),
         version: own?.version ?? 0, ...resolvedMinutes, ...unitFields,
@@ -532,7 +532,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
           ownRequiredMinutes: unitRequiredMinutes === null ? null : unitRequiredMinutes + setupMinutes,
           originalRequiredMinutes: null, requiredMinutesKnown: unitRequiredMinutes !== null, requiredMinutesSource: 'own',
           isCompleted: isCompleted || (rangeOps.length > 0 && rangeOps.every((op) => completedOpNos.includes(op.opNo))),
-          effectiveResourceCd: normalizeResourceCd(rangeOverride?.overrideResourceCd ?? parent.originalResourceCd),
+          effectiveResourceCd: normalizeGrindingPlanningBoardResourceCd(rangeOverride?.overrideResourceCd ?? parent.originalResourceCd),
           effectiveDueDate: rangeEffectiveDueDate,
           alternateRank: rangeOverride?.alternateRank ?? null, orderPinned: rangeOverride?.orderPinned ?? false,
           specialDue: specialDueForOverride(rangeOverride), version: rangeOwn?.version ?? 0,

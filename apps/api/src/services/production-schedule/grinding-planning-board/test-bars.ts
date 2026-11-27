@@ -5,7 +5,7 @@ import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlann
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { buildPartKey, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
+import { buildPartKey, normalizeGrindingPlanningBoardResourceCd, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSets, sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
@@ -101,12 +101,12 @@ async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 
         const overrides = await readOverrides(tx, siteKey);
         const pieceSets = await readSessakuPieceSets(tx, winners);
         const references = new Set(referenceIds);
-        let inferredResource = tests.testBars.find((item) => item.itemId === referenceIds[0])?.resourceCd;
+        let inferredResource: string | null | undefined = tests.testBars.find((item) => item.itemId === referenceIds[0])?.resourceCd;
         const candidates = winners.map((row) => {
           const logicalKey = sessakuPieceKeyFromRow(row.rowData);
           const partKey = buildPartKey(logicalKey.fseiban, logicalKey.productNo, logicalKey.fhincd);
           const original = logicalKey.fsigencd.trim();
-          const resources = new Set<string>();
+          const resources = new Set<string | null>();
           let referenced = false;
           if (isCategoryResource(original, 'all', policy)) {
             const key = encodeSessakuPieceKey(logicalKey);
@@ -115,7 +115,7 @@ async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 
             for (const itemId of pieces?.length ? pieces.flatMap(sessakuPieceItemIds) : [parentId]) {
               // A piece's own override replaces the whole inherited override, even with a null resource.
               const override = overrides.get(itemId) ?? overrides.get(parentId);
-              const resource = override?.overrideResourceCd?.trim() || original;
+              const resource = normalizeGrindingPlanningBoardResourceCd(override?.overrideResourceCd ?? original);
               resources.add(resource);
               if (references.has(itemId)) referenced = true;
               if (itemId === referenceIds[0]) inferredResource = resource;
