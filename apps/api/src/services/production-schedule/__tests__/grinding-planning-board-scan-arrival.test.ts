@@ -140,25 +140,44 @@ describe('grinding arrival scans', () => {
     expect(await run()).toMatchObject({ resolutionStatus: 'RESOLVED', arrival: { itemId: buildGrindingPlanningBoardRowItemId(rows[1]!.rowData) } });
   });
 
-  it('resolves a purchase order number through its seiban and part code', async () => {
+  const purchase = { seiban: 'S ', purchasePartCodeMatchKey: 'PART', purchasePartCodeNormalized: 'PART', purchasePartName: '足' };
+  const purchaseRows = [
+    { rowId: 'r', productNo: '0000012345', fhincd: 'PART-001', fsigencd: 'G1' },
+    { rowId: 'o', productNo: '0000011111', fhincd: 'PART', fsigencd: 'G1' },
+    { rowId: 'x', productNo: '0000099999', fhincd: 'OTHER', fsigencd: 'G1' }
+  ];
+  const scanPurchase = () => applyGrindingPlanningBoardScanArrival({ ...input, manufacturingOrderBarcodeRaw: '0005554987' });
+
+  it('resolves a purchase order number to the only order with an incomplete grinding process', async () => {
     mocks.lookup.mockResolvedValue([]);
-    mocks.purchases.mockResolvedValue([{ seiban: 'S ', purchasePartCodeRaw: 'part', purchasePartCodeNormalized: 'PART' }]);
-    mocks.bySeiban.mockResolvedValue([
-      { rowId: 'r', productNo: '12345', fhincd: 'PART', fsigencd: 'G1' },
-      { rowId: 'x', productNo: '99999', fhincd: 'OTHER', fsigencd: 'G1' }
-    ]);
-    const result = await applyGrindingPlanningBoardScanArrival({ ...input, manufacturingOrderBarcodeRaw: '0005554987' });
-    expect(result).toMatchObject({ resolutionStatus: 'RESOLVED', arrival: { itemId: 'r', productNo: '0005554987' } });
+    mocks.purchases.mockResolvedValue([purchase]);
+    mocks.bySeiban.mockResolvedValue(purchaseRows);
+    mocks.projection.mockResolvedValue({ byItemId: new Map([
+      ['r', { ...item('r', '020'), productNo: '0000012345' }], ['o', { ...item('o', '010', true), productNo: '0000011111' }]
+    ]) });
+    expect(await scanPurchase()).toMatchObject({ resolutionStatus: 'RESOLVED', arrival: { itemId: 'r', productNo: '0005554987' } });
     expect(mocks.purchases).toHaveBeenCalledWith('0005554987');
     expect(mocks.bySeiban).toHaveBeenCalledWith('S');
-    expect(mocks.rows).toHaveBeenCalledWith(mocks.tx, ['r']);
+    expect(mocks.rows).toHaveBeenCalledWith(mocks.tx, ['r', 'o']);
+  });
+
+  it('leaves a purchase order number unresolved when two orders have incomplete grinding processes', async () => {
+    mocks.lookup.mockResolvedValue([]);
+    mocks.purchases.mockResolvedValue([purchase]);
+    mocks.bySeiban.mockResolvedValue(purchaseRows);
+    mocks.projection.mockResolvedValue({ byItemId: new Map([
+      ['r', { ...item('r', '020'), productNo: '0000012345' }], ['o', { ...item('o', '010'), productNo: '0000011111' }]
+    ]) });
+    expect(await scanPurchase()).toMatchObject({ resolutionStatus: 'UNRESOLVED' });
+    expect(arrival.create).not.toHaveBeenCalled();
+    expect(first.upsert).not.toHaveBeenCalled();
   });
 
   it('leaves a purchase order number with several seibans unresolved', async () => {
     mocks.lookup.mockResolvedValue([]);
     mocks.purchases.mockResolvedValue([
-      { seiban: 'S', purchasePartCodeRaw: 'PART', purchasePartCodeNormalized: 'PART' },
-      { seiban: 'T', purchasePartCodeRaw: 'PART', purchasePartCodeNormalized: 'PART' }
+      { seiban: 'S', purchasePartCodeMatchKey: 'PART', purchasePartCodeNormalized: 'PART', purchasePartName: '足' },
+      { seiban: 'T', purchasePartCodeMatchKey: 'PART', purchasePartCodeNormalized: 'PART', purchasePartName: '足' }
     ]);
     const result = await applyGrindingPlanningBoardScanArrival({ ...input, manufacturingOrderBarcodeRaw: '0005554987' });
     expect(result).toMatchObject({ resolutionStatus: 'UNRESOLVED' });
