@@ -21,12 +21,13 @@ const icons: Record<string, ReactNode> = {
   sharpen: <path d="M12 3l9 9-9 9-9-9zM9 12h6M12 9v6" />,
   layout: <><rect x="4" y="4" width="6" height="5" rx="1" /><rect x="4" y="13" width="6" height="5" rx="1" /><path d="M14 5h6M14 8h6M14 14h6M14 17h6" /></>,
   clean: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M8.5 8h.1m-.1 4.5h.1m-.1 4.5h.1M11.5 8H16m-4.5 4.5H16m-4.5 4.5H16" /></>,
+  twoPage: <><rect x="2.5" y="4" width="8.5" height="16" rx="1" /><rect x="13" y="4" width="8.5" height="16" rx="1" /></>,
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
   undo: <><path d="M9 5L4 10l5 5M4 10h9a6 6 0 016 6" /></>,
   redo: <><path d="M15 5l5 5-5 5M20 10h-9a6 6 0 00-6 6" /></>
 };
 
-export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, voiceInputEnabled, onToggleVoiceInput, cleanView, canShowCleanView, onToggleCleanView }: {
+export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, voiceInputEnabled, onToggleVoiceInput, cleanView, canShowCleanView, onToggleCleanView, twoPage, onToggleTwoPage }: {
   controller: Pick<AssemblyProcedureDocumentEditorController,
     'readOnly' | 'busy' | 'canSave' | 'canPublish' | 'canUndo' | 'canRedo' |
     'canTogglePhotoSharpen' | 'photoSharpened' | 'togglePhotoSharpen' |
@@ -42,6 +43,8 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
   cleanView: boolean;
   canShowCleanView: boolean;
   onToggleCleanView: () => void;
+  twoPage: boolean;
+  onToggleTwoPage?: () => void;
   voiceInputEnabled: boolean;
   onToggleVoiceInput: () => void;
   materialCount: number | null;
@@ -71,6 +74,10 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
       { disabled: editingDisabled || !c.canTogglePhotoSharpen, pressed: c.photoSharpened })}
     {button('整える', 'layout', () => void c.startLayout(), { disabled: editingDisabled || !c.canSuggest, pressed: c.layoutLocked, color: '!border-[#5fc3e8] !text-[#5fc3e8]' })}
     {button(cleanView ? '元のページに戻る' : '清書で見る', 'clean', onToggleCleanView, { disabled: !canShowCleanView, pressed: cleanView })}
+    {onToggleTwoPage && button('2ページで表示', 'twoPage', onToggleTwoPage, {
+      pressed: twoPage, disabled: c.busy || c.saving,
+      color: twoPage ? '!border-[#5fc3e8] !text-[#5fc3e8]' : undefined
+    })}
     {button('音声入力', 'mic', onToggleVoiceInput, { disabled: editingDisabled, pressed: voiceInputEnabled, target: 'assembly-document-editor-voice-input', color: voiceInputEnabled ? '!border-[#7cc4ff] !bg-[#7cc4ff1f] !text-[#7cc4ff]' : undefined })}
     {separator}
     {button('元に戻す', 'undo', c.undo, { disabled: editingDisabled || !c.canUndo })}

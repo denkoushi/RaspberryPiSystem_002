@@ -15,7 +15,7 @@ function renderToolbar({ workshop = false, locked = false, readOnly = false, isD
     save: vi.fn(), navigateBack: vi.fn(), undo: vi.fn(), redo: vi.fn()
   } as unknown as ComponentProps<typeof AssemblyProcedureDocumentEditorCanvasToolbar>['controller'];
   const onToggleCleanView = vi.fn();
-  render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} cleanView={cleanView} canShowCleanView={canShowCleanView} onToggleCleanView={onToggleCleanView} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} />);
+  render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} cleanView={cleanView} canShowCleanView={canShowCleanView} onToggleCleanView={onToggleCleanView} twoPage={false} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} />);
   return { controller, onToggleCleanView };
 }
 

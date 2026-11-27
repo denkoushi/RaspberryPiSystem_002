@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { countProcedureMaterials, findAssemblyProcedureTextCandidates } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
@@ -31,6 +31,15 @@ import { useRotationImagePreload } from './useRotationImagePreload';
 
 import type { AssemblyProcedureDocumentPageDto } from '../types';
 import type { AssemblyProcedureImageOverlayElement } from '@raspi-system/shared-types';
+
+const twoPageStorageKey = 'assembly-document-editor-two-page';
+const narrowEditorQuery = '(max-width: 1099px)';
+function subscribeToEditorWidth(onChange: () => void) {
+  const media = window.matchMedia?.(narrowEditorQuery);
+  media?.addEventListener('change', onChange);
+  return () => media?.removeEventListener('change', onChange);
+}
+const isNarrowEditor = () => window.matchMedia?.(narrowEditorQuery).matches ?? false;
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
@@ -68,6 +77,11 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   }, [voiceInputEnabled]);
   const [partsPaneOpen, setPartsPaneOpen] = useState(() => {
     try { return localStorage.getItem('assembly-document-editor-parts-pane') !== 'closed'; }
+    catch { return true; }
+  });
+  const narrowEditor = useSyncExternalStore(subscribeToEditorWidth, isNarrowEditor, () => false);
+  const [twoPageEnabled, setTwoPageEnabled] = useState(() => {
+    try { return localStorage.getItem(twoPageStorageKey) !== 'off'; }
     catch { return true; }
   });
   const [hiddenOverlayIds, setHiddenOverlayIds] = useState<Set<string>>(() => new Set());
@@ -114,6 +128,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
       .join(' '),
   });
   const overlayLayerRef = useRef<HTMLDivElement>(null);
+  const adjacentLayerRef = useRef<HTMLDivElement>(null);
   const overlayInteractionActive = useRef(false);
   const canvasSaving = controller.saving || controller.busy || !controller.editLeaseMine;
   const [materialRevision, setMaterialRevision] = useState(0);
@@ -168,6 +183,25 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     return next;
   }, [controllerElements, controllerPages]);
   const selectedPage = controller.selectedPage;
+  const documentId = controller.document?.id;
+  const pagePosition = pages.findIndex(page => page.pageIndex === selectedPage?.pageIndex);
+  const canShowTwoPage = !narrowEditor && !cleanView && pages.length > 1 && pagePosition >= 0;
+  const twoPage = canShowTwoPage && twoPageEnabled;
+  const [spread, setSpread] = useState({ documentId, start: 0 });
+  const keepSpread = twoPage && spread.documentId === documentId && spread.start < pages.length - 1 &&
+    (pagePosition === spread.start || pagePosition === spread.start + 1);
+  const spreadStart = keepSpread ? spread.start : Math.max(0, Math.min(pagePosition, pages.length - 2));
+  const adjacentPage = twoPage ? pages[pagePosition === spreadStart ? spreadStart + 1 : spreadStart] : undefined;
+  if (spread.documentId !== documentId || spread.start !== spreadStart) {
+    setSpread({ documentId, start: spreadStart });
+  }
+  const toggleTwoPage = useCallback(() => {
+    if (overlayInteractionActive.current) return;
+    const enabled = !twoPageEnabled;
+    setTwoPageEnabled(enabled);
+    try { localStorage.setItem(twoPageStorageKey, enabled ? 'on' : 'off'); }
+    catch { /* The editor remains usable when local storage is unavailable. */ }
+  }, [twoPageEnabled]);
   const visibleElements = useMemo(() => controller.layoutSuggestions.previewElements ??
     (controller.layoutSuggestions.locked ? controller.selectedPageElements :
       controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id))),
@@ -188,13 +222,13 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const materialDrag = useMaterialDrag({
     layerRef: overlayLayerRef,
     elements: visibleElements,
+    adjacentPage: adjacentPage && { layerRef: adjacentLayerRef, pageIndex: adjacentPage.pageIndex, elements: adjacentPage.overlays ?? [] },
     enabled: !cleanView && !controller.readOnly && !controller.busy && !controller.conflict && !controller.layoutSuggestions.locked && controller.editLeaseMine,
     pageIndex: controller.selectedPageIndex,
     place: placeMaterial,
     onError: error => controller.setErrorMessage(readAssemblyApiErrorMessage(error, '素材の配置に失敗しました。'))
   });
   const closeInspector = useCallback(() => setSelectedOverlayId(null), [setSelectedOverlayId]);
-  const documentId = controller.document?.id;
   const readPhotoText = useMemo(() => documentId ? (image: AssemblyProcedureImageOverlayElement) => findAssemblyProcedureTextCandidates({
     id: documentId, accessPassword: controller.passwordInput, pageIndex: image.pageIndex, bbox: image.bbox, photoOnly: true,
     overlays: [{ assetId: image.assetId, bbox: image.bbox, zIndex: image.zIndex, objectFit: image.objectFit }]
@@ -256,7 +290,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   }
 
   return (
-    <main className={`relative grid min-h-0 flex-1 [--details-width:min(400px,26vw)] max-[1099px]:[--details-width:0px] ${partsPaneOpen ? 'grid-cols-[120px_280px_minmax(0,1fr)_var(--details-width)_64px]' : 'grid-cols-[120px_0_minmax(0,1fr)_var(--details-width)_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`} data-testid="assembly-document-editor-layout">
+    <main className={`relative grid min-h-0 flex-1 ${twoPage ? '[--details-width:200px]' : '[--details-width:min(400px,26vw)]'} max-[1099px]:[--details-width:0px] ${partsPaneOpen ? 'grid-cols-[120px_280px_minmax(0,1fr)_var(--details-width)_64px]' : 'grid-cols-[120px_0_minmax(0,1fr)_var(--details-width)_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`} data-testid="assembly-document-editor-layout">
       {preloader}
       {controller.document?.status === 'draft' && (!controller.editLeaseMine || controller.editLeaseUnavailable) ? (
         <div className="absolute bottom-16 left-[136px] z-50 flex max-w-[calc(100%-216px-var(--details-width))] flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-[#161c22] px-3 py-2" role="status">
@@ -327,10 +361,17 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         </button>
         <section className="relative col-start-3 min-h-0 min-w-0 overflow-hidden p-2" aria-label="手順書キャンバス"
           onPointerDownCapture={event => {
-            if (cleanView || !event.isPrimary || event.button !== 0 || canvasSaving || overlayInteractionActive.current || controller.selectionMode || controller.layoutSuggestions.locked) return;
-            const target = event.target as HTMLElement;
+            if (cleanView || canvasSaving || controller.layoutSuggestions.locked) return;
+            const target = event.target as Element;
+            const sheet = target.closest<HTMLElement>('[data-editor-spread-page]');
+            const adjacentPage = sheet && Number(sheet.dataset.editorSpreadPage) !== selectedPage.pageIndex;
+            if (!event.isPrimary || event.button !== 0 || overlayInteractionActive.current) {
+              if (adjacentPage) event.stopPropagation();
+              return;
+            }
             if (target.closest('[data-overlay-id], [data-overlay-resize-handle], textarea, [role="status"], [role="alert"], [data-editor-approval]')) return;
-            setSelectedOverlayId(null);
+            if (adjacentPage) controller.setSelectedPageIndex(Number(sheet.dataset.editorSpreadPage));
+            else if (!controller.selectionMode) setSelectedOverlayId(null);
           }}>
           {cleanView ? <AssemblyProcedureCleanView
             key={`${controller.document?.id}:${selectedPage.pageIndex}`}
@@ -339,31 +380,44 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             pageCount={pages.length}
             steps={cleanSteps}
             assets={controller.document?.assets}
-          /> : <AssemblyProcedureDocumentEditorCanvas
-            saving={canvasSaving}
-            onUpdateText={live.status === 'idle' ? controller.commitInlineText : undefined}
-            registerInlineTextFlush={controller.registerInlineTextFlush}
-            onInlineEditingChange={setInlineEditingId}
-            onDraftChange={controller.onInlineDraftChange}
-            layerRef={overlayLayerRef}
-            materialPreview={materialDrag.preview}
-            pageUrl={selectedPage.imageRelativePath}
-            pageIndex={selectedPage.pageIndex}
-            elements={canvasElements}
-            imageAngles={rotationPreview?.imageAngles}
-            selectionMode={controller.selectionMode}
-            editable={!controller.readOnly}
-            locked={controller.layoutSuggestions.locked}
-            selectedOverlayId={controller.selectedOverlayId}
-            onSelectOverlay={controller.setSelectedOverlayId}
-            onNudgeOverlay={controller.nudgeElement}
-            onUpdateOverlayBBox={controller.updateElementBBox}
-            onInteractionStart={() => { overlayInteractionActive.current = true; controller.beginOverlayDrag(); }}
-            onInteractionEnd={() => { overlayInteractionActive.current = false; controller.endOverlayDrag(); }}
-            onRangeSelected={controller.handleRangeSelected}
-            assets={controller.document?.assets}
-            className="h-full w-full !bg-[#0a0d10]"
-          />}
+          /> : <div className={twoPage ? 'grid h-full grid-cols-2 grid-rows-1 gap-4' : 'contents'}>
+            {(twoPage ? pages.slice(spreadStart, spreadStart + 2) : [selectedPage]).map(page => {
+              const current = page.pageIndex === selectedPage.pageIndex;
+              return <div key={`${documentId}:${page.pageIndex}`}
+                data-editor-spread-page={twoPage ? page.pageIndex : undefined}
+                className={twoPage ? 'min-h-0 min-w-0 overflow-hidden' : 'contents'}>
+                <AssemblyProcedureDocumentEditorCanvas
+                  spreadPage={twoPage ? (current ? 'current' : 'adjacent') : undefined}
+                  saving={canvasSaving}
+                  onUpdateText={current && live.status === 'idle' ? controller.commitInlineText : undefined}
+                  registerInlineTextFlush={current ? controller.registerInlineTextFlush : undefined}
+                  onInlineEditingChange={current ? setInlineEditingId : undefined}
+                  onDraftChange={current ? controller.onInlineDraftChange : undefined}
+                  layerRef={current ? overlayLayerRef : adjacentLayerRef}
+                  materialPreview={materialDrag.preview?.pageIndex === page.pageIndex ? materialDrag.preview : undefined}
+                  pageUrl={page.imageRelativePath}
+                  pageIndex={page.pageIndex}
+                  elements={current ? canvasElements : (page.overlays ?? [])}
+                  imageAngles={current ? rotationPreview?.imageAngles : undefined}
+                  selectionMode={current && controller.selectionMode}
+                  editable={!controller.readOnly && (current || !controller.selectionMode)}
+                  locked={controller.layoutSuggestions.locked}
+                  selectedOverlayId={current ? controller.selectedOverlayId : null}
+                  onSelectOverlay={current ? controller.setSelectedOverlayId : id => {
+                    if (controller.selectionMode) controller.setSelectionMode(false);
+                    controller.setSelectedPageIndex(page.pageIndex, id);
+                  }}
+                  onNudgeOverlay={current ? controller.nudgeElement : undefined}
+                  onUpdateOverlayBBox={controller.updateElementBBox}
+                  onInteractionStart={() => { overlayInteractionActive.current = true; controller.beginOverlayDrag(); }}
+                  onInteractionEnd={() => { overlayInteractionActive.current = false; controller.endOverlayDrag(); }}
+                  onRangeSelected={controller.handleRangeSelected}
+                  assets={controller.document?.assets}
+                  className="h-full w-full !bg-[#0a0d10]"
+                />
+              </div>;
+            })}
+          </div>}
           {!cleanView ? <AssemblyProcedureLayoutSuggestionPanel suggestions={controller.layoutSuggestions} /> : null}
           {controller.document?.lastApproval ? <p data-editor-approval className="absolute bottom-16 left-4 max-w-[calc(100%-32px)] rounded bg-[#161c22eb] px-3 py-1 text-xs text-[#9fadb9]">
             承認: {controller.document.lastApproval.employeeName}{controller.document.lastApproval.positionName ? `(${controller.document.lastApproval.positionName})` : ''} {new Date(controller.document.lastApproval.approvedAt).toLocaleString('ja-JP')}
@@ -384,10 +438,10 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             </div>
           ) : null}
         </section>
-        <aside className={`col-start-4 flex min-h-0 min-w-0 flex-col border-l border-[#27313b] bg-[#161c22] max-[1099px]:absolute max-[1099px]:col-auto max-[1099px]:right-20 max-[1099px]:top-4 max-[1099px]:bottom-4 max-[1099px]:z-50 max-[1099px]:w-[340px] max-[1099px]:rounded-[14px] max-[1099px]:border max-[1099px]:bg-[#161c22f5] ${partsPaneOpen ? 'max-[1099px]:max-w-[calc(100%-480px)]' : 'max-[1099px]:max-w-[calc(100%-200px)]'} ${!cleanView && controller.selectedElement ? '' : 'max-[1099px]:hidden'}`} data-testid="assembly-document-editor-details">
+        <aside className={`col-start-4 flex min-h-0 min-w-0 flex-col border-l border-[#27313b] bg-[#161c22] [container:assembly-details/inline-size] max-[1099px]:absolute max-[1099px]:col-auto max-[1099px]:right-20 max-[1099px]:top-4 max-[1099px]:bottom-4 max-[1099px]:z-50 max-[1099px]:w-[340px] max-[1099px]:rounded-[14px] max-[1099px]:border max-[1099px]:bg-[#161c22f5] ${partsPaneOpen ? 'max-[1099px]:max-w-[calc(100%-480px)]' : 'max-[1099px]:max-w-[calc(100%-200px)]'} ${!cleanView && controller.selectedElement ? '' : 'max-[1099px]:hidden'}`} data-testid="assembly-document-editor-details">
           <div className="flex shrink-0 flex-col items-start gap-2 border-b border-[#27313b] px-[14px] py-[10px] text-[17px] text-[#9fadb9]">
             <b className="w-full whitespace-normal break-words text-[#eef3f6]">{context ? [context.processName.startsWith('共通') ? '' : context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}</b>
-            {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>
+            {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold [@container_assembly-details_(width<300px)]:h-auto [@container_assembly-details_(width<300px)]:min-h-[26px] [@container_assembly-details_(width<300px)]:max-w-full [@container_assembly-details_(width<300px)]:rounded-[13px] [@container_assembly-details_(width<300px)]:py-0.5 ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>
               {context.mode === 'make' ? '作る' : '直す'} · {controller.document?.supersedesDocumentId ? '改版の下書き' : '下書き'} 第{controller.document?.revisionNumber ?? 1}版
             </span> : null}
           </div>
@@ -423,6 +477,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         <AssemblyProcedureDocumentEditorCanvasToolbar controller={toolbarController} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
           voiceInputEnabled={voiceInputEnabled} onToggleVoiceInput={toggleVoiceInput}
           cleanView={cleanView} canShowCleanView={canShowCleanView} onToggleCleanView={toggleCleanView}
+          twoPage={twoPage} onToggleTwoPage={canShowTwoPage ? toggleTwoPage : undefined}
           onMaterial={openMaterial} onVideo={openVideo} onPublish={openPublish} />
 
       {materialShelfOpen ? <ProcedureMaterialShelfDialog resources={shelfResources} mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? replaceImageMaterial : placeMaterial} onCreatedDocument={async (documentId) => {

@@ -249,6 +249,12 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   ]);
   const revisionCommands = useAssemblyProcedureDocumentRevisionCommands(revisionSession);
   const { loadDocument } = revisionCommands;
+  const setSelectedPage = useCallback((pageIndex: number, overlayId: string | null = null) => {
+    if (layoutSuggestions.locked) return;
+    flushInlineText();
+    setSelectedPageIndex(pageIndex);
+    setSelectedOverlayId(overlayId); setPendingRange(null);
+  }, [layoutSuggestions.locked, flushInlineText]);
   const overlaySession = useMemo(() => ({
     materialPlacementAllowed: !conflict && editLease.mine,
     materialPlacementScope: materialScope.current,
@@ -270,6 +276,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setPendingRange,
     setSelectionMode,
     setSelectedOverlayId,
+    setSelectedPage,
+    flushInlineText,
     setTextCandidates,
     setTextCandidateRange,
     dispatch,
@@ -294,6 +302,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     beforeMaterialPlacement,
     cancelMaterialPlacement,
     trackMaterialPlacement,
+    setSelectedPage,
+    flushInlineText,
     materialScope, setBusy
   ]);
   const overlayCommands = useAssemblyProcedureDocumentOverlayCommands(overlaySession);
@@ -374,13 +384,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setPendingRange(null);
     setSelectionMode(false);
   }, []);
-  const setSelectedPage = useCallback((pageIndex: number) => {
-    if (layoutSuggestions.locked) return;
-    flushInlineText();
-    setSelectedPageIndex(pageIndex);
-    setSelectedOverlayId(null);
-    setPendingRange(null);
-  }, [layoutSuggestions.locked, flushInlineText]);
 
   const updateElement = useCallback((element: AssemblyProcedureOverlayElement) => {
     if (!readOnly && !busyRef.current) dispatch({ type: 'update', element });
