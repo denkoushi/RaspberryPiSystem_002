@@ -37,10 +37,13 @@ import json, sys
 base, overlay = [json.load(open(p)) for p in sys.argv[1:]]
 db = overlay['services']['db']
 assert not base['services']['db'].get('ports')
-assert base['services']['db']['command'] == ['postgres']
-print('PASS: base remains internal only with original command')
+MEM = ['-c', 'shared_buffers=1GB', '-c', 'work_mem=16MB', '-c', 'log_temp_files=10MB']
+assert base['services']['db']['command'] == ['postgres'] + MEM
+print('PASS: base remains internal only with memory settings')
 assert db['entrypoint'] == ['/usr/local/bin/db-start-guard.sh']
-assert db['command'] == ['postgres', '-c', 'wal_level=replica', '-c',
+assert db['command'][:len(MEM) + 1] == ['postgres'] + MEM
+print('PASS: replication overlay keeps the same memory settings')
+assert db['command'] == ['postgres'] + MEM + ['-c', 'wal_level=replica', '-c',
     'max_wal_senders=4', '-c', 'max_replication_slots=4', '-c',
     'max_slot_wal_keep_size=1024MB', '-c', 'synchronous_standby_names=', '-c',
     'hba_file=/var/lib/postgresql/18/docker/replication-primary-pg_hba.conf']

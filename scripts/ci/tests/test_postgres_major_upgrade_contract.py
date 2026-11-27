@@ -34,6 +34,7 @@ class PostgresMajorUpgradeContractTest(unittest.TestCase):
         self.assertEqual(argv(db.get("entrypoint")), [GUARD])
         command = argv(db.get("command"))
         self.assertEqual(command[0], "postgres")
+        self.assertEqual(len(command) % 2, 1)
         # 残りは `-c name=value` の設定だけ(KB-459)
         self.assertEqual(command[1::2], ["-c"] * (len(command) // 2))
         self.assertTrue(all("=" in value for value in command[2::2]))

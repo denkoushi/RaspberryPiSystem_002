@@ -9,7 +9,7 @@ category: knowledge-base
 
 # KB-459: Pi5 の Postgres のメモリ設定を見直す
 
-- Status: 設定を変更(このKBと同じ PR)。本番の db の作り直しは別の作業
+- Status: 設定を変更(このKBと同じ PR)。本番反映待ち(db の作り直しは別の作業)
 - Date: 2026-11-28
 - Data: 本番 DB の読み取りのみ(`statement_timeout` 付き)
 
@@ -17,7 +17,7 @@ category: knowledge-base
 
 - Pi5 はメモリ 8GB、空きは約 4.4GB。
 - Postgres は入れたときの設定のままだった: `shared_buffers=128MB`、`work_mem=4MB`。
-- 並べ替えなどの途中結果がディスクにあふれた量は、統計を取り始めてから累計 79,785 回・268,522,993,450 バイト(2026-11-28 08:21 JST)。1回あたり平均約 3.4MB。
+- 並べ替えなどの途中結果がディスクにあふれた量は、統計を取り始めてから累計 79,785 回・268,522,993,450 バイト(2026-11-28 08:21 JST)。あふれたファイル1つあたり平均約 3.4MB(問い合わせ1回あたりではない)。統計は一度もリセットされていない(`stats_reset` が空)ので、DB を作ったときからの累計。
 - DB は約 4GB。最大の表は `CsvDashboardRow`(2.6GB)。
 
 ## 変えたこと
@@ -25,8 +25,8 @@ category: knowledge-base
 `infrastructure/docker/docker-compose.server.yml` の `db` の `command` に次を足した。
 
 - `shared_buffers=1GB`
-- `work_mem=16MB`(1回あたり平均 3.4MB のあふれは、大半がこれで収まる見込み。反映後に測って確かめる)
-- `log_temp_files=10MB`(10MB を超えてあふれた問い合わせだけを DB のログに残す。0 にするとログがあふれる)
+- `work_mem=16MB`(ファイル1つあたり平均 3.4MB なので、大半は収まる見込み。ただし1つの問い合わせが複数のファイルを作ることがあるので、効果は反映後に測って確かめる)
+- `log_temp_files=10MB`(10MB を超えるあふれだけを DB のログに残す。db のログには大きさの上限が無い(json-file、`max-size` なし)ので、0 や 1MB には下げない)
 
 `docker-compose.replication-primary.yml` は `command` を丸ごと置き換えるので、同じ3つを書いた。片方だけ変えると、複製を有効にしたときに設定が元に戻る。
 
@@ -37,16 +37,29 @@ category: knowledge-base
 標準の反映(`release_pi5`)は `docker-compose.phase3.yml` だけを使い、`db` を作り直さない。マージと反映だけでは本番の DB は古い設定のまま動き続ける。
 
 1. 前日の同じ時刻と比べて、1日あたりのあふれ(`pg_stat_database` の `temp_files`、`temp_bytes`)を記録する。
-2. 業務の外の時間に、Pi5 の `/opt/RaspberryPiSystem_002` で `db` だけを作り直す。再起動の数十秒、キオスクと API は DB につながらない。
+2. 前に確かめる: Pi5 の checkout がこの PR を含むマージ後の SHA にあること(`git rev-parse HEAD`)、複製の印 `config/pi5-replication-primary` が無いこと(あれば複製用の重ね書きも使う手順に変える)。
+3. 業務の外の時間に、Pi5 の `/opt/RaspberryPiSystem_002` で `db` だけを作り直す。再起動の数十秒、キオスクと API は DB につながらない。
 
    ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml up -d --no-deps --wait db
+   docker compose -f infrastructure/docker/docker-compose.server.yml up -d --no-deps --pull never --wait --wait-timeout 120 db
    ```
 
-3. 確かめる: `SHOW shared_buffers; SHOW work_mem;`、API の health、Pi5 の空きメモリ(2GB 以上残るか)、翌日の1日あたりのあふれ。
+4. 確かめる: `SHOW shared_buffers; SHOW work_mem; SHOW log_temp_files;`、API の health、Pi5 の空きメモリ(2GB 以上残るか)、翌日の1日あたりのあふれ。
 
-元に戻すときは、この PR を戻してから、2 をもう一度行う。
+元に戻すときは、この PR を戻してから、3 をもう一度行う。
+
+急いで戻すときは、PR を戻す前に、一時ファイル(例: `/tmp/db-default.yml`)に次を書き、重ねて作り直す。`-c` の設定は `ALTER SYSTEM` より強いので、DB の中からは戻せない。
+
+```yaml
+services:
+  db:
+    command: [postgres]
+```
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.server.yml -f /tmp/db-default.yml up -d --no-deps --pull never --wait db
+```
 
 ## 注意
 
-- 2 を行うまでは、ほかの手順で `db` を `up` すると(例: `scripts/server/pi5-replication.sh apply`)、予定外の時間に新しい設定で再起動する。
+- 3 を行うまでは、ほかの手順で `db` を `up` すると(例: `scripts/server/pi5-replication.sh apply`)、予定外の時間に新しい設定で再起動する。
