@@ -42,7 +42,7 @@ beforeEach(() => {
   mocks.categoryResource.mockReturnValue(true);
   mocks.master.mockResolvedValue(new Set(['761']));
   mocks.winnerRows.mockResolvedValue([]);
-  mocks.queryRaw.mockImplementation(async (_sql, ids?: string[]) => (ids ?? []).map((id) => ({ id })));
+  mocks.queryRaw.mockImplementation(async (_sql, _dashboardId?: string, ids?: string[]) => (ids ?? []).map((id) => ({ id })));
   items = [normal('a1', 1, band), normal('a2', 2, band), normal('n1', 1), normal('n2', 2), normal('n3', 3)];
   rows = []; overrides = new Map();
   mocks.state.findUniqueOrThrow.mockResolvedValue({}); mocks.state.update.mockResolvedValue({});
@@ -100,15 +100,15 @@ it('locks only the parent rows of the saved lane, however many rows the board ha
   const laneRows = ['row-a1', 'row-a2', 'row-n1', 'row-n2', 'row-n3'];
   expect(mocks.executeRaw).toHaveBeenCalledTimes(1);
   expect(mocks.executeRaw.mock.calls[0][1]).toHaveLength(laneRows.length);
-  const [sql, lockedIds] = mocks.queryRaw.mock.calls.at(-1)!;
-  expect(sql.join('?')).toBe('SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(?::text[]) ORDER BY "id" FOR UPDATE');
+  const [sql, , lockedIds] = mocks.queryRaw.mock.calls.at(-1)!;
+  expect(sql.join('?')).toBe('SELECT "id" FROM "CsvDashboardRow" WHERE "csvDashboardId" = ? AND "id" = ANY(?::text[]) ORDER BY "id" FOR UPDATE');
   expect(lockedIds).toEqual(laneRows);
   expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.queryRaw.mock.invocationCallOrder.at(-1)!);
   expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.save.mock.invocationCallOrder[0]!);
 });
 
 it('rejects the save when a lane parent row has disappeared', async () => {
-  mocks.queryRaw.mockImplementation(async (_sql, ids?: string[]) => (ids ?? []).slice(1).map((id) => ({ id })));
+  mocks.queryRaw.mockImplementation(async (_sql, _dashboardId?: string, ids?: string[]) => (ids ?? []).slice(1).map((id) => ({ id })));
   await expect(createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30 })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
   expect(mocks.save).not.toHaveBeenCalled();
 });

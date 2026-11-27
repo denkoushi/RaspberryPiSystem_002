@@ -6,11 +6,11 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
-import { acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireSessakuPieceLogicalLocks } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
 import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, type CurrentProjection, type DbClient } from './shared.js';
+import { lockPlanningSourceRows } from './source-row-lock.js';
 import { readMasterResourceCds, readOverrides, readWinnerRowsByFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, lockState, stateOrder } from './state.js';
 import { projectCurrentItems, resolveCurrentProjectionInTransaction, writeOverrideIfChanged } from './write.js';
@@ -110,15 +110,8 @@ function assertReference(reference: GrindingPlanningBoardItemReference, item: Gr
   if (item.isCompleted) throw new ApiError(409, '完了済みの棒は並べ替えできません', undefined, 'COMPLETED_ITEM');
   return item;
 }
-async function lockLaneRows(tx: Prisma.TransactionClient, lane: readonly GrindingPlanningBoardBar[]) {
-  const ids = [...new Set(lane.flatMap((item) => item.kind === 'test' ? [] : [item.sourceRowId]))].sort((a, b) => a.localeCompare(b));
-  if (!ids.length) return;
-  await acquireProductionScheduleParentRowLocksInTransaction(tx, ids);
-  const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
-  if (locked.length !== ids.length) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
-}
 async function saveLane(tx: Prisma.TransactionClient, siteKey: string, current: CurrentProjection, lane: readonly GrindingPlanningBoardBar[]) {
-  await lockLaneRows(tx, lane);
+  await lockPlanningSourceRows(tx, [...new Set(lane.flatMap((item) => item.kind === 'test' ? [] : [item.sourceRowId]))].sort());
   const ranks = new Map<string | null, number>();
   for (const item of lane) {
     const band = planningBarBand(item);

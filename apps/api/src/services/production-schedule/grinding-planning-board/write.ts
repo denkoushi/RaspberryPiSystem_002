@@ -11,13 +11,14 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getResourceCategoryPolicy, isProductionScheduleGrindingResourceCd, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { acquireProductionScheduleParentRowLockInTransaction, acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
+import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
 import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
 import type { GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection-input.types.js';
 import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from '../load-balancing/load-balancing-settings.service.js';
 import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balancing/work-calendar-policy.js';
 import { isGrindingPlanningBoardSpecialDueKind, resolveGrindingPlanningBoardSpecialDueExpiresAt } from '../grinding-planning-board-special-due.js';
 import { assertItemRevision, MAX_ALTERNATE_RANK, asRowData, isCategoryResource, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
+import { lockPlanningSourceRows } from './source-row-lock.js';
 import { readMasterResourceCds, readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, readStateUncheckedFseibans, stateUncheckedFseibans, stateOrder } from './state.js';
 
@@ -488,10 +489,7 @@ async function saveGrindingPlanningBoardResourceOrderBulk(params: { siteKey: str
         if (pane.filter((item) => requested.has(item.itemId)).length !== itemIds.length) throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
       }
       const rowsToLock = [...new Set(fullPane ? rankedItemIds.map((id) => fullPane!.byItemId.get(id)!.sourceRowId) : sourceRows.values())].sort();
-      await acquireProductionScheduleParentRowLocksInTransaction(client, rowsToLock);
-      const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "id" = ANY(${rowsToLock}::text[]) ORDER BY "id" FOR UPDATE`;
-      const lockedIds = new Set(locked.map((row) => row.id));
-      if (rowsToLock.some((id) => !lockedIds.has(id))) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+      await lockPlanningSourceRows(client, rowsToLock);
       let current = fullPane ?? await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
       if (move) {
         const applied = await applyOverridesInTransaction({ lockedCurrent: current, dueSource: params.dueSource, pieceKeys, client,
