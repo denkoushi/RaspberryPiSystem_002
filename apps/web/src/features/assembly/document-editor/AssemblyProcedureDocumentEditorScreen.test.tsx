@@ -1219,8 +1219,8 @@ describe('要領書を読んだ感想', () => {
     expect(body().style.fontSize).toBe('16px');
   });
 
-  it('保存された文字サイズが読めない値なら既定のサイズで出す', () => {
-    localStorage.setItem('assembly-document-feedback-font-size', '999');
+  it.each(['999', 'abc', '"16"'])('保存された文字サイズが読めない値(%s)なら既定のサイズで出す', stored => {
+    localStorage.setItem('assembly-document-feedback-font-size', stored);
     feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
       revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
       questions: ['どこを測る？'], missing: [], unclear: [], ideas: [],
