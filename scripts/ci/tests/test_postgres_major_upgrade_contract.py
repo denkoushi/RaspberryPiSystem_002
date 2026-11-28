@@ -32,7 +32,12 @@ class PostgresMajorUpgradeContractTest(unittest.TestCase):
                            "read_only": False}, mounts)
             return
         self.assertEqual(argv(db.get("entrypoint")), [GUARD])
-        self.assertEqual(argv(db.get("command")), ["postgres"])
+        command = argv(db.get("command"))
+        self.assertEqual(command[0], "postgres")
+        self.assertEqual(len(command) % 2, 1)
+        # 残りは `-c name=value` の設定だけ(KB-459)
+        self.assertEqual(command[1::2], ["-c"] * (len(command) // 2))
+        self.assertTrue(all("=" in value for value in command[2::2]))
         self.assertTrue(any(m["source"] == "db-data-pg18" and
                             m["target"] == "/var/lib/postgresql" and
                             not m.get("read_only", False) for m in mounts))

@@ -268,6 +268,7 @@ update-frequency: high
 | [KB-456](./KB-456-fkojunst-completion-on-swapped-resource.md) | 製番ボードで、別の資源に完了(C)が付いた工程が未完了のまま残る(付け替えの調査と案。消えた旧資源の行を隠す 11/27) | ✅ 方針決定(ADR-20261125) |
 | [KB-457](./KB-457-power-automate-query-coverage.md) | Power Automate の取り込みクエリが届けるデータの範囲(購買の品番絞り込み、工順STに出ない資源) | ✅ 調査完了 |
 | [KB-458](./KB-458-planning-board-test-bar-lock-table-exhausted.md) | 製番ボードの＋(差し込み)が「保存できませんでした」になる(DB の鍵の上限あふれ) | ✅ 修正済み |
+| [KB-459](./KB-459-postgres-memory-settings.md) | Pi5 の Postgres が入れたときのメモリ設定のままで、並べ替えがディスクにあふれていた | ✅ 本番反映済み(効果の確認は翌日) |
 | [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 
 ### フロントエンド関連

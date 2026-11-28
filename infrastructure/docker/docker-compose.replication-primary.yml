@@ -4,6 +4,13 @@ services:
     # db-start-guard.sh forwards these arguments to docker-entrypoint.sh.
     command:
       - postgres
+      # server.yml と同じメモリ設定(KB-459)。command は上書きされるのでここにも書く。
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - log_temp_files=10MB
       - -c
       - wal_level=replica
       - -c
