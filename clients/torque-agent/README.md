@@ -100,3 +100,5 @@ docker compose -f infrastructure/docker/docker-compose.client.yml --profile torq
 `queuedEvents`はAPI応答待ち、`localAuditEvents`はbinding無しまたは解析失敗でサーバーへ割り当てなかった入力である。SQLiteファイルを直接削除して復旧してはいけない。
 
 本番導入、実機fixture採取、安全な再起動・切戻しは[組立torque-agent Runbook](../../docs/runbooks/assembly-torque-agent.md)を参照する。
+
+更新を本番へ反映するときは、この部品が有効なPi4をすべて同じ回で反映する。1台だけ古い版を残すと、mainが進んだ後は部品を変えるPRを足さないと入れられない。
