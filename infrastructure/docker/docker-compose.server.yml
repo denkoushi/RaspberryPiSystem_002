@@ -34,7 +34,16 @@ services:
         bind:
           create_host_path: false
     entrypoint: [/usr/local/bin/db-start-guard.sh]
-    command: [postgres]
+    # メモリ設定(KB-459)。docker-compose.replication-primary.yml の command にも同じ値を書く。
+    # 標準の反映は db を作り直さないので、値を変えたら業務外に db だけ作り直す。
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - log_temp_files=10MB
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
     # APIコンテナからは `db:5432` でアクセス可能
     # ローカル開発時のみポートを公開
