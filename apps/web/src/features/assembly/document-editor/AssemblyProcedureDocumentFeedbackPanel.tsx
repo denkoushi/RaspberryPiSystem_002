@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
-
 import { Button } from '../../../components/ui/Button';
+import { useLocalStorage } from '../../../hooks/useLocalStorage';
 
 import type { ProcedureDocumentFeedback, ProcedureDocumentFeedbackSection, ProcedureDocumentFeedbackVerdict } from '@raspi-system/shared-types';
 
@@ -13,16 +12,12 @@ const sections = [
 
 const feedbackDate = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric' });
 
-const feedbackFontSizeStorageKey = 'assembly-document-feedback-font-size';
-const feedbackFontSizes = [12, 14, 16, 18, 20, 24, 28] as const;
-const defaultFontSizeIndex = feedbackFontSizes.indexOf(14);
+const feedbackFontSizes = [12, 14, 16, 18, 20, 24, 28];
+const defaultFontSize = 14;
 
-function readStoredFontSizeIndex() {
-  try {
-    const index = feedbackFontSizes.findIndex(size => String(size) === localStorage.getItem(feedbackFontSizeStorageKey));
-    if (index >= 0) return index;
-  } catch { /* Fall back to the default when local storage is unavailable. */ }
-  return defaultFontSizeIndex;
+function fontSizeIndexOf(size: number) {
+  const index = feedbackFontSizes.indexOf(size);
+  return index >= 0 ? index : feedbackFontSizes.indexOf(defaultFontSize);
 }
 
 function ThumbIcon({ down }: { down?: boolean }) {
@@ -41,13 +36,10 @@ export function AssemblyProcedureDocumentFeedbackPanel({ feedback, onRate, ratin
   onRate: (section: ProcedureDocumentFeedbackSection, itemIndex: number, verdict: ProcedureDocumentFeedbackVerdict | null) => void;
   ratingDisabled: boolean;
 }) {
-  const [fontSizeIndex, setFontSizeIndex] = useState(readStoredFontSizeIndex);
-  useEffect(() => {
-    try { localStorage.setItem(feedbackFontSizeStorageKey, String(feedbackFontSizes[fontSizeIndex])); }
-    catch { /* The panel remains usable when local storage is unavailable. */ }
-  }, [fontSizeIndex]);
+  const [storedFontSize, setStoredFontSize] = useLocalStorage<number>('assembly-document-feedback-font-size', defaultFontSize);
+  const fontSizeIndex = fontSizeIndexOf(storedFontSize);
   const changeFontSize = (step: number) => {
-    setFontSizeIndex(current => Math.min(feedbackFontSizes.length - 1, Math.max(0, current + step)));
+    setStoredFontSize(current => feedbackFontSizes[Math.min(feedbackFontSizes.length - 1, Math.max(0, fontSizeIndexOf(current) + step))]);
   };
   return <section aria-label="読んだ感想" className="min-h-0 flex-1 overflow-y-auto break-words p-4">
     <div className="flex items-center justify-between gap-2">
