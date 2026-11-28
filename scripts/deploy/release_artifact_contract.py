@@ -62,13 +62,13 @@ class TorqueAdoption:
 
 
 TORQUE_ADOPTION = TorqueAdoption(
-    source_sha="9deca7c02697e551a4991222244fd469e85d36fa",
-    index_digest="sha256:b6930460b6f6f42640c79d97182a2b0d2a4ed4ce9b80a4e27315a35657a7ebe7",
-    arm64_digest="sha256:40ccd393a9e3b9146e39f552a971e7d8afcb3974ea8df90a36d457ac1a978c9b",
-    armv7_digest="sha256:5c93e72a57ac265a38a44978f09d0e8150af721be60af32a8bc62130405b3acb",
+    source_sha="20d763b0175726439b37fe513b48803bfc9ceb7f",
+    index_digest="sha256:5d201b6176d5306e9b10ba5f072adebdf7a8653a99e07e123da405efd00a46a1",
+    arm64_digest="sha256:5fbb246e24148aa05689ceba026a8a92ca2fa2d8089b29c5301fc9511eb5b689",
+    armv7_digest="sha256:58fe486761ec6d88b8dc944bbf789f403b1a16d32c58dc7fd16260c31fd8a2e8",
     origin_workflow=".github/workflows/ci.yml",
-    origin_run_id=45698462016,
-    origin_job_id=139506597806,
+    origin_run_id=46117495750,
+    origin_job_id=140895815928,
 )
 TORQUE_ADOPTED_SOURCE_SHA = TORQUE_ADOPTION.source_sha
 TORQUE_ORIGINAL_WORKFLOW = TORQUE_ADOPTION.origin_workflow
