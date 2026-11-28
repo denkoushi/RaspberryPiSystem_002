@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getProcedureDocumentFeedback, runProcedureDocumentFeedback, setProcedureDocumentFeedbackTarget } from './procedure-document-feedback.service.js';
+import { getProcedureDocumentFeedback, runProcedureDocumentFeedback, setProcedureDocumentFeedbackRating, setProcedureDocumentFeedbackTarget } from './procedure-document-feedback.service.js';
 import { getProcedureDocumentFeedbackScheduler } from './procedure-document-feedback.scheduler.js';
 
 const mocks = vi.hoisted(() => ({
@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   candidates: vi.fn(), findDocument: vi.fn(), employees: vi.fn(), save: vi.fn(),
   text: vi.fn(), vision: vi.fn(), read: vi.fn(), ensureReady: vi.fn(), release: vi.fn(),
   warn: vi.fn(), schedule: vi.fn(), stop: vi.fn(),
-  findSeries: vi.fn(), findFeedback: vi.fn(), findOptOut: vi.fn(), createOptOut: vi.fn(), deleteOptOut: vi.fn(),
+  findSeries: vi.fn(), findFeedback: vi.fn(), findOptOut: vi.fn(), upsertRating: vi.fn(), deleteRating: vi.fn(), createOptOut: vi.fn(), deleteOptOut: vi.fn(),
 }));
 
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
@@ -26,6 +26,7 @@ vi.mock('../../lib/prisma.js', () => ({
     employee: { findMany: mocks.employees },
     assemblyProcedureDocument: { findUnique: mocks.findSeries },
     assemblyProcedureDocumentFeedback: { createMany: mocks.save, findFirst: mocks.findFeedback },
+    assemblyProcedureDocumentFeedbackRating: { upsert: mocks.upsertRating, deleteMany: mocks.deleteRating },
     assemblyProcedureDocumentFeedbackOptOut: { findUnique: mocks.findOptOut, createMany: mocks.createOptOut, deleteMany: mocks.deleteOptOut },
   },
 }));
@@ -126,6 +127,8 @@ describe('夜間の要領書への感想', () => {
         documentId: candidate.id, revisionRootId: 'root', revisionNumber: 2, sourceUpdatedAt: updatedAt,
         questions: ['作業者Aが担当？', '作業者Bが記録？', '3', '4', '5', '6'],
         missing: [], unclear: ['作業者Bの欄'], ideas: ['作業者Aの手順'],
+        modelInput: expect.stringMatching(/^文書名: 作業者Aの加工要領\n\n=== 文書の文字\(ページごと\)\n1ページ目[\s\S]*3ページ目の写真 1\n・作業者Bのメモと作業者Aの印/),
+        promptVersion: expect.stringMatching(/^[0-9a-f]{12}$/),
       },
       skipDuplicates: true,
     });
@@ -172,5 +175,30 @@ describe('夜間の要領書への感想', () => {
     await expect(setProcedureDocumentFeedbackTarget('version-2', true)).resolves.toEqual({ feedback: null, nightlyTarget: true });
     expect(mocks.deleteOptOut).toHaveBeenCalledWith({ where: { revisionRootId: 'root' } });
     await expect(getProcedureDocumentFeedback('version-2')).resolves.toEqual({ feedback: null, nightlyTarget: true });
+  });
+
+  it('感想の評価: 付ける・消す、別の系列の感想は404、範囲外は400、確かめた後に消えた感想は404', async () => {
+    mocks.findSeries.mockResolvedValue({ revisionMetadata: { revisionRootId: 'root' } });
+    mocks.findOptOut.mockResolvedValue(null);
+    const sections = { questions: ['q1'], missing: [], unclear: [], ideas: [] };
+    mocks.findFeedback.mockResolvedValue({ id: 'f1', ratings: [], ...sections, revisionNumber: 1, createdAt: updatedAt });
+    const request = { feedbackId: 'f1', section: 'questions', itemIndex: 0, verdict: 'useful' } as const;
+
+    await setProcedureDocumentFeedbackRating('version-2', request);
+    expect(mocks.findFeedback).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'f1', revisionRootId: 'root' } }));
+    expect(mocks.upsertRating).toHaveBeenCalledWith({
+      where: { feedbackId_section_itemIndex: { feedbackId: 'f1', section: 'questions', itemIndex: 0 } },
+      create: { feedbackId: 'f1', section: 'questions', itemIndex: 0, verdict: 'useful' },
+      update: { verdict: 'useful' },
+    });
+
+    await setProcedureDocumentFeedbackRating('version-2', { ...request, verdict: null });
+    expect(mocks.deleteRating).toHaveBeenCalledWith({ where: { feedbackId: 'f1', section: 'questions', itemIndex: 0 } });
+
+    await expect(setProcedureDocumentFeedbackRating('version-2', { ...request, itemIndex: 1 })).rejects.toMatchObject({ statusCode: 400 });
+    mocks.upsertRating.mockRejectedValueOnce(Object.assign(new Error('fk'), { code: 'P2003' }));
+    await expect(setProcedureDocumentFeedbackRating('version-2', request)).rejects.toMatchObject({ statusCode: 404 });
+    mocks.findFeedback.mockResolvedValue(null);
+    await expect(setProcedureDocumentFeedbackRating('version-2', request)).rejects.toMatchObject({ statusCode: 404 });
   });
 });

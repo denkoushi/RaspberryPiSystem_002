@@ -5,7 +5,7 @@ import { api } from '../../http';
 import { procedureEditHeaders } from './shared';
 
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureDocumentSummaryDto, AssemblyProcedureOverlayAssetDto, AssemblyProcedureTextCandidateDto, AssemblyProcedureGmailImportResultDto } from '../../../features/assembly/types';
-import type { AssemblyProcedureOverlayElement, OverlayRegionImage, ProcedureLayoutSuggestionRequest } from '@raspi-system/shared-types';
+import type { AssemblyProcedureOverlayElement, OverlayRegionImage, ProcedureDocumentFeedbackRatingRequest, ProcedureLayoutSuggestionRequest } from '@raspi-system/shared-types';
 
 export async function suggestAssemblyProcedureLayout(input: ProcedureLayoutSuggestionRequest & { id: string; accessPassword: string; holderToken?: string | null; signal: AbortSignal }) {
   const { data } = await api.post(
@@ -345,4 +345,9 @@ export async function moveAssemblyProcedurePage({ id, pageIndex, holderToken, ..
     `/assembly/procedure-documents/${encodeURIComponent(id)}/pages/${pageIndex}/move`, body, procedureEditHeaders(holderToken)
   );
   return data.document;
+}
+
+export async function setAssemblyProcedureDocumentFeedbackRating(id: string, request: ProcedureDocumentFeedbackRatingRequest) {
+  const { data } = await api.put(`/assembly/procedure-documents/${encodeURIComponent(id)}/feedback-rating`, request);
+  return procedureDocumentFeedbackResponseSchema.parse(data);
 }

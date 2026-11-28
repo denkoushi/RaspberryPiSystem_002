@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { countProcedureMaterials, findAssemblyProcedureTextCandidates } from '../../../api/client';
-import { useAssemblyProcedureDocumentFeedback, useSetAssemblyProcedureDocumentFeedbackTarget } from '../../../api/hooks/assembly-procedure-documents';
+import { useAssemblyProcedureDocumentFeedback, useSetAssemblyProcedureDocumentFeedbackRating, useSetAssemblyProcedureDocumentFeedbackTarget } from '../../../api/hooks/assembly-procedure-documents';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useMediaQuery } from '../../../hooks/useMediaQuery';
@@ -45,6 +45,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const { data: feedbackData } = useAssemblyProcedureDocumentFeedback(controller.accessGranted ? documentId : undefined);
   const feedback = feedbackData?.feedback;
   const setFeedbackTarget = useSetAssemblyProcedureDocumentFeedbackTarget(documentId);
+  const { mutate: mutateFeedbackRating, isPending: feedbackRatingPending } = useSetAssemblyProcedureDocumentFeedbackRating(documentId);
   const [openFeedbackId, setOpenFeedbackId] = useState<string | null>(null);
   const feedbackOpen = Boolean(feedback && documentId && openFeedbackId === documentId);
   const feedbackAvailable = Boolean(feedback && documentId);
@@ -445,7 +446,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           ) : null}
         </section>
         <aside className={`col-start-4 flex min-h-0 min-w-0 flex-col border-l border-[#27313b] bg-[#161c22] [container:assembly-details/inline-size] max-[1099px]:absolute max-[1099px]:col-auto max-[1099px]:right-20 max-[1099px]:top-4 max-[1099px]:bottom-4 max-[1099px]:z-50 max-[1099px]:w-[340px] max-[1099px]:rounded-[14px] max-[1099px]:border max-[1099px]:bg-[#161c22f5] ${partsPaneOpen ? 'max-[1099px]:max-w-[calc(100%-480px)]' : 'max-[1099px]:max-w-[calc(100%-200px)]'} ${feedbackOpen || (!cleanView && controller.selectedElement) ? '' : 'max-[1099px]:hidden'}`} data-testid="assembly-document-editor-details">
-          {feedbackOpen && feedback ? <AssemblyProcedureDocumentFeedbackPanel feedback={feedback} /> : null}
+          {feedbackOpen && feedback ? <AssemblyProcedureDocumentFeedbackPanel feedback={feedback} ratingDisabled={feedbackRatingPending}
+            onRate={(section, itemIndex, verdict) => mutateFeedbackRating({ feedbackId: feedback.id, section, itemIndex, verdict })} /> : null}
           <div hidden={feedbackOpen} className={`${feedbackOpen ? 'hidden' : 'flex'} shrink-0 flex-col items-start gap-2 border-b border-[#27313b] px-[14px] py-[10px] text-[17px] text-[#9fadb9]`}>
             <b className="w-full whitespace-normal break-words text-[#eef3f6]">{context ? [context.processName.startsWith('共通') ? '' : context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}</b>
             {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold [@container_assembly-details_(width<300px)]:h-auto [@container_assembly-details_(width<300px)]:min-h-[26px] [@container_assembly-details_(width<300px)]:max-w-full [@container_assembly-details_(width<300px)]:rounded-[13px] [@container_assembly-details_(width<300px)]:py-0.5 ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>

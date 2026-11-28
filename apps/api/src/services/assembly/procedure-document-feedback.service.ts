@@ -1,4 +1,6 @@
-import { procedureDocumentFeedbackResponseSchema, type ProcedureDocumentFeedbackResponse } from '@raspi-system/shared-types';
+import { procedureDocumentFeedbackResponseSchema, type ProcedureDocumentFeedbackRatingRequest, type ProcedureDocumentFeedbackResponse } from '@raspi-system/shared-types';
+
+import { createHash } from 'node:crypto';
 
 import { env } from '../../config/env.js';
 import { DomainHttpError } from '../../lib/errors.js';
@@ -22,6 +24,11 @@ const FEEDBACK_PROMPT = [
   'ideas: こうしたらいいかも',
   '次の JSON だけを返す。{"questions":[...],"missing":[...],"unclear":[...],"ideas":[...]}',
 ].join('\n');
+
+const PROMPT_VERSION = createHash('sha256')
+  .update([SYSTEM_PROMPT, PHOTO_PROMPT, FEEDBACK_PROMPT, PROCEDURE_DOCUMENT_FEEDBACK_REFERENCE].join('\n'))
+  .digest('hex')
+  .slice(0, 12);
 
 function createNameRedactor(employees: Pick<Employee, 'displayName' | 'lastName' | 'firstName'>[]) {
   const aliases = new Map<string, number>();
@@ -66,17 +73,24 @@ function parseFeedback(raw: string, redact: (text: string) => string) {
   return Object.values(sections).some(items => items.length) ? sections : null;
 }
 
-export async function getProcedureDocumentFeedback(documentId: string): Promise<ProcedureDocumentFeedbackResponse> {
+async function resolveRevisionRootId(documentId: string) {
   const document = await prisma.assemblyProcedureDocument.findUnique({
     where: { id: documentId },
     select: { revisionMetadata: { select: { revisionRootId: true } } },
   });
   if (!document) throw new DomainHttpError(404, '手順書が見つかりません');
-  const revisionRootId = document.revisionMetadata?.revisionRootId ?? documentId;
+  return document.revisionMetadata?.revisionRootId ?? documentId;
+}
+
+export async function getProcedureDocumentFeedback(documentId: string): Promise<ProcedureDocumentFeedbackResponse> {
+  const revisionRootId = await resolveRevisionRootId(documentId);
   const [feedback, optOut] = await Promise.all([prisma.assemblyProcedureDocumentFeedback.findFirst({
     where: { revisionRootId },
     orderBy: [{ sourceUpdatedAt: 'desc' }, { revisionNumber: 'desc' }],
-    select: { revisionNumber: true, createdAt: true, questions: true, missing: true, unclear: true, ideas: true },
+    select: {
+      id: true, revisionNumber: true, createdAt: true, questions: true, missing: true, unclear: true, ideas: true,
+      ratings: { select: { section: true, itemIndex: true, verdict: true }, orderBy: [{ section: 'asc' }, { itemIndex: 'asc' }] },
+    },
   }), prisma.assemblyProcedureDocumentFeedbackOptOut.findUnique({ where: { revisionRootId }, select: { revisionRootId: true } })]);
   return procedureDocumentFeedbackResponseSchema.parse({
     feedback: feedback && { ...feedback, createdAt: feedback.createdAt.toISOString() },
@@ -85,16 +99,41 @@ export async function getProcedureDocumentFeedback(documentId: string): Promise<
 }
 
 export async function setProcedureDocumentFeedbackTarget(documentId: string, nightlyTarget: boolean): Promise<ProcedureDocumentFeedbackResponse> {
-  const document = await prisma.assemblyProcedureDocument.findUnique({
-    where: { id: documentId },
-    select: { revisionMetadata: { select: { revisionRootId: true } } },
-  });
-  if (!document) throw new DomainHttpError(404, '手順書が見つかりません');
-  const revisionRootId = document.revisionMetadata?.revisionRootId ?? documentId;
+  const revisionRootId = await resolveRevisionRootId(documentId);
   if (nightlyTarget) {
     await prisma.assemblyProcedureDocumentFeedbackOptOut.deleteMany({ where: { revisionRootId } });
   } else {
     await prisma.assemblyProcedureDocumentFeedbackOptOut.createMany({ data: { revisionRootId }, skipDuplicates: true });
+  }
+  return getProcedureDocumentFeedback(documentId);
+}
+
+export async function setProcedureDocumentFeedbackRating(
+  documentId: string,
+  { feedbackId, section, itemIndex, verdict }: ProcedureDocumentFeedbackRatingRequest,
+): Promise<ProcedureDocumentFeedbackResponse> {
+  const revisionRootId = await resolveRevisionRootId(documentId);
+  const feedback = await prisma.assemblyProcedureDocumentFeedback.findFirst({
+    where: { id: feedbackId, revisionRootId },
+    select: { questions: true, missing: true, unclear: true, ideas: true },
+  });
+  if (!feedback) throw new DomainHttpError(404, '感想が見つかりません');
+  const items = feedback[section];
+  if (itemIndex >= (Array.isArray(items) ? items.length : 0)) throw new DomainHttpError(400, '感想の番号が範囲外です');
+  if (verdict === null) {
+    await prisma.assemblyProcedureDocumentFeedbackRating.deleteMany({ where: { feedbackId, section, itemIndex } });
+  } else {
+    try {
+      await prisma.assemblyProcedureDocumentFeedbackRating.upsert({
+        where: { feedbackId_section_itemIndex: { feedbackId, section, itemIndex } },
+        create: { feedbackId, section, itemIndex, verdict },
+        update: { verdict },
+      });
+    } catch (error) {
+      // 確かめた後に感想の行が消えた(要領書の削除など)ときは、外部キー違反を 404 にする
+      if ((error as { code?: string }).code === 'P2003') throw new DomainHttpError(404, '感想が見つかりません');
+      throw error;
+    }
   }
   return getProcedureDocumentFeedback(documentId);
 }
@@ -155,11 +194,14 @@ async function generateFeedback(candidate: Candidate, employees: Parameters<type
       }
     }
     const photoSection = descriptions.length ? `\n\n=== 貼ってある写真を読んだ結果\n${descriptions.join('\n\n')}` : '';
+    const inputHead = `文書名: ${name}`;
+    const inputBody = `=== 文書の文字(ページごと)\n${pages.join('\n\n')}${photoSection}`;
+    const modelInput = `${inputHead}\n\n${inputBody}`;
     const result = await inference.createTextCompletionPort().complete({
       useCase: 'business_hermes', jsonOutput: true, enableThinking: false, temperature: 0, maxTokens: 2400, signal,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `文書名: ${name}\n\n=== 専門知識(機械加工・段取り・組立・検査と、手順書の作り方)\n${PROCEDURE_DOCUMENT_FEEDBACK_REFERENCE}\n\n=== 文書の文字(ページごと)\n${pages.join('\n\n')}${photoSection}\n\n${FEEDBACK_PROMPT}` },
+        { role: 'user', content: `${inputHead}\n\n=== 専門知識(機械加工・段取り・組立・検査と、手順書の作り方)\n${PROCEDURE_DOCUMENT_FEEDBACK_REFERENCE}\n\n${inputBody}\n\n${FEEDBACK_PROMPT}` },
       ],
     });
     signal.throwIfAborted();
@@ -174,6 +216,8 @@ async function generateFeedback(candidate: Candidate, employees: Parameters<type
         revisionRootId: document.revisionMetadata?.revisionRootId ?? candidate.id,
         revisionNumber: document.revisionMetadata?.revisionNumber ?? 1,
         sourceUpdatedAt: candidate.updatedAt,
+        modelInput,
+        promptVersion: PROMPT_VERSION,
         ...feedback,
       },
       skipDuplicates: true,
