@@ -1158,6 +1158,7 @@ it('rebuilds clean view on page selection and exits on a page without text', () 
 
 
 describe('要領書を読んだ感想', () => {
+  beforeEach(() => { localStorage.clear(); });
   afterEach(() => { feedbackQuery.mockReset(); feedbackTargetMutate.mockReset(); });
 
   it('日付と4つの分類を右欄に表示し、同じボタンで閉じる', () => {
@@ -1176,16 +1177,57 @@ describe('要領書を読んだ感想', () => {
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'true');
     const panel = within(screen.getByTestId('assembly-document-editor-details')).getByRole('region', { name: '読んだ感想' });
-    expect(panel.firstElementChild).toHaveTextContent('第2版 11/27');
+    expect(panel.querySelector('p')).toHaveTextContent('第2版 11/27');
     expect(within(panel).getAllByRole('heading').map(heading => heading.textContent))
       .toEqual(['素朴な質問', '足りないかも', '分かりにくいかも', 'こうしたらいいかも']);
     expect(within(panel).getAllByRole('listitem').map(item => item.textContent))
       .toEqual(['どこに治具を当てる？', '測定回数があると助かる', '写真の右と左で迷う', '原点に矢印を置くと分かりそう']);
-    expect(within(panel).queryByRole('button')).toBeNull();
+    expect(within(panel).getAllByRole('button').map(item => item.getAttribute('aria-label'))).toEqual(['文字を小さく', '文字を大きく']);
 
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'false');
     expect(panel).not.toBeInTheDocument();
+  });
+
+  it('－と＋で感想の文字を段階的に変え、最小と最大で止め、開き直しても残す', () => {
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
+      questions: ['どこを測る？'], missing: [], unclear: [], ideas: [],
+    } } });
+    const { unmount } = renderScreen(makeController());
+    fireEvent.click(screen.getByRole('button', { name: '読んだ感想' }));
+    const body = () => screen.getByRole('region', { name: '読んだ感想' }).querySelector<HTMLElement>('[data-feedback-body]')!;
+    const smaller = () => screen.getByRole('button', { name: '文字を小さく' });
+    const larger = () => screen.getByRole('button', { name: '文字を大きく' });
+    expect(body().style.fontSize).toBe('14px');
+
+    fireEvent.click(larger());
+    expect(body().style.fontSize).toBe('16px');
+    expect(localStorage.getItem('assembly-document-feedback-font-size')).toBe('16');
+    for (let i = 0; i < 10; i += 1) fireEvent.click(larger());
+    expect(body().style.fontSize).toBe('28px');
+    expect(larger()).toBeDisabled();
+    for (let i = 0; i < 10; i += 1) fireEvent.click(smaller());
+    expect(body().style.fontSize).toBe('12px');
+    expect(smaller()).toBeDisabled();
+    fireEvent.click(larger());
+    fireEvent.click(larger());
+    unmount();
+
+    renderScreen(makeController());
+    fireEvent.click(screen.getByRole('button', { name: '読んだ感想' }));
+    expect(body().style.fontSize).toBe('16px');
+  });
+
+  it.each(['999', 'abc', '"16"'])('保存された文字サイズが読めない値(%s)なら既定のサイズで出す', stored => {
+    localStorage.setItem('assembly-document-feedback-font-size', stored);
+    feedbackQuery.mockReturnValue({ data: { nightlyTarget: true, feedback: {
+      revisionNumber: 1, createdAt: '2026-11-27T00:00:00Z',
+      questions: ['どこを測る？'], missing: [], unclear: [], ideas: [],
+    } } });
+    renderScreen(makeController());
+    fireEvent.click(screen.getByRole('button', { name: '読んだ感想' }));
+    expect(screen.getByRole('region', { name: '読んだ感想' }).querySelector<HTMLElement>('[data-feedback-body]')!.style.fontSize).toBe('14px');
   });
 
   it('夜に読むボタンを押すと、今と逆の値で切り替える', () => {
