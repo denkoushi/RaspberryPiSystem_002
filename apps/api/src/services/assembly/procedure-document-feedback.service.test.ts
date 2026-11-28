@@ -177,7 +177,7 @@ describe('夜間の要領書への感想', () => {
     await expect(getProcedureDocumentFeedback('version-2')).resolves.toEqual({ feedback: null, nightlyTarget: true });
   });
 
-  it('感想の評価: 付ける・消す、別の系列の感想は404、範囲外は400', async () => {
+  it('感想の評価: 付ける・消す、別の系列の感想は404、範囲外は400、確かめた後に消えた感想は404', async () => {
     mocks.findSeries.mockResolvedValue({ revisionMetadata: { revisionRootId: 'root' } });
     mocks.findOptOut.mockResolvedValue(null);
     const sections = { questions: ['q1'], missing: [], unclear: [], ideas: [] };
@@ -196,6 +196,8 @@ describe('夜間の要領書への感想', () => {
     expect(mocks.deleteRating).toHaveBeenCalledWith({ where: { feedbackId: 'f1', section: 'questions', itemIndex: 0 } });
 
     await expect(setProcedureDocumentFeedbackRating('version-2', { ...request, itemIndex: 1 })).rejects.toMatchObject({ statusCode: 400 });
+    mocks.upsertRating.mockRejectedValueOnce(Object.assign(new Error('fk'), { code: 'P2003' }));
+    await expect(setProcedureDocumentFeedbackRating('version-2', request)).rejects.toMatchObject({ statusCode: 404 });
     mocks.findFeedback.mockResolvedValue(null);
     await expect(setProcedureDocumentFeedbackRating('version-2', request)).rejects.toMatchObject({ statusCode: 404 });
   });

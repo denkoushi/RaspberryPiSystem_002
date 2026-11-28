@@ -73,13 +73,17 @@ function parseFeedback(raw: string, redact: (text: string) => string) {
   return Object.values(sections).some(items => items.length) ? sections : null;
 }
 
-export async function getProcedureDocumentFeedback(documentId: string): Promise<ProcedureDocumentFeedbackResponse> {
+async function resolveRevisionRootId(documentId: string) {
   const document = await prisma.assemblyProcedureDocument.findUnique({
     where: { id: documentId },
     select: { revisionMetadata: { select: { revisionRootId: true } } },
   });
   if (!document) throw new DomainHttpError(404, '手順書が見つかりません');
-  const revisionRootId = document.revisionMetadata?.revisionRootId ?? documentId;
+  return document.revisionMetadata?.revisionRootId ?? documentId;
+}
+
+export async function getProcedureDocumentFeedback(documentId: string): Promise<ProcedureDocumentFeedbackResponse> {
+  const revisionRootId = await resolveRevisionRootId(documentId);
   const [feedback, optOut] = await Promise.all([prisma.assemblyProcedureDocumentFeedback.findFirst({
     where: { revisionRootId },
     orderBy: [{ sourceUpdatedAt: 'desc' }, { revisionNumber: 'desc' }],
@@ -95,12 +99,7 @@ export async function getProcedureDocumentFeedback(documentId: string): Promise<
 }
 
 export async function setProcedureDocumentFeedbackTarget(documentId: string, nightlyTarget: boolean): Promise<ProcedureDocumentFeedbackResponse> {
-  const document = await prisma.assemblyProcedureDocument.findUnique({
-    where: { id: documentId },
-    select: { revisionMetadata: { select: { revisionRootId: true } } },
-  });
-  if (!document) throw new DomainHttpError(404, '手順書が見つかりません');
-  const revisionRootId = document.revisionMetadata?.revisionRootId ?? documentId;
+  const revisionRootId = await resolveRevisionRootId(documentId);
   if (nightlyTarget) {
     await prisma.assemblyProcedureDocumentFeedbackOptOut.deleteMany({ where: { revisionRootId } });
   } else {
@@ -113,12 +112,7 @@ export async function setProcedureDocumentFeedbackRating(
   documentId: string,
   { feedbackId, section, itemIndex, verdict }: ProcedureDocumentFeedbackRatingRequest,
 ): Promise<ProcedureDocumentFeedbackResponse> {
-  const document = await prisma.assemblyProcedureDocument.findUnique({
-    where: { id: documentId },
-    select: { revisionMetadata: { select: { revisionRootId: true } } },
-  });
-  if (!document) throw new DomainHttpError(404, '手順書が見つかりません');
-  const revisionRootId = document.revisionMetadata?.revisionRootId ?? documentId;
+  const revisionRootId = await resolveRevisionRootId(documentId);
   const feedback = await prisma.assemblyProcedureDocumentFeedback.findFirst({
     where: { id: feedbackId, revisionRootId },
     select: { questions: true, missing: true, unclear: true, ideas: true },
@@ -129,11 +123,17 @@ export async function setProcedureDocumentFeedbackRating(
   if (verdict === null) {
     await prisma.assemblyProcedureDocumentFeedbackRating.deleteMany({ where: { feedbackId, section, itemIndex } });
   } else {
-    await prisma.assemblyProcedureDocumentFeedbackRating.upsert({
-      where: { feedbackId_section_itemIndex: { feedbackId, section, itemIndex } },
-      create: { feedbackId, section, itemIndex, verdict },
-      update: { verdict },
-    });
+    try {
+      await prisma.assemblyProcedureDocumentFeedbackRating.upsert({
+        where: { feedbackId_section_itemIndex: { feedbackId, section, itemIndex } },
+        create: { feedbackId, section, itemIndex, verdict },
+        update: { verdict },
+      });
+    } catch (error) {
+      // 確かめた後に感想の行が消えた(要領書の削除など)ときは、外部キー違反を 404 にする
+      if ((error as { code?: string }).code === 'P2003') throw new DomainHttpError(404, '感想が見つかりません');
+      throw error;
+    }
   }
   return getProcedureDocumentFeedback(documentId);
 }
